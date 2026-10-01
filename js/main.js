@@ -4,12 +4,14 @@ import { Game } from './game.js';
 import { LocalHost } from './net.js';
 import { Renderer, Minimap, drawCrest } from './render.js';
 import { UI } from './ui.js';
+import { loadArt } from './art.js';
 
 const cfg = { houses: DEFAULT_HOUSES, fog: true };
 const params = new URLSearchParams(location.search);
 if (params.get('houses')) cfg.houses = Math.max(3, Math.min(5, +params.get('houses')));
 if (params.get('fog') === '0') cfg.fog = false;
 
+await loadArt();
 const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog });
 const host = new LocalHost(game);
 const renderer = new Renderer(document.getElementById('game'), game);
@@ -25,7 +27,7 @@ ui.onReroll = (opts) => {
 function centerOnHall() {
   const s = game.seatOf(0);
   renderer.cam.zoom = 1;
-  renderer.centerOn(s.x, s.y + 2);
+  renderer.centerOn(s.x, s.y);
 }
 centerOnHall();
 ui.refreshMenu();

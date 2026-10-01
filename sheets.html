@@ -1,75 +1,31 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Seven Holds - art sheets</title>
-<style>body{margin:0;background:#120c06;color:#f0e2b6;font-family:Georgia,serif}canvas{display:block;margin:16px auto;border:3px solid #b98a3a}#hold{position:absolute;left:-9999px}</style></head>
+<style>body{margin:0;background:#120c06;color:#f0e2b6;font-family:Georgia,serif}canvas{display:block;margin:16px auto;border:3px solid #b98a3a}</style></head>
 <body>
-<div id="hold"><div style="width:100px;height:100px"><canvas id="dummy"></canvas></div></div>
-<canvas id="units" width="1200" height="640"></canvas>
-<canvas id="buildings" width="1200" height="1040"></canvas>
-<canvas id="villages" width="1200" height="560"></canvas>
+<canvas id="units" width="1200" height="420"></canvas>
+<canvas id="buildings" width="1200" height="940"></canvas>
 <canvas id="houses" width="1200" height="520"></canvas>
 <script type="module">
-import { Renderer, drawCrest } from './js/render.js';
-import { UNITS, BUILDINGS, HOUSES, VILLAGE_KINDS, BUILD_ORDER_UI } from './js/config.js';
-import { makeUnit, makeBuilding, makeVillage } from './js/entities.js';
-const r = new Renderer(document.getElementById('dummy'), { W: 112, H: 112 });
-const ui = { isSelected: () => false };
+import { loadArt, tinted, ramSprite } from './js/art.js';
+import { UNITS, BUILDINGS, HOUSES } from './js/config.js';
+await loadArt();
+const BSPR = { hall: 'hall', keep: 'keep_blue', cottage: 'cottage', farm: 'farm', mill: 'mill', warehouse: 'warehouse', market: 'market', forge: 'forge', workshop: 'workshop', tavern: 'tavern', academy: 'academy', temple: 'temple', barracks: 'barracks', archery: 'archery', stable: 'stable', tower: 'tower' };
 const wood = (c, title, sub) => {
-  const x = c.getContext('2d');
-  const g = x.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, '#4a3319'); g.addColorStop(1, '#21160a');
+  const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, '#2b2013'); g.addColorStop(1, '#130d06');
   x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
-  x.strokeStyle = 'rgba(0,0,0,.12)'; for (let i = 0; i < c.width; i += 6) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, c.height); x.stroke(); }
-  x.fillStyle = '#e2c15e'; x.font = 'bold 30px Georgia'; x.textAlign = 'left'; x.fillText(title, 28, 44);
-  x.fillStyle = '#a8946a'; x.font = 'italic 14px Georgia'; x.fillText(sub, 28, 66);
+  x.fillStyle = '#e2c15e'; x.font = 'bold 28px Georgia'; x.fillText(title, 28, 42); x.fillStyle = '#a8946a'; x.font = 'italic 14px Georgia'; x.fillText(sub, 28, 64);
   return x;
 };
-const grass = (x, px, py, w, h) => { x.fillStyle = '#4d7b3b'; x.fillRect(px, py, w, h); x.fillStyle = 'rgba(0,0,0,.08)'; for (let i = 0; i < w; i += 32) for (let j = 0; j < h; j += 32) if (((i + j) / 32) % 2) x.fillRect(px + i, py + j, 32, 32); x.strokeStyle = '#b98a3a'; x.lineWidth = 2; x.strokeRect(px, py, w, h); };
-const label = (x, text, sub, cx, y) => { x.textAlign = 'center'; x.fillStyle = '#f0e2b6'; x.font = 'bold 15px Georgia'; x.fillText(text, cx, y); x.fillStyle = '#a8946a'; x.font = '12px Georgia'; x.fillText(sub, cx, y + 17); };
-const cost = (c) => Object.entries(c || {}).filter(([, v]) => v).map(([k, v]) => `${v} ${k === 'food' ? 'grain' : k === 'wood' ? 'timber' : 'coin'}`).join(' · ') || 'starting seat';
-
-// units: two rows of four
-{
-  const c = document.getElementById('units'), x = wood(c, 'Unit roster', 'House Calder (yellow). Serfs, scouts, footmen, bowmen, knights, spies, scholars, rams.');
-  Object.keys(UNITS).forEach((k, i) => {
-    const col = i % 4, row = (i / 4) | 0, cx = 170 + col * 290, cy = 190 + row * 270;
-    grass(x, cx - 120, cy - 90, 240, 170);
-    const u = makeUnit(1, k, 0, 0, 0); u.face = 1; u.anim = 1;
-    r.cam.zoom = 3; r.unit(x, u, cx, cy, 96, ui); r.cam.zoom = 1;
-    const s = UNITS[k]; label(x, s.label, `HP ${s.hp} · dmg ${s.dmg}${s.range > 1.6 ? ' ranged' : ''} · spd ${s.speed} · ${s.from[0]}`, cx, cy + 108);
-  });
+const put = (x, c, cx, base, w) => { if (!c) return; const h = (c.height / c.width) * w; x.drawImage(c, cx - w / 2, base - h, w, h); };
+const label = (x, text, sub, cx, y) => { x.textAlign = 'center'; x.fillStyle = '#f0e2b6'; x.font = 'bold 15px Georgia'; x.fillText(text, cx, y); x.fillStyle = '#a8946a'; x.font = '12px Georgia'; x.fillText(sub, cx, y + 16); };
+{ const c = document.getElementById('units'), x = wood(c, 'Unit roster', 'Cut from the concept boards; cloth trim takes the house colour.');
+  const ks = Object.keys(UNITS);
+  ks.forEach((k, i) => { const cx = 90 + i * 140, base = 300; const img = k === 'ram' ? ramSprite(0) : k === 'serf' ? tinted('serf_dig1', 0, 'trim') : tinted(k, 0, 'trim'); const hh = k === 'ram' ? 70 : k === 'serf' ? 120 : 190; const w = img ? (img.width / img.height) * hh : 1; put(x, img, cx, base, k === 'ram' ? 130 : w); label(x, UNITS[k].label, `HP ${UNITS[k].hp} · dmg ${UNITS[k].dmg}`, cx, base + 34); });
 }
-// buildings
-{
-  const c = document.getElementById('buildings'), x = wood(c, 'Building sheet', 'Timber hall, keep, and fourteen working buildings. Each has cost, build time, HP, sight and a job.');
-  ['hall', ...BUILD_ORDER_UI].forEach((k, i) => {
-    const col = i % 4, row = (i / 4) | 0, cx = 150 + col * 300, cy = 190 + row * 240, s = BUILDINGS[k], P = 40, S = s.size * P;
-    grass(x, cx - 130, cy - 90, 260, 180);
-    const b = makeBuilding(1, k, 0, 0, 0, true);
-    r.cam.zoom = 1.25; r.building(x, b, cx - S / 2, cy - S / 2 + 14, P, false, ui, 1.2); r.cam.zoom = 1;
-    label(x, s.label, `${cost(s.cost)} · ${s.time}s · HP ${s.hp} · sight ${s.sight}`, cx, cy + 108);
-  });
+{ const c = document.getElementById('buildings'), x = wood(c, 'Building sheet', 'Hall, keep and fourteen working buildings.');
+  Object.keys(BSPR).forEach((k, i) => { const cx = 150 + (i % 4) * 300, base = 230 + ((i / 4) | 0) * 225; put(x, tinted(BSPR[k], 0, 'banner'), cx, base, k === 'keep' ? 230 : 170); label(x, BUILDINGS[k].label, `${BUILDINGS[k].time}s · HP ${BUILDINGS[k].hp}`, cx, base + 26); });
 }
-// villages
-{
-  const c = document.getElementById('villages'), x = wood(c, 'Six village kinds', 'Independent at the start. Each has folk, a protection score and a loyalty score. Sack them, influence them, or send a spy.');
-  Object.keys(VILLAGE_KINDS).forEach((k, i) => {
-    const col = i % 3, row = (i / 3) | 0, cx = 200 + col * 400, cy = 190 + row * 230, s = VILLAGE_KINDS[k];
-    grass(x, cx - 150, cy - 90, 300, 190);
-    const v = makeVillage(1, { kind: k, name: s.label, tx: 0, ty: 0 }); v.owner = -1;
-    r.cam.zoom = 1.6; r.village(x, v, cx - 70, cy - 60, 46, false, ui); r.cam.zoom = 1;
-    label(x, s.label, `${s.folk.join(' & ')} · protection ${s.protection} · loyalty ${s.loyalty}`, cx, cy + 118);
-  });
+{ const c = document.getElementById('houses'), x = wood(c, 'Five houses', 'Banners and trim recolour per house: Calder, Varr, Cael, Thorn, Ash.');
+  HOUSES.slice(0, 5).forEach((h, i) => { const cx = 120 + i * 240; put(x, tinted('hall', i, 'banner'), cx, 250, 190); put(x, tinted('footman', i, 'trim'), cx - 80, 340, 60); put(x, tinted('knight', i, 'trim'), cx + 80, 340, 80); put(x, tinted('keep_blue', i, 'banner'), cx, 480, 150); label(x, h.name, h.motto, cx, 380); });
 }
-// houses
-{
-  const c = document.getElementById('houses'), x = wood(c, 'Five houses', 'You are Calder. Rivals: Varr, Cael, Thorn, Ash. Empty seats are AI.');
-  HOUSES.forEach((h, i) => {
-    const cx = 130 + i * 235, cy = 190;
-    drawCrest(x, cx, cy, 110, i);
-    label(x, h.name, h.motto, cx, cy + 100);
-    const b = makeBuilding(1, 'hall', i, 0, 0, true); r.cam.zoom = 1; r.building(x, b, cx - 60, cy + 150, 40, false, ui, 0);
-    const u = makeUnit(2, 'footman', i, 0, 0); r.unit(x, u, cx - 80, cy + 210, 40, ui);
-    const k = makeUnit(3, 'knight', i, 0, 0); r.unit(x, k, cx + 80, cy + 210, 40, ui);
-  });
-}
-document.title = 'ready';
 </script></body></html>

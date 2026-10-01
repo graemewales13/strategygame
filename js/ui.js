@@ -128,7 +128,7 @@ export class UI {
     const [sx, sy] = this.canvasPos(e), [wx, wy] = this.r.toWorld(sx, sy);
     if (e.button === 2) {
       if (this.placing) { this.placing = null; $('game').classList.remove('placing'); return; }
-      this.command(wx, wy); return;
+      this.command(sx, sy, wx, wy); return;
     }
     if (e.button !== 0) return;
     if (this.placing) { this.tryPlace(e.shiftKey); return; }
@@ -150,29 +150,26 @@ export class UI {
     if (this.menuOpen || this.campaignOpen) return;
     const g = this.game, r = this.r;
     if (box) {
-      const [ax, ay] = r.toWorld(box.x0, box.y0), [bx, by] = r.toWorld(box.x1, box.y1);
-      const mine = g.units.filter((u) => u.team === PLAYER && u.hp > 0 && u.x >= ax && u.x <= bx && u.y >= ay && u.y <= by);
+      const inBox = (o, lift) => { const [px, py] = r.toScreen(o.x, o.y); return px >= box.x0 && px <= box.x1 && py - lift >= box.y0 && py - lift <= box.y1; };
+      const mine = g.units.filter((u) => u.team === PLAYER && u.hp > 0 && inBox(u, 14 * r.cam.zoom));
       if (mine.length) {
         if (d.shift && this.sel.type === 'units') { const set = new Map(this.selUnits().map((u) => [u.id, u])); mine.forEach((u) => set.set(u.id, u)); this.setUnits([...set.values()]); }
         else this.setUnits(mine);
       } else {
-        const b = g.buildings.find((b) => b.team === PLAYER && b.hp > 0 && b.x >= ax && b.x <= bx && b.y >= ay && b.y <= by);
+        const b = g.buildings.find((b) => b.team === PLAYER && b.hp > 0 && inBox(b, 0));
         if (b) this.sel = { type: 'building', ids: [], id: b.id };
       }
       return;
     }
-    const [wx, wy] = r.toWorld(d.sx, d.sy);
-    this.clickAt(wx, wy, d.shift);
+    this.clickAt(d.sx, d.sy, d.shift);
   }
-  clickAt(wx, wy, shift) {
-    const g = this.game;
-    const u = g.unitAt(wx, wy, 0.8);
-    if (u && (u.team === PLAYER || g.canSee(PLAYER, u.x, u.y))) {
-      const now = performance.now();
+  clickAt(sx, sy, shift) {
+    const g = this.game, r = this.r, h = r.pick(sx, sy);
+    if (h && h.type === 'unit') {
+      const u = h.o, now = performance.now();
       if (u.team === PLAYER) {
         if (this.lastClick.id === u.id && now - this.lastClick.t < 350) {
-          const r = this.r, vw = r.w / r.P, vh = r.h / r.P;
-          this.setUnits(g.units.filter((o) => o.team === PLAYER && o.kind === u.kind && o.hp > 0 && o.x >= r.cam.x && o.x <= r.cam.x + vw && o.y >= r.cam.y && o.y <= r.cam.y + vh));
+          this.setUnits(g.units.filter((o) => o.team === PLAYER && o.kind === u.kind && o.hp > 0 && r.onScreen(o.x, o.y)));
         } else if (shift && this.sel.type === 'units') {
           const set = this.selUnits(); const i = set.findIndex((o) => o.id === u.id); if (i >= 0) set.splice(i, 1); else set.push(u); this.setUnits(set);
         } else this.setUnits([u]);
@@ -180,17 +177,16 @@ export class UI {
       } else this.sel = { type: 'units', ids: [u.id], id: null };
       return;
     }
-    const b = g.buildingAt(wx, wy);
-    if (b && (b.team === PLAYER || g.wasSeen(PLAYER, b.x, b.y))) { this.sel = { type: 'building', ids: [], id: b.id }; return; }
-    const v = g.villageAt(wx, wy);
-    if (v && g.wasSeen(PLAYER, v.x, v.y)) { this.sel = { type: 'village', ids: [], id: v.id }; return; }
-    const n = g.nodeAt(wx, wy);
-    if (n && g.wasSeen(PLAYER, n.x, n.y)) { this.sel = { type: 'node', ids: [], id: n.id }; return; }
+    if (h && h.type === 'building') { this.sel = { type: 'building', ids: [], id: h.o.id }; return; }
+    if (h && h.type === 'village') { this.sel = { type: 'village', ids: [], id: h.o.id }; return; }
+    if (h && h.type === 'node') { this.sel = { type: 'node', ids: [], id: h.o.id }; return; }
     if (!shift) this.clearSel();
   }
-  command(wx, wy) {
+  command(sx, sy, wx, wy) {
     const g = this.game, units = this.selUnits().filter((u) => u.team === PLAYER);
-    const eu = g.unitAt(wx, wy, 0.75), v = g.villageAt(wx, wy), b = g.buildingAt(wx, wy), n = g.nodeAt(wx, wy);
+    const h = this.r.pick(sx, sy), ho = h ? h.o : null;
+    const eu = h && h.type === 'unit' ? ho : null, v = h && h.type === 'village' ? ho : null, b = h && h.type === 'building' ? ho : null, n = h && h.type === 'node' ? ho : null;
+    if (ho) { wx = ho.x + (ho.type === 'node' ? 0.5 : 0); wy = ho.y + (ho.type === 'node' ? 0.5 : 0); } // act on the thing itself, not the ground behind its sprite
     let color = '#8fe08f';
     if ((eu && eu.team !== PLAYER) || (v && v.owner !== PLAYER) || (b && b.team !== PLAYER)) color = '#e0685a';
     else if (n) color = '#e2c15e';
@@ -214,11 +210,8 @@ export class UI {
   onWheel(e) {
     if (this.menuOpen || this.campaignOpen) return;
     e.preventDefault();
-    const [sx, sy] = this.canvasPos(e), [wx, wy] = this.r.toWorld(sx, sy);
-    const z = Math.max(0.6, Math.min(1.6, this.r.cam.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-    this.r.cam.zoom = z;
-    this.r.cam.x = wx - sx / this.r.P; this.r.cam.y = wy - sy / this.r.P;
-    this.r.clampCam();
+    const [sx, sy] = this.canvasPos(e);
+    this.r.zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, sx, sy);
   }
 
   onKey(e) {
@@ -306,17 +299,18 @@ export class UI {
   update(dt) {
     const r = this.r, g = this.game;
     if (!this.menuOpen && !this.campaignOpen) {
-      const spd = (this.keys.has('shift') ? 26 : 14) * dt / r.cam.zoom;
-      if (this.keys.has('w') || this.keys.has('arrowup')) r.cam.y -= spd;
-      if (this.keys.has('s') || this.keys.has('arrowdown')) r.cam.y += spd;
-      if (this.keys.has('a') || this.keys.has('arrowleft')) r.cam.x -= spd;
-      if (this.keys.has('d') || this.keys.has('arrowright')) r.cam.x += spd;
+      const spd = (this.keys.has('shift') ? 1100 : 620) * dt;
+      let dx = 0, dy = 0;
+      if (this.keys.has('w') || this.keys.has('arrowup')) dy -= spd;
+      if (this.keys.has('s') || this.keys.has('arrowdown')) dy += spd;
+      if (this.keys.has('a') || this.keys.has('arrowleft')) dx -= spd;
+      if (this.keys.has('d') || this.keys.has('arrowright')) dx += spd;
       if (this.mouse.in && !this.dragBox) {
         const e = 12;
-        if (this.mouse.x < e) r.cam.x -= spd; if (this.mouse.x > r.w - e) r.cam.x += spd;
-        if (this.mouse.y < e) r.cam.y -= spd; if (this.mouse.y > r.h - e) r.cam.y += spd;
+        if (this.mouse.x < e) dx -= spd; if (this.mouse.x > r.w - e) dx += spd;
+        if (this.mouse.y < e) dy -= spd; if (this.mouse.y > r.h - e) dy += spd;
       }
-      r.clampCam();
+      if (dx || dy) r.panScreen(dx, dy);
     }
     for (const p of this.pings) p.age += dt;
     this.pings = this.pings.filter((p) => p.age < 0.8);
@@ -548,7 +542,7 @@ export class UI {
   closeCampaign() { this.campaignOpen = false; $('campaign').classList.add('hidden'); }
   drawCampaign() {
     const r = this.r;
-    drawVale($('campaignCanvas'), this.game, { fog: true, cam: r.cam, view: { w: r.w / r.P, h: r.h / r.P }, labels: true });
+    drawVale($('campaignCanvas'), this.game, { fog: true, poly: r.viewPoly(), labels: true });
   }
   showEnd() {
     this.endShown = true;

@@ -1,13 +1,28 @@
-// Seven Holds - canvas drawing. Reads game state, never changes it.
+// Seven Holds - isometric canvas drawing. Reads game state, never changes it.
+// World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  TILE, PLAYER, HOUSES, T_GRASS, T_DIRT, T_WATER, T_FORD, UNITS, BUILDINGS, NODE_RES, TERRITORY, VILLAGE_KINDS,
+  PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, TERRITORY, T_GRASS,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
-import { buildingSprite, villageSprite, treeSprite, goldSprite, berrySprite, unitSprite, U, FRAMES } from './sprites.js';
+import { tinted, ramSprite, IMG } from './art.js';
 
+export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
-const GRASS = ['#4d7b3b', '#527f3e', '#4a7637', '#578440'];
 const GOLD = '#e2c15e';
+
+// image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
+const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15] };
+const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]] };
+const USCALE = { serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
+// villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
+const VCOMP = {
+  hamlet: [['village_cluster', 0, 0.35, 3.9]],
+  market: [['market', -0.1, 0.0, 3.0], ['cottage_thatch', 1.0, 1.0, 1.7]],
+  mine: [['gold', 0.2, 0.0, 2.6], ['cottage_thatch', -0.7, 1.0, 1.7], ['warehouse', 1.0, -0.4, 1.7]],
+  hillfort: [['keep', 0, 0.55, 3.4]],
+  abbey: [['temple', 0.3, 0.1, 2.5], ['cottage_thatch', -0.9, 1.0, 1.6]],
+  inn: [['tavern', 0.2, 0.1, 2.5], ['cottage_thatch', -0.9, 1.0, 1.6]],
+};
 
 export class Renderer {
   constructor(canvas, game) {
@@ -16,9 +31,10 @@ export class Renderer {
     this.game = game;
     this.terrain = new TerrainCache(game);
     this.fog = new FogLayer(game);
-    this.cam = { x: 0, y: 0, zoom: 1 };
+    this.cam = { x: 0, y: 0, zoom: 1 }; // x, y = the world tile at the middle of the screen
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.w = 0; this.h = 0;
+    this.props = null; this.propsFor = null;
     this.resize();
   }
   resize() {
@@ -30,55 +46,78 @@ export class Renderer {
     this.canvas.style.width = this.w + 'px';
     this.canvas.style.height = this.h + 'px';
   }
-  get P() { return TILE * this.cam.zoom; }
-  toWorld(sx, sy) { return [this.cam.x + sx / this.P, this.cam.y + sy / this.P]; }
-  toScreen(x, y) { return [(x - this.cam.x) * this.P, (y - this.cam.y) * this.P]; }
-  clampCam() {
-    const { game: g } = this, vw = this.w / this.P, vh = this.h / this.P;
-    this.cam.x = Math.max(0, Math.min(Math.max(0, g.W - vw), this.cam.x));
-    this.cam.y = Math.max(0, Math.min(Math.max(0, g.H - vh), this.cam.y));
+  get z() { return this.cam.zoom; }
+  toScreen(x, y) { const z = this.cam.zoom, a = x - this.cam.x, b = y - this.cam.y; return [this.w / 2 + (a - b) * HW * z, this.h / 2 + (a + b) * HH * z]; }
+  toWorld(sx, sy) { const z = this.cam.zoom, a = (sx - this.w / 2) / (HW * z), b = (sy - this.h / 2) / (HH * z); return [this.cam.x + (a + b) / 2, this.cam.y + (b - a) / 2]; }
+  isoMatrix(tx0, ty0, ppt) { const z = this.cam.zoom, [ex, ey] = this.toScreen(tx0, ty0); return [HW * z / ppt, HH * z / ppt, -HW * z / ppt, HH * z / ppt, ex, ey]; }
+  viewPoly() { return [this.toWorld(0, 0), this.toWorld(this.w, 0), this.toWorld(this.w, this.h), this.toWorld(0, this.h)]; }
+  viewBounds(margin = 0) {
+    const p = this.viewPoly(), g = this.game;
+    return [Math.max(0, Math.floor(Math.min(...p.map((q) => q[0])) - margin)), Math.max(0, Math.floor(Math.min(...p.map((q) => q[1])) - margin)),
+      Math.min(g.W, Math.ceil(Math.max(...p.map((q) => q[0])) + margin)), Math.min(g.H, Math.ceil(Math.max(...p.map((q) => q[1])) + margin))];
   }
-  centerOn(x, y) { this.cam.x = x - this.w / this.P / 2; this.cam.y = y - this.h / this.P / 2; this.clampCam(); }
+  onScreen(x, y, pad = 0) { const [sx, sy] = this.toScreen(x, y); return sx > -pad && sy > -pad && sx < this.w + pad && sy < this.h + pad; }
+  clampCam() { const g = this.game; this.cam.x = Math.max(0, Math.min(g.W, this.cam.x)); this.cam.y = Math.max(0, Math.min(g.H, this.cam.y)); }
+  centerOn(x, y) { this.cam.x = x; this.cam.y = y; this.clampCam(); }
+  panScreen(dx, dy) { const z = this.cam.zoom, a = dx / (HW * z), b = dy / (HH * z); this.cam.x += (a + b) / 2; this.cam.y += (b - a) / 2; this.clampCam(); }
+  zoomAt(f, sx, sy) {
+    const [wx, wy] = this.toWorld(sx, sy);
+    this.cam.zoom = Math.max(0.6, Math.min(1.8, this.cam.zoom * f));
+    const [wx2, wy2] = this.toWorld(sx, sy);
+    this.cam.x += wx - wx2; this.cam.y += wy - wy2; this.clampCam();
+  }
+
+  // decorative bushes and rocks scattered on open meadow, fixed per map
+  makeProps() {
+    const g = this.game, out = [];
+    for (let y = 1; y < g.H - 1; y++) for (let x = 1; x < g.W - 1; x++) {
+      if (g.terrain[y * g.W + x] !== T_GRASS || g.block[y * g.W + x]) continue;
+      const h = hash(x * 7 + 3, y * 13 + 5);
+      if (h < 0.011) out.push({ x: x + hash(x, y + 9), y: y + hash(x + 9, y), k: h < 0.0055 ? 'bush_s' : h < 0.0085 ? 'bush_m' : 'rock', f: hash(y, x) > 0.5 });
+    }
+    this.props = out; this.propsFor = g.terrain;
+  }
 
   draw(ui) {
     const { ctx, game: g } = this;
-    const P = this.P;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const z = this.cam.zoom, dpr = this.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#06080b';
     ctx.fillRect(0, 0, this.w, this.h);
     const t = performance.now() / 1000;
-    const x0 = Math.max(0, Math.floor(this.cam.x)), y0 = Math.max(0, Math.floor(this.cam.y));
-    const x1 = Math.min(g.W, Math.ceil(this.cam.x + this.w / P) + 1), y1 = Math.min(g.H, Math.ceil(this.cam.y + this.h / P) + 1);
+    this.hits = [];
+    if (this.propsFor !== g.terrain) this.makeProps();
+    const [x0, y0, x1, y1] = this.viewBounds(5);
     const seen = g.seen[PLAYER], vis = g.vis[PLAYER];
     const isSeen = (x, y) => !g.fogOn || seen[Math.floor(y) * g.W + Math.floor(x)] === 1;
     const isVis = (x, y) => !g.fogOn || vis[Math.floor(y) * g.W + Math.floor(x)] === 1;
 
-    // terrain: cached painted chunks, then a little animated water on top
-    this.terrain.draw(ctx, this.cam, P, this.w, this.h);
-    this.shimmer(ctx, g, x0, y0, x1, y1, P, t, isSeen);
-    // ownership glow under territory when placing
-    if (ui?.placing) this.territory(ctx, g, P);
+    this.terrain.draw(ctx, this);
+    this.shimmer(ctx, g, x0, y0, x1, y1, t, isSeen, z);
+    if (ui?.placing) this.territory(ctx, g);
 
-    // everything that stands on the ground is drawn back to front
+    // everything that stands on the ground, back to front
     const items = [];
+    for (const p of this.props) if (p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1 && isSeen(p.x, p.y)) items.push({ o: p, k: 4, z: p.x + p.y });
     for (const n of g.resources) {
-      if (n.amount <= 0 || n.x < x0 - 1 || n.x > x1 || n.y < y0 - 2 || n.y > y1 + 1 || !isSeen(n.x, n.y)) continue;
-      items.push({ o: n, k: 0, z: n.y + 1 });
+      if (n.amount <= 0 || n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1 || !isSeen(n.x, n.y)) continue;
+      items.push({ o: n, k: 0, z: n.x + n.y + 1 });
     }
-    for (const v of g.villages) if (isSeen(v.x, v.y) && v.tx + v.size >= x0 - 1 && v.tx <= x1 && v.ty + v.size >= y0 - 2 && v.ty <= y1 + 2) items.push({ o: v, k: 1, z: v.ty + v.size });
-    for (const b of g.buildings) if ((b.team === PLAYER || isSeen(b.x, b.y)) && b.tx + b.size >= x0 - 1 && b.tx <= x1 && b.ty + b.size >= y0 - 2 && b.ty <= y1 + 2) items.push({ o: b, k: 2, z: b.ty + b.size });
+    for (const v of g.villages) if (isSeen(v.x, v.y) && v.tx + v.size >= x0 && v.tx <= x1 && v.ty + v.size >= y0 && v.ty <= y1) items.push({ o: v, k: 1, z: v.tx + v.ty + v.size * 2 - 1 });
+    for (const b of g.buildings) if ((b.team === PLAYER || isSeen(b.x, b.y)) && b.tx + b.size >= x0 && b.tx <= x1 && b.ty + b.size >= y0 && b.ty <= y1) items.push({ o: b, k: 2, z: b.tx + b.ty + b.size * 2 - 1 });
     for (const u of g.units) {
       if (u.hp <= 0 || u.hidden || !(u.team === PLAYER || isVis(u.x, u.y))) continue;
-      if (u.x < x0 - 1 || u.x > x1 || u.y < y0 - 1 || u.y > y1 + 1) continue;
-      items.push({ o: u, k: 3, z: u.y + 0.35 });
+      if (u.x < x0 || u.x > x1 || u.y < y0 || u.y > y1) continue;
+      items.push({ o: u, k: 3, z: u.x + u.y + 0.2 });
     }
     items.sort((a, b) => a.z - b.z);
     for (const it of items) {
       const e = it.o;
-      if (it.k === 0) { const [sx, sy] = this.toScreen(e.x, e.y); this.node(ctx, e, sx, sy, P, isVis(e.x, e.y)); }
-      else if (it.k === 1) { const [sx, sy] = this.toScreen(e.tx, e.ty); this.village(ctx, e, sx, sy, P, !(e.owner === PLAYER) && !isVis(e.x, e.y), ui); }
-      else if (it.k === 2) { const [sx, sy] = this.toScreen(e.tx, e.ty); this.building(ctx, e, sx, sy, P, e.team !== PLAYER && !isVis(e.x, e.y), ui, t); }
-      else { const [sx, sy] = this.toScreen(e.x, e.y); this.unit(ctx, e, sx, sy, P, ui); }
+      if (it.k === 0) this.node(ctx, e, isVis(e.x, e.y), z);
+      else if (it.k === 1) this.village(ctx, e, !(e.owner === PLAYER) && !isVis(e.x, e.y), ui, t, z);
+      else if (it.k === 2) this.building(ctx, e, e.team !== PLAYER && !isVis(e.x, e.y), ui, t, z);
+      else if (it.k === 3) this.unit(ctx, e, ui, t, z);
+      else this.prop(ctx, e, z);
     }
     for (const u of g.units) u.hidden = false; // re-set each tick by infiltrators
 
@@ -87,25 +126,25 @@ export class Renderer {
     for (const p of g.projectiles) {
       if (!isVis(p.x, p.y)) continue;
       const [sx, sy] = this.toScreen(p.x, p.y), a = p.ang || 0;
-      ctx.beginPath(); ctx.moveTo(sx - Math.cos(a) * 7, sy - Math.sin(a) * 7); ctx.lineTo(sx, sy); ctx.stroke();
+      const dx = (Math.cos(a) - Math.sin(a)) * HW, dy = (Math.cos(a) + Math.sin(a)) * HH, l = Math.hypot(dx, dy) || 1;
+      ctx.beginPath(); ctx.moveTo(sx - (dx / l) * 9 * z, sy - 14 * z - (dy / l) * 9 * z); ctx.lineTo(sx, sy - 14 * z); ctx.stroke();
     }
     // floaters
-    ctx.font = `bold ${Math.round(13 * Math.max(0.8, this.cam.zoom))}px Georgia, serif`;
+    ctx.font = `bold ${Math.round(13 * Math.max(0.8, z))}px Georgia, serif`;
     ctx.textAlign = 'center';
     const fcol = { food: '#e58aa3', wood: '#d1a066', gold: GOLD };
     for (const f of g.floaters) {
-      const [sx, sy] = this.toScreen(f.x, f.y - f.age * 0.9);
+      const [sx, sy0] = this.toScreen(f.x, f.y), sy = sy0 - 20 * z - f.age * 24 * z;
       ctx.globalAlpha = Math.max(0, 1 - f.age / 1.3);
       ctx.fillStyle = '#000'; ctx.fillText(f.text, sx + 1, sy + 1);
       ctx.fillStyle = fcol[f.res] || '#fff'; ctx.fillText(f.text, sx, sy);
     }
     ctx.globalAlpha = 1;
 
-    // fog: soft alpha layer (unknown = black, remembered = dim)
     this.fog.update();
-    this.fog.draw(ctx, this.cam, P);
+    this.fog.draw(ctx, this);
 
-    if (ui?.placing) this.ghost(ctx, g, ui, P);
+    if (ui?.placing) this.ghost(ctx, g, ui);
     if (ui?.dragBox) {
       const b = ui.dragBox;
       ctx.fillStyle = 'rgba(240,226,160,0.12)'; ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 1;
@@ -114,178 +153,194 @@ export class Renderer {
     if (ui?.pings) for (const p of ui.pings) {
       const [sx, sy] = this.toScreen(p.x, p.y);
       ctx.strokeStyle = p.color; ctx.globalAlpha = Math.max(0, 1 - p.age / 0.8); ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.ellipse(sx, sy, P * (0.2 + p.age * 0.6), P * (0.1 + p.age * 0.3), 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(sx, sy, HW * z * (0.4 + p.age * 1.2), HH * z * (0.4 + p.age * 1.2), 0, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
     }
   }
 
-  // ---------------------------------------------------------------- terrain
-  shimmer(ctx, g, x0, y0, x1, y1, P, t, isSeen) {
-    ctx.lineWidth = Math.max(1, P * 0.04);
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-      if (g.terrain[y * g.W + x] !== T_WATER || !isSeen(x, y)) continue;
-      const h = hash(x, y), ph = t * (0.9 + h * 0.5) + h * 40, a = 0.1 + 0.16 * Math.max(0, Math.sin(ph));
-      if (a < 0.12) continue;
-      const [sx, sy] = this.toScreen(x, y), ox = Math.sin(ph * 0.7) * P * 0.12;
-      ctx.strokeStyle = `rgba(215,240,250,${a})`;
-      ctx.beginPath(); ctx.moveTo(sx + P * (0.2 + h * 0.2) + ox, sy + P * (0.3 + h * 0.4)); ctx.quadraticCurveTo(sx + P * 0.5 + ox, sy + P * (0.25 + h * 0.4), sx + P * (0.75 + h * 0.1) + ox, sy + P * (0.3 + h * 0.4)); ctx.stroke();
-    }
-  }
-  tile(ctx, g, x, y, sx, sy, P, t) {
-    const type = g.terrain[y * g.W + x], h = hash(x, y), s = P + 1;
-    if (type === T_WATER || type === T_FORD) {
-      ctx.fillStyle = (x + y) & 1 ? '#2b6580' : '#2f6c88';
-      ctx.fillRect(sx, sy, s, s);
-      ctx.strokeStyle = 'rgba(190,225,240,0.18)'; ctx.lineWidth = 1;
-      const w = Math.sin(t * 1.4 + x * 0.9 + y * 0.5) * P * 0.12;
-      ctx.beginPath(); ctx.moveTo(sx + P * 0.2, sy + P * 0.35 + w); ctx.lineTo(sx + P * 0.55, sy + P * 0.35 + w);
-      ctx.moveTo(sx + P * 0.4, sy + P * 0.75 - w); ctx.lineTo(sx + P * 0.8, sy + P * 0.75 - w); ctx.stroke();
-      if (type === T_WATER) {
-        ctx.fillStyle = '#c9b27a';
-        const nb = (dx, dy) => { const xx = x + dx, yy = y + dy; return xx >= 0 && yy >= 0 && xx < g.W && yy < g.H && g.terrain[yy * g.W + xx] !== T_WATER && g.terrain[yy * g.W + xx] !== T_FORD; };
-        const e = Math.max(2, P * 0.1);
-        if (nb(0, -1)) ctx.fillRect(sx, sy, s, e);
-        if (nb(0, 1)) ctx.fillRect(sx, sy + P - e, s, e);
-        if (nb(-1, 0)) ctx.fillRect(sx, sy, e, s);
-        if (nb(1, 0)) ctx.fillRect(sx + P - e, sy, e, s);
-      } else {
-        ctx.fillStyle = '#7a5530'; ctx.fillRect(sx, sy + P * 0.08, s, P * 0.84);
-        ctx.strokeStyle = '#4e331a'; ctx.lineWidth = 1;
-        for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(sx, sy + P * 0.08 + (P * 0.84 * k) / 4); ctx.lineTo(sx + P, sy + P * 0.08 + (P * 0.84 * k) / 4); ctx.stroke(); }
-        ctx.fillStyle = '#5c3f21'; ctx.fillRect(sx, sy + P * 0.04, s, P * 0.06); ctx.fillRect(sx, sy + P * 0.9, s, P * 0.06);
-      }
-      return;
-    }
-    if (type === T_DIRT) {
-      ctx.fillStyle = h < 0.5 ? '#8d6c3d' : '#876738'; ctx.fillRect(sx, sy, s, s);
-      if (h > 0.8) { ctx.fillStyle = 'rgba(60,40,18,0.35)'; ctx.fillRect(sx + h * P * 0.6, sy + P * 0.5, P * 0.12, P * 0.08); }
-      return;
-    }
-    ctx.fillStyle = GRASS[(h * 4) | 0]; ctx.fillRect(sx, sy, s, s);
-    if (h > 0.72) {
-      ctx.strokeStyle = 'rgba(30,60,25,0.55)'; ctx.lineWidth = 1;
-      const a = sx + h * 40 % P, b = sy + (h * 97 % 1) * P;
-      ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(a - 2, b - P * 0.18); ctx.moveTo(a + 3, b); ctx.lineTo(a + 3, b - P * 0.22); ctx.stroke();
-    } else if (h < 0.04) {
-      ctx.fillStyle = h < 0.02 ? '#e8d86a' : '#e8e8f0'; ctx.fillRect(sx + P * 0.5, sy + P * 0.5, 3, 3);
-    }
+  // what is under the cursor: topmost drawn thing whose sprite box holds the point
+  hit(o, type, x0, y0, x1, y1) { this.hits.push({ o, type, x0, y0, x1, y1 }); }
+  pick(sx, sy, types = null) {
+    for (let i = this.hits.length - 1; i >= 0; i--) { const h = this.hits[i]; if ((!types || types.includes(h.type)) && sx >= h.x0 && sx <= h.x1 && sy >= h.y0 && sy <= h.y1) return h; }
+    return null;
   }
 
-  territory(ctx, g, P) {
+  // ---------------------------------------------------------------- terrain extras
+  shimmer(ctx, g, x0, y0, x1, y1, t, isSeen, z) {
+    ctx.lineWidth = Math.max(1, z);
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      if (g.terrain[y * g.W + x] !== T_WATER || !isSeen(x, y)) continue;
+      const h = hash(x, y), ph = t * (0.9 + h * 0.5) + h * 40, a = 0.08 + 0.2 * Math.max(0, Math.sin(ph));
+      if (a < 0.14) continue;
+      const [sx, sy] = this.toScreen(x + 0.3 + h * 0.4, y + 0.3 + hash(y, x) * 0.4), ox = Math.sin(ph * 0.7) * 3 * z;
+      ctx.strokeStyle = `rgba(215,236,244,${a})`;
+      ctx.beginPath(); ctx.moveTo(sx - 7 * z + ox, sy); ctx.lineTo(sx + 7 * z + ox, sy); ctx.stroke();
+    }
+  }
+  diamond(ctx, tx, ty, w, h) {
+    const a = this.toScreen(tx, ty), b = this.toScreen(tx + w, ty), c = this.toScreen(tx + w, ty + h), d = this.toScreen(tx, ty + h);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.closePath();
+  }
+  territory(ctx, g) {
     ctx.save();
-    ctx.lineWidth = 2; ctx.setLineDash([8, 8]); ctx.strokeStyle = 'rgba(244,220,122,0.55)'; ctx.fillStyle = 'rgba(244,220,122,0.05)';
+    const z = this.cam.zoom;
+    ctx.lineWidth = 2; ctx.setLineDash([8, 8]); ctx.strokeStyle = 'rgba(244,220,122,0.55)'; ctx.fillStyle = 'rgba(244,220,122,0.06)';
     for (const b of g.buildings) {
       if (b.team !== PLAYER || b.built < 1 || !TERRITORY[b.kind]) continue;
-      const [sx, sy] = this.toScreen(b.x, b.y);
-      ctx.beginPath(); ctx.arc(sx, sy, TERRITORY[b.kind] * P, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      const [sx, sy] = this.toScreen(b.x, b.y), R = TERRITORY[b.kind] * Math.SQRT2;
+      ctx.beginPath(); ctx.ellipse(sx, sy, R * HW * z, R * HH * z, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
     ctx.restore();
   }
 
-  // ---------------------------------------------------------------- resources
-  node(ctx, n, sx, sy, P, vis) {
-    const k = P / U, a = vis ? 1 : 0.62;
-    const h = hash(n.x, n.y);
-    const sp = n.kind === 'tree' ? treeSprite((h * 5) | 0) : n.kind === 'gold' ? goldSprite((h * 3) | 0) : berrySprite((h * 3) | 0);
-    const sc = n.kind === 'tree' ? 0.95 + h * 0.2 : n.kind === 'gold' ? 1.1 : 1.0;
-    if (!vis) ctx.globalAlpha = a;
-    ctx.drawImage(sp.cv, sx + P / 2 - sp.ax * k * sc, sy + P * 0.96 - sp.ay * k * sc, sp.cv.width * k * sc, sp.cv.height * k * sc);
-    if (!vis) ctx.globalAlpha = 1;
+  // ---------------------------------------------------------------- scenery
+  sprite(ctx, c, sx, sy, w, flip = false, alpha = 1) {
+    if (!c) return null;
+    const h = (c.height / c.width) * w;
+    if (alpha !== 1) ctx.globalAlpha = alpha;
+    ctx.drawImage(c, sx - w / 2, sy - h, w, h);
+    if (alpha !== 1) ctx.globalAlpha = 1;
+    return h;
   }
-
-  // wavy pennant on a pole whose top is at (px, py)
-  pennant(ctx, px, py, P, t, prim, acc, phase = 0) {
-    const w = P * 0.5, h = P * 0.3;
-    ctx.fillStyle = prim; ctx.beginPath(); ctx.moveTo(px + 1, py + 1);
-    const n = 6;
-    for (let i = 1; i <= n; i++) ctx.lineTo(px + (w * i) / n, py + 1 + Math.sin(t * 4 + phase + i * 0.9) * h * 0.14 * (i / n));
-    for (let i = n; i >= 0; i--) ctx.lineTo(px + (w * i) / n * (i === n ? 0.82 : 1), py + h + Math.sin(t * 4 + phase + i * 0.9) * h * 0.14 * (i / n));
-    ctx.closePath(); ctx.fill(); ctx.strokeStyle = acc; ctx.lineWidth = Math.max(1, P * 0.035); ctx.stroke();
+  shadowAt(ctx, sx, sy, rx, ry, a = 0.3) { ctx.fillStyle = `rgba(10,12,4,${a})`; ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, 7); ctx.fill(); }
+  prop(ctx, p, z) {
+    const [sx, sy] = this.toScreen(p.x, p.y);
+    const w = (p.k === 'rock' ? 36 : p.k === 'bush_s' ? 34 : 28) * z;
+    this.sprite(ctx, tinted(p.k, 0, null, p.f), sx, sy + 3 * z, w);
   }
-  smoke(ctx, x, y, P, t, seed) {
+  node(ctx, n, vis, z) {
+    const h = hash(n.x, n.y), [sx, sy] = this.toScreen(n.x + 0.5, n.y + 0.55), a = vis ? 1 : 0.65;
+    if (n.kind === 'tree') {
+      const v = (h * 6) | 0, c = tinted('oak', 0, null, v & 1, [0.98, 1.1, 1.22][v % 3]);
+      const w = (50 + h * 22) * z;
+      this.shadowAt(ctx, sx + 6 * z, sy - 1 * z, w * 0.34, 6 * z, 0.28 * a);
+      this.sprite(ctx, c, sx, sy + 2 * z, w, false, a);
+      this.hit(n, 'node', sx - w * 0.22, sy - w * 0.9, sx + w * 0.22, sy + 2 * z);
+    } else if (n.kind === 'gold') {
+      this.shadowAt(ctx, sx, sy, 22 * z, 6 * z, 0.3 * a);
+      this.sprite(ctx, tinted('gold', 0, null, h > 0.5), sx, sy + 4 * z, 50 * z, false, a);
+      this.hit(n, 'node', sx - 22 * z, sy - 24 * z, sx + 22 * z, sy + 4 * z);
+    } else {
+      this.shadowAt(ctx, sx, sy, 20 * z, 5 * z, 0.3 * a);
+      this.sprite(ctx, tinted('berry', 0, null, h > 0.5), sx, sy + 4 * z, 46 * z, false, a);
+      this.hit(n, 'node', sx - 20 * z, sy - 30 * z, sx + 20 * z, sy + 4 * z);
+    }
+  }
+  pennant(ctx, px, py, z, t, prim, acc, phase = 0) {
+    const w = 15 * z, h = 9 * z, n = 5;
+    ctx.fillStyle = prim; ctx.beginPath(); ctx.moveTo(px, py);
+    for (let i = 1; i <= n; i++) ctx.lineTo(px + (w * i) / n, py + Math.sin(t * 4 + phase + i) * h * 0.12 * (i / n));
+    for (let i = n; i >= 0; i--) ctx.lineTo(px + (w * i) / n, py + h + Math.sin(t * 4 + phase + i) * h * 0.12 * (i / n));
+    ctx.closePath(); ctx.fill(); ctx.strokeStyle = acc; ctx.lineWidth = 1; ctx.stroke();
+  }
+  smoke(ctx, x, y, z, t, seed) {
     for (let i = 0; i < 4; i++) {
-      const ph = (t * 0.32 + i / 4 + seed * 0.37) % 1;
-      ctx.fillStyle = `rgba(210,208,200,${0.34 * (1 - ph)})`;
-      ctx.beginPath(); ctx.arc(x + Math.sin(ph * 5 + seed) * P * 0.08 + ph * P * 0.18, y - ph * P * 0.95, P * (0.05 + ph * 0.13), 0, 7); ctx.fill();
+      const ph = (t * 0.3 + i / 4 + seed * 0.37) % 1;
+      ctx.fillStyle = `rgba(205,203,196,${0.32 * (1 - ph)})`;
+      ctx.beginPath(); ctx.arc(x + Math.sin(ph * 5 + seed) * 3 * z + ph * 6 * z, y - ph * 30 * z, (2 + ph * 5) * z, 0, 7); ctx.fill();
     }
   }
 
   // ---------------------------------------------------------------- villages
-  village(ctx, v, sx, sy, P, dim, ui) {
-    const sp = villageSprite(v.kind, v.owner), k = P / U, f = v.owner >= 0 ? HOUSES[v.owner] : null;
-    const VS = 1.5, S = v.size * P, w = sp.cv.width * k * VS, h = sp.cv.height * k * VS, dy = sy + S * 1.04 - h, dx = sx + S / 2 - w / 2 + S * 0.04, t = performance.now() / 1000;
-    ctx.save();
-    if (dim) ctx.globalAlpha = 0.75;
-    ctx.drawImage(sp.cv, dx, dy, w, h);
-    if (v.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, v.flash); ctx.drawImage(sp.cv, dx, dy, w, h); ctx.globalCompositeOperation = 'source-over'; }
-    ctx.restore();
-    const m = sp.meta;
-    if (m.smoke && !dim) m.smoke.forEach(([fx, fy], i) => this.smoke(ctx, dx + fx * sp.S * k * VS, dy + (fy * sp.S + sp.rise) * k * VS, P, t, v.id + i));
-    this.pennant(ctx, dx + m.flag[0] * sp.S * k * VS, dy + (m.flag[1] * sp.S + sp.rise) * k * VS, P, t, f ? f.primary : '#9a8f70', f ? f.accent : '#d8cba2', v.id);
-    // bars: protection (red), loyalty (blue)
-    const top = dy - 2;
-    this.bar(ctx, sx, top - 8, S, 4, v.protection / v.maxProtection, '#c0473b');
-    this.bar(ctx, sx, top - 3, S, 4, v.loyalty / 100, '#5a9ad8');
-    if (ui?.isSelected(v)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.ellipse(sx + S / 2, sy + S * 0.66, S * 0.56, S * 0.42, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
-    if (P > 20) { ctx.font = `${Math.round(11 * this.cam.zoom + 2)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(v.name, sx + S / 2 + 1, sy + S + 22); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, sx + S / 2, sy + S + 21); }
+  village(ctx, v, dim, ui, t, z) {
+    const f = v.owner >= 0 ? HOUSES[v.owner] : null, team = v.owner;
+    const cx = v.tx + v.size / 2, cy = v.ty + v.size / 2;
+    // footing: a tinted diamond and trodden earth
+    this.diamond(ctx, v.tx, v.ty, v.size, v.size);
+    ctx.fillStyle = f ? f.primary : '#8a7a50'; ctx.globalAlpha = f ? 0.2 : 0.12; ctx.fill(); ctx.globalAlpha = 1;
+    if (f) { ctx.strokeStyle = f.accent; ctx.lineWidth = 2; ctx.globalAlpha = 0.75; ctx.stroke(); ctx.globalAlpha = 1; }
+    const comp = VCOMP[v.kind] || VCOMP.hamlet;
+    const parts = comp.map(([name, dx, dy, w]) => ({ name, dx, dy, w })).sort((a, b) => a.dx + a.dy - (b.dx + b.dy));
+    let top = 1e9, midx = 0, left = 1e9, right = -1e9, bottom = -1e9;
+    if (dim) ctx.globalAlpha = 0.78;
+    for (const p of parts) {
+      const [sx, sy] = this.toScreen(cx + p.dx + 0.7, cy + p.dy + 0.7);
+      const c = tinted(p.name, team, 'banner', false);
+      if (p.name === 'gold') this.shadowAt(ctx, sx, sy, p.w * HW * z * 0.5, 7 * z, 0.3);
+      const h = this.sprite(ctx, c, sx, sy, p.w * 2 * HW * z, false, 1);
+      if (h != null) { const ww = p.w * 2 * HW * z; top = Math.min(top, sy - h); left = Math.min(left, sx - ww / 2); right = Math.max(right, sx + ww / 2); bottom = Math.max(bottom, sy); }
+    }
+    if (v.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, v.flash); this.diamond(ctx, v.tx, v.ty, v.size, v.size); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
+    ctx.globalAlpha = 1;
+    this.hit(v, 'village', left, top, right, bottom);
+    const m = this.toScreen(cx, cy), W = v.size * HW * z * 1.4;
+    this.bar(ctx, m[0] - W / 2, top - 14, W, 4, v.protection / v.maxProtection, '#c0473b');
+    this.bar(ctx, m[0] - W / 2, top - 9, W, 4, v.loyalty / 100, '#5a9ad8');
+    if (ui?.isSelected(v)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, v.tx - 0.2, v.ty - 0.2, v.size + 0.4, v.size + 0.4); ctx.stroke(); ctx.setLineDash([]); }
+    if (z > 0.7) { ctx.font = `${Math.round(11 * z + 2)}px Georgia, serif`; ctx.textAlign = 'center'; const [lx, ly] = this.toScreen(v.tx + v.size, v.ty + v.size); ctx.fillStyle = '#000'; ctx.fillText(v.name, lx + 1, ly + 15); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, lx, ly + 14); }
   }
 
   // ---------------------------------------------------------------- buildings
-  building(ctx, b, sx, sy, P, dim, ui, t) {
-    const sp = buildingSprite(b.kind, b.team, b.size), k = P / U, f = HOUSES[b.team], prog = b.built;
-    const BS = 1.28, S = b.size * P, w = sp.cv.width * k * BS, h = sp.cv.height * k * BS, dy = sy + S * 1.04 - h, dx = sx + S / 2 - w / 2 + S * 0.02;
-    // team plate: a tinted footing so a house colour reads at a glance
-    ctx.fillStyle = f.primary; ctx.globalAlpha = 0.22; ctx.beginPath(); ctx.ellipse(sx + S * 0.52, sy + S * 0.9, S * 0.56, S * 0.17, 0, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+  building(ctx, b, dim, ui, t, z) {
+    const f = HOUSES[b.team], prog = b.built, [name, mul] = BSPR[b.kind] || ['cottage', 1];
+    const c = tinted(name, b.team, 'banner');
+    const [bx, by] = this.toScreen(b.tx + b.size, b.ty + b.size);            // bottom corner of the footprint
+    const w = b.size * 2 * HW * z * mul, h = c ? (c.height / c.width) * w : 0;
+    const dy = by - h + b.size * HH * z * 0.34;
+    // house-colour footing
+    this.diamond(ctx, b.tx, b.ty, b.size, b.size); ctx.fillStyle = f.primary; ctx.globalAlpha = 0.24; ctx.fill(); ctx.globalAlpha = 1;
+    this.shadowAt(ctx, bx + 4 * z, by - b.size * HH * z * 0.5, w * 0.42, b.size * HH * z * 0.5, 0.22);
     ctx.save();
-    if (dim) ctx.globalAlpha = 0.78;
-    if (prog < 1) {
-      const r = 0.18 + 0.82 * prog;
-      ctx.beginPath(); ctx.rect(dx - 4, dy + h * (1 - r), w + 8, h * r + 2); ctx.clip();
-      ctx.globalAlpha = (dim ? 0.78 : 1) * 0.92; ctx.drawImage(sp.cv, dx, dy, w, h);
-    } else ctx.drawImage(sp.cv, dx, dy, w, h);
-    ctx.restore();
-    const m = sp.meta, X = (fx) => dx + fx * sp.S * k * BS, Y = (fy) => dy + (fy * sp.S + sp.full) * k * BS;
-    if (prog < 1) {
-      // scaffolding
-      const top = dy + h * (1 - (0.18 + 0.82 * prog)) + 4;
-      ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = Math.max(2, P * 0.06);
-      for (const fx of [0.02, 0.5, 0.96]) { ctx.beginPath(); ctx.moveTo(X(fx) + 0, sy + S); ctx.lineTo(X(fx), top); ctx.stroke(); }
-      ctx.lineWidth = Math.max(1.5, P * 0.045);
-      for (let y = sy + S - S * 0.2; y > top; y -= S * 0.22) { ctx.beginPath(); ctx.moveTo(X(0.02), y); ctx.lineTo(X(0.96), y); ctx.stroke(); }
-      ctx.strokeStyle = 'rgba(255,230,160,.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([5, 4]); ctx.strokeRect(sx + 1, sy + 1, S - 2, S - 2); ctx.setLineDash([]);
-      this.bar(ctx, sx, sy + S + 3, S, 5, prog, '#e2c15e');
-    } else if (!dim) {
-      if (m.smoke) m.smoke.forEach(([fx, fy], i) => this.smoke(ctx, X(fx), Y(fy), P, t, b.id + i));
-      if (m.glow) { const gx = X(m.glow[0]), gy = Y(m.glow[1]), gr = P * 0.5, a = 0.5 + Math.sin(t * 9 + b.id) * 0.12 + Math.sin(t * 23) * 0.06; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,190,80,${a})`); g2.addColorStop(1, 'rgba(255,120,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
+    if (dim) ctx.globalAlpha = 0.8;
+    if (c) {
+      if (prog < 1) {
+        const r = 0.2 + 0.8 * prog;
+        ctx.beginPath(); ctx.rect(bx - w / 2 - 2, dy + h * (1 - r), w + 4, h * r + 2); ctx.clip();
+        ctx.globalAlpha *= 0.94;
+      }
+      ctx.drawImage(c, bx - w / 2, dy, w, h);
     }
-    if (m.flag && prog >= 1) this.pennant(ctx, X(m.flag[0]), Y(m.flag[1]), P, t, f.primary, f.accent, b.id);
-    if (b.flash > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, b.flash * 2); ctx.drawImage(sp.cv, dx, dy, w, h); ctx.restore(); }
-    if (b.hp < b.maxHp && prog >= 1) this.bar(ctx, sx, dy - 6, S, 4, b.hp / b.maxHp, this.hpColor(b.hp / b.maxHp));
-    if (b.queue.length && b.team === PLAYER) this.bar(ctx, sx, sy + S + 2, S, 3, b.queue[0].t / UNITS[b.queue[0].kind].time, '#7ac1ff');
-    if (ui?.isSelected(b)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.ellipse(sx + S * 0.52, sy + S * 0.9, S * 0.58, S * 0.2, 0, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
-    if (ui?.isSelected(b) && b.rally) { const [rx, ry] = this.toScreen(b.rally.x, b.rally.y); ctx.strokeStyle = f.accent; ctx.beginPath(); ctx.moveTo(sx + S / 2, sy + S / 2); ctx.lineTo(rx, ry); ctx.stroke(); ctx.fillStyle = f.accent; ctx.fillRect(rx - 1, ry - 12, 2, 12); ctx.fillRect(rx + 1, ry - 12, 8, 5); }
+    ctx.restore();
+    this.hit(b, 'building', bx - w * 0.45, dy + h * 0.1, bx + w * 0.45, by);
+    if (prog < 1) {
+      const top = dy + h * (1 - (0.2 + 0.8 * prog)) + 2, bot = by - 2 * z;
+      ctx.strokeStyle = '#7a5c30'; ctx.lineWidth = Math.max(2, 3 * z);
+      for (const k of [-0.34, 0, 0.34]) { ctx.beginPath(); ctx.moveTo(bx + k * w, bot - Math.abs(k) * w * 0.28); ctx.lineTo(bx + k * w, top - Math.abs(k) * 4); ctx.stroke(); }
+      ctx.lineWidth = Math.max(1.5, 2 * z);
+      for (let y = bot - 12 * z; y > top; y -= 18 * z) { ctx.beginPath(); ctx.moveTo(bx - 0.34 * w, y); ctx.lineTo(bx + 0.34 * w, y); ctx.stroke(); }
+      this.bar(ctx, bx - w * 0.3, by + 6 * z, w * 0.6, 5, prog, '#e2c15e');
+    } else if (!dim) {
+      const sm = SMOKE[b.kind];
+      if (sm) sm.forEach(([fx, fy], i) => this.smoke(ctx, bx - w / 2 + fx * w, dy + fy * h, z, t, b.id + i));
+      if (b.kind === 'forge') { const gx = bx - w * 0.3, gy = dy + h * 0.72, gr = 26 * z, a = 0.42 + Math.sin(t * 9 + b.id) * 0.1 + Math.sin(t * 23) * 0.05; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,170,60,${a})`); g2.addColorStop(1, 'rgba(255,110,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
+    }
+    if (b.flash > 0 && c) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.7, b.flash * 2); ctx.drawImage(c, bx - w / 2, dy, w, h); ctx.restore(); }
+    if (b.hp < b.maxHp && prog >= 1) this.bar(ctx, bx - w * 0.3, dy - 6, w * 0.6, 4, b.hp / b.maxHp, this.hpColor(b.hp / b.maxHp));
+    if (b.queue.length && b.team === PLAYER) this.bar(ctx, bx - w * 0.3, by + 4 * z, w * 0.6, 3, b.queue[0].t / UNITS[b.queue[0].kind].time, '#7ac1ff');
+    if (ui?.isSelected(b)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, b.tx - 0.1, b.ty - 0.1, b.size + 0.2, b.size + 0.2); ctx.stroke(); ctx.setLineDash([]); }
+    if (ui?.isSelected(b) && b.rally) { const [sx, sy] = this.toScreen(b.x, b.y), [rx, ry] = this.toScreen(b.rally.x, b.rally.y); ctx.strokeStyle = f.accent; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(rx, ry); ctx.stroke(); ctx.fillStyle = f.accent; ctx.fillRect(rx - 1, ry - 14, 2, 14); ctx.fillRect(rx + 1, ry - 14, 9, 5); }
   }
 
   // ---------------------------------------------------------------- units
-  unit(ctx, u, sx, sy, P, ui) {
-    const st = UNITS[u.kind], k = P / U * (u.kind === 'ram' || u.kind === 'knight' ? 1.1 : 1.2), fc = u.face || 1;
-    const moving = u.path.length > 0;
-    let frame = Math.floor(u.anim * 0.75) % 4;
-    if (!moving) frame = 0;
-    const striking = u.cooldown > st.cd - 0.3 && st.dmg > 0;
-    if (striking) frame = u.cooldown > st.cd - 0.13 ? 5 : 4;
-    else if (!moving && u.task.type === 'gather' && u.anim > 0) frame = 4 + (Math.floor(u.anim * 0.9) & 1);
-    else if (!moving && u.task.type === 'build') frame = 4 + (Math.floor(u.anim * 0.9) & 1);
-    const sp = unitSprite(u.kind, u.team, frame), fy = sy + P * 0.32;
-    const w = sp.cv.width * k, h = sp.cv.height * k;
-    ctx.fillStyle = 'rgba(8,14,6,0.33)'; ctx.beginPath(); ctx.ellipse(sx, fy, w * 0.26, P * 0.08, 0, 0, 7); ctx.fill();
-    ctx.save(); ctx.translate(sx, fy - sp.ay * k); if (fc < 0) ctx.scale(-1, 1);
-    ctx.drawImage(sp.cv, -sp.ax * k, 0, w, h);
-    if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.9, u.flash * 2); ctx.drawImage(sp.cv, -sp.ax * k, 0, w, h); }
+  unit(ctx, u, ui, t, z) {
+    const st = UNITS[u.kind], [sx, sy] = this.toScreen(u.x, u.y);
+    // face the way it travels on screen; the art looks left
+    if (u._lsx != null && Math.abs(sx - u._lsx) > 0.15) u._rf = sx > u._lsx ? 1 : -1;
+    u._lsx = sx; if (!u._rf) u._rf = u.face >= 0 ? 1 : -1;
+    const moving = u.path.length > 0, flip = u._rf > 0;
+    const striking = st.dmg > 0 && u.cooldown > st.cd - 0.25;
+    const working = !moving && (u.task.type === 'gather' || u.task.type === 'build');
+    let c, w, h;
+    if (u.kind === 'ram') { c = ramSprite(u.team); w = 78 * z; }
+    else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false); w = (c ? c.width / c.height : 1) * 40 * z; }
+    else { c = tinted(u.kind, u.team, 'trim', false); const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh; }
+    if (!c) return;
+    h = (c.height / c.width) * w;
+    const bob = moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
+    const lunge = striking ? 5 * z * (u.cooldown > st.cd - 0.12 ? 1 : 0.5) : 0;
+    this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
+    ctx.save();
+    ctx.translate(sx + (flip ? lunge : -lunge), sy);
+    ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
+    if (flip) ctx.scale(-1, 1);
+    const foot = u.kind === 'ram' || u.kind === 'serf' ? 1.0 : 0.9;
+    ctx.drawImage(c, -w / 2, -h * foot - bob, w, h);
+    if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
     ctx.restore();
-    if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx - fc * P * 0.2, by = fy - P * 0.52; ctx.fillRect(bx - P * 0.07, by, P * 0.14, P * 0.12); ctx.strokeRect(bx - P * 0.07, by, P * 0.14, P * 0.12); }
-    if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, fy, w * 0.3, P * 0.12, 0, 0, 7); ctx.stroke(); }
-    if (u.hp < u.maxHp || ui?.isSelected(u)) { const bw = Math.max(18, w * 0.5); this.bar(ctx, sx - bw / 2, fy - (u.kind === 'knight' ? 82 : u.kind === 'ram' ? 56 : 62) * k - 6, bw, 3, u.hp / u.maxHp, this.hpColor(u.hp / u.maxHp)); }
+    this.hit(u, 'unit', sx - w * 0.4, sy - h * foot - bob, sx + w * 0.4, sy + 3 * z);
+    if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }
+    if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
+    if (u.hp < u.maxHp || ui?.isSelected(u)) { const bw = Math.max(20, w * 0.7); this.bar(ctx, sx - bw / 2, sy - h * foot - 8 - bob, bw, 3, u.hp / u.maxHp, this.hpColor(u.hp / u.maxHp)); }
   }
 
   bar(ctx, x, y, w, h, r, color) {
@@ -295,16 +350,18 @@ export class Renderer {
   }
   hpColor(r) { return r > 0.5 ? '#6dbf6a' : r > 0.25 ? '#d4b44a' : '#cc4444'; }
 
-  ghost(ctx, g, ui, P) {
+  ghost(ctx, g, ui) {
     const s = BUILDINGS[ui.placing].size, tx = ui.hoverTX, ty = ui.hoverTY;
     const chk = g.canPlace(PLAYER, ui.placing, tx, ty);
-    const [sx, sy] = this.toScreen(tx, ty);
-    ctx.fillStyle = chk.ok ? 'rgba(110,200,110,0.38)' : 'rgba(210,70,70,0.4)';
-    ctx.fillRect(sx, sy, s * P, s * P);
-    ctx.strokeStyle = chk.ok ? '#8fe08f' : '#e07070'; ctx.lineWidth = 2; ctx.strokeRect(sx, sy, s * P, s * P);
-    ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'left';
+    this.diamond(ctx, tx, ty, s, s);
+    ctx.fillStyle = chk.ok ? 'rgba(110,200,110,0.38)' : 'rgba(210,70,70,0.4)'; ctx.fill();
+    ctx.strokeStyle = chk.ok ? '#8fe08f' : '#e07070'; ctx.lineWidth = 2; ctx.stroke();
+    const [name, mul] = BSPR[ui.placing] || ['cottage', 1], c = tinted(name, PLAYER, 'banner');
+    if (c) { const [bx, by] = this.toScreen(tx + s, ty + s), w = s * 2 * HW * this.cam.zoom * mul, h = (c.height / c.width) * w; ctx.globalAlpha = 0.55; ctx.drawImage(c, bx - w / 2, by - h + s * HH * this.cam.zoom * 0.34, w, h); ctx.globalAlpha = 1; }
+    const [lx, ly] = this.toScreen(tx + s / 2, ty);
+    ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center';
     const label = chk.ok ? BUILDINGS[ui.placing].label : `${BUILDINGS[ui.placing].label}: ${chk.reason}`;
-    ctx.fillStyle = '#000'; ctx.fillText(label, sx + 1, sy - 5); ctx.fillStyle = chk.ok ? '#d9f5d0' : '#ffc4c0'; ctx.fillText(label, sx, sy - 6);
+    ctx.fillStyle = '#000'; ctx.fillText(label, lx + 1, ly - 3); ctx.fillStyle = chk.ok ? '#d9f5d0' : '#ffc4c0'; ctx.fillText(label, lx, ly - 4);
   }
 }
 
@@ -377,13 +434,13 @@ export class Minimap {
       if (u.team !== PLAYER && (!g.fogOn || !vis[Math.floor(u.y) * g.W + Math.floor(u.x)])) continue;
       ctx.fillStyle = HOUSES[u.team].primary; ctx.fillRect(u.x * sx - 1, u.y * sy - 1, 3, 3);
     }
-    const r = this.r, vw = r.w / r.P, vh = r.h / r.P;
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(r.cam.x * sx, r.cam.y * sy, vw * sx, vh * sy);
+    const q = this.r.viewPoly();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy))); ctx.closePath(); ctx.stroke();
   }
 }
 
 // ---------------------------------------------------------------- vale preview (menu) and campaign map
-export function drawVale(canvas, game, { fog = false, cam = null, view = null, labels = false } = {}) {
+export function drawVale(canvas, game, { fog = false, poly = null, labels = false } = {}) {
   const ctx = canvas.getContext('2d'), W = game.W, H = game.H, cw = canvas.width, ch = canvas.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const sx = cw / W, sy = ch / H;
@@ -393,7 +450,7 @@ export function drawVale(canvas, game, { fog = false, cam = null, view = null, l
     const i = y * W + x;
     if (fog && game.fogOn && !seen[i]) continue;
     const t = game.terrain[i];
-    let c = t === T_WATER ? [38, 92, 118] : t === T_FORD ? [140, 100, 56] : t === T_DIRT ? [128, 98, 54] : [[77, 123, 59], [82, 127, 62], [74, 118, 55], [87, 132, 64]][(hash(x, y) * 4) | 0];
+    let c = t === T_WATER ? [38, 92, 118] : t === T_FORD ? [140, 100, 56] : t === T_DIRT ? [128, 98, 54] : [[102, 106, 44], [106, 110, 46], [96, 100, 40], [112, 114, 50]][(hash(x, y) * 4) | 0];
     if (fog && game.fogOn && !vis[i]) c = c.map((q) => q * 0.55);
     ctx.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
     ctx.fillRect(x * sx, y * sy, sx + 0.6, sy + 0.6);
@@ -417,8 +474,8 @@ export function drawVale(canvas, game, { fog = false, cam = null, view = null, l
     drawDisc(ctx, b.x * sx, b.y * sy, Math.max(9, sx * 3), b.team);
   }
   if (!fog) game.map.starts.slice(0, game.houses).forEach(([x, y], i) => drawDisc(ctx, (x + 1.5) * sx, (y + 1.5) * sy, Math.max(9, sx * 3), i));
-  if (cam) {
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(cam.x * sx, cam.y * sy, view.w * sx, view.h * sy);
+  if (poly) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); poly.forEach(([x, y], i) => (i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy))); ctx.closePath(); ctx.stroke();
   }
 }
 function drawDisc(ctx, cx, cy, r, team) {

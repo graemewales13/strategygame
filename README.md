@@ -69,10 +69,11 @@ js/
   game.js         the host: ONE Game object ticks all state; intents in, state out
   ai.js           rival houses (hall first, then cottages, barracks, keep ...)
   net.js          intent/snapshot seam: LocalHost now, SocketClient stub for later
-  render.js       canvas drawing only; reads state, never changes it
-  terrain.js      painted terrain chunks (soft river banks, trails, fords) and the smoothed fog layer
-  sprites.js      painted 3/4-view buildings, villages, trees, units (walk/attack frames), cached per kind x house
+  render.js       isometric (2:1) canvas drawing only; reads state, never changes it
+  terrain.js      painted terrain chunks (soft river banks, trails, fords) and the smoothed fog layer, drawn isometrically
+  art.js          loads the painted sprites in assets/world/ and recolours banners and unit trim per house
   assets/ui/      portraits, building icons and menu backdrop cropped from the concept boards
+  assets/world/   buildings, trees, units and the village cluster cut out of the concept boards
   ui.js           HUD, input, menu, campaign map; talks to the host via intents
   main.js         requestAnimationFrame loop
 test/sim.test.js  headless simulation tests

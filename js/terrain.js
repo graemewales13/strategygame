@@ -31,23 +31,23 @@ export class TerrainCache {
   }
 
   paint(cx, cy) {
-    const g = this.g, size = CH * TS, pad = 1; // paint a tile of margin so neighbours blend without seams
+    const g = this.g, N = CH + 2, size = N * TS; // 1-tile margin so neighbours overlap without seams
     const cv = mk(size, size), ctx = cv.getContext('2d');
-    const tx0 = cx * CH, ty0 = cy * CH;
+    const tx0 = cx * CH - 1, ty0 = cy * CH - 1;
     const ox = -tx0 * TS, oy = -ty0 * TS;
     const px = (tx) => ox + tx * TS, py = (ty) => oy + ty * TS;
     const jit = (x, y) => [(hash(x, y, 11) - 0.5) * TS * 0.26, (hash(x, y, 12) - 0.5) * TS * 0.26];
     const ctr = (x, y) => { const [jx, jy] = jit(x, y); return [px(x) + TS / 2 + jx, py(y) + TS / 2 + jy]; };
-    const range = [tx0 - 2, tx0 + CH + 2, ty0 - 2, ty0 + CH + 2];
+    const range = [tx0 - 2, tx0 + N + 2, ty0 - 2, ty0 + N + 2];
 
     // ---- grass: base + drifting patches of lighter and darker green
-    ctx.fillStyle = '#4b7a3a'; ctx.fillRect(0, 0, size, size);
-    for (let y = ty0 - 1; y < ty0 + CH + 1; y++) for (let x = tx0 - 1; x < tx0 + CH + 1; x++) {
+    ctx.fillStyle = '#7b7b34'; ctx.fillRect(0, 0, size, size);
+    for (let y = ty0 - 1; y < ty0 + N + 1; y++) for (let x = tx0 - 1; x < tx0 + N + 1; x++) {
       const n = vnoise(x * 0.18, y * 0.18), m = vnoise(x * 0.55 + 40, y * 0.55 + 9);
       const r = TS * (1.1 + hash(x, y, 1) * 0.7);
       const cxp = px(x) + TS * hash(x, y, 2), cyp = py(y) + TS * hash(x, y, 3);
-      const col = n > 0.5 ? [112, 160, 70] : [38, 82, 40];
-      const a = Math.abs(n - 0.5) * 0.55 + m * 0.08;
+      const col = n > 0.5 ? [176, 168, 82] : [86, 88, 30];
+      const a = Math.abs(n - 0.5) * 0.75 + m * 0.1;
       const gr = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, r);
       gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`);
       ctx.fillStyle = gr; ctx.fillRect(cxp - r, cyp - r, r * 2, r * 2);
@@ -66,10 +66,10 @@ export class TerrainCache {
     const stroke = (col, w, alpha = 1) => { ctx.strokeStyle = col; ctx.globalAlpha = alpha; ctx.lineWidth = w; dirtLinks((ax, ay, bx, by) => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx + 0.01, by); ctx.stroke(); }); ctx.globalAlpha = 1; };
     stroke('#3f3a1c', TS * 1.7, 0.18);
     stroke('#6b5530', TS * 1.45, 0.45);
-    stroke('#98774a', TS * 1.2, 1);
-    stroke('#a98a59', TS * 0.75, 0.55);
+    stroke('#8f6f44', TS * 1.2, 1);
+    stroke('#a38356', TS * 0.75, 0.5);
     // pebbles and cart ruts on dirt
-    for (let y = ty0; y < ty0 + CH; y++) for (let x = tx0; x < tx0 + CH; x++) {
+    for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
       if (this.type(x, y) !== T_DIRT) continue;
       for (let k = 0; k < 3; k++) {
         const h = hash(x, y, 20 + k);
@@ -91,13 +91,13 @@ export class TerrainCache {
     wstroke('#2e3a1c', TS * 2.35, 0.22);   // damp bank
     wstroke('#cdb47c', TS * 2.0, 1);        // sand
     wstroke('#e0cb93', TS * 1.85, 1);       // dry sand
-    wstroke('#4f9bb0', TS * 1.7, 1);        // shallows
-    wstroke('#347d9a', TS * 1.38, 1);
-    wstroke('#2a6b8c', TS * 0.98, 1);       // deep
-    wstroke('#235d7e', TS * 0.55, 0.9);
+    wstroke('#4f8490', TS * 1.7, 1);        // shallows
+    wstroke('#3a6f86', TS * 1.38, 1);
+    wstroke('#2f5f7a', TS * 0.98, 1);       // deep
+    wstroke('#274f69', TS * 0.55, 0.9);
     // lighter ripples baked in
     ctx.lineWidth = 1.2;
-    for (let y = ty0; y < ty0 + CH; y++) for (let x = tx0; x < tx0 + CH; x++) {
+    for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
       if (this.type(x, y) !== T_WATER) continue;
       const h = hash(x, y, 50);
       ctx.strokeStyle = `rgba(200,235,245,${0.1 + h * 0.12})`;
@@ -105,17 +105,17 @@ export class TerrainCache {
       ctx.beginPath(); ctx.moveTo(cxp - 8, cyp + (h - 0.5) * 10); ctx.quadraticCurveTo(cxp, cyp + (h - 0.5) * 10 - 3, cxp + 8, cyp + (h - 0.5) * 10); ctx.stroke();
     }
     // shore pebbles + reeds
-    for (let y = ty0; y < ty0 + CH; y++) for (let x = tx0; x < tx0 + CH; x++) {
+    for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
       if (this.type(x, y) === T_WATER || this.type(x, y) === T_FORD) continue;
       let near = 0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.isWater(x + dx, y + dy)) near++;
       if (!near) continue;
       const h = hash(x, y, 60);
-      if (h < 0.55) { ctx.strokeStyle = 'rgba(40,80,30,.85)'; ctx.lineWidth = 1.5; const bx = px(x) + hash(x, y, 61) * TS, by = py(y) + hash(x, y, 62) * TS; for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(bx + k * 2.5, by); ctx.lineTo(bx + k * 4, by - 9 - h * 7); ctx.stroke(); } }
+      if (h < 0.55) { ctx.strokeStyle = 'rgba(70,84,30,.85)'; ctx.lineWidth = 1.5; const bx = px(x) + hash(x, y, 61) * TS, by = py(y) + hash(x, y, 62) * TS; for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(bx + k * 2.5, by); ctx.lineTo(bx + k * 4, by - 9 - h * 7); ctx.stroke(); } }
     }
 
     // ---- fords: gravel bar with stepping stones, a plank walkway on top
-    for (let y = ty0 - 1; y < ty0 + CH + 1; y++) for (let x = tx0 - 1; x < tx0 + CH + 1; x++) {
+    for (let y = ty0 - 1; y < ty0 + N + 1; y++) for (let x = tx0 - 1; x < tx0 + N + 1; x++) {
       if (this.type(x, y) !== T_FORD) continue;
       const X = px(x), Y = py(y);
       ctx.fillStyle = 'rgba(210,190,140,.9)'; ctx.fillRect(X - 1, Y + TS * 0.05, TS + 2, TS * 0.9);
@@ -125,12 +125,12 @@ export class TerrainCache {
     }
 
     // ---- grass tufts and flowers on top of everything that is land
-    for (let y = ty0; y < ty0 + CH; y++) for (let x = tx0; x < tx0 + CH; x++) {
+    for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
       if (this.type(x, y) !== 0) continue;
       const h = hash(x, y, 70);
       if (h > 0.62) {
         const bx = px(x) + hash(x, y, 71) * TS, by = py(y) + hash(x, y, 72) * TS;
-        ctx.strokeStyle = h > 0.85 ? 'rgba(130,175,80,.8)' : 'rgba(26,60,24,.6)'; ctx.lineWidth = 1.2;
+        ctx.strokeStyle = h > 0.85 ? 'rgba(176,168,84,.7)' : 'rgba(44,48,14,.55)'; ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - 2, by - 5); ctx.moveTo(bx + 2, by); ctx.lineTo(bx + 3, by - 6); ctx.moveTo(bx + 4, by); ctx.lineTo(bx + 6, by - 4); ctx.stroke();
       }
       if (h < 0.07) {
@@ -142,17 +142,20 @@ export class TerrainCache {
     return cv;
   }
 
-  // Blit visible chunks. dest scale: P screen px per tile.
-  draw(ctx, cam, P, w, h) {
-    const g = this.g, k = P / TS;
+  // Blit visible chunks through the isometric transform.
+  draw(ctx, r) {
+    const dpr = r.dpr;
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    const cx0 = Math.max(0, Math.floor(cam.x / CH)), cy0 = Math.max(0, Math.floor(cam.y / CH));
-    const cx1 = Math.min(this.cw - 1, Math.floor((cam.x + w / P) / CH)), cy1 = Math.min(this.ch - 1, Math.floor((cam.y + h / P) / CH));
+    const [bx0, by0, bx1, by1] = r.viewBounds(1);
+    const cx0 = Math.max(0, Math.floor(bx0 / CH)), cy0 = Math.max(0, Math.floor(by0 / CH));
+    const cx1 = Math.min(this.cw - 1, Math.floor(bx1 / CH)), cy1 = Math.min(this.ch - 1, Math.floor(by1 / CH));
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
       const c = this.chunk(cx, cy);
-      const sx = (cx * CH - cam.x) * P, sy = (cy * CH - cam.y) * P, s = CH * TS * k;
-      ctx.drawImage(c, Math.floor(sx), Math.floor(sy), Math.ceil(s) + 1, Math.ceil(s) + 1);
+      const m = r.isoMatrix(cx * CH - 1, cy * CH - 1, TS);
+      ctx.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr);
+      ctx.drawImage(c, 0, 0);
     }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 }
 
@@ -192,9 +195,12 @@ export class FogLayer {
     b.filter = 'none';
     this.drawn = true;
   }
-  draw(ctx, cam, P) {
+  draw(ctx, r) {
     if (!this.drawn) return;
+    const m = r.isoMatrix(0, 0, FOG_S), dpr = r.dpr;
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.big, -cam.x * P, -cam.y * P, this.g.W * P, this.g.H * P);
+    ctx.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr);
+    ctx.drawImage(this.big, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 }
