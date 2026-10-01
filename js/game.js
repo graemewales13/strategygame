@@ -124,7 +124,8 @@ export class Game {
   // ------------------------------------------------------------------ queries
   alive(team) { return this.players[team]?.alive; }
   isEnemy(a, b) { return a !== b && b >= 0 && this.rel[a][b] === 'war'; }
-  hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
+  // a keep stands in for a lost hall (it is the other seat of the house), so a house that loses its hall can still raise buildings
+  hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && (b.kind === kind || (kind === 'hall' && b.kind === 'keep')) && b.built >= 1 && b.hp > 0); }
   popUsed(team) {
     let n = 0;
     for (const u of this.units) if (u.team === team && u.hp > 0) n++;

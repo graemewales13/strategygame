@@ -4,8 +4,9 @@
 
 import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS } from './config.js';
 
+const WAR_AFTER = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
-  ['cottage', 1], ['farm', 1], ['barracks', 1], ['mine', 1], ['cottage', 2], ['mill', 1], ['keep', 1], ['cottage', 3], ['archery', 1],
+  ['cottage', 1], ['farm', 1], ['barracks', 1], ['mine', 1], ['cottage', 2], ['mill', 1], ['warehouse', 1], ['keep', 1], ['cottage', 3], ['archery', 1],
   ['farm', 2], ['mine', 2], ['forge', 1], ['market', 1], ['tavern', 1], ['mine', 3], ['foundry', 1], ['cottage', 4], ['stable', 1], ['temple', 1], ['academy', 1], ['cottage', 5],
   ['tower', 1], ['workshop', 1], ['farm', 3], ['cottage', 6], ['cottage', 7],
 ];
@@ -37,8 +38,8 @@ function think(game, team, p) {
 
   // 2. build in order; make room for population when it is about to cap
   const building = game.buildings.filter((b) => b.team === team && b.built < 1 && b.hp > 0).length;
-  if (building < 2) {
-    const needCottage = game.popUsed(team) + 2 >= game.popCap(team) && !game.buildings.some((b) => b.team === team && b.kind === 'cottage' && b.built < 1);
+  const needCottage = game.popUsed(team) + 2 >= game.popCap(team) && !game.buildings.some((b) => b.team === team && b.kind === 'cottage' && b.built < 1);
+  if (building < 2 || needCottage && building < 4) {
     let next = null;
     if (needCottage && serfs.length) next = 'cottage';
     else {
@@ -64,7 +65,10 @@ function think(game, team, p) {
     // 2b. diggers for every finished mine
     for (const m of game.buildings) {
       if (m.team !== team || m.kind !== 'mine' || m.built < 1 || m.hp <= 0) continue;
-      const glut = p[m.ore] > (m.ore === 'stone' ? 120 : 220);
+      const hi = m.ore === 'stone' ? 160 : 260, lo = m.ore === 'stone' ? 100 : 180;   // hysteresis: stand down above hi, resume below lo (no flapping)
+      p.glut = p.glut || {};
+      if (p[m.ore] > hi) p.glut[m.ore] = true; else if (p[m.ore] < lo) p.glut[m.ore] = false;
+      const glut = !!p.glut[m.ore];
       if (glut) { for (const u of serfs) if (u.task.type === 'mine' && u.task.buildingId === m.id) { u.task = { type: 'idle' }; u.path = []; } continue; }
       const want = Math.min(MINE_MAX_WORKERS, t > 240 ? 3 : 2);
       if (game.minersOf(m) >= want || serfs.length < 6) continue;
@@ -83,14 +87,20 @@ function think(game, team, p) {
     }
     const camels = game.units.filter((u) => u.team === team && u.kind === 'camel' && u.hp > 0);
     const partners = game.players.filter((q) => q.alive && q.team !== team && q.team !== PLAYER && game.rel[team][q.team] === 'trade' && game.known[team][q.team]).map((q) => game.marketsOf(q.team)[0]).filter(Boolean);
-    if (partners.length && !camels.length && queued(game, team, 'camel') === 0 && p.gold > 120) game.train(team, mk.id, 'camel');
+    if (!camels.length && queued(game, team, 'camel') === 0 && p.gold > 120) game.train(team, mk.id, 'camel');
     const camel = camels.find((c) => c.task.type === 'idle' && Math.hypot(c.x - mk.x, c.y - mk.y) < 6);
-    if (camel && partners.length && p.tradeT <= 0) {
+    if (camel && p.tradeT <= 0) {
       p.tradeT = 40;
       const shelf = mk.stock || {};
-      const surplus = MATS.filter((g) => (shelf[g] || 0) >= 25).sort((a, c) => shelf[c] - shelf[a])[0];
-      const need = ['iron', 'coal', 'silver', 'stone', 'copper'].find((g) => g !== surplus && p[g] < 15 && (g !== 'iron' && g !== 'coal' || game.hasBuilding(team, 'foundry')) && (g !== 'silver' || game.hasBuilding(team, 'academy')));
-      const dest = need && partners.find((m) => (m.stock?.[need] || 0) >= 10);
+      const sellable = [...MATS, 'food', 'wood', 'gold'];
+      const keep = { food: 150, wood: 150, gold: 150 };
+      const surplus = sellable.filter((g) => (shelf[g] || 0) >= 25 && (!keep[g] || true)).sort((a, c) => shelf[c] - shelf[a])[0];
+      const wants = ['coal', 'iron', 'copper', 'silver', 'stone'].filter((g) => g !== surplus && p[g] < 40 && (g !== 'iron' && g !== 'coal' || game.hasBuilding(team, 'foundry') || p.arms < 3) && (g !== 'silver' || game.hasBuilding(team, 'academy')));
+      let dest = null, need = null;
+      for (const w of wants) {   // a partner house's market first, else an independent village that stores it
+        dest = partners.find((m) => (m.stock?.[w] || 0) >= 10) || game.villages.find((v) => (v.owner === -1 || v.owner === team || game.rel[team][v.owner] === 'trade') && (v.stores?.[w] || 0) >= 10 && Math.hypot(v.x - mk.x, v.y - mk.y) < 70);
+        if (dest) { need = w; break; }
+      }
       if (surplus && dest && game.load(team, camel.id, surplus, 30)) game.cmdCaravan([camel], dest, need);
     }
   }
@@ -110,6 +120,7 @@ function think(game, team, p) {
     for (const r of ['wood', 'food', 'gold']) {
       let deficit = share[r] - working[r] / total;
       if (p[r] < 60 && r !== 'gold') deficit += 0.25; // running dry
+      if (p[r] > 450) deficit -= 0.45; // piles of it already: turn to what is short
       if (deficit > worst) { worst = deficit; res = r; }
     }
     const near = game.nearestNode(seat.x, seat.y, res, 28) || game.nearestNode(u.x, u.y, res) || game.nearestNode(u.x, u.y, 'wood');
@@ -169,7 +180,7 @@ function think(game, team, p) {
   }
 
   // 6. war: late, and only with a real army
-  if (t > 340 && army.length >= 9) {
+  if (t > WAR_AFTER && army.length >= 9) {
     let target = null, bd = 1e9;
     for (const q of game.players) {
       if (!q.alive || q.team === team) continue;
@@ -195,11 +206,11 @@ function think(game, team, p) {
 
 // nearest unmined deposit inside our territory, preferring ores we do not already dig
 function pickDeposit(game, team, seat) {
-  const order = ['stone', 'iron', 'coal', 'silver', 'copper'];
+  const order = ['stone', 'iron', 'coal', 'copper', 'silver'];
   const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine').map((b) => b.ore));
   for (const ore of order) {
     if (have.has(ore)) continue;
-    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < 16).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
+    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < (ore === 'stone' ? 16 : 30)).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
     for (const n of cands) if (game.mineSpot(team, n)) return n;
   }
   return null;
@@ -232,8 +243,12 @@ function findSpot(game, team, seat, kind) {
       const k = Math.min(12, d * 0.45) / d;
       ax = seat.x + (v.x - seat.x) * k; ay = seat.y + (v.y - seat.y) * k; rmin = 0; rmax = 5;
     }
+  } else if (kind === 'warehouse') {   // beside the timber stand the serfs walk furthest to
+    const trees = game.resources.filter((n) => NODE_RES[n.kind] === 'wood' && n.amount > 0 && Math.hypot(n.x - seat.x, n.y - seat.y) > 7 && Math.hypot(n.x - seat.x, n.y - seat.y) < 24).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
+    if (trees[0]) { ax = trees[0].x; ay = trees[0].y; rmin = 2; rmax = 5; }
   } else if (['barracks', 'archery', 'stable', 'tower', 'workshop'].includes(kind)) { rmin = 5; rmax = 12; }
   const tried = [];
+  if (kind === 'cottage' || kind === 'farm' || kind === 'warehouse') rmax += 8;   // a crowded hall pushes homes outward rather than stalling
   for (let r = rmin; r <= rmax; r += 1) {
     const steps = Math.max(8, Math.floor(r * 4));
     const off = Math.random() * Math.PI * 2;
