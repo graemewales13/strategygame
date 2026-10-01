@@ -1,18 +1,18 @@
 // Seven Holds - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, TERRITORY, T_GRASS,
+  PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, TERRITORY, T_GRASS, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
-import { tinted, ramSprite, IMG } from './art.js';
+import { tinted, ramSprite, oreSprite, mineSprite, IMG } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
 const GOLD = '#e2c15e';
 
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
-const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15] };
-const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]] };
+const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], tent: ['market', 0.95], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
+const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
 const USCALE = { serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
@@ -100,7 +100,7 @@ export class Renderer {
     const items = [];
     for (const p of this.props) if (p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1 && isSeen(p.x, p.y)) items.push({ o: p, k: 4, z: p.x + p.y });
     for (const n of g.resources) {
-      if (n.amount <= 0 || n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1 || !isSeen(n.x, n.y)) continue;
+      if (n.amount <= 0 || n.covered || n.x < x0 || n.x > x1 || n.y < y0 || n.y > y1 || !isSeen(n.x, n.y)) continue;
       items.push({ o: n, k: 0, z: n.x + n.y + 1 });
     }
     for (const v of g.villages) if (isSeen(v.x, v.y) && v.tx + v.size >= x0 && v.tx <= x1 && v.ty + v.size >= y0 && v.ty <= y1) items.push({ o: v, k: 1, z: v.tx + v.ty + v.size * 2 - 1 });
@@ -220,6 +220,11 @@ export class Renderer {
       this.shadowAt(ctx, sx, sy, 22 * z, 6 * z, 0.3 * a);
       this.sprite(ctx, tinted('gold', 0, null, h > 0.5), sx, sy + 4 * z, 50 * z, false, a);
       this.hit(n, 'node', sx - 22 * z, sy - 24 * z, sx + 22 * z, sy + 4 * z);
+    } else if (MATS.includes(n.kind)) {
+      const c = oreSprite(n.kind, h > 0.5), w = (n.kind === 'stone' ? 46 : 54) * z;
+      this.shadowAt(ctx, sx, sy, 22 * z, 6 * z, 0.3 * a);
+      this.sprite(ctx, c, sx, sy + 4 * z, w, false, a);
+      this.hit(n, 'node', sx - 22 * z, sy - 22 * z, sx + 22 * z, sy + 4 * z);
     } else {
       this.shadowAt(ctx, sx, sy, 20 * z, 5 * z, 0.3 * a);
       this.sprite(ctx, tinted('berry', 0, null, h > 0.5), sx, sy + 4 * z, 46 * z, false, a);
@@ -273,7 +278,7 @@ export class Renderer {
   // ---------------------------------------------------------------- buildings
   building(ctx, b, dim, ui, t, z) {
     const f = HOUSES[b.team], prog = b.built, [name, mul] = BSPR[b.kind] || ['cottage', 1];
-    const c = tinted(name, b.team, 'banner');
+    const c = b.kind === 'mine' ? mineSprite(b.ore || 'stone', b.team) : tinted(name, b.team, 'banner');
     const [bx, by] = this.toScreen(b.tx + b.size, b.ty + b.size);            // bottom corner of the footprint
     const w = b.size * 2 * HW * z * mul, h = c ? (c.height / c.width) * w : 0;
     const dy = by - h + b.size * HH * z * 0.34;
@@ -302,6 +307,9 @@ export class Renderer {
     } else if (!dim) {
       const sm = SMOKE[b.kind];
       if (sm) sm.forEach(([fx, fy], i) => this.smoke(ctx, bx - w / 2 + fx * w, dy + fy * h, z, t, b.id + i));
+      if (b.kind === 'tent') this.pennant(ctx, bx - 2 * z, dy + h * 0.02, z, t, f.primary, f.accent, b.id);
+      if (b.kind === 'mine' && this.game.minersOf(b) > 0) for (let i = 0; i < 3; i++) { const ph = (t * 1.3 + i / 3 + b.id * 0.17) % 1; ctx.fillStyle = `rgba(190,175,140,${0.35 * (1 - ph)})`; ctx.beginPath(); ctx.arc(bx + (ph - 0.4) * 22 * z, by - 26 * z - ph * 18 * z, (2 + ph * 5) * z, 0, 7); ctx.fill(); }
+      if (b.kind === 'foundry' && b.working) { const gx = bx - w * 0.3, gy = dy + h * 0.72, gr = 30 * z, a = 0.5 + Math.sin(t * 8 + b.id) * 0.12; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,160,50,${a})`); g2.addColorStop(1, 'rgba(255,100,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
       if (b.kind === 'forge') { const gx = bx - w * 0.3, gy = dy + h * 0.72, gr = 26 * z, a = 0.42 + Math.sin(t * 9 + b.id) * 0.1 + Math.sin(t * 23) * 0.05; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,170,60,${a})`); g2.addColorStop(1, 'rgba(255,110,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
     }
     if (b.flash > 0 && c) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.7, b.flash * 2); ctx.drawImage(c, bx - w / 2, dy, w, h); ctx.restore(); }
@@ -314,16 +322,31 @@ export class Renderer {
   // ---------------------------------------------------------------- units
   unit(ctx, u, ui, t, z) {
     const st = UNITS[u.kind], [sx, sy] = this.toScreen(u.x, u.y);
-    // face the way it travels on screen; the art looks left
-    if (u._lsx != null && Math.abs(sx - u._lsx) > 0.15) u._rf = sx > u._lsx ? 1 : -1;
-    u._lsx = sx; if (!u._rf) u._rf = u.face >= 0 ? 1 : -1;
-    const moving = u.path.length > 0, flip = u._rf > 0;
+    // turning: the art looks left. Face the way it travels on screen (or toward its work); horizontal turns squash through the
+    // middle, moving up the screen shows its back (darker), moving toward the camera shows it full-on.
+    const moving = u.path.length > 0;
+    const tt = t, dtF = Math.min(0.1, Math.max(0, tt - (u._lt ?? tt))); u._lt = tt;
+    let vx = 0, vy = 0;
+    // direction comes from world motion (the camera may be panning), projected to the screen: right = +x -y, down = +x +y
+    if (u._lx != null && moving && Math.hypot(u.x - u._lx, u.y - u._ly) > 0.004) { const wx = u.x - u._lx, wy = u.y - u._ly; vx = (wx - wy) * HW; vy = (wx + wy) * HH; }
+    else if (!moving) {
+      const k = u.task, tg = k.type === 'gather' ? this.game.resources[k.nodeId] : (k.type === 'mine' || k.type === 'build' || k.type === 'attack' || k.type === 'infiltrate') ? this.game.byId.get(k.buildingId ?? k.targetId) : null;
+      if (tg) { const [tx, ty] = this.toScreen(tg.x + (tg.size ? 0 : 0.5), tg.y + (tg.size ? 0 : 0.5)); vx = tx - sx; vy = ty - sy; }
+    }
+    u._lx = u.x; u._ly = u.y;
+    if (vx || vy) { const m = Math.hypot(vx, vy) || 1; u._dx = (u._dx ?? vx / m) * 0.8 + (vx / m) * 0.2; u._dy = (u._dy ?? vy / m) * 0.8 + (vy / m) * 0.2; }
+    if (u._dx == null) { u._dx = u.face >= 0 ? 0.8 : -0.8; u._dy = 0.2; }
+    const sgn = u._dx > 0.06 ? 1 : u._dx < -0.06 ? -1 : (u._sg || 1); u._sg = sgn;
+    const away = u._dy < -0.42, toward = u._dy > 0.5;
+    const tgtX = sgn * (1 - 0.26 * Math.min(1, Math.abs(u._dy)) ) * (toward ? 1.04 : 1);
+    u._fx = (u._fx ?? tgtX) + (tgtX - (u._fx ?? tgtX)) * Math.min(1, dtF * 16);
+    const flip = u._fx > 0, sxScale = Math.abs(u._fx), light = away ? 0.7 : 1;
     const striking = st.dmg > 0 && u.cooldown > st.cd - 0.25;
-    const working = !moving && (u.task.type === 'gather' || u.task.type === 'build');
+    const working = !moving && (u.task.type === 'gather' || u.task.type === 'build' || u.task.type === 'mine');
     let c, w, h;
     if (u.kind === 'ram') { c = ramSprite(u.team); w = 78 * z; }
-    else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false); w = (c ? c.width / c.height : 1) * 40 * z; }
-    else { c = tinted(u.kind, u.team, 'trim', false); const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh; }
+    else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light); w = (c ? c.width / c.height : 1) * 40 * z; }
+    else { c = tinted(u.kind, u.team, 'trim', false, light); const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh; }
     if (!c) return;
     h = (c.height / c.width) * w;
     const bob = moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
@@ -332,7 +355,7 @@ export class Renderer {
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
     ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
-    if (flip) ctx.scale(-1, 1);
+    ctx.scale(flip ? -sxScale : sxScale, 1);
     const foot = u.kind === 'ram' || u.kind === 'serf' ? 1.0 : 0.9;
     ctx.drawImage(c, -w / 2, -h * foot - bob, w, h);
     if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
@@ -410,7 +433,7 @@ export class Minimap {
       }
       d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
     }
-    for (const n of g.resources) if (n.amount > 0 && n.kind === 'gold' && (!g.fogOn || seen[n.y * W + n.x])) { const o = (n.y * W + n.x) * 4; d[o] = 240; d[o + 1] = 200; d[o + 2] = 70; }
+    for (const n of g.resources) if (n.amount > 0 && (n.kind === 'gold' || MATS.includes(n.kind)) && (!g.fogOn || seen[n.y * W + n.x])) { const o = (n.y * W + n.x) * 4; const col = n.kind === 'gold' ? [240, 200, 70] : n.kind === 'stone' ? [170, 170, 160] : n.kind === 'copper' ? [214, 120, 60] : n.kind === 'iron' ? [120, 140, 170] : n.kind === 'coal' ? [30, 30, 36] : [225, 235, 250]; d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; }
     bc.putImageData(img, 0, 0);
   }
   draw(dt) {
@@ -457,8 +480,8 @@ export function drawVale(canvas, game, { fog = false, poly = null, labels = fals
   }
   for (const n of game.resources) {
     if (n.amount <= 0 || (fog && game.fogOn && !seen[n.y * W + n.x])) continue;
-    ctx.fillStyle = n.kind === 'gold' ? '#f0c84a' : n.kind === 'tree' ? '#1f4a24' : '#b0344f';
-    const r = n.kind === 'gold' ? Math.max(2.2, sx * 0.7) : Math.max(1.2, sx * 0.45);
+    ctx.fillStyle = n.kind === 'gold' ? '#f0c84a' : n.kind === 'tree' ? '#1f4a24' : n.kind === 'berry' ? '#b0344f' : GOOD_COLOR[n.kind] || '#999';
+    const r = n.kind === 'gold' ? Math.max(2.2, sx * 0.7) : MATS.includes(n.kind) ? Math.max(1.8, sx * 0.6) : Math.max(1.2, sx * 0.45);
     ctx.beginPath(); ctx.arc((n.x + 0.5) * sx, (n.y + 0.5) * sy, r, 0, 7); ctx.fill();
   }
   for (const v of game.villages) {

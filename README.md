@@ -28,9 +28,11 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
    - **Spy.** Train a spy at a tavern and right-click the village. Loyalty rises while it is inside, but spies can be caught (sturdier villages watch harder).
    
    Owned villages pay tribute. Loyalty drifts down if your seat is far away, and an enemy keep nearby pulls it the other way.
-4. **Trade.** A market trades with houses you set to *trade* (click their name in the top bar: peace, trade, war) and with villages you own or befriend. Fees rise with distance.
-5. **Fight.** Attacking a house at peace declares war. Destroy a house's hall and keep and it falls.
-6. **Win** by being the last house with a hall or keep, or by holding 65% of the villages for 45 seconds. You lose when your hall and keep are gone.
+4. **Minerals and mines.** Deposits of stone, copper, iron, coal and silver lie in the valley (every hall has stone and two of the four metals near it; the rest must be found or traded for). Raise a **Mine** on a deposit, then assign up to four serfs (select serfs and right-click the mine, or use *Send serfs*). Ore goes straight into your stockpile (shown beside the grain/timber/coin counters). Each good has a value.
+5. **Treaties and trading tents.** Houses you have *met* (seen any of their people or buildings) can be offered a **trade treaty**: click their name in the top bar or use the Trading Tent panel. An AI house answers at once; if an AI offers you one, an Accept/Decline card appears top-right. With a treaty, and a **Trading Tent** on both sides, you can swap any goods at a distance-based fee. Cancelling the treaty ends trade. Markets deal with villages (grain, timber, coin).
+6. **Automatic use.** Stockpiled goods are used by the right building without orders: the **Foundry** smelts iron+coal into steel and copper+coal into fine ware; the **Forge** turns 6 steel into an arms level (max 3: more melee/ranged damage); the **Academy** turns 6 silver into a science level (Husbandry: more grain and gather speed; Masonry: sturdier new buildings; Drill: tougher new units); fine ware keeps villages near a market, tavern or temple content (+30% tribute, loyalty). Stone is also a building material (keep, tower, foundry). Steel and ware can be traded too.
+7. **Fight.** Attacking a house at peace declares war. Destroy a house's hall and keep and it falls.
+8. **Win** by being the last house with a hall or keep, or by holding 65% of the villages for 45 seconds. You lose when your hall and keep are gone.
 
 ### Controls
 
@@ -52,7 +54,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 
 ## Tech tree (short)
 
-Hall → cottage, farm, mill, warehouse, market, barracks, tavern, tower, keep.
+Hall → cottage, farm, mill, warehouse, market, mine, trading tent, foundry, barracks, tavern, tower, keep.
 Barracks → archery range, forge. Keep + barracks → stable. Keep → academy, temple. Forge + academy → workshop (rams).
 
 Buildings have jobs, none are cosmetic: forge adds damage, mill and warehouse boost deliveries, keep/temple/tavern/academy/tower pull village loyalty, tavern trains spies, academy trains scholars and unlocks the workshop.
@@ -83,7 +85,7 @@ legacy/python/    the first pygame prototype, kept for reference (not the playab
 
 ## Multiplayer note (not shipped yet)
 
-The structure is host-authoritative. `Game` is the only thing that mutates state; it has no DOM access and runs under Node. Every player command is an *intent* (`move`, `attack`, `gather`, `place`, `train`, `pillage`, `infiltrate`, `trade`, `relation`, `rally`, `context` ...), sent with `host.send(intent)`. Today `LocalHost` applies it to an in-process `Game`.
+The structure is host-authoritative. `Game` is the only thing that mutates state; it has no DOM access and runs under Node. Every player command is an *intent* (`move`, `attack`, `gather`, `place`, `train`, `pillage`, `infiltrate`, `trade`, `relation`, `respond`, `mine`, `unmine`, `rally`, `context` ...), sent with `host.send(intent)`. Today `LocalHost` applies it to an in-process `Game`.
 
 To go online: run a `Game` on a server, let each client's `SocketClient.send` forward intents tagged with its team, apply them with `game.applyIntent`, tick on the server, and broadcast `game.snapshot()` (compact JSON of players, units, buildings, villages and relations) a few times a second. Clients render the latest snapshot instead of the local `Game`. There is no lockstep and no prediction yet; the AI would simply run on the host for empty seats.
 

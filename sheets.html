@@ -9,7 +9,7 @@
 import { loadArt, tinted, ramSprite } from './js/art.js';
 import { UNITS, BUILDINGS, HOUSES } from './js/config.js';
 await loadArt();
-const BSPR = { hall: 'hall', keep: 'keep_blue', cottage: 'cottage', farm: 'farm', mill: 'mill', warehouse: 'warehouse', market: 'market', forge: 'forge', workshop: 'workshop', tavern: 'tavern', academy: 'academy', temple: 'temple', barracks: 'barracks', archery: 'archery', stable: 'stable', tower: 'tower' };
+const BSPR = { hall: 'hall', keep: 'keep_blue', cottage: 'cottage', farm: 'farm', mill: 'mill', warehouse: 'warehouse', market: 'market', forge: 'forge', workshop: 'workshop', tavern: 'tavern', academy: 'academy', temple: 'temple', barracks: 'barracks', archery: 'archery', stable: 'stable', tower: 'tower', tent: 'market', foundry: 'forge' };
 const wood = (c, title, sub) => {
   const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, '#2b2013'); g.addColorStop(1, '#130d06');
   x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);

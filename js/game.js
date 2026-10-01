@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, TERRITORY,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
-  VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES,
+  VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -54,8 +54,11 @@ export class Game {
 
     const n = this.houses;
     this.players = Array.from({ length: n }, (_, i) => ({
-      team: i, name: HOUSES[i].name, ...START_RES, alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55,
+      team: i, name: HOUSES[i].name, ...START_RES, alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, offerT: 60 + i * 20,
     }));
+    this.known = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
+    this.offers = []; // pending treaty offers { from, to, state, t }
+    this.snub = Array.from({ length: n }, () => Array(n).fill(-999)); // when a house last turned another's offer down
     this.rel = Array.from({ length: n }, () => Array(n).fill(DEFAULT_RELATION));
     this.relSince = Array.from({ length: n }, () => Array(n).fill(0));
     this.seen = Array.from({ length: n }, () => new Uint8Array(this.W * this.H));
@@ -87,6 +90,7 @@ export class Game {
 
   addUnit(kind, team, x, y) {
     const u = makeUnit(this.nid(), kind, team, x, y);
+    if ((this.players?.[team]?.sci || 0) >= 3) { u.maxHp = Math.round(u.maxHp * 1.15); u.hp = u.maxHp; } // Drill
     this.units.push(u);
     this.byId.set(u.id, u);
     return u;
@@ -132,11 +136,12 @@ export class Game {
   }
   canAfford(team, cost) {
     const p = this.players[team];
-    return p.food >= cost.food && p.wood >= cost.wood && p.gold >= cost.gold;
+    for (const k in cost) if (cost[k] && (p[k] || 0) < cost[k]) return false;
+    return true;
   }
   pay(team, cost, sign = 1) {
     const p = this.players[team];
-    p.food -= cost.food * sign; p.wood -= cost.wood * sign; p.gold -= cost.gold * sign;
+    for (const k in cost) if (cost[k]) p[k] -= cost[k] * sign;
   }
   seatOf(team) {
     return this.buildings.find((b) => b.team === team && b.kind === 'keep' && b.hp > 0) || this.buildings.find((b) => b.team === team && b.kind === 'hall' && b.hp > 0);
@@ -345,7 +350,10 @@ export class Game {
       case 'infiltrate': return this.cmdInfiltrate(mine(), this.byId.get(it.villageId ?? it.targetId));
       case 'gather': return this.cmdGather(mine(), this.resources[it.nodeId]);
       case 'build': return this.cmdBuild(mine(), this.byId.get(it.buildingId));
-      case 'place': return this.place(team, it.kind, it.tx, it.ty, it.ids);
+      case 'place': return this.place(team, it.kind, it.tx, it.ty, it.ids, it.nodeId ?? null);
+      case 'mine': return this.cmdMine(mine(), this.byId.get(it.buildingId));
+      case 'unmine': return this.unassignMine(team, it.buildingId);
+      case 'respond': return this.respondOffer(team, it.from, !!it.accept);
       case 'train': return this.train(team, it.buildingId, it.kind);
       case 'cancel': return this.cancelTrain(team, it.buildingId, it.index);
       case 'rally': return this.setRally(team, it.buildingId, it.x, it.y, it.nodeId);
@@ -376,6 +384,13 @@ export class Game {
     if (b && b.team === team && b.built < 1) {
       const serfs = units.filter((u) => u.kind === 'serf');
       if (serfs.length) { this.cmdBuild(serfs, b); return true; }
+    }
+    if (b && b.team === team && b.kind === 'mine') {
+      const serfs = units.filter((u) => u.kind === 'serf');
+      if (serfs.length) this.cmdMine(serfs, b);
+      const rest = units.filter((u) => u.kind !== 'serf');
+      if (rest.length) this.cmdMove(rest, x, y);
+      return true;
     }
     if (b && b.team === team && b.built >= 1) {
       const carriers = units.filter((u) => u.kind === 'serf' && u.carry && DROP_OFF[b.kind]?.includes(u.carry.kind));
@@ -430,6 +445,13 @@ export class Game {
   }
   cmdGather(units, node) {
     if (!node || node.amount <= 0) return false;
+    if (MATS.includes(node.kind)) {
+      const mine = this.buildings.find((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(node.id));
+      if (mine && mine.team === units[0]?.team) return this.cmdMine(units, mine);
+      const t = units[0]?.team;
+      if (t === PLAYER) this.log(t, `Raise a Mine on the ${GOOD_LABEL[node.kind].toLowerCase()} deposit, then assign serfs.`, 'warn');
+      return false;
+    }
     for (const u of units) {
       if (u.kind !== 'serf') continue;
       const res = NODE_RES[node.kind];
@@ -438,6 +460,53 @@ export class Game {
       this.setPath(u, node.x + 0.5, node.y + 0.5);
     }
     return true;
+  }
+  minersOf(b) {
+    let n = 0;
+    for (const u of this.units) if (u.hp > 0 && u.task.type === 'mine' && u.task.buildingId === b.id) n++;
+    return n;
+  }
+  cmdMine(units, b) {
+    if (!b || b.type !== 'building' || b.kind !== 'mine' || b.hp <= 0) return false;
+    let free = MINE_MAX_WORKERS - this.minersOf(b), sent = 0;
+    for (const u of units) {
+      if (u.kind !== 'serf') continue;
+      if (u.task.type === 'mine' && u.task.buildingId === b.id) continue;
+      if (free <= 0) break;
+      if (b.built < 1) { this.cmdBuild([u], b); u.afterBuild = { mineId: b.id }; free--; sent++; continue; }
+      u.carry = null;
+      u.task = { type: 'mine', buildingId: b.id };
+      this.setPathToEntity(u, b);
+      free--; sent++;
+    }
+    if (!sent && units[0]?.team === PLAYER) this.log(PLAYER, `That mine already has ${MINE_MAX_WORKERS} diggers.`, 'warn');
+    return sent > 0;
+  }
+  unassignMine(team, buildingId) {
+    const b = this.byId.get(buildingId);
+    if (!b || b.team !== team) return false;
+    for (const u of this.units) if (u.task.type === 'mine' && u.task.buildingId === b.id) { u.task = { type: 'idle' }; u.path = []; }
+    return true;
+  }
+  doMine(u, dt) {
+    const b = this.byId.get(u.task.buildingId);
+    if (!b || b.hp <= 0 || b.built < 1) { u.task = { type: 'idle' }; return; }
+    const node = b.nodeIds.map((id) => this.resources[id]).find((n) => n.amount > 0);
+    if (!node) { u.task = { type: 'idle' }; u.path = []; if (u.team === PLAYER) this.log(PLAYER, 'The seam is spent. The diggers stand idle.', 'warn'); return; }
+    if (distTo(u.x, u.y, b) > 1.3) {
+      if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, b);
+      this.follow(u, dt);
+      return;
+    }
+    u.path = [];
+    const p = this.players[u.team];
+    const take = Math.min(node.amount, MINE_RATE[node.kind] * dt * (p.sci >= 1 ? 1.1 : 1));
+    node.amount -= take;
+    p[node.kind] += take;
+    u.dig = (u.dig || 0) + take;
+    if (u.dig >= 5 && u.team === PLAYER) { u.dig = 0; this.floaters.push({ x: b.x, y: b.y - 0.8, text: '+5', res: node.kind, age: 0 }); } else if (u.dig >= 5) u.dig = 0;
+    if (node.amount <= 0) this.resAt[node.y * this.W + node.x] = -1;
+    u.face = b.x >= u.x ? 1 : -1;
   }
   cmdBuild(units, b) {
     if (!b || b.type !== 'building' || b.built >= 1) return false;
@@ -462,7 +531,15 @@ export class Game {
       const i = y * W + x, t = this.terrain[i];
       if (t === T_WATER || t === T_FORD) return { ok: false, reason: 'Cannot build on water' };
       if (this.block[i]) return { ok: false, reason: 'Blocked' };
-      if (this.resAt[i] >= 0 && this.resources[this.resAt[i]].amount > 0) return { ok: false, reason: 'Blocked by resources' };
+      if (this.resAt[i] >= 0 && this.resources[this.resAt[i]].amount > 0) {
+        const n = this.resources[this.resAt[i]];
+        if (!(s.onDeposit && MATS.includes(n.kind))) return { ok: false, reason: 'Blocked by resources' };
+      }
+    }
+    if (s.onDeposit) {
+      const nodes = this.depositsUnder(tx, ty, s.size);
+      if (!nodes.length) return { ok: false, reason: 'A mine must stand on a mineral deposit' };
+      if (nodes.some((n) => n.kind !== nodes[0].kind)) return { ok: false, reason: 'Mixed deposits: cover one kind of ore' };
     }
     const cx = tx + s.size / 2, cy = ty + s.size / 2;
     const inRange = this.buildings.some((b) => b.team === team && b.hp > 0 && b.built >= 1 && TERRITORY[b.kind] && Math.hypot(b.x - cx, b.y - cy) <= TERRITORY[b.kind]);
@@ -471,12 +548,37 @@ export class Game {
     return { ok: true };
   }
 
-  place(team, kind, tx, ty, ids = null) {
+  depositsUnder(tx, ty, size) {
+    const out = [];
+    for (let y = ty; y < ty + size; y++) for (let x = tx; x < tx + size; x++) {
+      const k = this.resAt[y * this.W + x];
+      if (k >= 0 && MATS.includes(this.resources[k].kind) && this.resources[k].amount > 0) out.push(this.resources[k]);
+    }
+    return out;
+  }
+  // best footprint for a mine that covers this deposit (try each way the 2x2 can sit over it)
+  mineSpot(team, node) {
+    const sz = BUILDINGS.mine.size;
+    let best = null, bn = -1;
+    for (let oy = 0; oy < sz; oy++) for (let ox = 0; ox < sz; ox++) {
+      const tx = node.x - ox, ty = node.y - oy;
+      if (!this.canPlace(team, 'mine', tx, ty).ok) continue;
+      const n = this.depositsUnder(tx, ty, sz).length;
+      if (n > bn) { bn = n; best = [tx, ty]; }
+    }
+    return best;
+  }
+
+  place(team, kind, tx, ty, ids = null, nodeId = null) {
+    if (kind === 'mine' && nodeId != null) { const sp = this.resources[nodeId] ? this.mineSpot(team, this.resources[nodeId]) : null; if (sp) [tx, ty] = sp; }
     const chk = this.canPlace(team, kind, tx, ty);
     if (!chk.ok) { if (team === PLAYER) this.log(team, chk.reason, 'warn'); return null; }
     const s = BUILDINGS[kind];
     this.pay(team, s.cost);
     const b = this.addBuilding(kind, team, tx, ty, false);
+    const pl = this.players[team];
+    if (pl.sci >= 2) { b.maxHp *= 1.15; b.hp *= 1.15; } // Masonry
+    if (s.onDeposit) { b.nodeIds = this.depositsUnder(tx, ty, s.size).map((n) => n.id); b.nodeIds.forEach((id) => { this.resources[id].covered = true; }); b.ore = this.resources[b.nodeIds[0]].kind; }
     this.recomputeWalk();
     // shove anyone standing in the footprint out of it, and re-route walkers whose route crosses it
     for (const u of this.units) {
@@ -494,6 +596,7 @@ export class Game {
         .sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y)).slice(0, 2);
     }
     this.cmdBuild(builders, b);
+    if (s.onDeposit) builders.forEach((u) => { u.afterBuild = { mineId: b.id }; });
     return b;
   }
 
@@ -524,9 +627,17 @@ export class Game {
     return true;
   }
 
+  // ---- trade -------------------------------------------------------------------------------
+  // Houses trade through Trading Tents (both sides need a finished one) and only under a trade treaty with a house they know.
+  // Villages trade grain, timber and coin through a Market or a Tent.
+  tentOf(team) { return this.buildings.find((b) => b.team === team && b.kind === 'tent' && b.built >= 1 && b.hp > 0); }
+  stallOf(team) { return this.tentOf(team) || this.buildings.find((b) => b.team === team && b.kind === 'market' && b.built >= 1 && b.hp > 0); }
   tradePartners(team) {
     const out = [];
-    this.players.forEach((p, t) => { if (t !== team && p.alive && this.rel[team][t] === 'trade') out.push({ type: 'house', id: t, name: p.name, seat: this.seatOf(t) }); });
+    this.players.forEach((p, t) => {
+      if (t === team || !p.alive || this.rel[team][t] !== 'trade' || !this.known[team][t]) return;
+      out.push({ type: 'house', id: t, name: p.name, seat: this.tentOf(t) || this.seatOf(t), tent: !!this.tentOf(t) });
+    });
     for (const v of this.villages) {
       const ok = v.owner === team || (v.owner === -1 && v.loyalty >= 40) || (v.owner >= 0 && v.owner !== team && this.rel[team][v.owner] === 'trade');
       if (ok) out.push({ type: 'village', id: v.id, name: v.name, seat: v });
@@ -534,34 +645,39 @@ export class Game {
     return out;
   }
   tradeQuote(team, partner, give, get, amount) {
-    const mk = this.buildings.find((b) => b.team === team && b.kind === 'market' && b.built >= 1 && b.hp > 0);
-    if (!mk || !partner?.seat || give === get) return null;
-    const d = Math.hypot(mk.x - partner.seat.x, mk.y - partner.seat.y);
-    const rel = partner.type === 'house' ? 0.08 : 0.04;
-    const fee = Math.max(0.1, Math.min(0.55, 0.3 - rel + d / 320));
+    if (!partner?.seat || give === get || !ALL_GOODS.includes(give) || !ALL_GOODS.includes(get)) return null;
+    const mine = partner.type === 'house' ? this.tentOf(team) : this.stallOf(team);
+    if (!mine) return null;
+    if (partner.type === 'house' && !partner.tent) return null;
+    if (partner.type === 'village' && (!RES.includes(give) || !RES.includes(get))) return null;
+    const d = Math.hypot(mine.x - partner.seat.x, mine.y - partner.seat.y);
+    const fee = partner.type === 'house' ? Math.max(0.08, Math.min(0.3, 0.06 + d / 500)) : Math.max(0.1, Math.min(0.55, 0.26 + d / 320));
     const got = Math.floor((amount * RES_VALUE[give] / RES_VALUE[get]) * (1 - fee));
     return { got, fee, dist: d };
   }
   trade(team, partnerRef, give, get, amount) {
     const say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
-    if (!RES.includes(give) || !RES.includes(get) || give === get || !(amount > 0)) return null;
+    amount = Math.floor(amount);
+    if (!ALL_GOODS.includes(give) || !ALL_GOODS.includes(get) || give === get || !(amount > 0)) return null;
     const partner = this.tradePartners(team).find((p) => p.type === partnerRef?.type && p.id === partnerRef?.id);
-    if (!partner) return say('No trade partner there (needs relation: trade).');
+    if (!partner) return say('No trade partner there: you need a known house under a trade treaty.');
+    if (partner.type === 'house' && !partner.tent) return say(`${partner.name} has no Trading Tent yet.`);
     const quote = this.tradeQuote(team, partner, give, get, amount);
-    if (!quote) return say('Build a Market to trade.');
+    if (!quote) return say(partner.type === 'house' ? 'Raise a Trading Tent to trade with houses.' : 'Villages deal in grain, timber and coin; raise a Market or Tent.');
     const me = this.players[team];
-    if (me[give] < amount) return say('Not enough to give.');
+    if ((me[give] || 0) < amount) return say('Not enough to give.');
     if (quote.got < 1) return say('Too little to trade.');
     if (partner.type === 'house') {
       const them = this.players[partner.id];
-      if (them[get] < quote.got) return say(`${them.name} cannot cover that.`);
-      them[get] -= quote.got; them[give] += amount;
+      if ((them[get] || 0) < quote.got) return say(`${them.name} cannot cover that.`);
+      them[get] -= quote.got; them[give] = (them[give] || 0) + amount;
+      if (partner.id === PLAYER) this.log(PLAYER, `${me.name} traded ${amount} ${give} for ${quote.got} ${get}.`, 'info');
     } else {
       const v = this.byId.get(partner.id);
       if ((v.stores[get] || 0) < quote.got) return say(`${v.name} cannot cover that.`);
       v.stores[get] -= quote.got; v.stores[give] = (v.stores[give] || 0) + amount;
     }
-    me[give] -= amount; me[get] += quote.got;
+    me[give] -= amount; me[get] = (me[get] || 0) + quote.got;
     if (team === PLAYER) this.log(team, `Traded ${amount} ${give} for ${quote.got} ${get} with ${partner.name}.`, 'info');
     return quote;
   }
@@ -583,17 +699,84 @@ export class Game {
       }
     }
   }
-  // player-facing: peace/trade must be accepted by the AI house; war needs nobody's consent
+  // Treaties. Peace/trade need a house you have met; the other side must grant it (AI houses answer at once, a human gets an offer to accept).
+  meet(a, b) { this.known[a][b] = this.known[b][a] = 1; }
   proposeRelation(a, b, state) {
     if (!this.alive(b) || a === b) return false;
     if (state === 'war') { this.setRelation(a, b, 'war'); return true; }
     if (this.rel[a][b] === state) return true;
-    if (this.players[b].ai && this.rel[a][b] === 'war' && this.time - this.relSince[a][b] < 60) {
+    if (state === 'peace' && this.rel[a][b] === 'trade') { this.setRelation(a, b, 'peace'); return true; } // either side may cancel a treaty
+    if (!this.known[a][b]) { if (a === PLAYER) this.log(PLAYER, 'You have not met that house yet. Scout toward them.', 'warn'); return false; }
+    if (this.rel[a][b] === 'war' && this.time - this.relSince[a][b] < 60) {
       if (a === PLAYER) this.log(PLAYER, `${this.players[b].name} will not parley yet.`, 'warn');
       return false;
     }
-    this.setRelation(a, b, state);
+    // a pending offer from them to us is simply accepted
+    const back = this.offers.findIndex((o) => o.from === b && o.to === a && o.state === state);
+    if (back >= 0) return this.respondOffer(a, b, true);
+    if (this.players[b].ai) {
+      if (a === PLAYER && this.time - this.snub[b][a] < 45 && state === 'trade') { this.log(PLAYER, `${this.players[b].name} is still sulking over your last offer.`, 'warn'); return false; }
+      this.setRelation(a, b, state);
+      return true;
+    }
+    if (this.offers.some((o) => o.from === a && o.to === b && o.state === state)) return false;
+    this.offers.push({ from: a, to: b, state, t: this.time });
+    this.log(b === PLAYER ? PLAYER : -1, `${this.players[a].name} offers a ${state === 'trade' ? 'trade treaty' : 'peace'}.`, 'info');
+    return 'pending';
+  }
+  respondOffer(team, from, accept) {
+    const i = this.offers.findIndex((o) => o.to === team && o.from === from);
+    if (i < 0) return false;
+    const [o] = this.offers.splice(i, 1);
+    if (!accept) { this.snub[team][from] = this.time; if (team === PLAYER) this.log(PLAYER, `You decline ${this.players[from].name}.`, 'info'); return false; }
+    if (!this.alive(from)) return false;
+    this.setRelation(o.from, o.to, o.state);
     return true;
+  }
+
+  // ---- stockpile economy: smelting, arms, science, contented villages ----------------------
+  smelt(b, p, dt) {
+    if (!b.job) {
+      const opts = Object.entries(SMELT).filter(([, r]) => Object.entries(r.in).every(([k, n]) => p[k] >= n)).sort((x, y) => p[x[0]] - p[y[0]]);
+      if (!opts.length) { b.working = false; return; }
+      const [kind, r] = opts[0];
+      for (const [k, n] of Object.entries(r.in)) p[k] -= n;
+      b.job = { kind, t: 0 };
+    }
+    b.working = true;
+    b.job.t += dt;
+    if (b.job.t >= SMELT[b.job.kind].time) {
+      p[b.job.kind] += 1;
+      if (b.team === PLAYER) this.floaters.push({ x: b.x, y: b.y - 1, text: `+1`, res: b.job.kind, age: 0 });
+      b.job = null;
+    }
+  }
+  updateEconomy(dt) {
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      // forge: steel -> arms levels
+      if (p.arms < 3 && p.steel >= ARMS_STEEL && this.hasBuilding(p.team, 'forge')) {
+        p.armsT += dt;
+        if (p.armsT >= 14) { p.armsT = 0; p.steel -= ARMS_STEEL; p.arms++; this.log(p.team === PLAYER ? PLAYER : -1, `${p.name}'s forges turn out better arms (level ${p.arms}).`, p.team === PLAYER ? 'good' : 'info'); }
+      } else p.armsT = 0;
+      // academy: silver -> science
+      if (p.sci < 3 && p.silver >= SCI_SILVER && this.hasBuilding(p.team, 'academy')) {
+        p.sciT += dt;
+        if (p.sciT >= 16) { p.sciT = 0; p.silver -= SCI_SILVER; p.sci++; this.log(p.team === PLAYER ? PLAYER : -1, `${p.name}'s academy masters ${SCIENCE[p.sci - 1]}.`, p.team === PLAYER ? 'good' : 'info'); }
+      } else p.sciT = 0;
+    }
+    // villages: a ware from the stockpile keeps a village content while a market, tavern or temple stands near it
+    for (const v of this.villages) {
+      if (v.joyT > 0) v.joyT -= dt;
+      if (v.owner < 0) { v.joyT = 0; continue; }
+      if (!(v.joyT > 0)) {
+        const p = this.players[v.owner];
+        if (p.ware >= 1 && this.buildings.some((b) => b.team === v.owner && b.built >= 1 && b.hp > 0 && (b.kind === 'market' || b.kind === 'tavern' || b.kind === 'temple') && Math.hypot(b.x - v.x, b.y - v.y) <= 20)) {
+          p.ware -= 1; v.joyT = WARE_JOY.secs;
+          if (v.owner === PLAYER) this.log(PLAYER, `${v.name} rejoices over fine ware.`, 'good');
+        }
+      }
+    }
   }
 
   // ------------------------------------------------------------------ main tick
@@ -603,6 +786,7 @@ export class Game {
     this.visT -= dt;
     if (this.visT <= 0) { this.updateVisibility(); this.visT = 0.25; }
     this.updateBuildings(dt);
+    this.updateEconomy(dt);
     this.updateVillages(dt);
     this.updateUnits(dt);
     this.updateProjectiles(dt);
@@ -618,7 +802,8 @@ export class Game {
       if (b.built < 1) continue;
       const p = this.players[b.team];
       switch (b.kind) {
-        case 'farm': p.food += 0.8 * dt * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1); break;
+        case 'farm': p.food += 0.8 * dt * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (p.sci >= 1 ? 1.15 : 1); break;
+        case 'foundry': this.smelt(b, p, dt); break;
         case 'tavern': p.gold += 0.35 * dt; break;
         case 'market': p.gold += 0.4 * dt; break;
         case 'temple': if (this.hasBuilding(b.team, 'academy')) p.gold += 0.3 * dt; break;
@@ -709,7 +894,8 @@ export class Game {
           this.log(lost, `${v.name} slips from its lord.`, 'warn');
         } else {
           const spec = VILLAGE_KINDS[v.kind].tribute, rate = 0.4 + (0.8 * v.loyalty) / 100, p = this.players[v.owner];
-          p.food += spec.food * rate * dt; p.wood += spec.wood * rate * dt; p.gold += spec.gold * rate * dt;
+          const joy = v.joyT > 0 ? 1.3 : 1; p.food += spec.food * rate * joy * dt; p.wood += spec.wood * rate * joy * dt; p.gold += spec.gold * rate * joy * dt;
+          if (v.joyT > 0) v.loyalty = Math.min(100, v.loyalty + 0.5 * dt);
         }
       }
     }
@@ -739,6 +925,7 @@ export class Game {
         case 'move': if (!this.follow(u, dt)) u.task = { type: 'idle' }; break;
         case 'attack': this.doAttack(u, s, dt); break;
         case 'gather': this.doGather(u, dt); break;
+        case 'mine': this.doMine(u, dt); break;
         case 'return': this.doReturn(u, dt); break;
         case 'build': this.doBuild(u, dt); break;
         case 'infiltrate': this.doInfiltrate(u, dt); break;
@@ -776,8 +963,9 @@ export class Game {
     if (u.cooldown > 0) return;
     u.cooldown = s.cd;
     let dmg = s.dmg;
-    if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3;
-    if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2;
+    const arms = this.players[u.team].arms || 0;
+    if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
+    if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
     if (t.type === 'building') dmg *= s.bld;
     if (s.range > 1.6) this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team });
@@ -845,7 +1033,7 @@ export class Game {
       return;
     }
     u.path = [];
-    const take = Math.min(GATHER_RATE[res] * dt, node.amount, CARRY_CAP - (u.carry?.amount || 0));
+    const take = Math.min(GATHER_RATE[res] * dt * (this.players[u.team].sci >= 1 ? 1.1 : 1), node.amount, CARRY_CAP - (u.carry?.amount || 0));
     node.amount -= take;
     if (!u.carry) u.carry = { kind: res, amount: 0 };
     u.carry.amount += take;
@@ -883,6 +1071,11 @@ export class Game {
       let nxt = next;
       if (!nxt && b && b.built >= 1 && b.team === u.team) nxt = this.buildings.find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
       if (nxt) { u.task = { type: 'build', targetId: nxt.id }; this.setPathToEntity(u, nxt); return; }
+      if (u.afterBuild?.mineId != null) {
+        const m = this.byId.get(u.afterBuild.mineId); u.afterBuild = null;
+        if (m && m.hp > 0 && m.built >= 1 && this.cmdMine([u], m)) return;
+        u.task = { type: 'idle' }; return;
+      }
       const back = u.afterBuild != null ? this.resources[u.afterBuild.nodeId] : null;
       u.afterBuild = null;
       if (back && back.amount > 0) { u.task = { type: 'gather', nodeId: back.id }; this.setPath(u, back.x + 0.5, back.y + 0.5); } else u.task = { type: 'idle' };
@@ -957,6 +1150,18 @@ export class Game {
       for (const b of this.buildings) if (b.team === t && b.hp > 0) mark(b.x, b.y, BUILDINGS[b.kind].sight);
       for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, 6);
     }
+    // meeting: a house is "known" once any of its people or buildings has been in sight (mutual: they have seen you too)
+    for (let a = 0; a < this.houses; a++) for (let b = 0; b < this.houses; b++) {
+      if (a === b || this.known[a][b]) continue;
+      if (!this.fogOn) { this.meet(a, b); continue; }
+      const va = this.vis[a];
+      const hit = this.units.some((u) => u.team === b && u.hp > 0 && va[Math.floor(u.y) * W + Math.floor(u.x)] === 1)
+        || this.buildings.some((o) => o.team === b && o.hp > 0 && va[Math.floor(o.y) * W + Math.floor(o.x)] === 1);
+      if (hit) {
+        this.meet(a, b);
+        if (a === PLAYER || b === PLAYER) this.log(PLAYER, `You have met ${this.players[a === PLAYER ? b : a].name}. Treaties are now possible.`, 'good');
+      }
+    }
   }
 
   // ------------------------------------------------------------------ cleanup, elimination, victory
@@ -1014,9 +1219,10 @@ export class Game {
   snapshot() {
     return {
       time: this.time, seed: this.seed, outcome: this.outcome, rel: this.rel,
-      players: this.players.map((p) => ({ team: p.team, name: p.name, food: p.food | 0, wood: p.wood | 0, gold: p.gold | 0, alive: p.alive })),
+      players: this.players.map((p) => { const o = { team: p.team, name: p.name, alive: p.alive, arms: p.arms, sci: p.sci }; for (const k of ALL_GOODS) o[k] = (p[k] || 0) | 0; return o; }),
+      known: this.known, offers: this.offers,
       units: this.units.map((u) => ({ id: u.id, k: u.kind, t: u.team, x: +u.x.toFixed(2), y: +u.y.toFixed(2), hp: u.hp | 0 })),
-      buildings: this.buildings.map((b) => ({ id: b.id, k: b.kind, t: b.team, tx: b.tx, ty: b.ty, hp: b.hp | 0, built: +b.built.toFixed(2) })),
+      buildings: this.buildings.map((b) => ({ id: b.id, k: b.kind, t: b.team, tx: b.tx, ty: b.ty, hp: b.hp | 0, built: +b.built.toFixed(2), nodeIds: b.nodeIds })),
       villages: this.villages.map((v) => ({ id: v.id, o: v.owner, loy: v.loyalty | 0, pro: v.protection | 0 })),
     };
   }

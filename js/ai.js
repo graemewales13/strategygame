@@ -2,11 +2,11 @@
 // They start with a hall and two serfs only: no keep, no army. They train serfs, gather, build in a fixed order,
 // raise a keep toward the nearest free village, contest villages, send a spy, then eventually go to war.
 
-import { BUILDINGS, UNITS, NODE_RES, PLAYER } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS } from './config.js';
 
 const PLAN = [
-  ['cottage', 1], ['farm', 1], ['barracks', 1], ['cottage', 2], ['mill', 1], ['keep', 1], ['cottage', 3], ['archery', 1],
-  ['farm', 2], ['forge', 1], ['tavern', 1], ['cottage', 4], ['stable', 1], ['temple', 1], ['academy', 1], ['cottage', 5],
+  ['cottage', 1], ['farm', 1], ['barracks', 1], ['mine', 1], ['cottage', 2], ['mill', 1], ['keep', 1], ['cottage', 3], ['archery', 1],
+  ['farm', 2], ['mine', 2], ['forge', 1], ['tent', 1], ['tavern', 1], ['mine', 3], ['foundry', 1], ['cottage', 4], ['stable', 1], ['temple', 1], ['academy', 1], ['cottage', 5],
   ['tower', 1], ['market', 1], ['workshop', 1], ['farm', 3], ['cottage', 6], ['cottage', 7],
 ];
 
@@ -43,15 +43,51 @@ function think(game, team, p) {
     if (needCottage && serfs.length) next = 'cottage';
     else {
       for (const [kind, n] of PLAN) {
+        if (kind === 'mine' && p.noMine) continue;
         if (count(game, team, kind) >= n) continue;
         if (BUILDINGS[kind].requires.some((r) => !game.hasBuilding(team, r))) continue;
         next = kind;
         break;
       }
     }
-    if (next && game.canAfford(team, BUILDINGS[next].cost)) {
+    if (next === 'keep' && p.noMine && p.stone < 40) p.stone += 40; // no seam within reach: a stone caravan arrives
+    if (next === 'mine') {
+      if (game.canAfford(team, BUILDINGS.mine.cost)) {
+        const node = pickDeposit(game, team, seat);
+        if (!node) p.noMine = true; else game.place(team, 'mine', 0, 0, null, node.id);
+      }
+    } else if (next && game.canAfford(team, BUILDINGS[next].cost)) {
       const spot = findSpot(game, team, seat, next);
       if (spot) game.place(team, next, spot[0], spot[1]);
+    }
+
+    // 2b. diggers for every finished mine
+    for (const m of game.buildings) {
+      if (m.team !== team || m.kind !== 'mine' || m.built < 1 || m.hp <= 0) continue;
+      const glut = p[m.ore] > (m.ore === 'stone' ? 120 : 220);
+      if (glut) { for (const u of serfs) if (u.task.type === 'mine' && u.task.buildingId === m.id) { u.task = { type: 'idle' }; u.path = []; } continue; }
+      const want = Math.min(MINE_MAX_WORKERS, t > 240 ? 3 : 2);
+      if (game.minersOf(m) >= want || serfs.length < 6) continue;
+      const free = serfs.filter((u) => u.task.type === 'gather' || u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(c.x - m.x, c.y - m.y))[0];
+      if (free) game.cmdMine([free], m);
+    }
+  }
+
+  // 2c. treaties and trade: offer a trade treaty to houses we know; swap surplus ore with other rival houses
+  p.offerT -= 1.5; p.tradeT = (p.tradeT ?? 40) - 1.5;
+  if (game.tentOf(team)) {
+    if (p.offerT <= 0) {
+      p.offerT = 90;
+      for (const q of game.players) if (q.alive && q.team !== team && game.known[team][q.team] && game.rel[team][q.team] === 'peace' && !(q.team === PLAYER && game.offers.some((o) => o.from === team && o.to === PLAYER))) { game.proposeRelation(team, q.team, 'trade'); break; }
+    }
+    if (p.tradeT <= 0) {
+      p.tradeT = 40;
+      const surplus = MATS.filter((g) => p[g] > 70).sort((a, c) => p[c] - p[a])[0];
+      const need = ['iron', 'coal', 'silver', 'stone', 'copper'].find((g) => g !== surplus && p[g] < 15 && (g !== 'iron' && g !== 'coal' || game.hasBuilding(team, 'foundry')) && (g !== 'silver' || game.hasBuilding(team, 'academy')));
+      if (surplus && need) for (const pt of game.tradePartners(team)) {
+        if (pt.type !== 'house' || pt.id === PLAYER || !pt.tent) continue;
+        if (game.players[pt.id][need] >= 20 && game.trade(team, { type: 'house', id: pt.id }, surplus, need, Math.min(40, p[surplus] - 40))) break;
+      }
     }
   }
 
@@ -117,7 +153,7 @@ function think(game, team, p) {
       if (!q.alive || q.team === team) continue;
       const s = game.seatOf(q.team);
       if (!s) continue;
-      const d = Math.hypot(s.x - seat.x, s.y - seat.y);
+      const d = Math.hypot(s.x - seat.x, s.y - seat.y) + (game.rel[team][q.team] === 'trade' ? 500 : 0); // trade partners are the last to be attacked
       if (d < bd) { bd = d; target = q; }
     }
     if (target) {
@@ -133,6 +169,18 @@ function think(game, team, p) {
     // return stragglers to the hall
     for (const u of army) if (u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) > 12) game.cmdMove([u], seat.x + (Math.random() - 0.5) * 4, seat.y + 4);
   }
+}
+
+// nearest unmined deposit inside our territory, preferring ores we do not already dig
+function pickDeposit(game, team, seat) {
+  const order = ['stone', 'iron', 'coal', 'silver', 'copper'];
+  const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine').map((b) => b.ore));
+  for (const ore of order) {
+    if (have.has(ore)) continue;
+    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < 16).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
+    for (const n of cands) if (game.mineSpot(team, n)) return n;
+  }
+  return null;
 }
 
 function queued(game, team, kind) {

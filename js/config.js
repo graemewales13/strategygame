@@ -25,12 +25,34 @@ export const T_FORD = 3; // wooden ford / bridge across the river: walkable
 // Resources. value is used by markets (coin is worth more than grain or timber).
 export const RES = ['food', 'wood', 'gold'];
 export const RES_LABEL = { food: 'Grain', wood: 'Timber', gold: 'Coin' };
-export const RES_VALUE = { food: 1, wood: 1, gold: 2 };
+export const RES_VALUE = { food: 1, wood: 1, gold: 2, stone: 1.5, copper: 2.2, iron: 3, coal: 2, silver: 5, steel: 8, ware: 7 };
+// Minerals: mined from deposits by serfs assigned to a Mine, kept in the house stockpile, tradeable between Trading Tents.
+export const MATS = ['stone', 'copper', 'iron', 'coal', 'silver'];
+export const PROCESSED = ['steel', 'ware']; // made by a Foundry from raw minerals
+export const ALL_GOODS = [...RES, ...MATS, ...PROCESSED];
+export const GOOD_LABEL = { food: 'Grain', wood: 'Timber', gold: 'Coin', stone: 'Stone', copper: 'Copper', iron: 'Iron', coal: 'Coal', silver: 'Silver', steel: 'Steel', ware: 'Fine ware' };
+export const GOOD_COLOR = { food: '#c23a56', wood: '#8a5a2a', gold: '#e0b83a', stone: '#9a9a90', copper: '#c8743a', iron: '#6f7a86', coal: '#35353a', silver: '#d8e0ea', steel: '#9fb4c8', ware: '#c9a0e0' };
+export const GOOD_INFO = {
+  stone: 'Raises keeps, towers and foundries.',
+  copper: 'Smelted with coal into fine ware.',
+  iron: 'Smelted with coal into steel.',
+  coal: 'Fuel for the foundry.',
+  silver: 'Academies burn it for science.',
+  steel: 'Forges turn it into better arms.',
+  ware: 'Taverns, markets and temples use it to make villagers content.',
+};
+export const MINE_RATE = { stone: 0.6, copper: 0.5, iron: 0.45, coal: 0.5, silver: 0.3 }; // per worker per second
+export const MINE_MAX_WORKERS = 4;
+export const SMELT = { steel: { in: { iron: 2, coal: 1 }, time: 7 }, ware: { in: { copper: 2, coal: 1 }, time: 8 } };
+export const ARMS_STEEL = 6;   // steel per forge arms level (max 3)
+export const SCI_SILVER = 6;   // silver per science level (max 3)
+export const SCIENCE = ['Husbandry', 'Masonry', 'Drill']; // +farm/gather yield, +building HP, +unit HP
+export const WARE_JOY = { every: 25, secs: 70 }; // one ware lifts a village for 70s; a village consumes at most one per 25s
 export const NODE_RES = { tree: 'wood', berry: 'food', gold: 'gold' };
 export const GATHER_RATE = { wood: 0.95, food: 1.1, gold: 0.7 }; // per second while working
 export const CARRY_CAP = 10;
 
-export const START_RES = { food: 110, wood: 110, gold: 30 };
+export const START_RES = { food: 110, wood: 110, gold: 30, stone: 0, copper: 0, iron: 0, coal: 0, silver: 0, steel: 0, ware: 0 };
 
 // ---- Units -------------------------------------------------------------------------------
 // speed in tiles/sec, range in tiles, cooldown in seconds, bld = damage multiplier vs buildings, vil = vs villages
@@ -48,23 +70,26 @@ export const UNITS = {
 // ---- Buildings ---------------------------------------------------------------------------
 export const BUILDINGS = {
   hall:      { label: 'Timber Hall',   size: 3, hp: 520,  sight: 8,  pop: 6, cost: null,                          time: 0,  requires: [],                      info: 'Your seat. Trains serfs, drop-off. Low HP. Raises nearby loyalty a little.' },
-  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 120 }, time: 36, requires: ['hall'],          info: 'Stone seat. Wide territory and influence, trains serfs and scouts, more pop.' },
+  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 120, stone: 40 }, time: 36, requires: ['hall'],          info: 'Stone seat. Wide territory and influence, trains serfs and scouts, more pop.' },
   cottage:   { label: 'Cottage',       size: 2, hp: 380,  sight: 5,  pop: 5, cost: { food: 0, wood: 60, gold: 0 },   time: 12, requires: ['hall'],          info: '+5 population.' },
   farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: ['hall'],          info: 'Steady grain. +25% beside a mill.' },
   mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['hall'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
   warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['hall'],          info: 'Drop-off for all goods, +10% delivered.' },
-  market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: ['hall'],          info: 'Trade with houses and villages. Drop-off. Small coin trickle.' },
-  forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2.' },
+  market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: ['hall'],          info: 'Trade with villages. Drop-off. Small coin trickle. Fine ware makes nearby villages content.' },
+  forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
   workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Trains rams.' },
   tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: ['hall'],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
-  academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'Trains scholars. Unlocks the workshop and temple coin.' },
+  academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'Trains scholars. Unlocks the workshop and temple coin. Burns silver into science (3 levels).' },
   temple:    { label: 'Temple',        size: 2, hp: 590,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 50 }, time: 20, requires: ['keep'],          info: 'Strong loyalty aura. Coin trickle with an academy.' },
   barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 20 }, time: 22, requires: ['hall'],          info: 'Trains footmen.' },
   archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
   stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
-  tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40 }, time: 20, requires: ['hall'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
+  mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: ['hall'], onDeposit: true, info: 'Raised on a mineral deposit. Assign serfs to dig; ore flows into your stockpile.' },
+  tent:      { label: 'Trading Tent',  size: 2, hp: 360,  sight: 6,  pop: 0, cost: { food: 0, wood: 90, gold: 30 },  time: 14, requires: ['hall'],          info: 'Trade any goods with houses you hold a trade treaty with (they need a tent too).' },
+  foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: ['hall'], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Automatic.' },
+  tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['hall'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
-export const BUILD_ORDER_UI = ['cottage', 'farm', 'mill', 'warehouse', 'market', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'keep'];
+export const BUILD_ORDER_UI = ['cottage', 'farm', 'mill', 'warehouse', 'market', 'mine', 'tent', 'foundry', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'keep'];
 
 // Which buildings accept which goods from serfs
 export const DROP_OFF = {

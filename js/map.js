@@ -1,7 +1,7 @@
 // Seven Holds - valley generation. Pure data, seeded, no DOM.
 // Guarantees: every start, village and resource node lies in ONE connected walkable region (the river has fords).
 
-import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES } from './config.js';
+import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, MATS } from './config.js';
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -186,6 +186,36 @@ export function createMap(seed, houses = 4) {
     if (kind === 'hamlet') cluster('berry', x + 1, y + 1, 3, 3.5, berryAmt);
     return { kind, name, tx: x, ty: y };
   });
+
+  // Mineral deposits. Own RNG stream so older layouts keep their trees, gold and villages.
+  // Every hall has stone close by and two of the four metals; the others must be found in the wild or traded for.
+  const rm = rng((seed ^ 0x9e3779b9) >>> 0);
+  const inVillage = (x, y) => villages.some((v) => x >= v.tx - 1 && x <= v.tx + VILLAGE_SIZE && y >= v.ty - 1 && y <= v.ty + VILLAGE_SIZE);
+  const metals = ['copper', 'iron', 'coal', 'silver'];
+  const mineAmt = (kind) => (kind === 'silver' ? 320 : 480) + rm.int(0, 260);
+  const deposit = (kind, cx, cy, count, spread) => {
+    let placed = 0;
+    for (let k = 0; k < count * 10 && placed < count; k++) {
+      const x = Math.round(cx + (rm() + rm() - 1) * spread), y = Math.round(cy + (rm() + rm() - 1) * spread);
+      if (inVillage(x, y)) continue;
+      if (addNode(kind, x, y, mineAmt(kind))) placed++;
+    }
+    return placed;
+  };
+  const near = (kind, sx, sy, dist, n, base) => {
+    for (let tries = 0; tries < 24; tries++) {
+      const a = base + tries * 0.45, px = Math.round(sx + 1 + Math.cos(a) * dist), py = Math.round(sy + 1 + Math.sin(a) * (dist * 0.9));
+      if (deposit(kind, px, py, n, 1.7) >= 2) return;
+    }
+  };
+  starts.forEach(([sx, sy], i) => {
+    const base = rm() * Math.PI * 2;
+    near('stone', sx, sy, 10, 4, base);
+    near(metals[i % 4], sx, sy, 14, 3, base + 2.2);
+    near(metals[(i + 1) % 4], sx, sy, 16, 3, base + 4.2);
+  });
+  for (const kind of MATS) for (let i = 0; i < (kind === 'stone' ? 5 : 4); i++) deposit(kind, rm.int(6, W - 7), rm.int(6, H - 7), 3, 2);
+  villages.forEach((v) => { if (v.kind === 'mine') { deposit(rm.pick(['iron', 'coal', 'copper', 'silver']), v.tx + 1, v.ty + 1, 3, 4.5); deposit('stone', v.tx + 1, v.ty + 1, 2, 4.5); } });
 
   // Dirt trails between halls and nearby villages (cosmetic, slightly faster to walk)
   const line = (x0, y0, x1, y1) => {
