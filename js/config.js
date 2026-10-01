@@ -74,7 +74,7 @@ export const UNITS = {
 // ---- Buildings ---------------------------------------------------------------------------
 export const BUILDINGS = {
   hall:      { label: 'Timber Hall',   size: 3, hp: 520,  sight: 8,  pop: 6, cost: null,                          time: 0,  requires: [],                      info: 'Your seat. Trains serfs, drop-off. Low HP. Raises nearby loyalty a little.' },
-  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 120, stone: 40 }, time: 36, requires: ['hall'],          info: 'Stone seat. Wide territory and influence, trains serfs and scouts, more pop.' },
+  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 120, stone: 40 }, time: 36, requires: ['hall'],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; trains serfs and scouts, more pop.' },
   cottage:   { label: 'Cottage',       size: 2, hp: 380,  sight: 5,  pop: 5, cost: { food: 0, wood: 60, gold: 0 },   time: 12, requires: ['hall'],          info: '+5 population.' },
   farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: ['hall'],          info: 'Steady grain. +25% beside a mill.' },
   mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['hall'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
@@ -104,18 +104,26 @@ export const DROP_OFF = {
 };
 export const DROP_BONUS = { mill: { wood: 1.2 }, warehouse: { food: 1.1, wood: 1.1, gold: 1.1 } };
 
-// You may only raise buildings within these radii (tiles) of one of your halls/keeps. A keep pushes the frontier.
-export const TERRITORY = { hall: 17, keep: 30 };
+// Expansion has no leash: build anywhere you have scouted. What distance changes is the COMMUNITY around a site:
+//  - influence: how strongly a village leans toward you (below), strongest from garrisoned castles, temples, taverns
+//  - haul: ore dug far from any of your stores loses much of its yield on the road (a warehouse or market beside a remote mine fixes it)
+//  - consumers: a market earns from the cottages and villages around it
+export const HAUL = { free: 14, far: 60, min: 0.45 };       // distance to the nearest own store: full yield up to `free`, `min` of it at `far` and beyond
+export const STORES = ['hall', 'keep', 'warehouse', 'market'];
+export const CONSUMERS = { base: 0.15, each: 0.09, max: 10 };   // market coin per second = base + each * (own cottages and villages in reach, up to max)
 
 // Loyalty pull: who is leaning on a village. r = radius in tiles, w = weight at the building (falls off linearly).
+// `guard`: the pull scales with the soldiers garrisoned inside or standing watch within 5 tiles (0.35 with none, full at 4).
 export const INFLUENCE = {
-  hall: { r: 14, w: 0.5 },
-  keep: { r: 30, w: 1.5 },
-  tower: { r: 8, w: 0.3 },
+  hall: { r: 14, w: 0.5, guard: true },
+  keep: { r: 30, w: 1.5, guard: true },
+  tower: { r: 8, w: 0.3, guard: true },
+  barracks: { r: 12, w: 0.35, guard: true },
   tavern: { r: 11, w: 0.55 },
   temple: { r: 17, w: 1.0 },
   academy: { r: 13, w: 0.4 },
 };
+export const GUARD = { floor: 0.35, full: 4, watch: 5 };
 export const LOYALTY_RATE = 1.6; // loyalty/sec per unit of net pull
 export const SUBMIT_LOYALTY = 72;
 export const SPY_RATE = 1.7;     // loyalty/sec while a spy is inside

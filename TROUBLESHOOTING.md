@@ -45,3 +45,18 @@ Browser checks (Playwright, not committed): every building and unit kind selecte
 - A house with no timber stand in reach has no fallback besides trade (the AI buys timber from nobody yet: villages store food, ore and coin, not timber).
 - Rival aggression is one number (`WAR_AFTER`); a difficulty setting would expose it with army-cap scaling.
 - The soak harness has no "good human" player; adding a scripted opening would let balance be measured against a player who plays well.
+
+## Cycle 4 - rules audit against the game's point (expand and rule)
+
+Review of every rule that limits the player, asked of each: does it serve expanding and ruling, or just leash the player?
+
+| ID | Status | Rule found | Verdict and change |
+|----|--------|-----------|--------------------|
+| T-017 | FIXED | Buildings only within 17 tiles of a hall or 30 of a keep ("Outside your territory") | Leash, not strategy: it defined *where you may expand* instead of *what expanding costs*. **Removed.** You may build anywhere you have scouted ("Unexplored: scout there first" for the player under fog). A remote ghost warns "no villagers near, no guard", and the placing overlay now shows influence circles (dim when unguarded) rather than a border |
+| T-018 | FIXED | Influence was the same whether or not a castle held any soldiers | Castles protect by being manned. Hall, keep, tower and barracks pull at 35% empty and 100% with 4 soldiers garrisoned or idling within 5 tiles; barracks now count; soldiers billeted in a held village add loyalty |
+| T-019 | FIXED | A mine 80 tiles away delivered ore instantly and in full | Haul efficiency: 100% within 14 tiles of a store, down to 45% at 60+; a warehouse or market beside the mine fixes it (a reason to build local stores, i.e. community, not a ban on distance) |
+| T-020 | FIXED | Market coin was a flat trickle | Scales with local consumers: cottages and held villages within 24 tiles |
+| T-021 | FIXED | AI keeps were planted at most 12 tiles out because of the territory radius | Keeps now go about 9 tiles short of the target village; soak shows rivals still settle and fight normally |
+| T-022 | KEPT | Requires-chains (hall first, barracks for archery, etc.), population cap by cottages, 4 diggers per mine, garrison caps, treaty needs a met house | These shape *what* you build and *when*, not how far you may reach; they stay |
+
+Tests added: guard-scaled influence, remote mine haul and warehouse fix, market consumers, far scouted ground is open.

@@ -240,8 +240,8 @@ function findSpot(game, team, seat, kind) {
     const v = nearestVillage(game, seat, (x) => x.owner !== team, 60);
     if (v) {
       const d = Math.hypot(v.x - seat.x, v.y - seat.y) || 1;
-      const k = Math.min(12, d * 0.45) / d;
-      ax = seat.x + (v.x - seat.x) * k; ay = seat.y + (v.y - seat.y) * k; rmin = 0; rmax = 5;
+      const k = Math.max(0, d - 9) / d;   // no territory limit: plant the keep close to the village (about 9 tiles short)
+      ax = seat.x + (v.x - seat.x) * k; ay = seat.y + (v.y - seat.y) * k; rmin = 0; rmax = 6;
     }
   } else if (kind === 'warehouse') {   // beside the timber stand the serfs walk furthest to
     const trees = game.resources.filter((n) => NODE_RES[n.kind] === 'wood' && n.amount > 0 && Math.hypot(n.x - seat.x, n.y - seat.y) > 7 && Math.hypot(n.x - seat.x, n.y - seat.y) < 24).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));

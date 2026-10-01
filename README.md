@@ -21,7 +21,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 ## How to play
 
 1. **Gather.** Drag-select your two serfs, right-click timber, berries or gold. They carry goods to the hall.
-2. **Grow.** Select the hall (**H**). Train serfs; raise cottages (population), a farm, a mill, a barracks. Buildings can only go inside your territory: a hall claims 17 tiles, a **keep** claims 30, so build one toward the villages you want.
+2. **Grow.** Select the hall (**H**). Train serfs; raise cottages (population), a farm, a mill, a barracks. There is no territory circle: build anywhere you have scouted. Distance changes the *community* around a site instead (see "Rules in one page").
 3. **Take villages.** Fourteen independent villages sit in the gaps. Three ways to win one:
    - **Pillage.** Soldiers fight it until its *protection* hits zero. It submits to you with middling loyalty. The folk fight back, hillforts hardest: bring rams.
    - **Influence.** A hall, keep, tower, tavern, temple or academy near a village slowly raises its *loyalty*. Past 72 it comes over without a sack. Scholars beside an academy amplify it.
@@ -102,3 +102,16 @@ MIT. See `LICENSE`.
 ## Troubleshooting
 
 `node tools/soak.js [minutes] [seeds] [houses] [chaos]` plays headless matches, checks invariants (stuck units, negative stock, sync of garrisons, NaN, snapshots, tick time) and writes `logs/soak-latest.log`; `chaos` replaces the player's AI with a random intent generator. Findings and fixes are tracked in `TROUBLESHOOTING.md`.
+
+## Rules in one page
+
+The point of the game is to expand and rule, so **nothing stops you building as far as you can scout**. What distance and company change is how a place *works*:
+
+| Rule | What it does |
+|------|--------------|
+| **Build anywhere scouted** | Only water, blocked ground, deposits (other than mines) and unexplored fog stop a site. Scouts and keeps reveal the valley |
+| **Influence** | Villages lean toward whoever has castles, temples and taverns near them. A hall, keep, tower or barracks pulls at 35% unguarded and at full strength with 4 soldiers garrisoned or standing watch. Soldiers billeted in a village you hold steady it |
+| **Haul** | Ore dug far from any of your stores (hall, keep, warehouse, market) loses yield on the road: full within 14 tiles, 45% at 60+. A warehouse or market beside a remote mine restores it |
+| **Workforce** | Diggers, builders and gatherers are serfs, housed by cottages and held villages; remote sites need serfs to walk there and back |
+| **Consumers** | A market's coin grows with the cottages and villages of yours within 24 tiles, and its shelf only fills from suppliers that near |
+| **Loyalty drifts away** | A village you hold with no castle, temple or garrison near it slowly forgets you and slips back to independence |

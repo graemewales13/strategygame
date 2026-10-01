@@ -4,7 +4,7 @@
 
 import {
   MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD,
-  RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, TERRITORY,
+  RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, MARKET_RADIUS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
@@ -21,6 +21,7 @@ const SPIRAL = (() => {
   return a;
 })();
 
+const SOLDIER = new Set(['footman', 'bowman', 'knight']);
 export class Game {
   constructor(opts = {}) {
     this.events = [];
@@ -681,11 +682,21 @@ export class Game {
     const p = this.players[u.team];
     const take = Math.min(node.amount, MINE_RATE[node.kind] * dt * (p.sci >= 1 ? 1.1 : 1));
     node.amount -= take;
-    p[node.kind] += take;
+    p[node.kind] += take * this.haulOf(b);
     u.dig = (u.dig || 0) + take;
     if (u.dig >= 5 && u.team === PLAYER) { u.dig = 0; this.floaters.push({ x: b.x, y: b.y - 0.8, text: '+5', res: node.kind, age: 0 }); } else if (u.dig >= 5) u.dig = 0;
     if (node.amount <= 0) this.resAt[node.y * this.W + node.x] = -1;
     u.face = b.x >= u.x ? 1 : -1;
+  }
+  // share of a mine's yield that reaches the stockpile: full near your stores, thinning with distance to the nearest one
+  haulOf(b) {
+    if (b._haulT === undefined || this.time - b._haulT > 5) {
+      let d = 1e9;
+      for (const o of this.buildings) if (o.team === b.team && o.hp > 0 && o.built >= 1 && STORES.includes(o.kind)) d = Math.min(d, Math.hypot(o.x - b.x, o.y - b.y));
+      b._haul = d <= HAUL.free ? 1 : Math.max(HAUL.min, 1 - (1 - HAUL.min) * (d - HAUL.free) / (HAUL.far - HAUL.free));
+      b._haulT = this.time;
+    }
+    return b._haul;
   }
   cmdBuild(units, b, queue = false) {
     if (!b || b.type !== 'building' || b.built >= 1) return false;
@@ -725,9 +736,8 @@ export class Game {
       if (!nodes.length) return { ok: false, reason: 'A mine must stand on a mineral deposit' };
       if (nodes.some((n) => n.kind !== nodes[0].kind)) return { ok: false, reason: 'Mixed deposits: cover one kind of ore' };
     }
-    const cx = tx + s.size / 2, cy = ty + s.size / 2;
-    const inRange = this.buildings.some((b) => b.team === team && b.hp > 0 && b.built >= 1 && TERRITORY[b.kind] && Math.hypot(b.x - cx, b.y - cy) <= TERRITORY[b.kind]);
-    if (!inRange) return { ok: false, reason: 'Outside your territory (a keep extends it)' };
+    // no territory: you may build wherever you have scouted (the person at the keyboard; rival houses see the whole valley)
+    if (team === PLAYER && this.fogOn && !this.seen[team][Math.floor(ty + s.size / 2) * W + Math.floor(tx + s.size / 2)]) return { ok: false, reason: 'Unexplored: scout there first' };
     if (!this.units.some((u) => u.team === team && u.kind === 'serf' && u.hp > 0)) return { ok: false, reason: 'You need a serf to build' };
     return { ok: true };
   }
@@ -820,6 +830,13 @@ export class Game {
     let best = null, bd = maxD;
     for (const m of this.marketsOf(team)) { const d = distTo(x, y, m); if (d < bd) { best = m; bd = d; } }
     return best;
+  }
+  // the market's coin: cottages and villages of ours within reach are its customers
+  consumerIncome(b) {
+    let n = 0;
+    for (const o of this.buildings) if (o.team === b.team && o.kind === 'cottage' && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - b.x, o.y - b.y) <= MARKET_RADIUS) n++;
+    for (const v of this.villages) if (v.owner === b.team && Math.hypot(v.x - b.x, v.y - b.y) <= MARKET_RADIUS) n += 2;
+    return CONSUMERS.base + CONSUMERS.each * Math.min(CONSUMERS.max, n);
   }
   near(b, kinds, r = MARKET_RADIUS) { return this.buildings.some((o) => o.team === b.team && o.built >= 1 && o.hp > 0 && kinds.includes(o.kind) && Math.hypot(o.x - b.x, o.y - b.y) <= r); }
   supplied(b, k) {
@@ -1080,7 +1097,7 @@ export class Game {
         case 'keep': this.tickKeep(b, dt); break;
         case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; }
           p.gold += 0.35 * dt; break;
-        case 'market': p.gold += 0.4 * dt; this.supplyMarket(b, p, dt); break;
+        case 'market': p.gold += this.consumerIncome(b) * dt; this.supplyMarket(b, p, dt); break;
         case 'temple': if (this.hasBuilding(b.team, 'academy')) p.gold += 0.3 * dt; break;
         case 'academy': {
           let n = 0;
@@ -1126,6 +1143,13 @@ export class Game {
     this.projectiles.push({ x: b.x, y: b.y - 0.5, targetId: best.id, dmg: s.dmg, team: b.team });
   }
 
+  // soldiers keeping a castle: those garrisoned inside plus idle ones standing watch nearby
+  guardOf(b) {
+    let n = 0;
+    for (const id of b.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0 && SOLDIER.has(u.kind)) n++; }
+    for (const u of this.units) if (u.team === b.team && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - b.x, u.y - b.y) <= GUARD.watch + b.size / 2) n++;
+    return n;
+  }
   // influence of each house on a village: sum over its seats, falling off linearly with distance
   pullsFor(v) {
     const pulls = new Array(this.houses).fill(0);
@@ -1135,6 +1159,7 @@ export class Game {
       const d = Math.hypot(v.x - b.x, v.y - b.y);
       if (d >= inf.r) continue;
       let p = (1 - d / inf.r) * inf.w;
+      if (inf.guard) p *= GUARD.floor + (1 - GUARD.floor) * Math.min(1, this.guardOf(b) / GUARD.full);
       if (b.kind === 'academy') p *= 1 + 0.3 * (b.scholars || 0);
       pulls[b.team] += p;
     }
@@ -1164,7 +1189,7 @@ export class Game {
         }
         if (v.loyalty >= SUBMIT_LOYALTY && v.lean >= 0 && this.alive(v.lean)) this.submit(v, v.lean, v.spyFlip === v.lean ? 'spy' : 'castle');
       } else {
-        const own = pulls[v.owner];
+        const own = pulls[v.owner] + 0.12 * Math.min(6, v.garrison.length);   // soldiers billeted in the village steady it
         const net = own - bp;
         if (own === 0 && bp === 0) v.loyalty = Math.max(0, v.loyalty - 0.22 * dt); // a lord far away is soon forgotten
         else v.loyalty = Math.max(0, Math.min(100, v.loyalty + net * LOYALTY_RATE * dt));

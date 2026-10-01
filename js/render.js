@@ -1,7 +1,7 @@
 // Seven Holds - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, TERRITORY, T_GRASS, MATS, GOOD_COLOR,
+  PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG } from './art.js';
@@ -181,13 +181,16 @@ export class Renderer {
     const a = this.toScreen(tx, ty), b = this.toScreen(tx + w, ty), c = this.toScreen(tx + w, ty + h), d = this.toScreen(tx, ty + h);
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.closePath();
   }
+  // while placing: where your castles, temples and taverns sway villages (no limit on where you may build), and your stores (haul)
   territory(ctx, g) {
     ctx.save();
     const z = this.cam.zoom;
-    ctx.lineWidth = 2; ctx.setLineDash([8, 8]); ctx.strokeStyle = 'rgba(244,220,122,0.55)'; ctx.fillStyle = 'rgba(244,220,122,0.06)';
+    ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
     for (const b of g.buildings) {
-      if (b.team !== PLAYER || b.built < 1 || !TERRITORY[b.kind]) continue;
-      const [sx, sy] = this.toScreen(b.x, b.y), R = TERRITORY[b.kind] * Math.SQRT2;
+      if (b.team !== PLAYER || b.built < 1 || b.hp <= 0 || !INFLUENCE[b.kind]) continue;
+      const inf = INFLUENCE[b.kind], [sx, sy] = this.toScreen(b.x, b.y), R = inf.r * Math.SQRT2;
+      const weak = inf.guard && g.guardOf(b) < 1;
+      ctx.strokeStyle = weak ? 'rgba(220,170,120,0.35)' : 'rgba(244,220,122,0.55)'; ctx.fillStyle = weak ? 'rgba(220,170,120,0.03)' : 'rgba(244,220,122,0.05)';
       ctx.beginPath(); ctx.ellipse(sx, sy, R * HW * z, R * HH * z, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
     ctx.restore();
@@ -390,7 +393,14 @@ export class Renderer {
     if (c) { const [bx, by] = this.toScreen(tx + s, ty + s), w = s * 2 * HW * this.cam.zoom * mul, h = (c.height / c.width) * w; ctx.globalAlpha = 0.55; ctx.drawImage(c, bx - w / 2, by - h + s * HH * this.cam.zoom * 0.34, w, h); ctx.globalAlpha = 1; }
     const [lx, ly] = this.toScreen(tx + s / 2, ty);
     ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center';
-    const label = chk.ok ? BUILDINGS[ui.placing].label : `${BUILDINGS[ui.placing].label}: ${chk.reason}`;
+    let note = '';
+    if (chk.ok) {
+      const cx = tx + s / 2, cy = ty + s / 2; let ds = 1e9, db = 1e9;
+      for (const b of g.buildings) if (b.team === PLAYER && b.hp > 0 && b.built >= 1) { const d = Math.hypot(b.x - cx, b.y - cy); db = Math.min(db, d); if (STORES.includes(b.kind)) ds = Math.min(ds, d); }
+      if (ui.placing === 'mine' && ds > HAUL.free) note = ` · yield ${Math.round(100 * (ds >= HAUL.far ? HAUL.min : 1 - (1 - HAUL.min) * (ds - HAUL.free) / (HAUL.far - HAUL.free)))}% (far from a store)`;
+      else if (db > 30) note = ' · remote: no villagers near, no guard';
+    }
+    const label = chk.ok ? BUILDINGS[ui.placing].label + note : `${BUILDINGS[ui.placing].label}: ${chk.reason}`;
     ctx.fillStyle = '#000'; ctx.fillText(label, lx + 1, ly - 3); ctx.fillStyle = chk.ok ? '#d9f5d0' : '#ffc4c0'; ctx.fillText(label, lx, ly - 4);
   }
 }

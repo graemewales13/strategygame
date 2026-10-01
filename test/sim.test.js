@@ -57,7 +57,7 @@ test('economy: serfs gather timber, carry it home and the stock rises', () => {
   assert.ok(g.players[PLAYER].wood > before + 20, `wood ${before} -> ${g.players[PLAYER].wood}`);
 });
 
-test('building: place a cottage, serfs raise it, population cap grows; cannot place out of territory', () => {
+test('building: place a cottage, serfs raise it, population cap grows; far ground is open once scouted', () => {
   const g = new Game({ seed: 3, houses: 3, ai: false });
   const hall = g.seatOf(PLAYER);
   g.players[PLAYER].wood = 500;
@@ -68,7 +68,10 @@ test('building: place a cottage, serfs raise it, population cap grows; cannot pl
   run(g, 40);
   assert.equal(placed.built, 1);
   assert.equal(g.popCap(PLAYER), cap0 + 5);
-  assert.equal(g.canPlace(PLAYER, 'cottage', hall.tx + 40, hall.ty).ok, false);
+  assert.equal(g.canPlace(PLAYER, 'cottage', hall.tx + 40, hall.ty).ok, false, 'unscouted ground is closed');
+  g.seen[PLAYER].fill(1);
+  const far = (() => { for (let y = 0; y < 30; y++) { const r = g.canPlace(PLAYER, 'cottage', hall.tx + 36, hall.ty - 15 + y); if (r.ok) return r; } return null; })();
+  assert.ok(far, 'scouted ground 36 tiles from the hall is open (no territory circle)');
 });
 
 test('training: serf from the hall respects cost and population', () => {
@@ -200,7 +203,7 @@ test('deposits: every hall has stone near and metals exist; mines need a deposit
 });
 
 test('mining: a mine on a deposit, serfs assigned, ore reaches the stockpile; max 4 diggers', () => {
-  const g = new Game({ seed: 5, houses: 4, ai: false });
+  const g = new Game({ seed: 5, houses: 4, ai: false }); g.tick(0.1); g.seen[PLAYER].fill(1);
   const hall = g.seatOf(PLAYER), p = g.players[PLAYER];
   p.wood = 500; p.gold = 200;
   const node = g.resources.filter((n) => n.kind === 'stone' && Math.hypot(n.x - hall.x, n.y - hall.y) < 16).sort((a, c) => Math.hypot(a.x - hall.x, a.y - hall.y) - Math.hypot(c.x - hall.x, c.y - hall.y))[0];
@@ -382,10 +385,10 @@ test('market shelf: stocked only from nearby suppliers (mine -> its ore, foundry
 });
 
 test('mines: gold deposits can be mined too', () => {
-  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const g = new Game({ seed: 5, houses: 3, ai: false }); g.tick(0.1); g.seen[PLAYER].fill(1);
   const h = g.seatOf(PLAYER), p = g.players[PLAYER]; p.wood = 500; p.gold = 100;
   const node = g.resources.filter((n) => n.kind === 'gold').sort((a, c) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(c.x - h.x, c.y - h.y))[0];
-  g.addBuilding('cottage', PLAYER, h.tx - 6, h.ty, true); // territory is by hall; the mine just needs to be inside it
+  g.addBuilding('cottage', PLAYER, h.tx - 6, h.ty, true);
   const sp = g.mineSpot(PLAYER, node);
   assert.ok(sp, 'a mine fits on gold');
   const mine = g.place(PLAYER, 'mine', sp[0], sp[1], null, node.id);
@@ -465,6 +468,37 @@ test('caravan: if the home market falls the camel still brings its goods to the 
   g.units.splice(g.units.indexOf(c2), 1, c2);
   c2.task = { type: 'caravan', targetId: g.seatOf(0).id, stage: 'home' }; g.setPathToEntity(c2, g.seatOf(0)); run(g, 120);
   assert.ok(p.iron >= before + 29, 'cargo unloaded at the hall: ' + p.iron + ' vs ' + before);
+});
+
+test('rules: soldiers in a keep sway villages; a keep with no guard pulls far less', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false, fog: false });
+  const v = g.villages.find((x) => x.owner < 0), k = g.addBuilding('keep', 0, Math.round(v.x) - 8, Math.round(v.y) - 2, true);
+  const bare = g.pullsFor(v)[0];
+  for (let i = 0; i < 4; i++) { const u = g.addUnit('footman', 0, k.x + 1, k.y + 3); g.cmdEnter([u], k); }
+  run(g, 20);
+  assert.equal(k.garrison.length, 4, 'four footmen inside');
+  const guarded = g.pullsFor(v)[0];
+  assert.ok(guarded > bare * 2, `guarded ${guarded.toFixed(3)} vs bare ${bare.toFixed(3)}`);
+});
+
+test('rules: ore dug far from any store is hauled at a loss; a warehouse beside the mine restores it', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false, fog: false });
+  const h = g.seatOf(0), far = g.resources.filter((n) => n.kind === 'iron' && Math.hypot(n.x - h.x, n.y - h.y) > 45).sort((a, c) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(c.x - h.x, c.y - h.y))[0];
+  assert.ok(far, 'a distant iron seam exists');
+  g.players[0].wood = 2000; g.players[0].gold = 500;
+  const mine = g.place(0, 'mine', 0, 0, null, far.id);
+  assert.ok(mine, 'remote mines can be raised (no territory circle)');
+  mine.built = 1;
+  assert.ok(g.haulOf(mine) < 0.8, 'remote yield ' + g.haulOf(mine).toFixed(2));
+  g.addBuilding('warehouse', 0, mine.tx + 3, mine.ty, true); mine._haulT = undefined;
+  assert.equal(g.haulOf(mine), 1);
+});
+
+test('rules: a market earns from the cottages and villages around it', () => {
+  const g = new Game({ seed: 3, houses: 3, ai: false, fog: false });
+  const mk = placeNear(g, 0, 'market'), alone = g.consumerIncome(mk);
+  for (let i = 0; i < 5; i++) g.addBuilding('cottage', 0, Math.round(mk.x) - 10 + i * 3, Math.round(mk.y) + 6, true);
+  assert.ok(g.consumerIncome(mk) > alone + 0.3, `with customers ${g.consumerIncome(mk).toFixed(2)} vs ${alone.toFixed(2)}`);
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);
