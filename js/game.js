@@ -443,6 +443,7 @@ export class Game {
     if (!b || b.type !== 'building' || b.built >= 1) return false;
     for (const u of units) {
       if (u.kind !== 'serf') continue;
+      if (u.task.type === 'gather' || u.task.type === 'return') u.afterBuild = u.task.type === 'gather' ? { nodeId: u.task.nodeId } : { nodeId: u.task.resume };
       u.task = { type: 'build', targetId: b.id };
       this.setPathToEntity(u, b);
     }
@@ -731,6 +732,7 @@ export class Game {
       if (u.hp <= 0) continue;
       const s = UNITS[u.kind];
       u.cooldown = Math.max(0, u.cooldown - dt);
+      u.flash = Math.max(0, (u.flash || 0) - dt);
       u.repathT -= dt;
       u.anim += dt * (u.path.length ? 8 : 2);
       switch (u.task.type) {
@@ -878,11 +880,12 @@ export class Game {
     if (!b || b.hp <= 0 || b.built >= 1) {
       // look for another unfinished building of ours close by before going idle
       const next = b ? null : this.buildings.find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
-      if (next) { u.task = { type: 'build', targetId: next.id }; this.setPathToEntity(u, next); } else u.task = { type: 'idle' };
-      if (b && b.built >= 1 && b.team === u.team) {
-        const nxt = this.buildings.find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
-        if (nxt) { u.task = { type: 'build', targetId: nxt.id }; this.setPathToEntity(u, nxt); }
-      }
+      let nxt = next;
+      if (!nxt && b && b.built >= 1 && b.team === u.team) nxt = this.buildings.find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
+      if (nxt) { u.task = { type: 'build', targetId: nxt.id }; this.setPathToEntity(u, nxt); return; }
+      const back = u.afterBuild != null ? this.resources[u.afterBuild.nodeId] : null;
+      u.afterBuild = null;
+      if (back && back.amount > 0) { u.task = { type: 'gather', nodeId: back.id }; this.setPath(u, back.x + 0.5, back.y + 0.5); } else u.task = { type: 'idle' };
       return;
     }
     if (distTo(u.x, u.y, b) > 1.25) {
@@ -930,6 +933,12 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ fog of war
+  setFog(on) {
+    this.fogOn = on;
+    if (on) this.seen.forEach((a) => a.fill(0));
+    this.updateVisibility(true);
+  }
+
   updateVisibility(force = false) {
     const { W, H } = this;
     for (let t = 0; t < this.houses; t++) {

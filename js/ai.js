@@ -117,7 +117,7 @@ function think(game, team, p) {
       if (!q.alive || q.team === team) continue;
       const s = game.seatOf(q.team);
       if (!s) continue;
-      const d = Math.hypot(s.x - seat.x, s.y - seat.y) * (q.team === PLAYER ? 0.8 : 1); // a mild grudge against the player
+      const d = Math.hypot(s.x - seat.x, s.y - seat.y);
       if (d < bd) { bd = d; target = q; }
     }
     if (target) {
