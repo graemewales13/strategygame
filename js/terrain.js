@@ -1,0 +1,200 @@
+// Seven Holds - painted terrain and soft fog. Both are cached on offscreen canvases; render.js only blits them.
+import { PLAYER, T_DIRT, T_WATER, T_FORD } from './config.js';
+
+const TS = 32;      // texture pixels per tile
+const CH = 16;      // tiles per chunk edge
+const hash = (x, y, s = 0) => { let n = Math.imul(x + s * 7919, 374761393) + Math.imul(y - s * 104729, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+// smooth value noise for large-scale colour drift
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const a = hash(xi, yi, 3), b = hash(xi + 1, yi, 3), c = hash(xi, yi + 1, 3), d = hash(xi + 1, yi + 1, 3);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+}
+
+export class TerrainCache {
+  constructor(game) {
+    this.g = game;
+    this.chunks = new Map();
+    this.cw = Math.ceil(game.W / CH); this.ch = Math.ceil(game.H / CH);
+  }
+  isWater(x, y) { const g = this.g; if (x < 0 || y < 0 || x >= g.W || y >= g.H) return false; const t = g.terrain[y * g.W + x]; return t === T_WATER || t === T_FORD; }
+  type(x, y) { const g = this.g; if (x < 0 || y < 0 || x >= g.W || y >= g.H) return -1; return g.terrain[y * g.W + x]; }
+
+  chunk(cx, cy) {
+    const key = cy * this.cw + cx;
+    let c = this.chunks.get(key);
+    if (!c) { c = this.paint(cx, cy); this.chunks.set(key, c); }
+    return c;
+  }
+
+  paint(cx, cy) {
+    const g = this.g, size = CH * TS, pad = 1; // paint a tile of margin so neighbours blend without seams
+    const cv = mk(size, size), ctx = cv.getContext('2d');
+    const tx0 = cx * CH, ty0 = cy * CH;
+    const ox = -tx0 * TS, oy = -ty0 * TS;
+    const px = (tx) => ox + tx * TS, py = (ty) => oy + ty * TS;
+    const jit = (x, y) => [(hash(x, y, 11) - 0.5) * TS * 0.26, (hash(x, y, 12) - 0.5) * TS * 0.26];
+    const ctr = (x, y) => { const [jx, jy] = jit(x, y); return [px(x) + TS / 2 + jx, py(y) + TS / 2 + jy]; };
+    const range = [tx0 - 2, tx0 + CH + 2, ty0 - 2, ty0 + CH + 2];
+
+    // ---- grass: base + drifting patches of lighter and darker green
+    ctx.fillStyle = '#4b7a3a'; ctx.fillRect(0, 0, size, size);
+    for (let y = ty0 - 1; y < ty0 + CH + 1; y++) for (let x = tx0 - 1; x < tx0 + CH + 1; x++) {
+      const n = vnoise(x * 0.18, y * 0.18), m = vnoise(x * 0.55 + 40, y * 0.55 + 9);
+      const r = TS * (1.1 + hash(x, y, 1) * 0.7);
+      const cxp = px(x) + TS * hash(x, y, 2), cyp = py(y) + TS * hash(x, y, 3);
+      const col = n > 0.5 ? [112, 160, 70] : [38, 82, 40];
+      const a = Math.abs(n - 0.5) * 0.55 + m * 0.08;
+      const gr = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, r);
+      gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`);
+      ctx.fillStyle = gr; ctx.fillRect(cxp - r, cyp - r, r * 2, r * 2);
+    }
+
+    // ---- dirt trails: soft edge, body, then ruts
+    const dirtLinks = (fn) => {
+      for (let y = range[2]; y < range[3]; y++) for (let x = range[0]; x < range[1]; x++) {
+        if (this.type(x, y) !== T_DIRT) continue;
+        const [ax, ay] = ctr(x, y);
+        fn(ax, ay, ax, ay);
+        for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) if (this.type(x + dx, y + dy) === T_DIRT) { const [bx, by] = ctr(x + dx, y + dy); fn(ax, ay, bx, by); }
+      }
+    };
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const stroke = (col, w, alpha = 1) => { ctx.strokeStyle = col; ctx.globalAlpha = alpha; ctx.lineWidth = w; dirtLinks((ax, ay, bx, by) => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx + 0.01, by); ctx.stroke(); }); ctx.globalAlpha = 1; };
+    stroke('#3f3a1c', TS * 1.7, 0.18);
+    stroke('#6b5530', TS * 1.45, 0.45);
+    stroke('#98774a', TS * 1.2, 1);
+    stroke('#a98a59', TS * 0.75, 0.55);
+    // pebbles and cart ruts on dirt
+    for (let y = ty0; y < ty0 + CH; y++) for (let x = tx0; x < tx0 + CH; x++) {
+      if (this.type(x, y) !== T_DIRT) continue;
+      for (let k = 0; k < 3; k++) {
+        const h = hash(x, y, 20 + k);
+        ctx.fillStyle = h < 0.5 ? 'rgba(70,52,28,.55)' : 'rgba(200,175,130,.5)';
+        ctx.beginPath(); ctx.ellipse(px(x) + hash(x, y, 30 + k) * TS, py(y) + hash(x, y, 40 + k) * TS, 1.2 + h * 1.6, 1 + h, 0, 0, 7); ctx.fill();
+      }
+    }
+
+    // ---- river: sand shore, shallows, then deep water. Same trick as trails: round-capped strokes between tile centres
+    const waterLinks = (fn) => {
+      for (let y = range[2]; y < range[3]; y++) for (let x = range[0]; x < range[1]; x++) {
+        if (!this.isWater(x, y)) continue;
+        const [ax, ay] = ctr(x, y);
+        fn(ax, ay, ax, ay, x, y);
+        for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) if (this.isWater(x + dx, y + dy)) { const [bx, by] = ctr(x + dx, y + dy); fn(ax, ay, bx, by, x, y); }
+      }
+    };
+    const wstroke = (col, w, alpha = 1) => { ctx.strokeStyle = col; ctx.globalAlpha = alpha; ctx.lineWidth = w; waterLinks((ax, ay, bx, by) => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx + 0.01, by); ctx.stroke(); }); ctx.globalAlpha = 1; };
+    wstroke('#2e3a1c', TS * 2.35, 0.22);   // damp bank
+    wstroke('#cdb47c', TS * 2.0, 1);        // sand
+    wstroke('#e0cb93', TS * 1.85, 1);       // dry sand
+    wstroke('#4f9bb0', TS * 1.7, 1);        // shallows
+    wstroke('#347d9a', TS * 1.38, 1);
+    wstroke('#2a6b8c', TS * 0.98, 1);       // deep
+    wstroke('#235d7e', TS * 0.55, 0.9);
+    // lighter ripples baked in
+    ctx.lineWidth = 1.2;
+    for (let y = ty0; y < ty0 + CH; y++) for (let x = tx0; x < tx0 + CH; x++) {
+      if (this.type(x, y) !== T_WATER) continue;
+      const h = hash(x, y, 50);
+      ctx.strokeStyle = `rgba(200,235,245,${0.1 + h * 0.12})`;
+      const [cxp, cyp] = ctr(x, y);
+      ctx.beginPath(); ctx.moveTo(cxp - 8, cyp + (h - 0.5) * 10); ctx.quadraticCurveTo(cxp, cyp + (h - 0.5) * 10 - 3, cxp + 8, cyp + (h - 0.5) * 10); ctx.stroke();
+    }
+    // shore pebbles + reeds
+    for (let y = ty0; y < ty0 + CH; y++) for (let x = tx0; x < tx0 + CH; x++) {
+      if (this.type(x, y) === T_WATER || this.type(x, y) === T_FORD) continue;
+      let near = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.isWater(x + dx, y + dy)) near++;
+      if (!near) continue;
+      const h = hash(x, y, 60);
+      if (h < 0.55) { ctx.strokeStyle = 'rgba(40,80,30,.85)'; ctx.lineWidth = 1.5; const bx = px(x) + hash(x, y, 61) * TS, by = py(y) + hash(x, y, 62) * TS; for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(bx + k * 2.5, by); ctx.lineTo(bx + k * 4, by - 9 - h * 7); ctx.stroke(); } }
+    }
+
+    // ---- fords: gravel bar with stepping stones, a plank walkway on top
+    for (let y = ty0 - 1; y < ty0 + CH + 1; y++) for (let x = tx0 - 1; x < tx0 + CH + 1; x++) {
+      if (this.type(x, y) !== T_FORD) continue;
+      const X = px(x), Y = py(y);
+      ctx.fillStyle = 'rgba(210,190,140,.9)'; ctx.fillRect(X - 1, Y + TS * 0.05, TS + 2, TS * 0.9);
+      ctx.fillStyle = '#8a6636'; ctx.fillRect(X - 1, Y + TS * 0.12, TS + 2, TS * 0.76);
+      ctx.fillStyle = '#a57c43'; for (let k = 0; k < 4; k++) ctx.fillRect(X - 1, Y + TS * 0.14 + k * TS * 0.19, TS + 2, TS * 0.16);
+      ctx.fillStyle = '#5c3f21'; ctx.fillRect(X - 1, Y + TS * 0.08, TS + 2, TS * 0.06); ctx.fillRect(X - 1, Y + TS * 0.86, TS + 2, TS * 0.06);
+    }
+
+    // ---- grass tufts and flowers on top of everything that is land
+    for (let y = ty0; y < ty0 + CH; y++) for (let x = tx0; x < tx0 + CH; x++) {
+      if (this.type(x, y) !== 0) continue;
+      const h = hash(x, y, 70);
+      if (h > 0.62) {
+        const bx = px(x) + hash(x, y, 71) * TS, by = py(y) + hash(x, y, 72) * TS;
+        ctx.strokeStyle = h > 0.85 ? 'rgba(130,175,80,.8)' : 'rgba(26,60,24,.6)'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - 2, by - 5); ctx.moveTo(bx + 2, by); ctx.lineTo(bx + 3, by - 6); ctx.moveTo(bx + 4, by); ctx.lineTo(bx + 6, by - 4); ctx.stroke();
+      }
+      if (h < 0.07) {
+        const bx = px(x) + hash(x, y, 73) * TS, by = py(y) + hash(x, y, 74) * TS;
+        ctx.fillStyle = ['#f0e070', '#f2f2f6', '#e07a8a', '#9ab4ec'][((h * 57) | 0) % 4];
+        ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, 7); ctx.fill();
+      }
+    }
+    return cv;
+  }
+
+  // Blit visible chunks. dest scale: P screen px per tile.
+  draw(ctx, cam, P, w, h) {
+    const g = this.g, k = P / TS;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    const cx0 = Math.max(0, Math.floor(cam.x / CH)), cy0 = Math.max(0, Math.floor(cam.y / CH));
+    const cx1 = Math.min(this.cw - 1, Math.floor((cam.x + w / P) / CH)), cy1 = Math.min(this.ch - 1, Math.floor((cam.y + h / P) / CH));
+    for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+      const c = this.chunk(cx, cy);
+      const sx = (cx * CH - cam.x) * P, sy = (cy * CH - cam.y) * P, s = CH * TS * k;
+      ctx.drawImage(c, Math.floor(sx), Math.floor(sy), Math.ceil(s) + 1, Math.ceil(s) + 1);
+    }
+  }
+}
+
+// Fog as a soft alpha layer: one pixel per tile, eased over time, blurred up.
+const FOG_S = 8; // px per tile in the blurred layer
+export class FogLayer {
+  constructor(game) {
+    this.g = game;
+    this.small = mk(game.W, game.H); this.sctx = this.small.getContext('2d');
+    this.big = mk(game.W * FOG_S, game.H * FOG_S); this.bctx = this.big.getContext('2d');
+    this.img = this.sctx.createImageData(game.W, game.H);
+    this.cur = new Float32Array(game.W * game.H).fill(1);
+    this.acc = 1; this.canBlur = 'filter' in this.bctx;
+    this.last = performance.now();
+  }
+  update() {
+    const g = this.g, now = performance.now(), dt = Math.min(0.5, (now - this.last) / 1000);
+    this.acc += dt;
+    if (this.acc < 0.1) return;
+    const step = Math.min(1, this.acc * 6); this.acc = 0; this.last = now;
+    const seen = g.seen[PLAYER], vis = g.vis[PLAYER], d = this.img.data, cur = this.cur;
+    let dirty = false;
+    for (let i = 0; i < cur.length; i++) {
+      const tgt = !g.fogOn ? 0 : !seen[i] ? 1 : vis[i] ? 0 : 0.5;
+      const c = cur[i];
+      if (c !== tgt) { const n = Math.abs(tgt - c) < 0.02 ? tgt : c + (tgt - c) * step; cur[i] = n; dirty = true; }
+      const o = i * 4; d[o] = 6; d[o + 1] = 8; d[o + 2] = 12; d[o + 3] = Math.round(cur[i] * 255);
+    }
+    if (!dirty && this.drawn) return;
+    this.sctx.putImageData(this.img, 0, 0);
+    const b = this.bctx;
+    b.clearRect(0, 0, this.big.width, this.big.height);
+    b.imageSmoothingEnabled = true; b.imageSmoothingQuality = 'high';
+    if (this.canBlur) b.filter = `blur(${FOG_S * 0.9}px)`;
+    // draw with a margin of repeated edge so the blur doesn't lighten the map border
+    b.drawImage(this.small, 0, 0, this.big.width, this.big.height);
+    b.filter = 'none';
+    this.drawn = true;
+  }
+  draw(ctx, cam, P) {
+    if (!this.drawn) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this.big, -cam.x * P, -cam.y * P, this.g.W * P, this.g.H * P);
+  }
+}

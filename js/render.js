@@ -2,6 +2,7 @@
 import {
   TILE, PLAYER, HOUSES, T_GRASS, T_DIRT, T_WATER, T_FORD, UNITS, BUILDINGS, NODE_RES, TERRITORY, VILLAGE_KINDS,
 } from './config.js';
+import { TerrainCache, FogLayer } from './terrain.js';
 
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
 const GRASS = ['#4d7b3b', '#527f3e', '#4a7637', '#578440'];
@@ -12,6 +13,8 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.game = game;
+    this.terrain = new TerrainCache(game);
+    this.fog = new FogLayer(game);
     this.cam = { x: 0, y: 0, zoom: 1 };
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.w = 0; this.h = 0;
@@ -49,13 +52,9 @@ export class Renderer {
     const isSeen = (x, y) => !g.fogOn || seen[Math.floor(y) * g.W + Math.floor(x)] === 1;
     const isVis = (x, y) => !g.fogOn || vis[Math.floor(y) * g.W + Math.floor(x)] === 1;
 
-    // terrain
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-      const i = y * g.W + x;
-      if (g.fogOn && !seen[i]) continue;
-      const [sx, sy] = this.toScreen(x, y);
-      this.tile(ctx, g, x, y, sx, sy, P, t);
-    }
+    // terrain: cached painted chunks, then a little animated water on top
+    this.terrain.draw(ctx, this.cam, P, this.w, this.h);
+    this.shimmer(ctx, g, x0, y0, x1, y1, P, t, isSeen);
     // ownership glow under territory when placing
     if (ui?.placing) this.territory(ctx, g, P);
 
@@ -108,18 +107,9 @@ export class Renderer {
     }
     ctx.globalAlpha = 1;
 
-    // fog overlay: remembered-but-dim
-    if (g.fogOn) {
-      ctx.fillStyle = 'rgba(5,7,11,0.52)';
-      for (let y = y0; y < y1; y++) {
-        let run = -1;
-        for (let x = x0; x <= x1; x++) {
-          const dim = x < x1 && seen[y * g.W + x] === 1 && vis[y * g.W + x] === 0;
-          if (dim && run < 0) run = x;
-          if (!dim && run >= 0) { const [sx, sy] = this.toScreen(run, y); ctx.fillRect(sx, sy, (x - run) * P + 1, P + 1); run = -1; }
-        }
-      }
-    }
+    // fog: soft alpha layer (unknown = black, remembered = dim)
+    this.fog.update();
+    this.fog.draw(ctx, this.cam, P);
 
     if (ui?.placing) this.ghost(ctx, g, ui, P);
     if (ui?.dragBox) {
@@ -136,6 +126,17 @@ export class Renderer {
   }
 
   // ---------------------------------------------------------------- terrain
+  shimmer(ctx, g, x0, y0, x1, y1, P, t, isSeen) {
+    ctx.lineWidth = Math.max(1, P * 0.04);
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      if (g.terrain[y * g.W + x] !== T_WATER || !isSeen(x, y)) continue;
+      const h = hash(x, y), ph = t * (0.9 + h * 0.5) + h * 40, a = 0.1 + 0.16 * Math.max(0, Math.sin(ph));
+      if (a < 0.12) continue;
+      const [sx, sy] = this.toScreen(x, y), ox = Math.sin(ph * 0.7) * P * 0.12;
+      ctx.strokeStyle = `rgba(215,240,250,${a})`;
+      ctx.beginPath(); ctx.moveTo(sx + P * (0.2 + h * 0.2) + ox, sy + P * (0.3 + h * 0.4)); ctx.quadraticCurveTo(sx + P * 0.5 + ox, sy + P * (0.25 + h * 0.4), sx + P * (0.75 + h * 0.1) + ox, sy + P * (0.3 + h * 0.4)); ctx.stroke();
+    }
+  }
   tile(ctx, g, x, y, sx, sy, P, t) {
     const type = g.terrain[y * g.W + x], h = hash(x, y), s = P + 1;
     if (type === T_WATER || type === T_FORD) {
