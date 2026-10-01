@@ -52,7 +52,7 @@ export const NODE_RES = { tree: 'wood', berry: 'food', gold: 'gold' };
 export const GATHER_RATE = { wood: 0.95, food: 1.1, gold: 0.7 }; // per second while working
 export const CARRY_CAP = 10;
 
-export const START_RES = { food: 110, wood: 110, gold: 30, stone: 0, copper: 0, iron: 0, coal: 0, silver: 0, steel: 0, ware: 0 };
+export const START_RES = { food: 300, wood: 520, gold: 220, stone: 60, copper: 0, iron: 0, coal: 0, silver: 0, steel: 0, ware: 0 };
 
 // ---- Units -------------------------------------------------------------------------------
 // speed in tiles/sec, range in tiles, cooldown in seconds, bld = damage multiplier vs buildings, vil = vs villages

@@ -83,7 +83,7 @@ export class Game {
     });
     this.recomputeWalk();
     this.updateVisibility(true);
-    this.log(PLAYER, `A small hall and two serfs. Expand, claim villages, raise a keep.`, 'info');
+    this.log(PLAYER, `A hall, two serfs and a starting purse: train serfs, raise cottages, a farm and a mine, then claim villages.`, 'info');
   }
 
   nid() { return this.nextId++; }

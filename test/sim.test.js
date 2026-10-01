@@ -24,7 +24,7 @@ test('map: every start, village and resource node is reachable from every start 
   }
 });
 
-test('start: one hall, two serfs standing on walkable tiles, small stock, no army, no keep', () => {
+test('start: one hall, two serfs standing on walkable tiles, starting purse, no army, no keep', () => {
   const g = new Game({ seed: 7, houses: 4 });
   for (let t = 0; t < 4; t++) {
     assert.equal(g.buildings.filter((b) => b.team === t).length, 1);
