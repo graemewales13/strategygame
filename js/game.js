@@ -917,8 +917,10 @@ export class Game {
     u.cargo = {}; u.task = { type: 'idle' };
   }
   caravanHome(u) {
-    const m = (u.home != null && this.byId.get(u.home)?.hp > 0 ? this.byId.get(u.home) : null) || this.nearestMarket(u.team, u.x, u.y);
-    if (!m || m.team !== u.team) { u.task = { type: 'idle' }; return; }
+    const alive = (b) => b && b.hp > 0 && b.team === u.team && b.built >= 1;
+    // back to the market it left from, else any market of ours, else the hall or keep: the goods always come home to the stockpile
+    const m = (alive(this.byId.get(u.home)) ? this.byId.get(u.home) : null) || this.nearestMarket(u.team, u.x, u.y) || this.seatOf(u.team);
+    if (!m) { u.task = { type: 'idle' }; return; }
     u.task = { type: 'caravan', targetId: m.id, stage: 'home' }; this.setPathToEntity(u, m);
   }
   // the swap at the far end: sell what the camel carries for the wanted good, limited by the partner's stock and the camel's load

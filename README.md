@@ -98,3 +98,7 @@ Steam, matchmaking, lockstep replays and a cloud cluster. Single-player against 
 ## Licence
 
 MIT. See `LICENSE`.
+
+## Troubleshooting
+
+`node tools/soak.js [minutes] [seeds] [houses] [chaos]` plays headless matches, checks invariants (stuck units, negative stock, sync of garrisons, NaN, snapshots, tick time) and writes `logs/soak-latest.log`; `chaos` replaces the player's AI with a random intent generator. Findings and fixes are tracked in `TROUBLESHOOTING.md`.

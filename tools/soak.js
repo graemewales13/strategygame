@@ -59,6 +59,7 @@ for (const seed of seeds) {
     for (let i = 0; i < 3; i++) { const it = pick(make)(); it.team = 0; try { g.applyIntent(it); } catch (e) { flag('EXCEPTION in intent ' + it.type + ': ' + e.message, t, e.stack.split('\n').slice(1, 3).join(' | ').trim()); } }
   };
   const sample = () => {
+    try { const s = JSON.stringify(g.snapshot()); if (s.includes('null') && /NaN|Infinity/.test(s)) flag('snapshot has NaN', t, ''); if (s.length > 3e6) flag('snapshot huge >3MB', t, s.length); } catch (e) { flag('snapshot failed: ' + e.message, t, ''); }
     for (const u of g.units) {
       if (u.hp <= 0 || u.inside) continue;
       for (const k of ['x', 'y', 'hp']) if (!Number.isFinite(u[k])) flag(`NaN unit.${k} (${u.kind})`, t, u.id);

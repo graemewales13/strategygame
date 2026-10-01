@@ -29,3 +29,19 @@ Status: OPEN, FIXED, WONTFIX (with reason), HARNESS (the detector was wrong, not
 | T-010 | FIXED | Rivals walked far for timber with only the hall to drop at | No warehouse in the build plan | Warehouse added after the mill, placed beside the nearest tree stand; homes and farms may spill 8 tiles further out when the hall is crowded |
 | T-011 | FIXED | Rival armies marched at 6-7 minutes and wiped an idle player within 30 s of first contact | War opened at 340 s | `WAR_AFTER = 600` (10 min of peace). An idle player now falls at 10-12 min |
 | T-012 | HARNESS | "population capped" while a cottage was already rising or the house was dead | Detector ignored both | Only flagged with timber to spare, a live seat and no cottage under construction |
+
+## Cycle 3 - the human's view (browser fuzz, real clicks, UX)
+
+Browser checks (Playwright, not committed): every building and unit kind selected with its panel rendered and every button clicked, no page errors; right-click on every enemy building kind gives an attack order; a camel loaded and sent to a village by real mouse clicks buys coal and brings it home.
+
+| ID | Status | Symptom | Cause | Fix / guard |
+|----|--------|---------|-------|-------------|
+| T-013 | FIXED | Bottom panel clipped: with a keep selected the "Raise a building" grid sat below the fold, so viable options were not visible | Fixed 214 px HUD and tall stacked sections | HUD height `clamp(214px, 31vh, 320px)`, visible thin scrollbar, shorter keep hint |
+| T-014 | FIXED | A camel whose home market was razed idled for ever holding its cargo | `caravanHome` only knew markets | Falls back to any market of ours, then the hall or keep; goods always reach the stockpile. Test added |
+| T-015 | CHECKED | Snapshot (host to client) after chaos play | n/a | Soak now serialises a snapshot every 10 s and checks for NaN and size; clean |
+| T-016 | CHECKED | Speed | n/a | 500-740x realtime headless, slowest tick under 8 ms with 4-5 houses |
+
+### Open / ideas
+- A house with no timber stand in reach has no fallback besides trade (the AI buys timber from nobody yet: villages store food, ore and coin, not timber).
+- Rival aggression is one number (`WAR_AFTER`); a difficulty setting would expose it with army-cap scaling.
+- The soak harness has no "good human" player; adding a scripted opening would let balance be measured against a player who plays well.

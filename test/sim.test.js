@@ -451,4 +451,20 @@ test('orders: any soldier or serf can attack a building by right-click; camels c
   assert.equal(r.task.type, 'infiltrate');
 });
 
+test('caravan: if the home market falls the camel still brings its goods to the hall; a lost destination sends it home laden', () => {
+  const g = new Game({ seed: 9, houses: 3, ai: false, fog: false });
+  const p = g.players[0], mk = placeNear(g, 0, 'market'), far = placeNear(g, 1, 'market'); g.rel[0][1] = g.rel[1][0] = 'trade'; g.known[0][1] = g.known[1][0] = 1;
+  mk.stock = { iron: 40 }; far.stock = { gold: 40 };
+  const c1 = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
+  g.load(0, c1.id, 'iron', 30); assert.equal(g.cmdCaravan([c1], far, 'gold'), true);
+  for (let i = 0; i < 20; i++) g.tick(0.1);
+  far.hp = 0; run(g, 300);   // destination razed before arrival
+  assert.equal(c1.task.type, 'idle', 'camel ends idle'); assert.ok(g.cargoTotal(c1) === 0 || p.iron > 0, 'goods came home');
+  const c2 = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5); mk.stock = { iron: 40 }; g.load(0, c2.id, 'iron', 30);
+  const before = p.iron; g.cmdMove([c2], mk.x + 12, mk.y); run(g, 5); mk.hp = 0; mk.team = -1;
+  g.units.splice(g.units.indexOf(c2), 1, c2);
+  c2.task = { type: 'caravan', targetId: g.seatOf(0).id, stage: 'home' }; g.setPathToEntity(c2, g.seatOf(0)); run(g, 120);
+  assert.ok(p.iron >= before + 29, 'cargo unloaded at the hall: ' + p.iron + ' vs ' + before);
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);
