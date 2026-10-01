@@ -123,7 +123,7 @@ function think(game, team, p) {
       if (p[r] > 450) deficit -= 0.45; // piles of it already: turn to what is short
       if (deficit > worst) { worst = deficit; res = r; }
     }
-    const near = game.nearestNode(seat.x, seat.y, res, 28) || game.nearestNode(u.x, u.y, res) || game.nearestNode(u.x, u.y, 'wood');
+    const near = game.nearestNode(seat.x, seat.y, res, 28, team) || game.nearestNode(u.x, u.y, res, 1e9, team) || game.nearestNode(u.x, u.y, 'wood', 1e9, team);
     if (near) { game.cmdGather([u], near); working[NODE_RES[near.kind]]++; }
   }
 

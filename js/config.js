@@ -119,10 +119,15 @@ export const INFLUENCE = {
   keep: { r: 30, w: 1.5, guard: true },
   tower: { r: 8, w: 0.3, guard: true },
   barracks: { r: 12, w: 0.35, guard: true },
+  market: { r: 12, w: 0.35 },
+  warehouse: { r: 8, w: 0.2 },
   tavern: { r: 11, w: 0.55 },
   temple: { r: 17, w: 1.0 },
   academy: { r: 13, w: 0.4 },
 };
+// Rule: serfs may gather only on ground you rule: within these radii of one of your finished buildings or of a village you hold.
+// (Raising buildings anywhere is how you extend your rule; influence below is how villages come over.)
+export const RULE = { hall: 20, keep: 28, village: 14, default: 10 };
 export const GUARD = { floor: 0.35, full: 4, watch: 5 };
 export const LOYALTY_RATE = 1.6; // loyalty/sec per unit of net pull
 export const SUBMIT_LOYALTY = 72;

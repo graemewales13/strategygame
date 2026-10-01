@@ -132,7 +132,7 @@ test('loyalty decays when the lord has no influence nearby', () => {
   const g = new Game({ seed: 5, houses: 3, ai: false });
   const v = g.villages[0];
   v.owner = PLAYER; v.loyalty = 60;
-  run(g, 300);
+  run(g, 1000, 0.5);
   assert.equal(v.owner, -1, 'village should slip away');
 });
 
@@ -499,6 +499,49 @@ test('rules: a market earns from the cottages and villages around it', () => {
   const mk = placeNear(g, 0, 'market'), alone = g.consumerIncome(mk);
   for (let i = 0; i < 5; i++) g.addBuilding('cottage', 0, Math.round(mk.x) - 10 + i * 3, Math.round(mk.y) + 6, true);
   assert.ok(g.consumerIncome(mk) > alone + 0.3, `with customers ${g.consumerIncome(mk).toFixed(2)} vs ${alone.toFixed(2)}`);
+});
+
+function guardedKeepBeside(g, team, v) {
+  const k = g.addBuilding('keep', team, Math.round(v.x) - 8, Math.round(v.y) - 2, true);
+  for (let i = 0; i < 4; i++) { const u = g.addUnit('footman', team, k.x + 1, k.y + 3); g.cmdEnter([u], k); }
+  return k;
+}
+test('conquest: a manned castle beside an independent village brings it over by influence', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false, fog: false });
+  const v = g.villages.find((x) => x.owner < 0); v.loyalty = 20;
+  guardedKeepBeside(g, 0, v);
+  run(g, 120);
+  assert.equal(v.owner, 0, `village loyalty ${v.loyalty.toFixed(0)}`);
+});
+
+test('conquest: the same castle also draws a village away from a rival house; a market near it adds pull', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false, fog: false });
+  const v = g.villages.find((x) => x.owner < 0); v.owner = 1; v.loyalty = 60;
+  const before = g.pullsFor(v)[0];
+  g.addBuilding('market', 0, Math.round(v.x) + 5, Math.round(v.y), true);
+  assert.ok(g.pullsFor(v)[0] > before, 'a market sways the village');
+  guardedKeepBeside(g, 0, v);
+  run(g, 300);
+  assert.equal(v.owner, 0, `rival village owner ${v.owner} loyalty ${v.loyalty.toFixed(0)}`);
+});
+
+test('conquest: soldiers can still take a village by force (rival-held too, which declares war)', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false, fog: false });
+  const v = g.villages.find((x) => x.owner < 0); v.owner = 1; v.loyalty = 100; g.seen[0].fill(1);
+  const us = []; for (let i = 0; i < 8; i++) us.push(g.addUnit('footman', 0, v.x - 3, v.y + (i % 4)));
+  g.applyIntent({ type: 'context', team: 0, ids: us.map((u) => u.id), x: v.x, y: v.y });
+  assert.equal(g.rel[0][1], 'war');
+  run(g, 240);
+  assert.equal(v.owner, 0, 'taken by the sword, protection ' + v.protection.toFixed(0));
+});
+
+test('rule: serfs only gather on ground you rule; a warehouse or a held village extends it', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false, fog: false });
+  const h = g.seatOf(0), far = g.resources.filter((n) => n.kind === 'tree' && Math.hypot(n.x - h.x, n.y - h.y) > 32).sort((a, c) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(c.x - h.x, c.y - h.y))[0];
+  const s = g.addUnit('serf', 0, h.x + 2, h.y + 3);
+  assert.equal(g.cmdGather([s], far), false, 'unruled timber refused');
+  g.addBuilding('warehouse', 0, Math.round(far.x) - 3, Math.round(far.y), true);
+  assert.equal(g.cmdGather([s], far), true, 'a warehouse beside it brings it into our rule');
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

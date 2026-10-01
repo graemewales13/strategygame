@@ -4,7 +4,7 @@
 
 import {
   MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD,
-  RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD,
+  RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, MARKET_RADIUS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
@@ -197,10 +197,20 @@ export class Game {
     }
     return best;
   }
-  nearestNode(x, y, res, maxDist = 1e9) {
+  // is this ground ruled by the house? (near one of its finished buildings or a village it holds)
+  ruled(team, x, y) {
+    for (const b of this.buildings) {
+      if (b.team !== team || b.hp <= 0 || b.built < 1) continue;
+      if (Math.hypot(b.x - x, b.y - y) <= (RULE[b.kind] ?? RULE.default)) return true;
+    }
+    for (const v of this.villages) if (v.owner === team && Math.hypot(v.x - x, v.y - y) <= RULE.village) return true;
+    return false;
+  }
+  nearestNode(x, y, res, maxDist = 1e9, team = null) {
     let best = null, bd = maxDist * maxDist;
     for (const n of this.resources) {
       if (n.amount <= 0 || n.covered || NODE_RES[n.kind] !== res) continue;
+      if (team !== null && !this.ruled(team, n.x + 0.5, n.y + 0.5)) continue;
       const d = (n.x + 0.5 - x) ** 2 + (n.y + 0.5 - y) ** 2;
       if (d < bd) { best = n; bd = d; }
     }
@@ -631,6 +641,11 @@ export class Game {
         if (t === PLAYER) this.log(t, `Raise a Mine on the ${GOOD_LABEL[node.kind].toLowerCase()} deposit, then assign serfs.`, 'warn');
         return false;
       }
+    }
+    const owner = units[0]?.team;
+    if (owner !== undefined && !this.ruled(owner, node.x + 0.5, node.y + 0.5)) {
+      if (owner === PLAYER) this.log(owner, 'Not your ground: raise a warehouse, keep or market beside it, or win a village near it, before serfs work there.', 'warn');
+      return false;
     }
     for (const u of units) {
       if (u.kind !== 'serf') continue;
@@ -1143,6 +1158,12 @@ export class Game {
     this.projectiles.push({ x: b.x, y: b.y - 0.5, targetId: best.id, dmg: s.dmg, team: b.team });
   }
 
+  // idle soldiers of the lord standing around a village (an occupation force)
+  watchersOf(v) {
+    let n = 0;
+    for (const u of this.units) if (u.team === v.owner && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - v.x, u.y - v.y) <= 7) n++;
+    return n;
+  }
   // soldiers keeping a castle: those garrisoned inside plus idle ones standing watch nearby
   guardOf(b) {
     let n = 0;
@@ -1189,9 +1210,9 @@ export class Game {
         }
         if (v.loyalty >= SUBMIT_LOYALTY && v.lean >= 0 && this.alive(v.lean)) this.submit(v, v.lean, v.spyFlip === v.lean ? 'spy' : 'castle');
       } else {
-        const own = pulls[v.owner] + 0.12 * Math.min(6, v.garrison.length);   // soldiers billeted in the village steady it
+        const own = pulls[v.owner] + 0.12 * Math.min(6, v.garrison.length + this.watchersOf(v));   // soldiers billeted in or standing watch over the village steady it
         const net = own - bp;
-        if (own === 0 && bp === 0) v.loyalty = Math.max(0, v.loyalty - 0.22 * dt); // a lord far away is soon forgotten
+        if (own === 0 && bp === 0) v.loyalty = Math.max(0, v.loyalty - 0.06 * dt); // a lord far away is slowly forgotten
         else v.loyalty = Math.max(0, Math.min(100, v.loyalty + net * LOYALTY_RATE * dt));
         if (v.loyalty <= 8) {
           const lost = v.owner;
@@ -1328,11 +1349,15 @@ export class Game {
     let node = this.resources[u.task.nodeId];
     if (!node || node.amount <= 0) {
       const res = node ? NODE_RES[node.kind] : u.carry?.kind;
-      const next = res ? this.nearestNode(u.x, u.y, res, 14) : null;
+      const next = res ? this.nearestNode(u.x, u.y, res, 14, u.team) : null;
       if (next) { u.task = { type: 'gather', nodeId: next.id }; this.setPath(u, next.x + 0.5, next.y + 0.5); }
       else if (u.carry && u.carry.amount > 0) { u.task = { type: 'return', resume: null }; u.path = []; }
       else u.task = { type: 'idle' };
       return;
+    }
+    if ((u.ruleT = (u.ruleT ?? 0) - dt) <= 0) {   // the ground may have slipped from our rule (a building fell, a village left)
+      u.ruleT = 3;
+      if (!this.ruled(u.team, node.x + 0.5, node.y + 0.5)) { if (u.carry && u.carry.amount > 0) { u.task = { type: 'return', resume: null }; u.path = []; } else u.task = { type: 'idle' }; return; }
     }
     const res = NODE_RES[node.kind];
     if (u.carry && (u.carry.kind !== res)) { u.task = { type: 'return', resume: node.id }; u.path = []; return; }

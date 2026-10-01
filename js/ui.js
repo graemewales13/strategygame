@@ -305,6 +305,7 @@ export class UI {
         else { const c = mine.filter((u) => u.kind === 'camel' && u.task.type !== 'caravan').sort(near)[0]; if (c) this.host.send({ type: 'context', ids: [c.id], x: v.x, y: v.y, want: this.want }); }
         break;
       }
+      case 'keephere': { const v = this.selEntity(); if (!v) break; if (!g.canAfford(PLAYER, BUILDINGS.keep.cost)) return this.toast('Not enough goods for a keep.', 'warn'); this.placing = 'keep'; $('game').classList.add('placing'); this.hoverTX = Math.round(v.x) - 8; this.hoverTY = Math.round(v.y) - 2; break; }
       case 'sendarmyb': { const b = this.selEntity(); const a = g.militaryOf(PLAYER).map((u) => u.id); if (b && a.length) this.host.send({ type: 'attack', ids: a, targetId: b.id }); break; }
       case 'minehere': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (n) { this.placing = 'mine'; $('game').classList.add('placing'); this.hoverTX = Math.round(n.x - 1); this.hoverTY = Math.round(n.y - 1); } break; }
       case 'gathernode': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (!n) break; const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - n.x, a.y - n.y) - Math.hypot(c.x - n.x, c.y - n.y)).slice(0, 4); if (!serfs.length) this.toast('No idle serfs.', 'warn'); else this.host.send({ type: 'gather', ids: serfs.map((u) => u.id), nodeId: n.id }); break; }
@@ -492,6 +493,7 @@ export class UI {
         <div class="stat"><label>Lord</label><span>${esc(lord)}</span></div>
         <div class="stat"><label>Loyalty</label><div class="meter"><i class="loy" style="width:${v.loyalty}%"></i></div><span class="v">${v.loyalty | 0}</span></div>
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
+        <div class="stat"><label>Influence</label><span>${this.pullText(v)}</span></div>
         <div class="stat"><label>Folk</label><span>${v.folk.join(', ')}</span></div>${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
     } else if (s.type === 'node') {
       const n = g.resources[s.id]; if (!n) { this.clearSel(); return; }
@@ -586,11 +588,17 @@ export class UI {
     html += `<div class="ctitle">Buy at the far market (right-click it)</div>${this.goodChips(null, 'want', this.want)}<div class="hint">Pick what to bring home (or none to just stock a market of yours). Then <b>right-click</b> a treaty partner's market or a village. Camels return to their home market and unload into your stockpile.</div>`;
     return html;
   }
+  pullText(v) {
+    const g = this.game, pulls = g.pullsFor(v);
+    const parts = pulls.map((p, t) => [t, p]).filter(([, p]) => p > 0.02).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, p]) => `<b style="color:${HOUSES[t].accent}">${esc(HOUSES[t].short)}</b> ${p.toFixed(1)}`);
+    return parts.length ? parts.join(' · ') : 'none: no castle, temple, tavern or market near';
+  }
   villageActs(v) {
     const g = this.game, mine = v.owner === PLAYER;
     const spies = g.units.filter((u) => u.team === PLAYER && u.kind === 'spy' && u.hp > 0).length, recs = g.units.filter((u) => u.team === PLAYER && u.kind === 'recruit' && u.hp > 0).length;
     const army = g.militaryOf(PLAYER).length, camels = g.units.filter((u) => u.team === PLAYER && u.kind === 'camel' && u.hp > 0).length;
     let html = `<div class="ctitle">Options</div><div class="cgrid">`;
+    html += this.btn('keephere', { glyph: '♚', art: 'keep', name: 'Raise keep', sub: costShort(BUILDINGS.keep.cost), off: !g.canAfford(PLAYER, BUILDINGS.keep.cost), tip: '<b>Raise a keep beside it</b><br>A keep with soldiers inside sways this village (and draws it from a rival). Then garrison it.' });
     if (mine) {
       html += this.btn('entervillage', { glyph: '⇥', name: 'Garrison', off: !army, tip: '<b>Garrison</b><br>Sends idle soldiers inside (max 6).' });
     } else {
@@ -632,7 +640,7 @@ export class UI {
         else if (Object.values(UNITS).some((u) => u.from.includes(ent.kind))) html += `<div class="hint">Right-click the field to set a <b>rally point</b>; on a resource, new serfs gather it.</div>`;
       }
     } else if (ent && ent.type === 'village') {
-      html = this.villageActs(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (keep, temple, tavern or academy nearby) or a <b>spy</b>. Independent villages also trade with your camels.'}</div>`;
+      html = this.villageActs(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (a keep with soldiers inside, plus a temple, tavern or market near it) or a <b>spy</b>. Independent villages also trade with your camels.'}</div>`;
     } else if (ent && ent.type === 'building') {
       const army = g.militaryOf(PLAYER).length;
       html = `<div class="ctitle">Options</div><div class="cgrid">${this.btn('sendarmyb', { glyph: '⚔', name: 'Attack', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Attack</b><br>Sends every soldier at it. Or select units and right-click it (rams are best against walls).' })}</div><div class="hint">${esc(HOUSES[ent.team].name)} building. Select units and right-click it to attack.</div>`;
