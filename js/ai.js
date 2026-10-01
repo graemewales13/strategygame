@@ -137,6 +137,24 @@ function think(game, team, p) {
     if (v) game.cmdInfiltrate([spy], v);
   }
 
+  // 4b. tavern wanderers and castle drill: hire when flush, send recruits into the keep, drill them into soldiers
+  const keepB = game.buildings.find((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0);
+  const tav2 = game.buildings.find((b) => b.team === team && b.kind === 'tavern' && b.built >= 1 && b.hp > 0 && b.roster);
+  if (tav2 && keepB && p.gold > 170 && army.length < armyCap) {
+    const i = tav2.roster.findIndex((w) => game.canAfford(team, w.cost));
+    if (i >= 0) game.hire(team, tav2.id, i);
+  }
+  if (keepB) {
+    for (const u of game.units) if (u.team === team && u.kind === 'recruit' && !u.inside && u.task.type === 'idle' && keepB.garrison.length < 12) game.cmdEnter([u], keepB);
+    for (const id of keepB.garrison) {
+      const u = game.byId.get(id);
+      if (!u || u.kind !== 'recruit' || u.drilling) continue;
+      const kind = army.filter((x) => x.kind === 'bowman').length < army.filter((x) => x.kind === 'footman').length / 2 ? 'bowman' : 'footman';
+      if (game.drill(team, keepB.id, u.id, kind)) break;
+    }
+    if (keepB.garrison.length && !keepB.drills.length) game.leave(team, keepB.id);
+  }
+
   // 5. contest villages
   const readyArmy = army.filter((u) => u.task.type === 'idle');
   const need = army.some((u) => u.kind === 'ram') ? 4 : 5;

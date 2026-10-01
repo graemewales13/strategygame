@@ -11,6 +11,7 @@ export function makeUnit(id, kind, team, x, y) {
     cooldown: 0, aggroT: Math.random() * 0.5, repathT: 0,
     carry: null, // { kind, amount }
     face: 1, anim: 0,
+    inside: null, buildQ: [], hpMul: 1, dmgAdd: 0, spdAdd: 0, name: null, trait: null,
   };
 }
 
@@ -21,7 +22,7 @@ export function makeBuilding(id, kind, team, tx, ty, built = true) {
     x: tx + s.size / 2, y: ty + s.size / 2,
     hp: built ? s.hp : Math.max(1, s.hp * 0.12), maxHp: s.hp,
     built: built ? 1 : 0,
-    queue: [], cooldown: 0, rally: null, flash: 0,
+    queue: [], cooldown: 0, rally: null, flash: 0, garrison: [], drills: [],
   };
 }
 
@@ -36,7 +37,7 @@ export function makeVillage(id, spec) {
     loyalty: k.loyalty, folk: k.folk.slice(),
     stores: { ...k.stores },
     hp: k.protection, maxHp: k.protection,
-    spies: {}, flash: 0,
+    spies: {}, flash: 0, garrison: [], pop: 8,
   };
 }
 

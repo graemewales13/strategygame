@@ -296,4 +296,93 @@ test('AI: rivals dig stone and ore and raise tents/foundries', () => {
   assert.ok([1, 2, 3].some((t) => g.players[t].stone > 5 || g.hasBuilding(t, 'keep')), 'no stone economy');
 });
 
+
+test('garrison: right-click own hall/keep sends units inside; they vanish, heal, and leave again', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const hall = g.seatOf(PLAYER);
+  const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf');
+  serfs[0].hp = 10;
+  g.applyIntent({ type: 'context', team: PLAYER, ids: serfs.map((u) => u.id), x: hall.x, y: hall.y });
+  assert.equal(serfs[0].task.type, 'enter');
+  run(g, 12);
+  assert.ok(serfs.every((u) => u.inside === hall.id), 'inside');
+  assert.equal(hall.garrison.length, 2);
+  assert.ok(serfs[0].hp > 10, 'healed');
+  assert.equal(g.unitAt(hall.x, hall.y, 3), null, 'hidden from picking');
+  g.applyIntent({ type: 'leave', team: PLAYER, buildingId: hall.id });
+  assert.ok(serfs.every((u) => !u.inside) && hall.garrison.length === 0);
+  // capacity
+  for (let i = 0; i < 6; i++) g.addUnit('footman', PLAYER, hall.x + 2, hall.y + 3);
+  const fs = g.units.filter((u) => u.kind === 'footman' && u.team === PLAYER);
+  g.cmdEnter(fs, hall); run(g, 15);
+  assert.equal(hall.garrison.length, 4, 'hall holds 4');
+});
+
+test('village garrison: own village can be entered; sack is harder; lost village ejects them', () => {
+  const g = new Game({ seed: 9, houses: 3, ai: false });
+  const v = g.villages.find((x) => x.kind === 'hamlet'); v.owner = PLAYER; v.loyalty = 70;
+  const us = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, v.x - 3, v.y + i * 0.5));
+  g.applyIntent({ type: 'context', team: PLAYER, ids: us.map((u) => u.id), x: v.x, y: v.y });
+  run(g, 10);
+  assert.equal(v.garrison.length, 3);
+  const p0 = v.protection; g.hitVillage(g.addUnit('footman', 1, v.x, v.y + 4), v, 10, UNITS.footman);
+  assert.ok(p0 - v.protection < 7, 'garrison softens a sack');
+  g.submit(v, 1, 'pillage');
+  assert.ok(us.every((u) => !u.inside), 'ejected');
+});
+
+test('build queue: a serf raises several buildings in turn', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const hall = g.seatOf(PLAYER), p = g.players[PLAYER]; p.wood = 600;
+  const serf = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
+  const spots = [];
+  for (let r = 4; r < 14 && spots.length < 3; r++) for (let a = 0; a < 60 && spots.length < 3; a++) { const tx = Math.round(hall.x + Math.cos(a / 60 * 6.283) * r - 1), ty = Math.round(hall.y + Math.sin(a / 60 * 6.283) * r - 1); if (g.canPlace(PLAYER, 'cottage', tx, ty).ok && !spots.some(([x, y]) => Math.hypot(x - tx, y - ty) < 4)) spots.push([tx, ty]); }
+  const bs = spots.map(([tx, ty]) => g.applyIntent({ type: 'place', team: PLAYER, kind: 'cottage', tx, ty, ids: [serf.id] }));
+  assert.ok(bs.every(Boolean));
+  assert.ok(serf.buildQ.length >= 1, 'queued');
+  run(g, 120);
+  assert.ok(bs.every((b) => b.built >= 1), 'all built by one serf: ' + bs.map((b) => b.built.toFixed(2)));
+});
+
+test('tavern: roster of random wanderers; hiring spends gold and adds a recruit with traits', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const hall = g.seatOf(PLAYER), p = g.players[PLAYER]; p.gold = 300; p.food = 300;
+  const tv = g.addBuilding('tavern', PLAYER, hall.tx + 5, hall.ty, true); g.recomputeWalk();
+  g.addBuilding('cottage', PLAYER, hall.tx - 5, hall.ty, true);
+  run(g, 1);
+  assert.equal(tv.roster.length, 3);
+  const w = tv.roster[1], gold0 = p.gold;
+  const u = g.applyIntent({ type: 'hire', team: PLAYER, buildingId: tv.id, index: 1 });
+  assert.ok(u && u.kind === 'recruit' && u.name === w.name && u.trait === w.trait);
+  assert.equal(p.gold, gold0 - w.cost.gold);
+  assert.notEqual(tv.roster[1], w, 'slot refreshed');
+});
+
+test('keep: levy draws villagers in; drill turns recruits and serfs into soldiers; restrictions hold', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const hall = g.seatOf(PLAYER), p = g.players[PLAYER]; p.gold = 500; p.food = 500; p.wood = 500;
+  const keep = g.addBuilding('keep', PLAYER, hall.tx + 5, hall.ty, true);
+  g.addBuilding('cottage', PLAYER, hall.tx - 5, hall.ty, true); g.addBuilding('cottage', PLAYER, hall.tx - 5, hall.ty + 4, true); g.recomputeWalk();
+  const v = g.villages[0]; v.owner = PLAYER; v.loyalty = 70;
+  assert.equal(g.applyIntent({ type: 'levy', team: PLAYER, buildingId: keep.id, villageId: v.id }), true);
+  run(g, 55);
+  assert.ok(keep.garrison.length >= 2, 'levied ' + keep.garrison.length);
+  const rec = g.byId.get(keep.garrison[0]); assert.equal(rec.kind, 'recruit');
+  assert.equal(g.applyIntent({ type: 'drill', team: PLAYER, buildingId: keep.id, unitId: rec.id, kind: 'bowman' }), true);
+  run(g, 14);
+  assert.equal(rec.kind, 'bowman'); assert.ok(rec.speed > 0);
+  // a footman cannot be drilled again, and soldiers cannot build or gather
+  assert.equal(g.drill(PLAYER, keep.id, rec.id, 'knight'), false);
+  const b = g.addBuilding('cottage', PLAYER, hall.tx, hall.ty - 6, false);
+  rec.inside = null; rec.task = { type: 'idle' };
+  g.cmdBuild([rec], b); assert.notEqual(rec.task.type, 'build');
+  const tree = g.resources.find((n) => n.kind === 'tree'); g.cmdGather([rec], tree); assert.notEqual(rec.task.type, 'gather');
+  // a serf can be drilled into a footman
+  const s = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
+  g.cmdEnter([s], keep); run(g, 15);
+  assert.equal(s.inside, keep.id);
+  assert.equal(g.drill(PLAYER, keep.id, s.id, 'footman'), true); run(g, 12);
+  assert.equal(s.kind, 'footman');
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

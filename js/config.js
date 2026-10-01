@@ -64,6 +64,7 @@ export const UNITS = {
   knight:  { label: 'Knight',  hp: 150, speed: 3.9, dmg: 16, range: 1,   cd: 1.2,  sight: 7,  cost: { food: 80, wood: 0, gold: 60 },  time: 22, from: ['stable'],       bld: 0.5, vil: 1.0, info: 'Heavy cavalry. Forge adds +3 damage.' },
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
+  recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
 };
 
@@ -142,3 +143,37 @@ export const RELATIONS = ['peace', 'trade', 'war'];
 export const DEFAULT_RELATION = 'peace';
 
 export const FOG_REVEAL_MS = 0;
+
+// ---- garrisons, recruits, castle -----------------------------------------------------------
+// Units enter a friendly building or village by right-click. Capacity per building kind:
+export const GARRISON = { hall: 4, keep: 12, tower: 3, barracks: 6 };
+export const VILLAGE_GARRISON = 6;
+// What each kind of character may do (all orders are right-clicks).
+export const ABILITIES = {
+  serf: 'Builds (queue with Shift), gathers, mines, enters buildings',
+  recruit: 'Fights weakly, enters buildings. Drill it in a keep',
+  scout: 'Explores, fights lightly',
+  footman: 'Fights, sacks villages, enters buildings',
+  bowman: 'Ranged fighter, sacks villages',
+  knight: 'Heavy cavalry, sacks villages',
+  spy: 'Right-click a village to infiltrate it',
+  scholar: 'Heals friends, boosts academy influence',
+  ram: 'Siege: right-click walls',
+};
+// Keep (castle) drills garrisoned recruits and serfs into soldiers.
+export const DRILL = {
+  footman: { cost: { food: 20, wood: 0, gold: 10 }, time: 10 },
+  bowman:  { cost: { food: 15, wood: 15, gold: 15 }, time: 12 },
+  knight:  { cost: { food: 40, wood: 0, gold: 40 }, time: 16 },
+};
+export const LEVY = { every: 25, food: 10, villagePop: 8, regen: 60 }; // a levied village yields a villager every 25s, regrows one per minute
+// Tavern: three random wanderers for hire; the roster refreshes now and then.
+export const TAVERN_ROSTER = 3, TAVERN_REFRESH = 120;
+export const WANDERER_NAMES = ['Tomas', 'Wynn', 'Garrick', 'Bryn', 'Osric', 'Mara', 'Hale', 'Ivo', 'Sable', 'Rook', 'Perrin', 'Edda', 'Corwin', 'Lysa', 'Dunstan', 'Tamsin', 'Alric', 'Nell'];
+export const TRAITS = {
+  green:   { label: 'Green',    hp: 1,   dmg: 0, spd: 0,   cost: 25 },
+  brawny:  { label: 'Brawny',   hp: 1.3, dmg: 1, spd: 0,   cost: 45 },
+  keen:    { label: 'Keen',     hp: 1,   dmg: 3, spd: 0,   cost: 50 },
+  fleet:   { label: 'Fleet',    hp: 1,   dmg: 0, spd: 0.7, cost: 40 },
+  veteran: { label: 'Veteran',  hp: 1.2, dmg: 2, spd: 0.2, cost: 70 },
+};

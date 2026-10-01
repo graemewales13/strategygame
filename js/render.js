@@ -13,7 +13,7 @@ const GOLD = '#e2c15e';
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
 const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], tent: ['market', 0.95], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
-const USCALE = { serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
+const USCALE = { recruit: 50, serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
   hamlet: [['village_cluster', 0, 0.35, 3.9]],
@@ -106,7 +106,7 @@ export class Renderer {
     for (const v of g.villages) if (isSeen(v.x, v.y) && v.tx + v.size >= x0 && v.tx <= x1 && v.ty + v.size >= y0 && v.ty <= y1) items.push({ o: v, k: 1, z: v.tx + v.ty + v.size * 2 - 1 });
     for (const b of g.buildings) if ((b.team === PLAYER || isSeen(b.x, b.y)) && b.tx + b.size >= x0 && b.tx <= x1 && b.ty + b.size >= y0 && b.ty <= y1) items.push({ o: b, k: 2, z: b.tx + b.ty + b.size * 2 - 1 });
     for (const u of g.units) {
-      if (u.hp <= 0 || u.hidden || !(u.team === PLAYER || isVis(u.x, u.y))) continue;
+      if (u.hp <= 0 || u.hidden || u.inside || !(u.team === PLAYER || isVis(u.x, u.y))) continue;
       if (u.x < x0 || u.x > x1 || u.y < y0 || u.y > y1) continue;
       items.push({ o: u, k: 3, z: u.x + u.y + 0.2 });
     }
@@ -231,6 +231,11 @@ export class Renderer {
       this.hit(n, 'node', sx - 20 * z, sy - 30 * z, sx + 20 * z, sy + 4 * z);
     }
   }
+  badge(ctx, x, y, n, f, z) {
+    const r = 9 * z + 2;
+    ctx.fillStyle = f.dark; ctx.strokeStyle = f.accent; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(10 * z + 3)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(n, x, y + 1); ctx.textBaseline = 'alphabetic';
+  }
   pennant(ctx, px, py, z, t, prim, acc, phase = 0) {
     const w = 15 * z, h = 9 * z, n = 5;
     ctx.fillStyle = prim; ctx.beginPath(); ctx.moveTo(px, py);
@@ -271,6 +276,7 @@ export class Renderer {
     const m = this.toScreen(cx, cy), W = v.size * HW * z * 1.4;
     this.bar(ctx, m[0] - W / 2, top - 14, W, 4, v.protection / v.maxProtection, '#c0473b');
     this.bar(ctx, m[0] - W / 2, top - 9, W, 4, v.loyalty / 100, '#5a9ad8');
+    if (v.garrison?.length && v.owner === PLAYER) this.badge(ctx, m[0] + W / 2 + 12, top - 6, v.garrison.length, HOUSES[PLAYER], z);
     if (ui?.isSelected(v)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, v.tx - 0.2, v.ty - 0.2, v.size + 0.4, v.size + 0.4); ctx.stroke(); ctx.setLineDash([]); }
     if (z > 0.7) { ctx.font = `${Math.round(11 * z + 2)}px Georgia, serif`; ctx.textAlign = 'center'; const [lx, ly] = this.toScreen(v.tx + v.size, v.ty + v.size); ctx.fillStyle = '#000'; ctx.fillText(v.name, lx + 1, ly + 15); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, lx, ly + 14); }
   }
@@ -313,6 +319,7 @@ export class Renderer {
       if (b.kind === 'forge') { const gx = bx - w * 0.3, gy = dy + h * 0.72, gr = 26 * z, a = 0.42 + Math.sin(t * 9 + b.id) * 0.1 + Math.sin(t * 23) * 0.05; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,170,60,${a})`); g2.addColorStop(1, 'rgba(255,110,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
     }
     if (b.flash > 0 && c) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.7, b.flash * 2); ctx.drawImage(c, bx - w / 2, dy, w, h); ctx.restore(); }
+    if (b.garrison?.length && b.team === PLAYER) this.badge(ctx, bx + w * 0.34, dy + h * 0.12, b.garrison.length, f, z);
     if (b.hp < b.maxHp && prog >= 1) this.bar(ctx, bx - w * 0.3, dy - 6, w * 0.6, 4, b.hp / b.maxHp, this.hpColor(b.hp / b.maxHp));
     if (b.queue.length && b.team === PLAYER) this.bar(ctx, bx - w * 0.3, by + 4 * z, w * 0.6, 3, b.queue[0].t / UNITS[b.queue[0].kind].time, '#7ac1ff');
     if (ui?.isSelected(b)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, b.tx - 0.1, b.ty - 0.1, b.size + 0.2, b.size + 0.2); ctx.stroke(); ctx.setLineDash([]); }
@@ -346,7 +353,7 @@ export class Renderer {
     let c, w, h;
     if (u.kind === 'ram') { c = ramSprite(u.team); w = 78 * z; }
     else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light); w = (c ? c.width / c.height : 1) * 40 * z; }
-    else { c = tinted(u.kind, u.team, 'trim', false, light); const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh; }
+    else { c = tinted(st.art || u.kind, u.team, 'trim', false, light); const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh; }
     if (!c) return;
     h = (c.height / c.width) * w;
     const bob = moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;

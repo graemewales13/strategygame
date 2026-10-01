@@ -7,6 +7,7 @@ import {
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, TERRITORY,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  GARRISON, VILLAGE_GARRISON, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -162,7 +163,7 @@ export class Game {
   unitAt(x, y, r = 0.7, team = null) {
     let best = null, bd = r;
     for (const u of this.units) {
-      if (u.hp <= 0 || (team !== null && u.team !== team)) continue;
+      if (u.hp <= 0 || u.inside || (team !== null && u.team !== team)) continue;
       const d = Math.hypot(u.x - x, u.y - (y + 0.15));
       if (d < bd) { best = u; bd = d; }
     }
@@ -215,7 +216,7 @@ export class Game {
   closestEnemy(from, range, team) {
     let best = null, bd = range;
     for (const u of this.units) {
-      if (u.hp <= 0 || !this.isEnemy(team, u.team)) continue;
+      if (u.hp <= 0 || u.inside || !this.isEnemy(team, u.team)) continue;
       const d = Math.hypot(u.x - from.x, u.y - from.y);
       if (d < bd) { best = u; bd = d; }
     }
@@ -349,7 +350,12 @@ export class Game {
       case 'pillage': return this.cmdAttack(mine(), this.byId.get(it.targetId));
       case 'infiltrate': return this.cmdInfiltrate(mine(), this.byId.get(it.villageId ?? it.targetId));
       case 'gather': return this.cmdGather(mine(), this.resources[it.nodeId]);
-      case 'build': return this.cmdBuild(mine(), this.byId.get(it.buildingId));
+      case 'build': return this.cmdBuild(mine(), this.byId.get(it.buildingId), !!it.queue);
+      case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
+      case 'leave': return this.leave(team, it.buildingId);
+      case 'hire': return this.hire(team, it.buildingId, it.index);
+      case 'levy': return this.setLevy(team, it.buildingId, it.villageId);
+      case 'drill': return this.drill(team, it.buildingId, it.unitId, it.kind);
       case 'place': return this.place(team, it.kind, it.tx, it.ty, it.ids, it.nodeId ?? null);
       case 'mine': return this.cmdMine(mine(), this.byId.get(it.buildingId));
       case 'unmine': return this.unassignMine(team, it.buildingId);
@@ -359,18 +365,19 @@ export class Game {
       case 'rally': return this.setRally(team, it.buildingId, it.x, it.y, it.nodeId);
       case 'trade': return this.trade(team, it.partner, it.give, it.get, it.amount);
       case 'relation': return this.proposeRelation(team, it.other, it.state);
-      case 'context': return this.contextCommand(team, it.ids, it.x, it.y);
+      case 'context': return this.contextCommand(team, it.ids, it.x, it.y, !!it.queue);
       default: return null;
     }
   }
 
   // Right-click: decide what the point means for these units (as the owning player sees it)
-  contextCommand(team, ids, x, y) {
+  contextCommand(team, ids, x, y, queue = false) {
     const units = (ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
     if (!units.length) return false;
     const eu = this.unitAt(x, y, 0.75);
     if (eu && eu.team !== team && this.canSee(team, eu.x, eu.y)) return this.cmdAttack(units, eu);
     const v = this.villageAt(x, y);
+    if (v && v.owner === team) return this.cmdEnter(units, v);
     if (v && v.owner !== team && this.wasSeen(team, v.x, v.y)) {
       const spies = units.filter((u) => u.kind === 'spy'), rest = units.filter((u) => u.kind !== 'spy' && u.kind !== 'serf' && u.kind !== 'scholar');
       if (spies.length) this.cmdInfiltrate(spies, v);
@@ -383,7 +390,7 @@ export class Game {
     if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) return this.cmdAttack(units.filter((u) => u.kind !== 'serf' || units.length === 1), b);
     if (b && b.team === team && b.built < 1) {
       const serfs = units.filter((u) => u.kind === 'serf');
-      if (serfs.length) { this.cmdBuild(serfs, b); return true; }
+      if (serfs.length) { this.cmdBuild(serfs, b, queue); return true; }
     }
     if (b && b.team === team && b.kind === 'mine') {
       const serfs = units.filter((u) => u.kind === 'serf');
@@ -396,7 +403,8 @@ export class Game {
       const carriers = units.filter((u) => u.kind === 'serf' && u.carry && DROP_OFF[b.kind]?.includes(u.carry.kind));
       if (carriers.length) carriers.forEach((u) => { u.task = { type: 'return', resume: null }; this.setPathToEntity(u, b); });
       const rest = units.filter((u) => !carriers.includes(u));
-      if (rest.length) this.cmdMove(rest, x, y);
+      if (rest.length && GARRISON[b.kind]) this.cmdEnter(rest, b);
+      else if (rest.length) this.cmdMove(rest, x, y);
       return true;
     }
     const node = this.nodeAt(x, y);
@@ -408,6 +416,137 @@ export class Game {
       return true;
     }
     return this.cmdMove(units, x, y);
+  }
+
+  // ---- garrisons: right-click a friendly hall, keep, tower, barracks or village to go inside --------------------
+  garrisonCap(t) { return t.type === 'village' ? VILLAGE_GARRISON : (GARRISON[t.kind] || 0); }
+  cmdEnter(units, t) {
+    if (!t || t.hp <= 0 && t.type !== 'village') return false;
+    const owner = t.type === 'village' ? t.owner : t.team;
+    if (!units.length || units[0].team !== owner || (t.type === 'building' && t.built < 1) || !this.garrisonCap(t)) return false;
+    let sent = 0;
+    for (const u of units) {
+      if (u.hp <= 0 || u.inside || u.kind === 'ram') continue;
+      u.buildQ = [];
+      u.task = { type: 'enter', targetId: t.id };
+      this.setPathToEntity(u, t);
+      sent++;
+    }
+    return sent > 0;
+  }
+  doEnter(u, dt) {
+    const t = this.byId.get(u.task.targetId);
+    if (!t || (t.type === 'building' && t.hp <= 0)) { u.task = { type: 'idle' }; return; }
+    if (distTo(u.x, u.y, t) > 1.35) {
+      if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, t);
+      this.follow(u, dt);
+      return;
+    }
+    if (t.garrison.length >= this.garrisonCap(t)) { u.task = { type: 'idle' }; u.path = []; if (u.team === PLAYER) this.log(PLAYER, `${t.type === 'village' ? t.name : BUILDINGS[t.kind].label} is full.`, 'warn'); return; }
+    u.path = []; u.carry = null;
+    u.inside = t.id; u.task = { type: 'idle' };
+    t.garrison.push(u.id);
+  }
+  // inside a building: rest and heal, drills run in the keep's update
+  tickInside(u, dt) {
+    const t = this.byId.get(u.inside);
+    if (!t || (t.type === 'building' && t.hp <= 0) || (t.type === 'village' && t.owner !== u.team)) { this.eject(u, t); return; }
+    u.x = t.x; u.y = t.y;
+    if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + 2 * dt);
+  }
+  eject(u, t) {
+    u.inside = null; u.task = { type: 'idle' }; u.path = [];
+    if (t) { t.garrison = t.garrison.filter((id) => id !== u.id); }
+    const ref = t || u;
+    const n = this.nearestWalkable(Math.floor(ref.x), Math.floor((ref.ty ?? ref.y) + (ref.size || 0) + 0.5), 8);
+    if (n) { u.x = n[0] + 0.5 + (Math.random() - 0.5) * 0.4; u.y = n[1] + 0.5; }
+  }
+  leave(team, id) {
+    const t = this.byId.get(id);
+    if (!t || (t.type === 'building' ? t.team : t.owner) !== team) return false;
+    const ids = t.garrison.slice();
+    for (const uid of ids) { const u = this.byId.get(uid); if (u && !u.drilling) { this.eject(u, t); if (t.rally && t.type === 'building') this.cmdMove([u], t.rally.x, t.rally.y); } }
+    return ids.length > 0;
+  }
+  ejectAll(t) { for (const uid of t.garrison.slice()) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; }
+
+  // ---- tavern: random wanderers for hire; keep: levy villagers and drill soldiers ----------------------------
+  rollWanderer() {
+    const keys = Object.keys(TRAITS);
+    const trait = keys[Math.floor(Math.random() * keys.length)], t = TRAITS[trait];
+    const name = WANDERER_NAMES[Math.floor(Math.random() * WANDERER_NAMES.length)];
+    return { name, trait, cost: { food: 15, wood: 0, gold: t.cost } };
+  }
+  newRoster() { return Array.from({ length: TAVERN_ROSTER }, () => this.rollWanderer()); }
+  hire(team, buildingId, index) {
+    const b = this.byId.get(buildingId), say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
+    if (!b || b.team !== team || b.kind !== 'tavern' || b.built < 1 || b.hp <= 0 || !b.roster?.[index]) return null;
+    const w = b.roster[index];
+    if (!this.canAfford(team, w.cost)) return say('Not enough goods to hire.');
+    if (this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');
+    this.pay(team, w.cost);
+    const u = this.addUnit('recruit', team, b.x + (Math.random() - 0.5) * 1.2, b.ty + b.size + 0.7);
+    this.applyTrait(u, w.trait); u.name = w.name;
+    b.roster[index] = this.rollWanderer();
+    if (b.rally) this.cmdMove([u], b.rally.x, b.rally.y);
+    if (team === PLAYER) this.log(team, `${w.name} the ${TRAITS[w.trait].label.toLowerCase()} joins your banner.`, 'good');
+    return u;
+  }
+  applyTrait(u, trait) {
+    const t = TRAITS[trait] || TRAITS.green, st = UNITS[u.kind];
+    u.trait = trait; u.hpMul = t.hp; u.dmgAdd = t.dmg; u.spdAdd = t.spd;
+    u.maxHp = Math.round(st.hp * t.hp); u.hp = u.maxHp; u.speed = st.speed + t.spd;
+  }
+  setLevy(team, buildingId, villageId) {
+    const b = this.byId.get(buildingId), v = this.byId.get(villageId);
+    if (!b || b.team !== team || b.kind !== 'keep' || b.built < 1 || !v || v.type !== 'village' || v.owner !== team) {
+      if (team === PLAYER) this.log(team, 'Only a keep can levy, and only from a village you hold.', 'warn');
+      return false;
+    }
+    b.levy = v.id; b.levyT = 0;
+    if (team === PLAYER) this.log(team, `${v.name} will send villagers to the keep.`, 'info');
+    return true;
+  }
+  drill(team, buildingId, unitId, kind) {
+    const b = this.byId.get(buildingId), u = this.byId.get(unitId), d = DRILL[kind], say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return false; };
+    if (!b || b.team !== team || b.kind !== 'keep' || b.built < 1 || !u || u.inside !== b.id || !d) return false;
+    if (u.kind !== 'recruit' && u.kind !== 'serf') return say('Only recruits and serfs can be drilled.');
+    if (u.drilling) return say('Already training.');
+    if (b.drills.length >= 4) return say('The drill yard is full.');
+    if (!this.canAfford(team, d.cost)) return say('Not enough goods to drill.');
+    this.pay(team, d.cost);
+    u.drilling = true; b.drills.push({ uid: u.id, kind, t: 0 });
+    return true;
+  }
+  tickKeep(b, dt) {
+    // drills
+    if (b.drills.length) {
+      const q = b.drills[0], u = this.byId.get(q.uid);
+      if (!u || u.hp <= 0 || u.inside !== b.id) b.drills.shift();
+      else {
+        q.t += dt;
+        if (q.t >= DRILL[q.kind].time) {
+          b.drills.shift();
+          const st = UNITS[q.kind], ratio = u.hp / u.maxHp, was = u.kind;
+          u.kind = q.kind; u.drilling = false;
+          u.maxHp = Math.round(st.hp * (u.hpMul || 1)); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0);
+          if (b.team === PLAYER) this.log(PLAYER, `${u.name || (was === 'serf' ? 'A serf' : 'A recruit')} is drilled into a ${st.label.toLowerCase()}.`, 'good');
+        }
+      }
+    }
+    // levy: villagers walk in from the assigned village
+    const v = b.levy != null ? this.byId.get(b.levy) : null;
+    if (v && v.owner === b.team) {
+      b.levyT = (b.levyT || 0) + dt;
+      if (b.levyT >= LEVY.every) {
+        const p = this.players[b.team];
+        if (v.pop >= 1 && b.garrison.length < GARRISON.keep && p.food >= LEVY.food && this.popUsed(b.team) < this.popCap(b.team)) {
+          b.levyT = 0; v.pop -= 1; p.food -= LEVY.food;
+          const u = this.addUnit('recruit', b.team, b.x, b.y);
+          u.name = `Villager of ${v.name}`; u.trait = 'green'; u.inside = b.id; b.garrison.push(u.id);
+        } else if (v.pop < 1) b.levyT = LEVY.every; // wait for the village to regrow
+      }
+    } else if (b.levy != null) b.levy = null;
   }
 
   cmdMove(units, x, y) {
@@ -508,10 +647,15 @@ export class Game {
     if (node.amount <= 0) this.resAt[node.y * this.W + node.x] = -1;
     u.face = b.x >= u.x ? 1 : -1;
   }
-  cmdBuild(units, b) {
+  cmdBuild(units, b, queue = false) {
     if (!b || b.type !== 'building' || b.built >= 1) return false;
     for (const u of units) {
-      if (u.kind !== 'serf') continue;
+      if (u.kind !== 'serf' || u.inside) continue;
+      if (queue && u.task.type === 'build' && u.task.targetId !== b.id) {
+        const cur = this.byId.get(u.task.targetId);
+        if (cur && cur.hp > 0 && cur.built < 1) { if (!u.buildQ.includes(b.id)) u.buildQ.push(b.id); continue; }
+      }
+      u.buildQ = [];
       if (u.task.type === 'gather' || u.task.type === 'return') u.afterBuild = u.task.type === 'gather' ? { nodeId: u.task.nodeId } : { nodeId: u.task.resume };
       u.task = { type: 'build', targetId: b.id };
       this.setPathToEntity(u, b);
@@ -595,7 +739,7 @@ export class Game {
       builders = this.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0)
         .sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y)).slice(0, 2);
     }
-    this.cmdBuild(builders, b);
+    this.cmdBuild(builders, b, !!(ids && ids.length));
     if (s.onDeposit) builders.forEach((u) => { u.afterBuild = { mineId: b.id }; });
     return b;
   }
@@ -804,6 +948,8 @@ export class Game {
       switch (b.kind) {
         case 'farm': p.food += 0.8 * dt * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (p.sci >= 1 ? 1.15 : 1); break;
         case 'foundry': this.smelt(b, p, dt); break;
+        case 'keep': this.tickKeep(b, dt); break;
+        case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } break;
         case 'tavern': p.gold += 0.35 * dt; break;
         case 'market': p.gold += 0.4 * dt; break;
         case 'temple': if (this.hasBuilding(b.team, 'academy')) p.gold += 0.3 * dt; break;
@@ -842,7 +988,7 @@ export class Game {
     const s = BUILDINGS.tower;
     let best = null, bd = s.range;
     for (const u of this.units) {
-      if (u.hp <= 0 || !this.isEnemy(b.team, u.team)) continue;
+      if (u.hp <= 0 || u.inside || !this.isEnemy(b.team, u.team)) continue;
       const d = Math.hypot(u.x - b.x, u.y - b.y);
       if (d < bd) { best = u; bd = d; }
     }
@@ -869,6 +1015,7 @@ export class Game {
   updateVillages(dt) {
     for (const v of this.villages) {
       v.flash = Math.max(0, v.flash - dt);
+      if (v.owner >= 0 && v.pop < LEVY.villagePop) v.pop = Math.min(LEVY.villagePop, v.pop + dt / LEVY.regen);
       if (v.hitT > 0) v.hitT -= dt;
       else if (v.protection < v.maxProtection) v.protection = Math.min(v.maxProtection, v.protection + 1.5 * dt);
       const pulls = this.pullsFor(v);
@@ -890,6 +1037,7 @@ export class Game {
         else v.loyalty = Math.max(0, Math.min(100, v.loyalty + net * LOYALTY_RATE * dt));
         if (v.loyalty <= 8) {
           const lost = v.owner;
+          this.ejectAll(v);
           v.owner = -1; v.lean = best; v.loyalty = 18; v.spyFlip = -1;
           this.log(lost, `${v.name} slips from its lord.`, 'warn');
         } else {
@@ -904,6 +1052,7 @@ export class Game {
   submit(v, team, how) {
     if (v.owner === team) return;
     const prev = v.owner;
+    this.ejectAll(v);
     v.owner = team; v.lean = team; v.spyFlip = -1;
     v.loyalty = how === 'pillage' ? 48 : 62;
     v.protection = v.maxProtection * 0.4;
@@ -916,6 +1065,7 @@ export class Game {
   updateUnits(dt) {
     for (const u of this.units) {
       if (u.hp <= 0) continue;
+      if (u.inside) { this.tickInside(u, dt); continue; }
       const s = UNITS[u.kind];
       u.cooldown = Math.max(0, u.cooldown - dt);
       u.flash = Math.max(0, (u.flash || 0) - dt);
@@ -929,6 +1079,7 @@ export class Game {
         case 'return': this.doReturn(u, dt); break;
         case 'build': this.doBuild(u, dt); break;
         case 'infiltrate': this.doInfiltrate(u, dt); break;
+        case 'enter': this.doEnter(u, dt); break;
         default: this.doIdle(u, s, dt);
       }
       if (u.kind === 'scholar' && u.task.type === 'idle') {
@@ -964,6 +1115,7 @@ export class Game {
     u.cooldown = s.cd;
     let dmg = s.dmg;
     const arms = this.players[u.team].arms || 0;
+    dmg += u.dmgAdd || 0;
     if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
@@ -973,7 +1125,7 @@ export class Game {
   }
 
   hitVillage(u, v, dmg, s) {
-    v.protection -= dmg; v.hitT = 6; v.flash = 0.2;
+    v.protection -= dmg / (1 + 0.2 * v.garrison.length); v.hitT = 6; v.flash = 0.2;
     v.loyalty = Math.max(0, v.loyalty - 1.5);
     const loot = Math.min(2, v.stores.gold || 0);
     if (loot) { v.stores.gold -= loot; this.players[u.team].gold += loot * 0.6; }
@@ -1066,6 +1218,11 @@ export class Game {
   doBuild(u, dt) {
     const b = this.byId.get(u.task.targetId);
     if (!b || b.hp <= 0 || b.built >= 1) {
+      // queued sites first (Shift-placed or Shift-right-clicked), then anything unfinished close by
+      while (u.buildQ.length) {
+        const q = this.byId.get(u.buildQ.shift());
+        if (q && q.hp > 0 && q.built < 1 && q.team === u.team) { u.task = { type: 'build', targetId: q.id }; this.setPathToEntity(u, q); return; }
+      }
       // look for another unfinished building of ours close by before going idle
       const next = b ? null : this.buildings.find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
       let nxt = next;
@@ -1172,7 +1329,7 @@ export class Game {
       this.units = this.units.filter((u) => u.hp > 0);
     }
     if (this.buildings.some((b) => b.hp <= 0)) {
-      for (const b of this.buildings) if (b.hp <= 0) this.byId.delete(b.id);
+      for (const b of this.buildings) if (b.hp <= 0) { this.ejectAll(b); this.byId.delete(b.id); }
       this.buildings = this.buildings.filter((b) => b.hp > 0);
       rebuilt = true;
     }
