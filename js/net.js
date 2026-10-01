@@ -16,7 +16,7 @@
 //   { type:'relation', other, state }     { type:'stop', ids }
 //   { type:'place', kind:'mine', nodeId }  { type:'mine', ids, buildingId }  { type:'unmine', buildingId }
 //   { type:'respond', from, accept }      // answer a treaty offer
-//   trade: give/get may be any good (grain, timber, coin, stone, copper, iron, coal, silver, steel, ware); houses need a treaty + tents
+//   trade: give/get may be any good (grain, timber, coin, stone, copper, iron, coal, silver, steel, ware); camels trade at markets/villages under a treaty
 
 /** Same-process host: intents go straight into the sim. */
 export class LocalHost {

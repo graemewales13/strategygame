@@ -66,6 +66,26 @@ export function ramSprite(team) {
   cache.set(k, c); return c;
 }
 
+// the camel: nothing in the boards, so a painted pack animal in house colours, facing right
+export function camelSprite(team) {
+  const k = 'camel' + team; if (cache.has(k)) return cache.get(k);
+  const f = HOUSES[team] || HOUSES[0], c = document.createElement('canvas'); c.width = 120; c.height = 100; const x = c.getContext('2d');
+  const fur = (y0, y1) => { const g = x.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, '#c9a266'); g.addColorStop(1, '#8a6a3a'); return g; };
+  x.fillStyle = 'rgba(0,0,0,.33)'; x.beginPath(); x.ellipse(58, 92, 40, 6, 0, 0, 7); x.fill();
+  x.strokeStyle = '#6e5230'; x.lineWidth = 5; x.lineCap = 'round';
+  for (const [lx, ph] of [[34, 0], [42, 4], [70, 4], [78, 0]]) { x.beginPath(); x.moveTo(lx, 62); x.lineTo(lx + ph - 2, 90); x.stroke(); }
+  x.fillStyle = fur(30, 72);
+  x.beginPath(); x.ellipse(58, 56, 30, 16, 0, 0, 7); x.fill();
+  x.beginPath(); x.ellipse(46, 40, 10, 13, 0, 0, 7); x.fill(); x.beginPath(); x.ellipse(68, 41, 10, 12, 0, 0, 7); x.fill();
+  x.strokeStyle = '#b08f58'; x.lineWidth = 8; x.beginPath(); x.moveTo(84, 52); x.quadraticCurveTo(100, 40, 98, 22); x.stroke();
+  x.fillStyle = '#b08f58'; x.beginPath(); x.ellipse(103, 20, 9, 6, -0.2, 0, 7); x.fill();
+  x.fillStyle = '#2a1c0e'; x.beginPath(); x.arc(105, 18, 1.6, 0, 7); x.fill();
+  x.fillStyle = f.primary; x.fillRect(44, 44, 30, 9); x.fillStyle = f.accent; x.fillRect(44, 51, 30, 3);
+  x.fillStyle = '#7a5a2e'; x.fillRect(48, 34, 12, 11); x.fillStyle = '#9a7a44'; x.fillRect(62, 36, 9, 9);
+  x.strokeStyle = '#2a1c0e'; x.lineWidth = 1.5; x.strokeRect(48, 34, 12, 11); x.strokeRect(62, 36, 9, 9);
+  cache.set(k, c); return c;
+}
+
 // ---- ore deposits and the mine: recoloured from the board's gold pile and rock, assembled on a small canvas ----------
 const ORE_LOOK = { copper: [24, 0.82, 0.95], iron: [212, 0.22, 0.66], silver: [210, 0.07, 1.18] };
 export function oreSprite(kind, flip = false) {
@@ -77,6 +97,7 @@ export function oreSprite(kind, flip = false) {
   const x = c.getContext('2d');
   if (flip) { x.translate(c.width, 0); x.scale(-1, 1); }
   x.drawImage(img, 0, 0);
+  if (kind === 'gold') { cache.set(key, c); return c; }
   const d = x.getImageData(0, 0, c.width, c.height), p = d.data, [th, ts, tv] = ORE_LOOK[kind];
   for (let i = 0; i < p.length; i += 4) {
     if (p[i + 3] < 8) continue;

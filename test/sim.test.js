@@ -133,22 +133,6 @@ test('loyalty decays when the lord has no influence nearby', () => {
   assert.equal(v.owner, -1, 'village should slip away');
 });
 
-test('trade: needs market + trade relation; gives a worse-than-1:1 rate', () => {
-  const g = new Game({ seed: 9, houses: 3, ai: false });
-  const hall = g.seatOf(PLAYER);
-  g.players[PLAYER].wood = 400;
-  g.addBuilding('market', PLAYER, hall.tx + 5, hall.ty, true);
-  g.recomputeWalk();
-  assert.equal(g.tradePartners(PLAYER).filter((p) => p.type === 'house').length, 0);
-  g.meet(PLAYER, 1); g.addBuilding('tent', PLAYER, hall.tx - 5, hall.ty, true); g.addBuilding('tent', 1, g.seatOf(1).tx + 5, g.seatOf(1).ty, true); g.recomputeWalk(); g.players[1].gold = 300; g.proposeRelation(PLAYER, 1, 'trade');
-  const partner = g.tradePartners(PLAYER).find((p) => p.type === 'house');
-  assert.ok(partner);
-  const gold0 = g.players[PLAYER].gold;
-  const q = g.applyIntent({ type: 'trade', team: PLAYER, partner: { type: 'house', id: 1 }, give: 'wood', get: 'gold', amount: 100 });
-  assert.ok(q && q.got > 0 && q.got < 50, `got ${q?.got}`);
-  assert.equal(g.players[PLAYER].gold, gold0 + q.got);
-});
-
 test('war: attacking a house at peace declares war; destroying hall+keep eliminates it', () => {
   const g = new Game({ seed: 4, houses: 3, ai: false });
   const hall = g.seatOf(1);
@@ -250,24 +234,6 @@ test('treaty: unmet houses cannot treaty; AI grants at once; human target gets a
   assert.equal(g.rel[PLAYER][1], 'peace');
   g.applyIntent({ type: 'respond', team: PLAYER, from: 1, accept: true });
   assert.equal(g.rel[PLAYER][1], 'trade');
-});
-
-test('tent trade: both tents + treaty required; minerals change hands at a fee; villages refuse minerals', () => {
-  const g = new Game({ seed: 9, houses: 3, ai: false });
-  const a = g.seatOf(0), b = g.seatOf(1);
-  g.meet(0, 1); g.proposeRelation(0, 1, 'trade');
-  g.players[0].iron = 100; g.players[1].coal = 100;
-  const say = () => g.applyIntent({ type: 'trade', team: 0, partner: { type: 'house', id: 1 }, give: 'iron', get: 'coal', amount: 50 });
-  assert.equal(say(), null, 'no tents yet');
-  g.addBuilding('tent', 0, a.tx - 5, a.ty, true);
-  assert.equal(say(), null, 'their tent missing');
-  g.addBuilding('tent', 1, b.tx + 5, b.ty, true); g.recomputeWalk();
-  const q = say();
-  assert.ok(q && q.got > 0 && q.got < 75, `got ${q?.got}`); // iron 3 vs coal 2: 75 before fee
-  assert.equal(g.players[0].iron, 50); assert.equal(g.players[1].iron, 50);
-  assert.equal(g.players[0].coal, q.got);
-  g.proposeRelation(0, 1, 'peace');
-  assert.equal(say(), null, 'treaty cancelled');
 });
 
 test('auto use: foundry smelts steel, forge turns steel into arms, academy turns silver into science, ware pleases a village', () => {
@@ -383,6 +349,106 @@ test('keep: levy draws villagers in; drill turns recruits and serfs into soldier
   assert.equal(s.inside, keep.id);
   assert.equal(g.drill(PLAYER, keep.id, s.id, 'footman'), true); run(g, 12);
   assert.equal(s.kind, 'footman');
+});
+
+
+// helpers for the market / caravan tests
+const placeNear = (g, team, kind, r0 = 5) => {
+  const h = g.seatOf(team), size = { market: 3, mine: 2, warehouse: 3, foundry: 3, cottage: 2 }[kind] || 3;
+  for (let r = r0; r < 17; r++) for (let a = 0; a < 90; a++) {
+    const an = (a / 90) * 6.283, tx = Math.round(h.x + Math.cos(an) * r - size / 2), ty = Math.round(h.y + Math.sin(an) * r - size / 2);
+    let ok = tx > 1 && ty > 1 && tx + size < g.W - 1 && ty + size < g.H - 1;
+    for (let y = ty; ok && y < ty + size; y++) for (let x = tx; x < tx + size; x++) if (g.block[y * g.W + x] || g.resAt[y * g.W + x] >= 0 || g.terrain[y * g.W + x] === 2 || g.terrain[y * g.W + x] === 3) ok = false;
+    if (ok) { const b = g.addBuilding(kind, team, tx, ty, true); g.recomputeWalk(); return b; }
+  }
+  throw new Error('no spot for ' + kind);
+};
+
+test('market shelf: stocked only from nearby suppliers (mine -> its ore, foundry -> steel/ware, warehouse -> anything)', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const p = g.players[PLAYER]; p.iron = 80; p.copper = 80; p.steel = 40; p.stone = 80;
+  const mk = placeNear(g, PLAYER, 'market');
+  run(g, 5);
+  assert.ok(!mk.stock || !(mk.stock.iron > 0), 'no supplier, no stock');
+  const node = g.resources.find((n) => n.kind === 'iron' || n.kind === 'copper' || n.kind === 'stone');
+  const m = g.addBuilding('mine', PLAYER, mk.tx + 4, mk.ty, true); m.ore = 'iron'; m.nodeIds = [];
+  run(g, 20);
+  assert.ok(mk.stock.iron >= 20, 'iron from the iron mine: ' + mk.stock.iron);
+  assert.ok(!(mk.stock.copper > 0), 'copper not supplied');
+  placeNear(g, PLAYER, 'warehouse');
+  run(g, 20);
+  assert.ok(mk.stock.copper > 5 && mk.stock.stone > 5, 'a warehouse supplies anything');
+  assert.ok(mk.stock.iron <= 100.01);
+});
+
+test('mines: gold deposits can be mined too', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const h = g.seatOf(PLAYER), p = g.players[PLAYER]; p.wood = 500; p.gold = 100;
+  const node = g.resources.filter((n) => n.kind === 'gold').sort((a, c) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(c.x - h.x, c.y - h.y))[0];
+  g.addBuilding('cottage', PLAYER, h.tx - 6, h.ty, true); // territory is by hall; the mine just needs to be inside it
+  const sp = g.mineSpot(PLAYER, node);
+  assert.ok(sp, 'a mine fits on gold');
+  const mine = g.place(PLAYER, 'mine', sp[0], sp[1], null, node.id);
+  assert.ok(mine && mine.ore === 'gold');
+  const serf = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
+  g.cmdMine([serf], mine);
+  const g0 = p.gold; run(g, 120);
+  assert.ok(p.gold > g0 + 5, 'gold mined: ' + (p.gold - g0));
+});
+
+test('caravan: camel loads at the home market, trades at a treaty partner market, returns and unloads', () => {
+  const g = new Game({ seed: 9, houses: 3, ai: false });
+  const a = g.players[0], b = g.players[1];
+  const ma = placeNear(g, 0, 'market'), mb = placeNear(g, 1, 'market');
+  ma.stock = { iron: 50 }; mb.stock = { coal: 50 };
+  g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true); g.recomputeWalk();
+  const camel = g.addUnit('camel', 0, ma.x + 2.5, ma.y + 2.5);
+  assert.equal(g.applyIntent({ type: 'load', team: 0, unitId: camel.id, good: 'iron', amount: 30 }), true);
+  assert.equal(camel.cargo.iron, 30); assert.equal(ma.stock.iron, 20);
+  // no treaty: refused, camel stays put
+  g.meet(0, 1);
+  const send = () => g.applyIntent({ type: 'context', team: 0, ids: [camel.id], x: mb.x, y: mb.y, want: 'coal' });
+  send(); assert.notEqual(camel.task.type, 'caravan', 'no treaty');
+  g.proposeRelation(0, 1, 'trade'); assert.equal(g.rel[0][1], 'trade');
+  const iron1 = b.iron || 0, coal0 = a.coal;
+  send(); assert.equal(camel.task.type, 'caravan');
+  run(g, 400);
+  assert.equal(camel.task.type, 'idle', 'back home');
+  assert.ok(a.coal > coal0 + 10 && a.coal < 45, `coal in our stockpile: ${a.coal}`);
+  assert.ok(b.iron > iron1 + 20, 'their stockpile got the iron');
+  assert.ok(mb.stock.coal < 45, 'their shelf paid out');
+  assert.equal(g.cargoTotal(camel), 0);
+  // war stops it
+  g.setRelation(0, 1, 'war');
+  camel.task = { type: 'idle' }; send(); assert.notEqual(camel.task.type, 'caravan', 'war');
+});
+
+test('caravan: independent mining villages sell ore; coal for coin; capacity and stock limits hold', () => {
+  const g = new Game({ seed: 9, houses: 3, ai: false });
+  const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
+  const v = g.villages.find((x) => x.kind === 'mine'), p = g.players[0];
+  v.owner = -1; v.stores.iron = 20;
+  const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
+  mk.stock = { gold: 60 };
+  g.load(0, camel.id, 'gold', 60);
+  assert.equal(g.cargoTotal(camel), 40, 'capped at 40');
+  assert.equal(g.cmdCaravan([camel], v, 'iron'), true);
+  run(g, 600);
+  assert.ok(p.iron >= 5 && p.iron <= 25, 'bought iron: ' + p.iron);
+  assert.ok(v.stores.gold > 90 - 1, 'village got coin');
+});
+
+test('orders: any soldier or serf can attack a building by right-click; camels cannot; recruits become spies', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false }); g.fogOn = false;
+  const e = g.seatOf(1), us = [g.addUnit('serf', 0, e.x - 5, e.y), g.addUnit('serf', 0, e.x - 5, e.y + 1), g.addUnit('camel', 0, e.x - 5, e.y + 2), g.addUnit('recruit', 0, e.x - 5, e.y + 3)];
+  g.applyIntent({ type: 'context', team: 0, ids: us.map((u) => u.id), x: e.x, y: e.y });
+  assert.deepEqual(us.map((u) => u.task.type), ['attack', 'attack', 'move', 'attack']);
+  const r = us[3]; g.players[0].gold = 100;
+  assert.equal(g.applyIntent({ type: 'role', team: 0, ids: [r.id], role: 'spy' }), true);
+  assert.equal(r.kind, 'spy'); assert.equal(g.players[0].gold, 100 - 25);
+  const v = g.villages.find((x) => x.owner < 0);
+  g.applyIntent({ type: 'context', team: 0, ids: [r.id], x: v.x, y: v.y });
+  assert.equal(r.task.type, 'infiltrate');
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

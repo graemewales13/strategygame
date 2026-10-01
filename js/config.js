@@ -33,6 +33,7 @@ export const ALL_GOODS = [...RES, ...MATS, ...PROCESSED];
 export const GOOD_LABEL = { food: 'Grain', wood: 'Timber', gold: 'Coin', stone: 'Stone', copper: 'Copper', iron: 'Iron', coal: 'Coal', silver: 'Silver', steel: 'Steel', ware: 'Fine ware' };
 export const GOOD_COLOR = { food: '#c23a56', wood: '#8a5a2a', gold: '#e0b83a', stone: '#9a9a90', copper: '#c8743a', iron: '#6f7a86', coal: '#35353a', silver: '#d8e0ea', steel: '#9fb4c8', ware: '#c9a0e0' };
 export const GOOD_INFO = {
+  gold: 'Coin: pays for troops and trade; a mine digs it from a seam.',
   stone: 'Raises keeps, towers and foundries.',
   copper: 'Smelted with coal into fine ware.',
   iron: 'Smelted with coal into steel.',
@@ -41,7 +42,8 @@ export const GOOD_INFO = {
   steel: 'Forges turn it into better arms.',
   ware: 'Taverns, markets and temples use it to make villagers content.',
 };
-export const MINE_RATE = { stone: 0.6, copper: 0.5, iron: 0.45, coal: 0.5, silver: 0.3 }; // per worker per second
+export const MINEABLE = ['gold', ...MATS]; // every ore, coin included, can be dug from a deposit with a Mine
+export const MINE_RATE = { gold: 0.6, stone: 0.6, copper: 0.5, iron: 0.45, coal: 0.5, silver: 0.3 }; // per worker per second
 export const MINE_MAX_WORKERS = 4;
 export const SMELT = { steel: { in: { iron: 2, coal: 1 }, time: 7 }, ware: { in: { copper: 2, coal: 1 }, time: 8 } };
 export const ARMS_STEEL = 6;   // steel per forge arms level (max 3)
@@ -65,6 +67,7 @@ export const UNITS = {
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
+  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Load goods at a market, then right-click another market or village to trade there.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
 };
 
@@ -76,7 +79,7 @@ export const BUILDINGS = {
   farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: ['hall'],          info: 'Steady grain. +25% beside a mill.' },
   mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['hall'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
   warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['hall'],          info: 'Drop-off for all goods, +10% delivered.' },
-  market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: ['hall'],          info: 'Trade with villages. Drop-off. Small coin trickle. Fine ware makes nearby villages content.' },
+  market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: ['hall'],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets and villages. Drop-off. Small coin trickle.' },
   forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
   workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Trains rams.' },
   tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: ['hall'],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
@@ -86,11 +89,10 @@ export const BUILDINGS = {
   archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
   stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
   mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: ['hall'], onDeposit: true, info: 'Raised on a mineral deposit. Assign serfs to dig; ore flows into your stockpile.' },
-  tent:      { label: 'Trading Tent',  size: 2, hp: 360,  sight: 6,  pop: 0, cost: { food: 0, wood: 90, gold: 30 },  time: 14, requires: ['hall'],          info: 'Trade any goods with houses you hold a trade treaty with (they need a tent too).' },
   foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: ['hall'], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Automatic.' },
   tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['hall'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
-export const BUILD_ORDER_UI = ['cottage', 'farm', 'mill', 'warehouse', 'market', 'mine', 'tent', 'foundry', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'keep'];
+export const BUILD_ORDER_UI = ['cottage', 'farm', 'mill', 'warehouse', 'market', 'mine', 'foundry', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'keep'];
 
 // Which buildings accept which goods from serfs
 export const DROP_OFF = {
@@ -124,11 +126,11 @@ export const VILLAGE_WIN_HOLD = 45;    // ... for this many seconds to win
 export const VILLAGE_SIZE = 3;
 export const VILLAGE_KINDS = {
   hamlet:   { label: 'Hamlet',         folk: ['farmers', 'herders'],            protection: 220, loyalty: 26, tribute: { food: 0.8,  wood: 0.15, gold: 0.05 }, stores: { food: 80, wood: 20, gold: 8 },  blurb: 'Farmers and herders. Easy to turn, pays grain.' },
-  mine:     { label: 'Mining camp',    folk: ['miners', 'haulers'],             protection: 300, loyalty: 18, tribute: { food: 0.1,  wood: 0.1,  gold: 0.9 },  stores: { food: 20, wood: 15, gold: 90 }, blurb: 'Miners and haulers. Pays coin.' },
-  market:   { label: 'Market town',    folk: ['traders', 'watch'],              protection: 340, loyalty: 30, tribute: { food: 0.3,  wood: 0.3,  gold: 0.7 },  stores: { food: 40, wood: 40, gold: 70 }, blurb: 'Traders and the town watch. Good partner for trade.' },
-  hillfort: { label: 'Hillfort',       folk: ['spearmen', 'captain'],           protection: 620, loyalty: 10, tribute: { food: 0.2,  wood: 0.15, gold: 0.3 },  stores: { food: 30, wood: 25, gold: 25 }, blurb: 'Spearmen and a captain. Tough walls: bring a ram.' },
-  abbey:    { label: 'Abbey',          folk: ['monks', 'scribes'],              protection: 240, loyalty: 36, tribute: { food: 0.25, wood: 0.1,  gold: 0.45 }, stores: { food: 35, wood: 10, gold: 40 }, blurb: 'Monks and scribes. Loyal, but pays gently.' },
-  inn:      { label: 'Crossroads inn', folk: ['innkeep', 'sellswords'],         protection: 200, loyalty: 24, tribute: { food: 0.2,  wood: 0.1,  gold: 0.55 }, stores: { food: 25, wood: 10, gold: 35 }, blurb: 'Innkeep and sellswords. Cheap to sack.' },
+  mine:     { label: 'Mining camp',    folk: ['miners', 'haulers'],             protection: 300, loyalty: 18, tribute: { food: 0.1,  wood: 0.1,  gold: 0.9 },  stores: { food: 20, wood: 15, gold: 90, stone: 70, iron: 45, coal: 45, copper: 35, silver: 14 }, blurb: 'Miners and haulers. Pays coin; sells ore to caravans.' },
+  market:   { label: 'Market town',    folk: ['traders', 'watch'],              protection: 340, loyalty: 30, tribute: { food: 0.3,  wood: 0.3,  gold: 0.7 },  stores: { food: 40, wood: 40, gold: 70, stone: 20, copper: 25, ware: 10 }, blurb: 'Traders and the town watch. Good partner for trade.' },
+  hillfort: { label: 'Hillfort',       folk: ['spearmen', 'captain'],           protection: 620, loyalty: 10, tribute: { food: 0.2,  wood: 0.15, gold: 0.3 },  stores: { food: 30, wood: 25, gold: 25, iron: 25, steel: 6 }, blurb: 'Spearmen and a captain. Tough walls: bring a ram.' },
+  abbey:    { label: 'Abbey',          folk: ['monks', 'scribes'],              protection: 240, loyalty: 36, tribute: { food: 0.25, wood: 0.1,  gold: 0.45 }, stores: { food: 35, wood: 10, gold: 40, silver: 16, ware: 8 }, blurb: 'Monks and scribes. Loyal, but pays gently.' },
+  inn:      { label: 'Crossroads inn', folk: ['innkeep', 'sellswords'],         protection: 200, loyalty: 24, tribute: { food: 0.2,  wood: 0.1,  gold: 0.55 }, stores: { food: 25, wood: 10, gold: 35, coal: 18 }, blurb: 'Innkeep and sellswords. Cheap to sack.' },
 };
 export const VILLAGE_NAMES = {
   hamlet: ['Aldermere', 'Fenwick', 'Hollin', 'Thatchley', 'Oakby', 'Lindow'],
@@ -156,9 +158,10 @@ export const ABILITIES = {
   footman: 'Fights, sacks villages, enters buildings',
   bowman: 'Ranged fighter, sacks villages',
   knight: 'Heavy cavalry, sacks villages',
-  spy: 'Right-click a village to infiltrate it',
+  spy: 'Right-click a village to infiltrate it (gains influence)',
   scholar: 'Heals friends, boosts academy influence',
   ram: 'Siege: right-click walls',
+  camel: 'Carries up to 40 goods: load at a market, right-click a market or village to trade',
 };
 // Keep (castle) drills garrisoned recruits and serfs into soldiers.
 export const DRILL = {
@@ -177,3 +180,10 @@ export const TRAITS = {
   fleet:   { label: 'Fleet',    hp: 1,   dmg: 0, spd: 0.7, cost: 40 },
   veteran: { label: 'Veteran',  hp: 1.2, dmg: 2, spd: 0.2, cost: 70 },
 };
+
+// ---- caravans: camels carry goods between markets and villages ------------------------------
+export const CAMEL_CAP = 40;       // goods per camel
+export const MARKET_RADIUS = 24;   // a market is stocked by mines, foundries and warehouses within this many tiles
+export const SHELF_CAP = 60;       // goods per kind on a market's shelf (100 with a warehouse beside it)
+export const SHELF_RESERVE = { food: 100, wood: 100, gold: 100, other: 10 }; // the stockpile keeps this much before the market stocks from it
+export const SPY_FEE = 25;         // coin to send a recruit out as a spy

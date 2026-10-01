@@ -1,21 +1,24 @@
 // Seven Holds - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
+import { camelSprite } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON,
+  VILLAGE_WIN_HOLD, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const ART_B = new Set(['hall','keep','cottage','farm','mill','warehouse','market','forge','workshop','tavern','academy','temple','barracks','archery','stable','tower','mine','tent','foundry']);
+const ART_B = new Set(['hall','keep','cottage','farm','mill','warehouse','market','forge','workshop','tavern','academy','temple','barracks','archery','stable','tower','mine','foundry']);
 const ART_U = new Set(['recruit','serf','scout','footman','bowman','knight','spy','scholar']);
-const artUrl = (kind) => ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
+const artUrl = (kind) => kind === 'camel' ? camelURL() : ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
+let _camel = null;
+function camelURL() { try { return (_camel ||= camelSprite(0).toDataURL()); } catch { return null; } }
 const icon = (kind, fallback) => { const u = artUrl(kind); return u ? `<img src="${u}" alt="" draggable="false">` : fallback; };
 const portrait = (kind, accent) => artUrl(kind) ? `<img class="portrait" src="${artUrl(kind)}" alt="" draggable="false" style="border-color:${accent}">` : '';
 const GLYPH = {
   cottage: '⌂', farm: '≋', mill: '✢', warehouse: '▣', market: '⚖', barracks: '⚔', archery: '➶', stable: '♞', tower: '♜',
-  mine: '⛏', tent: '⛺', foundry: '♨', forge: '⚒', workshop: '⚙', tavern: '⚱', academy: '✎', temple: '✝', keep: '♚',
-  recruit: '☗', serf: '♙', scout: '➤', footman: '♖', bowman: '➶', knight: '♞', spy: '◒', scholar: '✎', ram: 'Ram',
+  mine: '⛏', foundry: '♨', forge: '⚒', workshop: '⚙', tavern: '⚱', academy: '✎', temple: '✝', keep: '♚',
+  recruit: '☗', serf: '♙', scout: '➤', footman: '♖', bowman: '➶', knight: '♞', spy: '◒', camel: '🐪', scholar: '✎', ram: 'Ram',
 };
 const costText = (cost, p) => ALL_GOODS.filter((r) => cost[r]).map((r) => `<span class="${p && (p[r] || 0) < cost[r] ? 'need' : ''}">${cost[r]} ${GOOD_LABEL[r].toLowerCase()}</span>`).join(' · ') || 'free';
 const SHORT = { food: 'g', wood: 't', gold: 'c', stone: 's' };
@@ -33,7 +36,7 @@ export class UI {
     this.speed = 1; this.paused = false; this.started = false;
     this.menuOpen = true; this.campaignOpen = false; this.endShown = false;
     this.lastClick = { t: 0, id: null };
-    this.tg = { give: 'iron', get: 'gold' }; this.hudT = 0; this.sigCmd = ''; this.sigSel = ''; this.tradeIdx = 0;
+    this.want = null; this.hudT = 0; this.sigCmd = ''; this.sigSel = ''; this.tradeIdx = 0;
     this.toastSeen = 0;
     const off = document.createElement('div'); off.id = 'offers'; $('field').appendChild(off);
     off.addEventListener('click', (e) => { const b = e.target.closest('button[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
@@ -145,7 +148,7 @@ export class UI {
     const [wx, wy] = this.r.toWorld(sx, sy);
     if (this.placing) {
       const s = BUILDINGS[this.placing].size; this.hoverTX = Math.round(wx - s / 2); this.hoverTY = Math.round(wy - s / 2);
-      if (this.placing === 'mine') { const n = this.game.nodeAt(wx, wy); const sp = n && MATS.includes(n.kind) ? this.game.mineSpot(PLAYER, n) : null; if (sp) { this.hoverTX = sp[0]; this.hoverTY = sp[1]; } }
+      if (this.placing === 'mine') { const n = this.game.nodeAt(wx, wy); const sp = n && MINEABLE.includes(n.kind) ? this.game.mineSpot(PLAYER, n) : null; if (sp) { this.hoverTX = sp[0]; this.hoverTY = sp[1]; } }
     }
     if (this.drag) {
       if (Math.hypot(sx - this.drag.sx, sy - this.drag.sy) > 6) this.dragBox = { x0: Math.min(sx, this.drag.sx), y0: Math.min(sy, this.drag.sy), x1: Math.max(sx, this.drag.sx), y1: Math.max(sy, this.drag.sy) };
@@ -199,7 +202,7 @@ export class UI {
     if ((eu && eu.team !== PLAYER) || (v && v.owner !== PLAYER) || (b && b.team !== PLAYER)) color = '#e0685a';
     else if (n) color = '#e2c15e';
     if (units.length) {
-      this.host.send({ type: 'context', ids: units.map((u) => u.id), x: wx, y: wy, queue: shift });
+      this.host.send({ type: 'context', ids: units.map((u) => u.id), x: wx, y: wy, queue: shift, want: this.want });
       this.pings.push({ x: wx, y: wy, age: 0, color });
       return;
     }
@@ -288,16 +291,23 @@ export class UI {
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
       case 'kind': this.setUnits(this.selUnits().filter((u) => u.kind === d.kind)); break;
-      case 'partner': this.tradeIdx++; this.sigCmd = ''; break;
-      case 'tgive': this.tg.give = d.good; if (this.tg.get === d.good) this.tg.get = ALL_GOODS.find((x) => x !== d.good); break;
-      case 'tget': this.tg.get = d.good; if (this.tg.give === d.good) this.tg.give = ALL_GOODS.find((x) => x !== d.good); break;
-      case 'ttrade': {
-        const partners = g.tradePartners(PLAYER).filter((x) => x.type === 'house'); if (!partners.length) break;
-        const p = partners[this.tradeIdx % partners.length];
-        const have = Math.floor(g.players[PLAYER][this.tg.give] || 0), amt = d.amount === 'all' ? have : Math.min(have, +d.amount);
-        if (amt > 0) this.host.send({ type: 'trade', partner: { type: 'house', id: p.id }, give: this.tg.give, get: this.tg.get, amount: amt });
+      case 'load': { const u = this.selUnits().find((x) => x.kind === 'camel'); if (u) this.host.send({ type: 'load', unitId: u.id, good: d.good, amount: 20 }); break; }
+      case 'unload': { const u = this.selUnits().find((x) => x.kind === 'camel'); if (u) this.host.send({ type: 'unload', unitId: u.id }); break; }
+      case 'want': this.want = this.want === d.good ? null : d.good; break;
+      case 'spy': { const ids = this.selUnits().filter((u) => u.kind === 'recruit').map((u) => u.id); if (ids.length && !this.host.send({ type: 'role', ids, role: 'spy' })) this.toast(`A spy costs ${SPY_FEE} coin.`, 'warn'); break; }
+      case 'sendspy': case 'sendarmy': case 'sendcamel': case 'entervillage': {
+        const v = this.selEntity(); if (!v) break;
+        const mine = g.units.filter((u) => u.team === PLAYER && u.hp > 0 && !u.inside);
+        const near = (a, c) => Math.hypot(a.x - v.x, a.y - v.y) - Math.hypot(c.x - v.x, c.y - v.y);
+        if (d.act === 'sendspy') { const sp = mine.filter((u) => u.kind === 'spy').sort(near)[0]; if (sp) this.host.send({ type: 'infiltrate', ids: [sp.id], villageId: v.id }); }
+        else if (d.act === 'sendarmy') { const a = g.militaryOf(PLAYER).map((u) => u.id); if (a.length) this.host.send({ type: 'attack', ids: a, targetId: v.id }); }
+        else if (d.act === 'entervillage') { const a = g.militaryOf(PLAYER).filter((u) => u.task.type === 'idle').map((u) => u.id); if (a.length) this.host.send({ type: 'enter', ids: a, targetId: v.id }); }
+        else { const c = mine.filter((u) => u.kind === 'camel' && u.task.type !== 'caravan').sort(near)[0]; if (c) this.host.send({ type: 'context', ids: [c.id], x: v.x, y: v.y, want: this.want }); }
         break;
       }
+      case 'sendarmyb': { const b = this.selEntity(); const a = g.militaryOf(PLAYER).map((u) => u.id); if (b && a.length) this.host.send({ type: 'attack', ids: a, targetId: b.id }); break; }
+      case 'minehere': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (n) { this.placing = 'mine'; $('game').classList.add('placing'); this.hoverTX = Math.round(n.x - 1); this.hoverTY = Math.round(n.y - 1); } break; }
+      case 'gathernode': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (!n) break; const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - n.x, a.y - n.y) - Math.hypot(c.x - n.x, c.y - n.y)).slice(0, 4); if (!serfs.length) this.toast('No idle serfs.', 'warn'); else this.host.send({ type: 'gather', ids: serfs.map((u) => u.id), nodeId: n.id }); break; }
       case 'treaty': { const r = this.host.send({ type: 'relation', other: +d.team, state: d.state }); if (r === 'pending') this.toast(`Offer sent to ${HOUSES[+d.team].name}.`, 'info'); else if (r && d.state === 'trade') this.toast(`Trade treaty with ${HOUSES[+d.team].name}.`, 'good'); break; }
       case 'respond': this.host.send({ type: 'respond', from: +d.team, accept: d.accept === '1' }); break;
       case 'mineidle': {
@@ -320,13 +330,6 @@ export class UI {
         break;
       }
       case 'unmine': { const b = this.selEntity(); if (b) this.host.send({ type: 'unmine', buildingId: b.id }); break; }
-      case 'trade': {
-        const b = this.selEntity(); if (!b) break;
-        const partners = g.tradePartners(PLAYER).filter((x) => x.type === 'village'); if (!partners.length) break;
-        const p = partners[this.tradeIdx % partners.length];
-        this.host.send({ type: 'trade', partner: { type: p.type, id: p.id }, give: d.give, get: d.get, amount: +d.amount });
-        break;
-      }
       case 'select': { const e = g.byId.get(+d.id); if (e) this.sel = e.type === 'unit' ? { type: 'units', ids: [e.id], id: null } : { type: e.type, ids: [], id: e.id }; break; }
       default: break;
     }
@@ -493,13 +496,13 @@ export class UI {
     } else if (s.type === 'node') {
       const n = g.resources[s.id]; if (!n) { this.clearSel(); return; }
       const res = NODE_RES[n.kind];
-      if (MATS.includes(n.kind)) {
+      if (MINEABLE.includes(n.kind)) {
         const m = g.buildings.find((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(n.id));
         html = `<div class="seltitle">${GOOD_LABEL[n.kind]} deposit</div><div class="selsub">${esc(GOOD_INFO[n.kind])} ${m ? '' : 'Raise a <b>Mine</b> on it, then assign serfs.'}</div><div class="stat"><label>Remaining</label><span>${Math.ceil(n.amount)}</span></div><div class="stat"><label>Worth</label><span>${RES_VALUE[n.kind]} each</span></div>`;
         if (html !== this.sigSel) { this.sigSel = html; $('selPanel').innerHTML = html; }
         return;
       }
-      html = `<div class="seltitle">${{ tree: 'Timber stand', gold: 'Gold seam', berry: 'Berry bushes' }[n.kind]}</div><div class="selsub">Right-click with serfs to gather ${RES_LABEL[res].toLowerCase()}.</div><div class="stat"><label>Remaining</label><span>${Math.ceil(n.amount)}</span></div>`;
+      html = `<div class="seltitle">${{ tree: 'Timber stand', berry: 'Berry bushes' }[n.kind]}</div><div class="selsub">Right-click with serfs to gather ${RES_LABEL[res].toLowerCase()}.</div><div class="stat"><label>Remaining</label><span>${Math.ceil(n.amount)}</span></div>`;
     }
     if (html !== this.sigSel) { this.sigSel = html; $('selPanel').innerHTML = html; }
   }
@@ -533,21 +536,6 @@ export class UI {
     }
     return html + `</div>`;
   }
-  tradePanel(b) {
-    const g = this.game;
-    const partners = g.tradePartners(PLAYER).filter((x) => x.type === 'village');
-    if (!partners.length) return `<div class="ctitle">Market</div><div class="hint">No village to trade with: own one, or raise an independent village's loyalty to 40+. Houses trade through <b>Trading Tents</b>.</div>`;
-    const p = partners[this.tradeIdx % partners.length];
-    const pairs = [['wood', 'gold'], ['food', 'gold'], ['gold', 'wood'], ['gold', 'food'], ['food', 'wood'], ['wood', 'food']];
-    let html = `<div class="ctitle">Trade at the market</div><button class="cbtn wide" data-act="partner" data-tip="${encodeURIComponent('Click to cycle trade partner')}"><span class="n">Partner: ${esc(p.name)} (${p.type === 'house' ? 'house' : 'village'})</span></button><div class="trade">`;
-    for (const [give, get] of pairs) {
-      const amount = give === 'gold' ? 30 : 60;
-      const q = g.tradeQuote(PLAYER, p, give, get, amount);
-      html += `<button class="cbtn ${q && g.players[PLAYER][give] >= amount ? '' : 'off'}" data-act="trade" data-give="${give}" data-get="${get}" data-amount="${amount}" data-tip="${encodeURIComponent(`Fee ${q ? Math.round(q.fee * 100) : '?'}% (distance and relations)`)}"><span class="n">${amount} ${RES_LABEL[give].toLowerCase()}</span><span class="c">→ ${q ? q.got : 0} ${RES_LABEL[get].toLowerCase()}</span></button>`;
-    }
-    return html + `</div>`;
-  }
-
   rosterPanel(b) {
     const g = this.game, p = g.players[PLAYER];
     let html = `<div class="ctitle">Wanderers for hire (new faces every ${Math.round(120 / 60)} min)</div><div class="cgrid">`;
@@ -568,27 +556,49 @@ export class UI {
     html += this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' });
     return html + `</div><div class="hint">Right-click the keep with units to garrison them; right-click a village you hold (with the keep selected) to <b>levy villagers</b> into it.</div>`;
   }
-  tentPanel() {
-    const g = this.game, me = g.players[PLAYER];
-    let html = `<div class="tentwrap"><div class="tcol"><div class="ctitle">Treaties</div>`;
+  treatyRows() {
+    const g = this.game; let html = '';
     for (let i = 0; i < g.houses; i++) {
       if (i === PLAYER || !g.alive(i)) continue;
-      const rel = g.rel[PLAYER][i], known = g.known[PLAYER][i], pend = g.offers.some((o) => o.from === PLAYER && o.to === i && o.state === 'trade'), hasTent = !!g.tentOf(i);
-      html += `<div class="treaty"><span class="nm">${esc(HOUSES[i].short)}</span><span class="rel ${rel}">${known ? rel : 'unmet'}</span>${known ? (rel === 'trade' ? `<button data-act="treaty" data-team="${i}" data-state="peace">Cancel</button>` : pend ? '<span class="hint">offer sent</span>' : `<button data-act="treaty" data-team="${i}" data-state="trade">Propose trade</button>`) : ''}${rel === 'trade' && !hasTent ? '<span class="hint">no tent yet</span>' : ''}</div>`;
+      const rel = g.rel[PLAYER][i], known = g.known[PLAYER][i], pend = g.offers.some((o) => o.from === PLAYER && o.to === i && o.state === 'trade');
+      html += `<div class="treaty"><span class="nm">${esc(HOUSES[i].short)}</span><span class="rel ${rel}">${known ? rel : 'unmet'}</span>${known ? (rel === 'trade' ? `<button data-act="treaty" data-team="${i}" data-state="peace">Cancel</button>` : pend ? '<span class="hint">offer sent</span>' : rel === 'war' ? '<span class="hint">at war</span>' : `<button data-act="treaty" data-team="${i}" data-state="trade">Propose trade</button>`) : '<span class="hint">scout to meet</span>'}</div>`;
     }
-    const partners = g.tradePartners(PLAYER).filter((x) => x.type === 'house');
-    if (!partners.length) return html + `<div class="hint">A treaty needs a house you have met. Scout to find rivals.</div></div><div class="tcol"><div class="hint">Houses trade through <b>Trading Tents</b> (both sides need one) under a <b>trade treaty</b>. Either side may propose; the other accepts. Cancel it and trade stops.</div></div></div>`;
-    const p = partners[this.tradeIdx % partners.length], them = g.players[p.id];
-    const tg = this.tg;
-    html += `</div><div class="tcol"><div class="ctitle">Trade with ${esc(p.name)}</div><button class="cbtn wide" data-act="partner" data-tip="${encodeURIComponent('Click to cycle partner')}"><span class="n">Partner: ${esc(p.name)}${p.tent ? '' : ' (no tent)'}</span></button>`;
-    const chips = (kind, sel) => `<div class="goods">${ALL_GOODS.map((x) => `<span class="gchip ${sel === x ? 'on' : ''} ${(kind === 'tgive' ? (me[x] || 0) < 1 : (them[x] || 0) < 1) ? 'off' : ''}" data-act="${kind}" data-good="${x}" data-tip="${encodeURIComponent(`<b>${GOOD_LABEL[x]}</b> · worth ${RES_VALUE[x]}<br>You ${Math.floor(me[x] || 0)} · them ${Math.floor(them[x] || 0)}`)}">${dot(x).replace('class="gd"', `class="gd ${x}"`)}${GOOD_LABEL[x]}</span>`).join('')}</div>`;
-    html += `<div class="ctitle">You give</div>${chips('tgive', tg.give)}<div class="ctitle">You get</div>${chips('tget', tg.get)}<div class="trade">`;
-    for (const amount of [10, 25, 50, 'all']) {
-      const have = Math.floor(me[tg.give] || 0), n = amount === 'all' ? have : amount;
-      const q = n > 0 ? g.tradeQuote(PLAYER, p, tg.give, tg.get, n) : null, ok = q && q.got >= 1 && have >= n && (them[tg.get] || 0) >= q.got;
-      html += `<button class="cbtn ${ok ? '' : 'off'}" data-act="ttrade" data-amount="${amount}" data-tip="${encodeURIComponent(`Fee ${q ? Math.round(q.fee * 100) : '?'}% (distance)${q && (them[tg.get] || 0) < q.got ? '<br>They cannot cover that.' : ''}`)}"><span class="n">${n} ${GOOD_LABEL[tg.give].toLowerCase()}</span><span class="c">→ ${q ? q.got : 0} ${GOOD_LABEL[tg.get].toLowerCase()}</span></button>`;
+    return html;
+  }
+  goodChips(map, act, sel, cap) {
+    return `<div class="goods">${ALL_GOODS.map((x) => { const n = Math.floor(map?.[x] || 0); if (act !== 'want' && map && n < 1) return ''; return `<span class="gchip ${sel === x ? 'on' : ''} ${act && n < 1 && act !== 'want' ? 'off' : ''}" ${act ? `data-act="${act}" data-good="${x}"` : ''} data-tip="${encodeURIComponent(`<b>${GOOD_LABEL[x]}</b> · worth ${RES_VALUE[x]}${cap ? `<br>${n} / ${cap}` : ''}`)}">${dot(x)}${GOOD_LABEL[x]}${n ? ` ${n}` : ''}</span>`; }).join('')}</div>`;
+  }
+  marketPanel(b) {
+    const g = this.game, shelf = b.stock || {}, any = ALL_GOODS.some((k) => (shelf[k] || 0) >= 1);
+    let html = `<div class="tentwrap"><div class="tcol"><div class="ctitle">Treaties (houses you have met)</div>${this.treatyRows()}<div class="hint">Trade treaties let your camels use their markets and villages. Independent mining villages need none.</div></div>`;
+    html += `<div class="tcol"><div class="ctitle">Shelf (fed by mines, foundries, farms, mills and warehouses within ${MARKET_RADIUS} tiles)</div>${any ? this.goodChips(shelf, '', null, SHELF_CAP) : '<div class="hint">Empty: raise a mine, foundry, farm or warehouse near this market.</div>'}`;
+    html += `<div class="hint">Train a <b>camel</b> above, select it beside the market, load goods, then right-click another market or village.</div></div></div>`;
+    return html;
+  }
+  camelPanel(us) {
+    const g = this.game, u = us[0], m = g.nearestMarket(PLAYER, u.x, u.y, 4.5), shelf = m?.stock || {};
+    const total = g.cargoTotal(u), single = us.length === 1;
+    let html = `<div class="ctitle">Caravan · carrying ${Math.floor(total)}/${CAMEL_CAP}</div>`;
+    html += single ? (total >= 1 ? this.goodChips(u.cargo, '', null) : '<div class="hint">Empty.</div>') : '';
+    if (m && single) {
+      html += `<div class="ctitle">Load from the shelf (click = 20) <span class="gchip" data-act="unload">⇩ Unload</span></div>${ALL_GOODS.some((k) => (shelf[k] || 0) >= 1) ? this.goodChips(shelf, 'load', null, SHELF_CAP) : '<div class="hint">Shelf empty.</div>'}`;
+    } else if (single) html += `<div class="hint">Walk the camel next to one of your markets to load goods.</div>`;
+    html += `<div class="ctitle">Buy at the far market (right-click it)</div>${this.goodChips(null, 'want', this.want)}<div class="hint">Pick what to bring home (or none to just stock a market of yours). Then <b>right-click</b> a treaty partner's market or a village. Camels return to their home market and unload into your stockpile.</div>`;
+    return html;
+  }
+  villageActs(v) {
+    const g = this.game, mine = v.owner === PLAYER;
+    const spies = g.units.filter((u) => u.team === PLAYER && u.kind === 'spy' && u.hp > 0).length, recs = g.units.filter((u) => u.team === PLAYER && u.kind === 'recruit' && u.hp > 0).length;
+    const army = g.militaryOf(PLAYER).length, camels = g.units.filter((u) => u.team === PLAYER && u.kind === 'camel' && u.hp > 0).length;
+    let html = `<div class="ctitle">Options</div><div class="cgrid">`;
+    if (mine) {
+      html += this.btn('entervillage', { glyph: '⇥', name: 'Garrison', off: !army, tip: '<b>Garrison</b><br>Sends idle soldiers inside (max 6).' });
+    } else {
+      html += this.btn('sendspy', { glyph: GLYPH.spy, art: 'spy', name: 'Send spy', off: !spies, sub: spies ? `${spies} ready` : 'need a spy', tip: `<b>Send a spy</b><br>Sways loyalty without a fight. Spies can be caught.${spies ? '' : `<br><span class="need">Hire a recruit at a tavern, select it, press Become spy (${SPY_FEE} coin).</span>`}` });
+      html += this.btn('sendarmy', { glyph: '⚔', name: 'Send army', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Sack</b><br>Sends every soldier to attack. Protection must reach zero.' });
     }
-    return html + `</div></div></div>`;
+    if (v.owner === -1 || v.owner === PLAYER || g.rel[PLAYER][v.owner] === 'trade') html += this.btn('sendcamel', { glyph: '🐪', art: 'camel', name: 'Send camel', off: !camels, sub: camels ? `${camels} ready` : 'train at market', tip: `<b>Send a camel</b><br>Trades what it carries for ${this.want ? GOOD_LABEL[this.want].toLowerCase() : 'nothing (pick a good on the camel panel)'}.` });
+    return html + `</div>`;
   }
 
   renderCmd() {
@@ -600,7 +610,10 @@ export class UI {
       if (us.some((u) => u.kind === 'serf')) html += this.buildGrid();
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or hall to go inside.</div>`;
       html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}</div>`;
-      if (!us.some((u) => u.kind === 'serf')) {
+      if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));
+      if (us.some((u) => u.kind === 'recruit')) html += `<div class="ctitle">Role</div><div class="cgrid c4">${this.btn('spy', { glyph: GLYPH.spy, art: 'spy', name: 'Become spy', sub: SPY_FEE + 'c', off: g.players[PLAYER].gold < SPY_FEE, tip: `<b>Become a spy</b><br>${SPY_FEE} coin. Spies right-click an independent or rival village to sway its loyalty (and can be caught).` })}</div><div class="hint">Or right-click a keep to garrison, then drill into a soldier.</div>`;
+      if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click: a deposit with a <b>mine</b> to dig, timber, berries or gold to gather, a building site to build.</div>`;
+      if (!us.some((u) => u.kind === 'serf' || u.kind === 'camel' || u.kind === 'recruit')) {
         const sp = us.some((u) => u.kind === 'spy');
         html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>hall, keep, tower, barracks</b> or a village you hold to go <b>inside</b>. Attacking a house at peace declares war.</div>`;
       }
@@ -608,21 +621,24 @@ export class UI {
       if (ent.built < 1) html = `<div class="hint">Under construction. Select serfs and right-click this building to help raise it.</div>`;
       else {
         html += this.trainGrid(ent);
-        if (ent.kind === 'market') html += this.tradePanel(ent);
-        if (ent.kind === 'tent') html += this.tentPanel();
+        if (ent.kind === 'market') html += this.marketPanel(ent);
         if (ent.kind === 'tavern' && ent.roster) html += this.rosterPanel(ent);
         if (ent.kind === 'keep') html += this.keepPanel(ent);
         else if (GARRISON[ent.kind] && ent.garrison.length) html += `<div class="cgrid" style="margin-top:6px">${this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' })}</div>`;
         if (ent.kind === 'mine') html += `<div class="ctitle">Diggers</div><div class="cgrid">${this.btn('mineidle', { glyph: '⛏', name: 'Send serfs', tip: '<b>Assign serfs</b><br>Sends the nearest idle or gathering serfs to dig here (max 4).' })}${this.btn('unmine', { glyph: '■', name: 'Release', tip: '<b>Release diggers</b><br>They stand down.' })}</div><div class="hint">Or select serfs and right-click the mine or the deposit. Ore goes straight into your stockpile.</div>`;
-        if (ent.kind === 'foundry') html += `<div class="hint">Smelts on its own from your stockpile: <b>iron + coal → steel</b> (forges turn it into arms), <b>copper + coal → fine ware</b> (content villages). Trade ore with other houses via a Trading Tent.</div>`;
+        if (ent.kind === 'foundry') html += `<div class="hint">Smelts on its own from your stockpile: <b>iron + coal → steel</b> (forges turn it into arms), <b>copper + coal → fine ware</b> (content villages). Sell the surplus through a market's camels.</div>`;
         if (ent.kind === 'hall' || ent.kind === 'keep') html += this.buildGrid();
         if (!html) html = `<div class="hint">${esc(BUILDINGS[ent.kind].info)}</div>`;
         else if (Object.values(UNITS).some((u) => u.from.includes(ent.kind))) html += `<div class="hint">Right-click the field to set a <b>rally point</b>; on a resource, new serfs gather it.</div>`;
       }
     } else if (ent && ent.type === 'village') {
-      html = `<div class="hint">Three ways to win a village:<br><b>Sack</b>: send soldiers (right-click) until protection hits zero.<br><b>Influence</b>: a nearby keep, temple, tavern or academy raises its loyalty.<br><b>Spy</b>: right-click with a spy from a tavern. Spies can be caught.</div>`;
+      html = this.villageActs(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (keep, temple, tavern or academy nearby) or a <b>spy</b>. Independent villages also trade with your camels.'}</div>`;
     } else if (ent && ent.type === 'building') {
-      html = `<div class="hint">${esc(HOUSES[ent.team].name)} building. Right-click with soldiers to attack (rams are best against walls).</div>`;
+      const army = g.militaryOf(PLAYER).length;
+      html = `<div class="ctitle">Options</div><div class="cgrid">${this.btn('sendarmyb', { glyph: '⚔', name: 'Attack', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Attack</b><br>Sends every soldier at it. Or select units and right-click it (rams are best against walls).' })}</div><div class="hint">${esc(HOUSES[ent.team].name)} building. Select units and right-click it to attack.</div>`;
+    } else if (s.type === 'node' && g.resources[s.id]) {
+      const n = g.resources[s.id], mined = MINEABLE.includes(n.kind), hasMine = mined && g.buildings.some((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(n.id));
+      html = `<div class="ctitle">Options</div><div class="cgrid">${mined && !hasMine ? this.btn('minehere', { glyph: '⛏', art: 'mine', name: 'Build mine', sub: costShort(BUILDINGS.mine.cost), off: !g.canAfford(PLAYER, BUILDINGS.mine.cost), tip: `<b>Mine</b><br>Raised beside the deposit; then assign serfs. <span class="cost">${costText(BUILDINGS.mine.cost, g.players[PLAYER])}</span>` }) : ''}${!mined ? this.btn('gathernode', { glyph: '⚒', name: 'Gather', sub: '4 idle serfs', tip: '<b>Gather</b><br>Sends up to four idle serfs.' }) : ''}</div><div class="hint">${mined ? (hasMine ? 'A mine stands here: select it to send diggers.' : 'Ore needs a <b>Mine</b>. Once built, serfs dig it into your stockpile.') : 'Select serfs and right-click to gather.'}</div>`;
     } else {
       html = `<div class="hint">Press <b>H</b> for your hall. From the hall: <b>train serfs</b> and <b>raise buildings</b>. Right-click timber, berries or gold with serfs to gather. <b>M</b> opens the campaign map.</div>`;
     }

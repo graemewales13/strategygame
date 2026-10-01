@@ -6,8 +6,8 @@ import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS } from './co
 
 const PLAN = [
   ['cottage', 1], ['farm', 1], ['barracks', 1], ['mine', 1], ['cottage', 2], ['mill', 1], ['keep', 1], ['cottage', 3], ['archery', 1],
-  ['farm', 2], ['mine', 2], ['forge', 1], ['tent', 1], ['tavern', 1], ['mine', 3], ['foundry', 1], ['cottage', 4], ['stable', 1], ['temple', 1], ['academy', 1], ['cottage', 5],
-  ['tower', 1], ['market', 1], ['workshop', 1], ['farm', 3], ['cottage', 6], ['cottage', 7],
+  ['farm', 2], ['mine', 2], ['forge', 1], ['market', 1], ['tavern', 1], ['mine', 3], ['foundry', 1], ['cottage', 4], ['stable', 1], ['temple', 1], ['academy', 1], ['cottage', 5],
+  ['tower', 1], ['workshop', 1], ['farm', 3], ['cottage', 6], ['cottage', 7],
 ];
 
 export function updateAI(game, dt) {
@@ -73,21 +73,25 @@ function think(game, team, p) {
     }
   }
 
-  // 2c. treaties and trade: offer a trade treaty to houses we know; swap surplus ore with other rival houses
+  // 2c. treaties and caravans: offer a trade treaty to houses we know; ship surplus ore to other rival houses' markets by camel
   p.offerT -= 1.5; p.tradeT = (p.tradeT ?? 40) - 1.5;
-  if (game.tentOf(team)) {
+  const mk = game.marketsOf(team)[0];
+  if (mk) {
     if (p.offerT <= 0) {
       p.offerT = 90;
       for (const q of game.players) if (q.alive && q.team !== team && game.known[team][q.team] && game.rel[team][q.team] === 'peace' && !(q.team === PLAYER && game.offers.some((o) => o.from === team && o.to === PLAYER))) { game.proposeRelation(team, q.team, 'trade'); break; }
     }
-    if (p.tradeT <= 0) {
+    const camels = game.units.filter((u) => u.team === team && u.kind === 'camel' && u.hp > 0);
+    const partners = game.players.filter((q) => q.alive && q.team !== team && q.team !== PLAYER && game.rel[team][q.team] === 'trade' && game.known[team][q.team]).map((q) => game.marketsOf(q.team)[0]).filter(Boolean);
+    if (partners.length && !camels.length && queued(game, team, 'camel') === 0 && p.gold > 120) game.train(team, mk.id, 'camel');
+    const camel = camels.find((c) => c.task.type === 'idle' && Math.hypot(c.x - mk.x, c.y - mk.y) < 6);
+    if (camel && partners.length && p.tradeT <= 0) {
       p.tradeT = 40;
-      const surplus = MATS.filter((g) => p[g] > 70).sort((a, c) => p[c] - p[a])[0];
+      const shelf = mk.stock || {};
+      const surplus = MATS.filter((g) => (shelf[g] || 0) >= 25).sort((a, c) => shelf[c] - shelf[a])[0];
       const need = ['iron', 'coal', 'silver', 'stone', 'copper'].find((g) => g !== surplus && p[g] < 15 && (g !== 'iron' && g !== 'coal' || game.hasBuilding(team, 'foundry')) && (g !== 'silver' || game.hasBuilding(team, 'academy')));
-      if (surplus && need) for (const pt of game.tradePartners(team)) {
-        if (pt.type !== 'house' || pt.id === PLAYER || !pt.tent) continue;
-        if (game.players[pt.id][need] >= 20 && game.trade(team, { type: 'house', id: pt.id }, surplus, need, Math.min(40, p[surplus] - 40))) break;
-      }
+      const dest = need && partners.find((m) => (m.stock?.[need] || 0) >= 10);
+      if (surplus && dest && game.load(team, camel.id, surplus, 30)) game.cmdCaravan([camel], dest, need);
     }
   }
 

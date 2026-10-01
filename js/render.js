@@ -4,14 +4,14 @@ import {
   PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, TERRITORY, T_GRASS, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
-import { tinted, ramSprite, oreSprite, mineSprite, IMG } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
 const GOLD = '#e2c15e';
 
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
-const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], tent: ['market', 0.95], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
+const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
 const USCALE = { recruit: 50, serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
@@ -313,7 +313,6 @@ export class Renderer {
     } else if (!dim) {
       const sm = SMOKE[b.kind];
       if (sm) sm.forEach(([fx, fy], i) => this.smoke(ctx, bx - w / 2 + fx * w, dy + fy * h, z, t, b.id + i));
-      if (b.kind === 'tent') this.pennant(ctx, bx - 2 * z, dy + h * 0.02, z, t, f.primary, f.accent, b.id);
       if (b.kind === 'mine' && this.game.minersOf(b) > 0) for (let i = 0; i < 3; i++) { const ph = (t * 1.3 + i / 3 + b.id * 0.17) % 1; ctx.fillStyle = `rgba(190,175,140,${0.35 * (1 - ph)})`; ctx.beginPath(); ctx.arc(bx + (ph - 0.4) * 22 * z, by - 26 * z - ph * 18 * z, (2 + ph * 5) * z, 0, 7); ctx.fill(); }
       if (b.kind === 'foundry' && b.working) { const gx = bx - w * 0.3, gy = dy + h * 0.72, gr = 30 * z, a = 0.5 + Math.sin(t * 8 + b.id) * 0.12; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,160,50,${a})`); g2.addColorStop(1, 'rgba(255,100,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
       if (b.kind === 'forge') { const gx = bx - w * 0.3, gy = dy + h * 0.72, gr = 26 * z, a = 0.42 + Math.sin(t * 9 + b.id) * 0.1 + Math.sin(t * 23) * 0.05; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,170,60,${a})`); g2.addColorStop(1, 'rgba(255,110,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
@@ -352,6 +351,7 @@ export class Renderer {
     const working = !moving && (u.task.type === 'gather' || u.task.type === 'build' || u.task.type === 'mine');
     let c, w, h;
     if (u.kind === 'ram') { c = ramSprite(u.team); w = 78 * z; }
+    else if (u.kind === 'camel') { c = camelSprite(u.team); w = 62 * z; }
     else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light); w = (c ? c.width / c.height : 1) * 40 * z; }
     else { c = tinted(st.art || u.kind, u.team, 'trim', false, light); const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh; }
     if (!c) return;
@@ -363,7 +363,7 @@ export class Renderer {
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
     ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
     ctx.scale(flip ? -sxScale : sxScale, 1);
-    const foot = u.kind === 'ram' || u.kind === 'serf' ? 1.0 : 0.9;
+    const foot = u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
     ctx.drawImage(c, -w / 2, -h * foot - bob, w, h);
     if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
     ctx.restore();

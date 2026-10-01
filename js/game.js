@@ -7,6 +7,7 @@ import {
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, TERRITORY,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  MINEABLE, CAMEL_CAP, MARKET_RADIUS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   GARRISON, VILLAGE_GARRISON, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
 import { createMap } from './map.js';
@@ -148,7 +149,7 @@ export class Game {
     return this.buildings.find((b) => b.team === team && b.kind === 'keep' && b.hp > 0) || this.buildings.find((b) => b.team === team && b.kind === 'hall' && b.hp > 0);
   }
   villagesOf(team) { return this.villages.filter((v) => v.owner === team); }
-  militaryOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy'); }
+  militaryOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && !u.inside); }
   canSee(team, x, y) {
     if (!this.fogOn) return true;
     const tx = Math.floor(x), ty = Math.floor(y);
@@ -197,7 +198,7 @@ export class Game {
   nearestNode(x, y, res, maxDist = 1e9) {
     let best = null, bd = maxDist * maxDist;
     for (const n of this.resources) {
-      if (n.amount <= 0 || NODE_RES[n.kind] !== res) continue;
+      if (n.amount <= 0 || n.covered || NODE_RES[n.kind] !== res) continue;
       const d = (n.x + 0.5 - x) ** 2 + (n.y + 0.5 - y) ** 2;
       if (d < bd) { best = n; bd = d; }
     }
@@ -363,17 +364,26 @@ export class Game {
       case 'train': return this.train(team, it.buildingId, it.kind);
       case 'cancel': return this.cancelTrain(team, it.buildingId, it.index);
       case 'rally': return this.setRally(team, it.buildingId, it.x, it.y, it.nodeId);
-      case 'trade': return this.trade(team, it.partner, it.give, it.get, it.amount);
+      case 'load': return this.load(team, it.unitId, it.good, it.amount);
+      case 'unload': return this.unloadShelf(team, it.unitId);
+      case 'role': return this.assignRole(team, it.ids, it.role);
       case 'relation': return this.proposeRelation(team, it.other, it.state);
-      case 'context': return this.contextCommand(team, it.ids, it.x, it.y, !!it.queue);
+      case 'context': return this.contextCommand(team, it.ids, it.x, it.y, !!it.queue, it.want);
       default: return null;
     }
   }
 
   // Right-click: decide what the point means for these units (as the owning player sees it)
-  contextCommand(team, ids, x, y, queue = false) {
-    const units = (ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
-    if (!units.length) return false;
+  contextCommand(team, ids, x, y, queue = false, want = null) {
+    const all = (ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
+    if (!all.length) return false;
+    // camels trade: right-click a market or village; anywhere else they just walk
+    const camels = all.filter((u) => u.kind === 'camel'), units = all.filter((u) => u.kind !== 'camel');
+    if (camels.length) {
+      const tgt = this.tradeTargetAt(team, x, y);
+      if (tgt) this.cmdCaravan(camels, tgt, want); else this.cmdMove(camels, x, y);
+      if (!units.length) return true;
+    }
     const eu = this.unitAt(x, y, 0.75);
     if (eu && eu.team !== team && this.canSee(team, eu.x, eu.y)) return this.cmdAttack(units, eu);
     const v = this.villageAt(x, y);
@@ -387,7 +397,7 @@ export class Game {
       return true;
     }
     const b = this.buildingAt(x, y);
-    if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) return this.cmdAttack(units.filter((u) => u.kind !== 'serf' || units.length === 1), b);
+    if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) return this.cmdAttack(units, b);
     if (b && b.team === team && b.built < 1) {
       const serfs = units.filter((u) => u.kind === 'serf');
       if (serfs.length) { this.cmdBuild(serfs, b, queue); return true; }
@@ -497,6 +507,23 @@ export class Game {
     u.trait = trait; u.hpMul = t.hp; u.dmgAdd = t.dmg; u.spdAdd = t.spd;
     u.maxHp = Math.round(st.hp * t.hp); u.hp = u.maxHp; u.speed = st.speed + t.spd;
   }
+  // a recruit may be sent out as a spy (for a fee); spies right-click villages to infiltrate and sway their loyalty
+  assignRole(team, ids, role) {
+    if (role !== 'spy') return false;
+    let n = 0;
+    for (const id of ids || []) {
+      const u = this.byId.get(id);
+      if (!u || u.team !== team || u.kind !== 'recruit' || u.hp <= 0) continue;
+      const fee = { food: 0, wood: 0, gold: SPY_FEE };
+      if (!this.canAfford(team, fee)) { if (team === PLAYER) this.log(team, `A spy costs ${SPY_FEE} coin.`, 'warn'); break; }
+      this.pay(team, fee);
+      const st = UNITS.spy, ratio = u.hp / u.maxHp;
+      u.kind = 'spy'; u.maxHp = Math.round(st.hp * (u.hpMul || 1)); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0);
+      if (u.inside) { const t = this.byId.get(u.inside); if (t) this.eject(u, t); }
+      n++;
+    }
+    return n > 0;
+  }
   setLevy(team, buildingId, villageId) {
     const b = this.byId.get(buildingId), v = this.byId.get(villageId);
     if (!b || b.team !== team || b.kind !== 'keep' || b.built < 1 || !v || v.type !== 'village' || v.owner !== team) {
@@ -566,6 +593,7 @@ export class Game {
     } else if (target.team === team) return false;
     else if (this.rel[team][target.team] !== 'war') this.setRelation(team, target.team, 'war');
     for (const u of units) {
+      if (u.kind === 'camel' || u.inside) continue;
       if (target.type === 'village' && (u.kind === 'serf' || u.kind === 'scholar')) continue;
       u.task = { type: 'attack', targetId: target.id };
       u.path = [];
@@ -584,12 +612,14 @@ export class Game {
   }
   cmdGather(units, node) {
     if (!node || node.amount <= 0) return false;
-    if (MATS.includes(node.kind)) {
+    if (MINEABLE.includes(node.kind)) {
       const mine = this.buildings.find((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(node.id));
-      if (mine && mine.team === units[0]?.team) return this.cmdMine(units, mine);
       const t = units[0]?.team;
-      if (t === PLAYER) this.log(t, `Raise a Mine on the ${GOOD_LABEL[node.kind].toLowerCase()} deposit, then assign serfs.`, 'warn');
-      return false;
+      if (mine) return mine.team === t ? this.cmdMine(units, mine) : false;
+      if (node.kind !== 'gold') { // other ores need a mine; gold may also be gathered by hand
+        if (t === PLAYER) this.log(t, `Raise a Mine on the ${GOOD_LABEL[node.kind].toLowerCase()} deposit, then assign serfs.`, 'warn');
+        return false;
+      }
     }
     for (const u of units) {
       if (u.kind !== 'serf') continue;
@@ -677,7 +707,7 @@ export class Game {
       if (this.block[i]) return { ok: false, reason: 'Blocked' };
       if (this.resAt[i] >= 0 && this.resources[this.resAt[i]].amount > 0) {
         const n = this.resources[this.resAt[i]];
-        if (!(s.onDeposit && MATS.includes(n.kind))) return { ok: false, reason: 'Blocked by resources' };
+        if (!(s.onDeposit && MINEABLE.includes(n.kind))) return { ok: false, reason: 'Blocked by resources' };
       }
     }
     if (s.onDeposit) {
@@ -696,7 +726,7 @@ export class Game {
     const out = [];
     for (let y = ty; y < ty + size; y++) for (let x = tx; x < tx + size; x++) {
       const k = this.resAt[y * this.W + x];
-      if (k >= 0 && MATS.includes(this.resources[k].kind) && this.resources[k].amount > 0) out.push(this.resources[k]);
+      if (k >= 0 && MINEABLE.includes(this.resources[k].kind) && this.resources[k].amount > 0) out.push(this.resources[k]);
     }
     return out;
   }
@@ -771,59 +801,146 @@ export class Game {
     return true;
   }
 
-  // ---- trade -------------------------------------------------------------------------------
-  // Houses trade through Trading Tents (both sides need a finished one) and only under a trade treaty with a house they know.
-  // Villages trade grain, timber and coin through a Market or a Tent.
-  tentOf(team) { return this.buildings.find((b) => b.team === team && b.kind === 'tent' && b.built >= 1 && b.hp > 0); }
-  stallOf(team) { return this.tentOf(team) || this.buildings.find((b) => b.team === team && b.kind === 'market' && b.built >= 1 && b.hp > 0); }
-  tradePartners(team) {
-    const out = [];
-    this.players.forEach((p, t) => {
-      if (t === team || !p.alive || this.rel[team][t] !== 'trade' || !this.known[team][t]) return;
-      out.push({ type: 'house', id: t, name: p.name, seat: this.tentOf(t) || this.seatOf(t), tent: !!this.tentOf(t) });
-    });
-    for (const v of this.villages) {
-      const ok = v.owner === team || (v.owner === -1 && v.loyalty >= 40) || (v.owner >= 0 && v.owner !== team && this.rel[team][v.owner] === 'trade');
-      if (ok) out.push({ type: 'village', id: v.id, name: v.name, seat: v });
-    }
-    return out;
+  // ---- trade: markets keep shelves of goods, camels carry them -------------------------------------------------
+  // A market is stocked automatically from the house stockpile when a supplier stands within MARKET_RADIUS: a mine for its
+  // ore, a foundry for steel and fine ware, a farm for grain, a mill for timber, or a warehouse for anything.
+  // Camels load from a shelf, walk to another market or village, swap goods there at a fee, and walk home to unload.
+  marketsOf(team) { return this.buildings.filter((b) => b.team === team && b.kind === 'market' && b.built >= 1 && b.hp > 0); }
+  nearestMarket(team, x, y, maxD = 1e9) {
+    let best = null, bd = maxD;
+    for (const m of this.marketsOf(team)) { const d = distTo(x, y, m); if (d < bd) { best = m; bd = d; } }
+    return best;
   }
-  tradeQuote(team, partner, give, get, amount) {
-    if (!partner?.seat || give === get || !ALL_GOODS.includes(give) || !ALL_GOODS.includes(get)) return null;
-    const mine = partner.type === 'house' ? this.tentOf(team) : this.stallOf(team);
-    if (!mine) return null;
-    if (partner.type === 'house' && !partner.tent) return null;
-    if (partner.type === 'village' && (!RES.includes(give) || !RES.includes(get))) return null;
-    const d = Math.hypot(mine.x - partner.seat.x, mine.y - partner.seat.y);
-    const fee = partner.type === 'house' ? Math.max(0.08, Math.min(0.3, 0.06 + d / 500)) : Math.max(0.1, Math.min(0.55, 0.26 + d / 320));
-    const got = Math.floor((amount * RES_VALUE[give] / RES_VALUE[get]) * (1 - fee));
-    return { got, fee, dist: d };
+  near(b, kinds, r = MARKET_RADIUS) { return this.buildings.some((o) => o.team === b.team && o.built >= 1 && o.hp > 0 && kinds.includes(o.kind) && Math.hypot(o.x - b.x, o.y - b.y) <= r); }
+  supplied(b, k) {
+    if (this.near(b, ['warehouse'])) return true;
+    if (MINEABLE.includes(k) && this.buildings.some((o) => o.team === b.team && o.kind === 'mine' && o.built >= 1 && o.hp > 0 && o.ore === k && Math.hypot(o.x - b.x, o.y - b.y) <= MARKET_RADIUS)) return true;
+    if (PROCESSED.includes(k)) return this.near(b, ['foundry']);
+    if (k === 'food') return this.near(b, ['farm']);
+    if (k === 'wood') return this.near(b, ['mill']);
+    return false;
   }
-  trade(team, partnerRef, give, get, amount) {
-    const say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
-    amount = Math.floor(amount);
-    if (!ALL_GOODS.includes(give) || !ALL_GOODS.includes(get) || give === get || !(amount > 0)) return null;
-    const partner = this.tradePartners(team).find((p) => p.type === partnerRef?.type && p.id === partnerRef?.id);
-    if (!partner) return say('No trade partner there: you need a known house under a trade treaty.');
-    if (partner.type === 'house' && !partner.tent) return say(`${partner.name} has no Trading Tent yet.`);
-    const quote = this.tradeQuote(team, partner, give, get, amount);
-    if (!quote) return say(partner.type === 'house' ? 'Raise a Trading Tent to trade with houses.' : 'Villages deal in grain, timber and coin; raise a Market or Tent.');
-    const me = this.players[team];
-    if ((me[give] || 0) < amount) return say('Not enough to give.');
-    if (quote.got < 1) return say('Too little to trade.');
-    if (partner.type === 'house') {
-      const them = this.players[partner.id];
-      if ((them[get] || 0) < quote.got) return say(`${them.name} cannot cover that.`);
-      them[get] -= quote.got; them[give] = (them[give] || 0) + amount;
-      if (partner.id === PLAYER) this.log(PLAYER, `${me.name} traded ${amount} ${give} for ${quote.got} ${get}.`, 'info');
-    } else {
-      const v = this.byId.get(partner.id);
-      if ((v.stores[get] || 0) < quote.got) return say(`${v.name} cannot cover that.`);
-      v.stores[get] -= quote.got; v.stores[give] = (v.stores[give] || 0) + amount;
+  supplyMarket(b, p, dt) {
+    const shelf = b.stock || (b.stock = {}), cap = this.near(b, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP;
+    for (const k of ALL_GOODS) {
+      const have = shelf[k] || 0;
+      if (have >= cap || !this.supplied(b, k)) continue;
+      const reserve = SHELF_RESERVE[k] ?? SHELF_RESERVE.other;
+      const move = Math.min(2 * dt, cap - have, (p[k] || 0) - reserve);
+      if (move > 0) { p[k] -= move; shelf[k] = have + move; }
     }
-    me[give] -= amount; me[get] = (me[get] || 0) + quote.got;
-    if (team === PLAYER) this.log(team, `Traded ${amount} ${give} for ${quote.got} ${get} with ${partner.name}.`, 'info');
-    return quote;
+  }
+  cargoTotal(u) { let n = 0; if (u.cargo) for (const k in u.cargo) n += u.cargo[k]; return n; }
+  load(team, unitId, good, amount) {
+    const u = this.byId.get(unitId), say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return false; };
+    if (!u || u.team !== team || u.kind !== 'camel' || u.hp <= 0 || !ALL_GOODS.includes(good)) return false;
+    const m = this.nearestMarket(team, u.x, u.y, 4.5);
+    if (!m) return say('Bring the camel next to one of your markets to load it.');
+    const shelf = m.stock || (m.stock = {});
+    const amt = Math.floor(Math.min(amount, CAMEL_CAP - this.cargoTotal(u), shelf[good] || 0));
+    if (amt < 1) return say(CAMEL_CAP - this.cargoTotal(u) < 1 ? 'The camel is fully laden.' : `The market has no ${GOOD_LABEL[good].toLowerCase()} on its shelf.`);
+    shelf[good] -= amt; u.cargo = u.cargo || {}; u.cargo[good] = (u.cargo[good] || 0) + amt; u.home = m.id;
+    return true;
+  }
+  unloadShelf(team, unitId) {
+    const u = this.byId.get(unitId);
+    if (!u || u.team !== team || u.kind !== 'camel' || !u.cargo) return false;
+    const m = this.nearestMarket(team, u.x, u.y, 4.5); if (!m) return false;
+    const shelf = m.stock || (m.stock = {});
+    for (const k in u.cargo) shelf[k] = (shelf[k] || 0) + u.cargo[k];
+    u.cargo = {}; return true;
+  }
+  // may these people deal with that market or village? { ok, reason, own }
+  canDeal(team, t) {
+    if (!t) return { ok: false, reason: 'Nothing to trade with there.' };
+    if (t.type === 'building') {
+      if (t.kind !== 'market' || t.built < 1 || t.hp <= 0) return { ok: false, reason: 'Only markets and villages trade.' };
+      if (t.team === team) return { ok: true, own: true };
+      if (this.rel[team][t.team] === 'war') return { ok: false, reason: `At war with ${this.players[t.team].name}.` };
+      if (this.rel[team][t.team] !== 'trade' || !this.known[team][t.team]) return { ok: false, reason: `You need a trade treaty with ${this.players[t.team].name}.` };
+      return { ok: true };
+    }
+    if (t.type === 'village') {
+      if (t.owner === team || t.owner === -1) return { ok: true, own: t.owner === team };
+      if (this.rel[team][t.owner] === 'war') return { ok: false, reason: `${t.name} belongs to a house you are at war with.` };
+      if (this.rel[team][t.owner] !== 'trade') return { ok: false, reason: `${t.name} trades only under a treaty with ${this.players[t.owner].name}.` };
+      return { ok: true };
+    }
+    return { ok: false, reason: 'Nothing to trade with there.' };
+  }
+  stockOf(t, k) { return Math.floor(t.type === 'village' ? (t.stores[k] || 0) : (t.stock?.[k] || 0)); }
+  feeFor(from, t) {
+    const d = Math.hypot(from.x - t.x, from.y - t.y);
+    if (t.type === 'village') return t.owner === -1 ? Math.max(0.15, Math.min(0.45, 0.2 + d / 400)) : Math.max(0.08, Math.min(0.3, 0.06 + d / 500));
+    return Math.max(0.08, Math.min(0.3, 0.06 + d / 500));
+  }
+  quoteFor(from, t, give, want, amount) {
+    if (!ALL_GOODS.includes(give) || !ALL_GOODS.includes(want) || give === want) return null;
+    const fee = this.feeFor(from, t);
+    return { fee, got: Math.floor((amount * RES_VALUE[give] / RES_VALUE[want]) * (1 - fee)) };
+  }
+  tradeTargetAt(team, x, y) {
+    const v = this.villageAt(x, y); if (v) return v;
+    const b = this.buildingAt(x, y); return b && b.kind === 'market' ? b : null;
+  }
+  cmdCaravan(units, t, want) {
+    const camels = units.filter((u) => u.kind === 'camel' && u.hp > 0);
+    if (!camels.length) return false;
+    const team = camels[0].team, chk = this.canDeal(team, t);
+    if (!chk.ok) { if (team === PLAYER) this.log(team, chk.reason, 'warn'); return false; }
+    for (const u of camels) { u.inside = null; u.task = { type: 'caravan', targetId: t.id, want: ALL_GOODS.includes(want) ? want : null, stage: 'out' }; this.setPathToEntity(u, t); }
+    return true;
+  }
+  doCaravan(u, dt) {
+    const k = u.task;
+    const t = this.byId.get(k.targetId);
+    if (!t || (t.type === 'building' && t.hp <= 0)) { k.stage === 'out' ? this.caravanHome(u) : (u.task = { type: 'idle' }); return; }
+    if (distTo(u.x, u.y, t) > 1.6) {
+      if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, t);
+      this.follow(u, dt); return;
+    }
+    u.path = [];
+    if (k.stage === 'out') { this.exchange(u, t, k.want); this.caravanHome(u); return; }
+    // home: unload what it carries into the stockpile
+    const p = this.players[u.team];
+    if (u.cargo) for (const g in u.cargo) { p[g] = (p[g] || 0) + u.cargo[g]; if (u.team === PLAYER && u.cargo[g] >= 1) this.floaters.push({ x: t.x, y: t.y - 1, text: `+${Math.round(u.cargo[g])}`, res: g, age: 0 }); }
+    u.cargo = {}; u.task = { type: 'idle' };
+  }
+  caravanHome(u) {
+    const m = (u.home != null && this.byId.get(u.home)?.hp > 0 ? this.byId.get(u.home) : null) || this.nearestMarket(u.team, u.x, u.y);
+    if (!m || m.team !== u.team) { u.task = { type: 'idle' }; return; }
+    u.task = { type: 'caravan', targetId: m.id, stage: 'home' }; this.setPathToEntity(u, m);
+  }
+  // the swap at the far end: sell what the camel carries for the wanted good, limited by the partner's stock and the camel's load
+  exchange(u, t, want) {
+    const team = u.team, say = (m, kind = 'info') => { if (team === PLAYER) this.log(team, m, kind); };
+    const chk = this.canDeal(team, t);
+    if (!chk.ok) { say(chk.reason, 'warn'); return; }
+    u.cargo = u.cargo || {};
+    const name = t.type === 'village' ? t.name : `${this.players[t.team].short || HOUSES[t.team].short}'s market`;
+    if (chk.own) {   // our own market: just stock its shelf
+      const shelf = t.stock || (t.stock = {});
+      for (const g in u.cargo) shelf[g] = (shelf[g] || 0) + u.cargo[g];
+      u.cargo = {}; u.home = t.id; say(`The caravan stocks ${name}.`); return;
+    }
+    if (!want) { say(`The caravan reaches ${name} with nothing to buy.`, 'warn'); return; }
+    const them = t.type === 'building' ? this.players[t.team] : null;
+    let soldAny = false;
+    for (const give of Object.keys(u.cargo)) {
+      if (give === want || u.cargo[give] < 1) continue;
+      const fee = this.feeFor(u, t), r = (RES_VALUE[give] / RES_VALUE[want]) * (1 - fee), avail = this.stockOf(t, want);
+      const total = this.cargoTotal(u);
+      let s = Math.floor(u.cargo[give]);
+      for (; s > 0; s--) { const got = Math.floor(s * r); if (got <= avail && total - s + got <= CAMEL_CAP) break; }
+      const got = Math.floor(s * r);
+      if (s < 1 || got < 1) continue;
+      if (t.type === 'village') { t.stores[want] -= got; t.stores[give] = (t.stores[give] || 0) + s; }
+      else { t.stock[want] -= got; them[give] = (them[give] || 0) + s; }
+      u.cargo[give] -= s; u.cargo[want] = (u.cargo[want] || 0) + got; soldAny = true;
+      say(`Caravan: ${s} ${give} for ${got} ${want} at ${name} (fee ${Math.round(fee * 100)}%).`, 'good');
+    }
+    if (!soldAny) say(`${name} could not trade ${GOOD_LABEL[want].toLowerCase()} for what you carry (empty shelf, or nothing to sell).`, 'warn');
+    for (const g of Object.keys(u.cargo)) if (u.cargo[g] < 0.01) delete u.cargo[g];
   }
 
   setRelation(a, b, state) {
@@ -951,7 +1068,7 @@ export class Game {
         case 'keep': this.tickKeep(b, dt); break;
         case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } break;
         case 'tavern': p.gold += 0.35 * dt; break;
-        case 'market': p.gold += 0.4 * dt; break;
+        case 'market': p.gold += 0.4 * dt; this.supplyMarket(b, p, dt); break;
         case 'temple': if (this.hasBuilding(b.team, 'academy')) p.gold += 0.3 * dt; break;
         case 'academy': {
           let n = 0;
@@ -1015,6 +1132,10 @@ export class Game {
   updateVillages(dt) {
     for (const v of this.villages) {
       v.flash = Math.max(0, v.flash - dt);
+      { // villages restock slowly: mining camps dig more ore than they started with
+        const base = VILLAGE_KINDS[v.kind].stores;
+        for (const k in base) { const cap = v.kind === 'mine' && MATS.includes(k) ? base[k] * 1.5 : base[k]; if ((v.stores[k] || 0) < cap) v.stores[k] = Math.min(cap, (v.stores[k] || 0) + (v.kind === 'mine' && MATS.includes(k) ? 0.12 : 0.05) * dt); }
+      }
       if (v.owner >= 0 && v.pop < LEVY.villagePop) v.pop = Math.min(LEVY.villagePop, v.pop + dt / LEVY.regen);
       if (v.hitT > 0) v.hitT -= dt;
       else if (v.protection < v.maxProtection) v.protection = Math.min(v.maxProtection, v.protection + 1.5 * dt);
@@ -1080,6 +1201,7 @@ export class Game {
         case 'build': this.doBuild(u, dt); break;
         case 'infiltrate': this.doInfiltrate(u, dt); break;
         case 'enter': this.doEnter(u, dt); break;
+        case 'caravan': this.doCaravan(u, dt); break;
         default: this.doIdle(u, s, dt);
       }
       if (u.kind === 'scholar' && u.task.type === 'idle') {
@@ -1089,7 +1211,7 @@ export class Game {
   }
 
   doIdle(u, s, dt) {
-    if (u.kind === 'serf' || u.kind === 'scholar' || u.kind === 'spy') return;
+    if (u.kind === 'serf' || u.kind === 'scholar' || u.kind === 'spy' || u.kind === 'camel') return;
     u.aggroT -= dt;
     if (u.aggroT > 0) return;
     u.aggroT = 0.45;
