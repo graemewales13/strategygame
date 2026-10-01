@@ -312,7 +312,7 @@ export class Game {
 
   setPath(u, x, y) {
     const p = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(x), Math.floor(y));
-    u.path = p || [];
+    u.path = p ? (p.length ? p : [[x, y]]) : [];   // same tile: still walk to the exact point (edge-hugging units never arrive otherwise)
     u.pathGoal = [x, y];
     u.repathT = 0.9;
     return !!p;
@@ -320,9 +320,18 @@ export class Game {
   // head toward the footprint of a building/village: goal is the free tile beside it, on the unit's side
   setPathToEntity(u, t) {
     if (!t.size) return this.setPath(u, t.x, t.y);
-    const n = this.nearestWalkable(Math.floor(t.x), Math.floor(t.y), Math.ceil(t.size / 2) + 3, Math.floor(u.x), Math.floor(u.y));
-    if (!n) { u.path = []; return false; }
-    return this.setPath(u, n[0] + 0.5, n[1] + 0.5);
+    // the free tiles around the footprint, nearest to the unit first; some may be sealed pockets, so take the first that can be reached
+    const { W, H, walk } = this, cx = Math.floor(t.x), cy = Math.floor(t.y), R = Math.ceil(t.size / 2) + 3, ux = Math.floor(u.x), uy = Math.floor(u.y);
+    const cands = [];
+    for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
+      if (x < 0 || y < 0 || x >= W || y >= H || !walk[y * W + x]) continue;
+      const edge = Math.max(Math.abs(x + 0.5 - t.x) - t.size / 2, Math.abs(y + 0.5 - t.y) - t.size / 2);
+      cands.push([x, y, (distTo(x + 0.5, y + 0.5, t) > 1.2 ? 1e8 : 0) + Math.max(0, Math.ceil(edge - 0.01)) * 1e6 + (x - ux) ** 2 + (y - uy) ** 2]);   // tiles within working reach (1.35) come first
+    }
+    if (!cands.length) { const n = this.nearestWalkable(cx, cy, R, ux, uy); cands.push(n ? [n[0], n[1], 0] : null); if (!n) { u.path = []; return false; } }
+    cands.sort((a, b) => a[2] - b[2]);
+    for (let i = 0; i < Math.min(8, cands.length); i++) if (this.setPath(u, cands[i][0] + 0.5, cands[i][1] + 0.5)) return true;
+    u.path = []; return false;
   }
 
   follow(u, dt) {
@@ -1066,8 +1075,8 @@ export class Game {
         case 'farm': p.food += 0.8 * dt * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (p.sci >= 1 ? 1.15 : 1); break;
         case 'foundry': this.smelt(b, p, dt); break;
         case 'keep': this.tickKeep(b, dt); break;
-        case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } break;
-        case 'tavern': p.gold += 0.35 * dt; break;
+        case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; }
+          p.gold += 0.35 * dt; break;
         case 'market': p.gold += 0.4 * dt; this.supplyMarket(b, p, dt); break;
         case 'temple': if (this.hasBuilding(b.team, 'academy')) p.gold += 0.3 * dt; break;
         case 'academy': {
