@@ -7,6 +7,11 @@ import { drawCrest, drawVale } from './render.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ART_B = new Set(['hall','keep','cottage','farm','mill','warehouse','market','forge','workshop','tavern','academy','temple','barracks','archery','stable','tower']);
+const ART_U = new Set(['serf','scout','footman','bowman','knight','spy','scholar']);
+const artUrl = (kind) => ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
+const icon = (kind, fallback) => { const u = artUrl(kind); return u ? `<img src="${u}" alt="" draggable="false">` : fallback; };
+const portrait = (kind, accent) => artUrl(kind) ? `<img class="portrait" src="${artUrl(kind)}" alt="" draggable="false" style="border-color:${accent}">` : '';
 const GLYPH = {
   cottage: '⌂', farm: '≋', mill: '✢', warehouse: '▣', market: '⚖', barracks: '⚔', archery: '➶', stable: '♞', tower: '♜',
   forge: '⚒', workshop: '⚙', tavern: '⚱', academy: '✎', temple: '✝', keep: '♚',
@@ -385,7 +390,7 @@ export class UI {
       const us = this.selUnits();
       if (us.length === 1) {
         const u = us[0], st = UNITS[u.kind], mine = u.team === PLAYER;
-        html = `<div class="seltitle">${st.label} <small style="color:${HOUSES[u.team].accent};font-size:12px">${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${esc(st.info)}</div>
+        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${st.label} <small style="color:${HOUSES[u.team].accent};font-size:12px">${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${esc(st.info)}</div>
           <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(u.hp / u.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(u.hp)}/${u.maxHp}</span></div>
           <div class="stat"><label>Damage</label><span>${st.dmg}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${st.speed}</span></div>
           ${mine ? `<div class="stat"><label>Task</label><span>${this.taskText(u)}${u.carry && u.carry.amount > 0.5 ? ` · ${Math.floor(u.carry.amount)} ${u.carry.kind}` : ''}</span></div>` : ''}`;
@@ -396,7 +401,7 @@ export class UI {
     } else if (s.type === 'building') {
       const b = g.byId.get(s.id); if (!b) { this.clearSel(); return; }
       const st = BUILDINGS[b.kind], mine = b.team === PLAYER;
-      html = `<div class="seltitle">${st.label} <small style="color:${HOUSES[b.team].accent};font-size:12px">${esc(HOUSES[b.team].short)}</small></div><div class="selsub">${esc(st.info)}</div>
+      html = `${portrait(b.kind, HOUSES[b.team].accent)}<div class="seltitle">${st.label} <small style="color:${HOUSES[b.team].accent};font-size:12px">${esc(HOUSES[b.team].short)}</small></div><div class="selsub">${esc(st.info)}</div>
         <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(b.hp / b.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(b.hp)}/${b.maxHp}</span></div>`;
       if (b.built < 1) html += `<div class="stat"><label>Building</label><div class="meter"><i class="prog" style="width:${b.built * 100}%"></i></div><span class="v">${Math.floor(b.built * 100)}%</span></div><div class="selsub">Right-click with serfs to help.</div>`;
       if (mine && b.built >= 1 && st.pop) html += `<div class="stat"><label>Population</label><span>+${st.pop}</span></div>`;
@@ -423,7 +428,7 @@ export class UI {
 
   btn(act, o) {
     const tip = encodeURIComponent(o.tip);
-    return `<button class="cbtn ${o.off ? 'off' : ''} ${o.cls || ''}" data-act="${act}" ${Object.entries(o.data || {}).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ')} data-tip="${tip}"><span class="g">${o.glyph}</span><span class="n">${esc(o.name)}</span>${o.sub ? `<span class="c">${o.sub}</span>` : ''}</button>`;
+    return `<button class="cbtn ${o.off ? 'off' : ''} ${o.cls || ''}" data-act="${act}" ${Object.entries(o.data || {}).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ')} data-tip="${tip}"><span class="g ${o.art ? 'art' : ''}">${o.art ? icon(o.art, o.glyph) : o.glyph}</span><span class="n">${esc(o.name)}</span>${o.sub ? `<span class="c">${o.sub}</span>` : ''}</button>`;
   }
   buildGrid() {
     const g = this.game, p = g.players[PLAYER];
@@ -433,7 +438,7 @@ export class UI {
       const miss = s.requires.filter((r) => !g.hasBuilding(PLAYER, r)).map((r) => BUILDINGS[r].label);
       const afford = g.canAfford(PLAYER, s.cost);
       const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s${miss.length ? `<br><span class="need">Needs: ${miss.join(', ')}</span>` : ''}`;
-      html += this.btn('place', { off: miss.length || !afford, glyph: GLYPH[kind], name: s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery').replace('Timber ', ''), sub: Object.entries(s.cost).filter(([, v]) => v).map(([k, v]) => `${v}${k[0] === 'f' ? 'g' : k[0] === 'w' ? 't' : 'c'}`).join(' '), data: { kind }, tip });
+      html += this.btn('place', { off: miss.length || !afford, glyph: GLYPH[kind], art: kind, name: s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery').replace('Timber ', ''), sub: Object.entries(s.cost).filter(([, v]) => v).map(([k, v]) => `${v}${k[0] === 'f' ? 'g' : k[0] === 'w' ? 't' : 'c'}`).join(' '), data: { kind }, tip });
     }
     return html + `</div>`;
   }
@@ -446,7 +451,7 @@ export class UI {
       const s = UNITS[k];
       const afford = g.canAfford(PLAYER, s.cost), room = g.popUsed(PLAYER) < g.popCap(PLAYER);
       const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br>HP ${s.hp} · dmg ${s.dmg}${s.range > 1.6 ? ' (ranged)' : ''} · speed ${s.speed}<br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s${room ? '' : '<br><span class="need">Population capped: raise cottages.</span>'}`;
-      html += this.btn('train', { off: !afford || !room, glyph: GLYPH[k], name: s.label, sub: Object.entries(s.cost).filter(([, v]) => v).map(([kk, v]) => `${v}${kk[0] === 'f' ? 'g' : kk[0] === 'w' ? 't' : 'c'}`).join(' '), data: { kind: k }, tip });
+      html += this.btn('train', { off: !afford || !room, glyph: GLYPH[k], art: k, name: s.label, sub: Object.entries(s.cost).filter(([, v]) => v).map(([kk, v]) => `${v}${kk[0] === 'f' ? 'g' : kk[0] === 'w' ? 't' : 'c'}`).join(' '), data: { kind: k }, tip });
     }
     return html + `</div>`;
   }
