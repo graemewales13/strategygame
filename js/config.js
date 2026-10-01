@@ -1,0 +1,119 @@
+// Seven Holds - balance, stats and constants. No DOM access: this file is shared by the host sim and the client.
+
+export const TILE = 32;
+export const MAP_W = 112;
+export const MAP_H = 112;
+export const PLAYER = 0;
+export const MIN_HOUSES = 3;
+export const MAX_HOUSES = 5;
+export const DEFAULT_HOUSES = 4;
+
+export const HOUSES = [
+  { name: 'House Calder', short: 'Calder', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'Hold what you till' },
+  { name: 'House Varr', short: 'Varr', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', motto: 'Blood and iron' },
+  { name: 'House Cael', short: 'Cael', color: 'blue', primary: '#3a6ea8', accent: '#92c6ff', dark: '#1c334d', motto: 'Still waters' },
+  { name: 'House Thorn', short: 'Thorn', color: 'green', primary: '#37753f', accent: '#97d17c', dark: '#173a1c', motto: 'We endure' },
+  { name: 'House Ash', short: 'Ash', color: 'violet', primary: '#7a4a98', accent: '#cb9ce0', dark: '#30203f', motto: 'From embers' },
+];
+
+// Terrain ids
+export const T_GRASS = 0;
+export const T_DIRT = 1;
+export const T_WATER = 2;
+export const T_FORD = 3; // wooden ford / bridge across the river: walkable
+
+// Resources. value is used by markets (coin is worth more than grain or timber).
+export const RES = ['food', 'wood', 'gold'];
+export const RES_LABEL = { food: 'Grain', wood: 'Timber', gold: 'Coin' };
+export const RES_VALUE = { food: 1, wood: 1, gold: 2 };
+export const NODE_RES = { tree: 'wood', berry: 'food', gold: 'gold' };
+export const GATHER_RATE = { wood: 0.95, food: 1.1, gold: 0.7 }; // per second while working
+export const CARRY_CAP = 10;
+
+export const START_RES = { food: 110, wood: 110, gold: 30 };
+
+// ---- Units -------------------------------------------------------------------------------
+// speed in tiles/sec, range in tiles, cooldown in seconds, bld = damage multiplier vs buildings, vil = vs villages
+export const UNITS = {
+  serf:    { label: 'Serf',    hp: 40,  speed: 2.4, dmg: 3,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 50, wood: 0, gold: 0 },   time: 8,  from: ['hall', 'keep'], bld: 0.3, vil: 0.3, info: 'Gathers, builds, drops off. Weak in a fight.' },
+  scout:   { label: 'Scout',   hp: 55,  speed: 4.4, dmg: 5,  range: 1,   cd: 1.0,  sight: 10, cost: { food: 40, wood: 20, gold: 0 },  time: 10, from: ['keep'],         bld: 0.2, vil: 0.4, info: 'Fast and far-sighted. Maps the valley.' },
+  footman: { label: 'Footman', hp: 90,  speed: 2.7, dmg: 10, range: 1,   cd: 1.1,  sight: 7,  cost: { food: 60, wood: 20, gold: 0 },  time: 14, from: ['barracks'],     bld: 0.5, vil: 1.0, info: 'Melee line infantry. Forge adds +3 damage.' },
+  bowman:  { label: 'Bowman',  hp: 50,  speed: 2.8, dmg: 7,  range: 5.5, cd: 1.3,  sight: 8,  cost: { food: 40, wood: 30, gold: 20 }, time: 16, from: ['archery'],      bld: 0.35, vil: 0.8, info: 'Ranged. Forge adds +2 damage.' },
+  knight:  { label: 'Knight',  hp: 150, speed: 3.9, dmg: 16, range: 1,   cd: 1.2,  sight: 7,  cost: { food: 80, wood: 0, gold: 60 },  time: 22, from: ['stable'],       bld: 0.5, vil: 1.0, info: 'Heavy cavalry. Forge adds +3 damage.' },
+  spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
+  scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
+  ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
+};
+
+// ---- Buildings ---------------------------------------------------------------------------
+export const BUILDINGS = {
+  hall:      { label: 'Timber Hall',   size: 3, hp: 520,  sight: 8,  pop: 6, cost: null,                          time: 0,  requires: [],                      info: 'Your seat. Trains serfs, drop-off. Low HP. Raises nearby loyalty a little.' },
+  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 120 }, time: 36, requires: ['hall'],          info: 'Stone seat. Wide territory and influence, trains serfs and scouts, more pop.' },
+  cottage:   { label: 'Cottage',       size: 2, hp: 380,  sight: 5,  pop: 5, cost: { food: 0, wood: 60, gold: 0 },   time: 12, requires: ['hall'],          info: '+5 population.' },
+  farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: ['hall'],          info: 'Steady grain. +25% beside a mill.' },
+  mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['hall'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
+  warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['hall'],          info: 'Drop-off for all goods, +10% delivered.' },
+  market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: ['hall'],          info: 'Trade with houses and villages. Drop-off. Small coin trickle.' },
+  forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2.' },
+  workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Trains rams.' },
+  tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: ['hall'],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
+  academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'Trains scholars. Unlocks the workshop and temple coin.' },
+  temple:    { label: 'Temple',        size: 2, hp: 590,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 50 }, time: 20, requires: ['keep'],          info: 'Strong loyalty aura. Coin trickle with an academy.' },
+  barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 20 }, time: 22, requires: ['hall'],          info: 'Trains footmen.' },
+  archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
+  stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
+  tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40 }, time: 20, requires: ['hall'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
+};
+export const BUILD_ORDER_UI = ['cottage', 'farm', 'mill', 'warehouse', 'market', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'keep'];
+
+// Which buildings accept which goods from serfs
+export const DROP_OFF = {
+  hall: ['food', 'wood', 'gold'],
+  keep: ['food', 'wood', 'gold'],
+  warehouse: ['food', 'wood', 'gold'],
+  market: ['food', 'wood', 'gold'],
+  mill: ['wood'],
+};
+export const DROP_BONUS = { mill: { wood: 1.2 }, warehouse: { food: 1.1, wood: 1.1, gold: 1.1 } };
+
+// You may only raise buildings within these radii (tiles) of one of your halls/keeps. A keep pushes the frontier.
+export const TERRITORY = { hall: 17, keep: 30 };
+
+// Loyalty pull: who is leaning on a village. r = radius in tiles, w = weight at the building (falls off linearly).
+export const INFLUENCE = {
+  hall: { r: 14, w: 0.5 },
+  keep: { r: 30, w: 1.5 },
+  tower: { r: 8, w: 0.3 },
+  tavern: { r: 11, w: 0.55 },
+  temple: { r: 17, w: 1.0 },
+  academy: { r: 13, w: 0.4 },
+};
+export const LOYALTY_RATE = 1.6; // loyalty/sec per unit of net pull
+export const SUBMIT_LOYALTY = 72;
+export const SPY_RATE = 1.7;     // loyalty/sec while a spy is inside
+export const SPY_CATCH = 0.004;  // base catch chance per second, plus protection/16000
+export const VILLAGE_WIN_SHARE = 0.65; // hold this share of villages ...
+export const VILLAGE_WIN_HOLD = 45;    // ... for this many seconds to win
+
+export const VILLAGE_SIZE = 3;
+export const VILLAGE_KINDS = {
+  hamlet:   { label: 'Hamlet',         folk: ['farmers', 'herders'],            protection: 220, loyalty: 26, tribute: { food: 0.8,  wood: 0.15, gold: 0.05 }, stores: { food: 80, wood: 20, gold: 8 },  blurb: 'Farmers and herders. Easy to turn, pays grain.' },
+  mine:     { label: 'Mining camp',    folk: ['miners', 'haulers'],             protection: 300, loyalty: 18, tribute: { food: 0.1,  wood: 0.1,  gold: 0.9 },  stores: { food: 20, wood: 15, gold: 90 }, blurb: 'Miners and haulers. Pays coin.' },
+  market:   { label: 'Market town',    folk: ['traders', 'watch'],              protection: 340, loyalty: 30, tribute: { food: 0.3,  wood: 0.3,  gold: 0.7 },  stores: { food: 40, wood: 40, gold: 70 }, blurb: 'Traders and the town watch. Good partner for trade.' },
+  hillfort: { label: 'Hillfort',       folk: ['spearmen', 'captain'],           protection: 620, loyalty: 10, tribute: { food: 0.2,  wood: 0.15, gold: 0.3 },  stores: { food: 30, wood: 25, gold: 25 }, blurb: 'Spearmen and a captain. Tough walls: bring a ram.' },
+  abbey:    { label: 'Abbey',          folk: ['monks', 'scribes'],              protection: 240, loyalty: 36, tribute: { food: 0.25, wood: 0.1,  gold: 0.45 }, stores: { food: 35, wood: 10, gold: 40 }, blurb: 'Monks and scribes. Loyal, but pays gently.' },
+  inn:      { label: 'Crossroads inn', folk: ['innkeep', 'sellswords'],         protection: 200, loyalty: 24, tribute: { food: 0.2,  wood: 0.1,  gold: 0.55 }, stores: { food: 25, wood: 10, gold: 35 }, blurb: 'Innkeep and sellswords. Cheap to sack.' },
+};
+export const VILLAGE_NAMES = {
+  hamlet: ['Aldermere', 'Fenwick', 'Hollin', 'Thatchley', 'Oakby', 'Lindow'],
+  mine: ['Deepdelve', 'Ironcleave', 'Redscar', 'Coalgate', 'Greywash'],
+  market: ['Marketon', 'Cheapside', 'Ferrowby', 'Wainmouth', 'Tollgate'],
+  hillfort: ['Highcrag', 'Stonebarrow', 'Wyrmhold', 'Cairnholt', 'Bleakfort'],
+  abbey: ['St Aldric', 'Veilmoor', 'St Wenna', 'Candlewick', 'Harrowgate'],
+  inn: ['The Drover', 'The Gallows Oak', 'Crossways', 'The Pilgrim', 'The Ford Arms'],
+};
+
+export const RELATIONS = ['peace', 'trade', 'war'];
+export const DEFAULT_RELATION = 'peace';
+
+export const FOG_REVEAL_MS = 0;

@@ -1,0 +1,11 @@
+{
+  "name": "seven-holds",
+  "version": "0.2.0",
+  "description": "Seven Holds - a browser real-time strategy game (valley, villages, houses).",
+  "type": "module",
+  "scripts": {
+    "serve": "python3 -m http.server 8000",
+    "test": "node test/sim.test.js"
+  },
+  "license": "MIT"
+}
