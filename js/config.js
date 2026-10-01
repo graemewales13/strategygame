@@ -21,6 +21,22 @@ export const T_GRASS = 0;
 export const T_DIRT = 1;
 export const T_WATER = 2;
 export const T_FORD = 3; // wooden ford / bridge across the river: walkable
+export const T_DRY = 4;  // steppe grass
+export const T_SAND = 5; // dunes and gravel flats
+export const T_ROCK = 6; // rocky ridges: impassable, nothing can be built
+export const T_SNOW = 7; // snow field: slow going, thin harvests
+// ground types you may build on, walking cost multiplier, and farm yield (0 = no farming)
+export const LAND = [1, 1, 0, 0, 1, 1, 0, 1];
+export const GROUND_COST = [1, 0.85, 1, 1, 1, 1.12, 1, 1.25];
+export const FARM_SOIL = [1, 0.9, 0, 0.9, 0.8, 0.45, 0, 0.4];
+// a seed picks one of these climates; noise then mixes the ground types inside it
+export const BIOMES = {
+  temperate: { label: 'Green valley', weight: 30, moist: 0, cold: -0.25, rocky: 0, trees: 1, lakes: 1, rivers: [0.15, 0.6, 0.25] },
+  steppe: { label: 'Dry steppe', weight: 20, moist: -0.12, cold: -0.25, rocky: -0.006, trees: 0.55, lakes: 0.6, rivers: [0.2, 0.7, 0.1] },
+  desert: { label: 'Desert flats', weight: 16, moist: -0.3, cold: -0.3, rocky: 0.003, trees: 0.35, lakes: 0.35, rivers: [0.3, 0.7, 0] },
+  highland: { label: 'Rocky highland', weight: 16, moist: 0, cold: 0.04, rocky: 0.02, trees: 0.8, lakes: 0.8, rivers: [0.3, 0.55, 0.15] },
+  winter: { label: 'Winter lands', weight: 18, moist: 0.05, cold: 0.3, rocky: 0.004, trees: 0.8, lakes: 0.8, rivers: [0.25, 0.6, 0.15] },
+};
 
 // Resources. value is used by markets (coin is worth more than grain or timber).
 export const RES = ['food', 'wood', 'gold'];

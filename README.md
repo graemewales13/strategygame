@@ -103,6 +103,9 @@ MIT. See `LICENSE`.
 
 `node tools/soak.js [minutes] [seeds] [houses] [chaos]` plays headless matches, checks invariants (stuck units, negative stock, sync of garrisons, NaN, snapshots, tick time) and writes `logs/soak-latest.log`; `chaos` replaces the player's AI with a random intent generator. Findings and fixes are tracked in `TROUBLESHOOTING.md`.
 
+## Random terrain
+Each game picks a climate from its seed (Green valley, Dry steppe, Desert flats, Rocky highland, Winter lands) and noise mixes seven ground types inside it, using the painted tiles cut from `assets/art-drop/shared/terrain` (`python3 tools/cut_terrain.py` rebuilds `assets/terrain/`). Rivers are random (none, one or two, at any angle, with fords), as are ponds, ridges, and which corner each house starts in. Rock ridges and water block movement and building; snow slows walking (x1.25 cost) and sand (x1.12); steppe and snow farms yield less. Halls always stand on a livable patch, every hall is connected to every other, and a building may not seal off a pocket of ground (units inside would be stuck). Pines grow in snow, palms in sand.
+
 ## Rules in one page
 
 The point of the game is to expand and rule, so **nothing stops you building as far as you can scout**. What distance and company change is how a place *works*:

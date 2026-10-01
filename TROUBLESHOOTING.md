@@ -60,3 +60,10 @@ Review of every rule that limits the player, asked of each: does it serve expand
 | T-022 | KEPT | Requires-chains (hall first, barracks for archery, etc.), population cap by cottages, 4 diggers per mine, garrison caps, treaty needs a met house | These shape *what* you build and *when*, not how far you may reach; they stay |
 
 Tests added: guard-scaled influence, remote mine haul and warehouse fix, market consumers, far scouted ground is open.
+
+## Cycle 6: random terrain (T-027 to T-028)
+
+| ID | Status | Symptom | Cause and fix |
+|----|--------|---------|---------------|
+| T-027 | FIXED | Serfs, recruits and a spy stuck for minutes at one spot on a rocky map (soak seed 7) | The AI built a tavern and a market flush against a rock ridge, sealing a 6-tile pocket with units inside. `wallsOff()` in `canPlace` now refuses a footprint that splits the ground around it into more pieces than before ("Would wall off a pocket of ground"); a fully open ring skips the check, so it costs nothing in open country |
+| T-028 | FIXED | Test asked for open ground 36 tiles east of the hall; random start corners can put the hall on the right edge | Test now searches the whole map for scouted ground more than 30 tiles away |

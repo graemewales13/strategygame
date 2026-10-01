@@ -4,12 +4,19 @@ import { HOUSES, GOOD_COLOR } from './config.js';
 
 const LIST = {
   b: ['hall', 'keep', 'keep_blue', 'cottage', 'cottage_thatch', 'farm', 'mill', 'warehouse', 'market', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower', 'village_cluster'],
-  r: ['oak', 'berry', 'bush_s', 'bush_m', 'rock', 'gold'],
+  r: ['oak', 'pine', 'palm', 'berry', 'bush_s', 'bush_m', 'rock', 'gold'],
   u: ['serf', 'serf_dig1', 'serf_dig2', 'scout', 'footman', 'bowman', 'knight', 'spy', 'scholar'],
 };
 export const IMG = {};
+// painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow
+export const TILE_KINDS = ['grass', 'dry', 'sand', 'rock', 'dirt', 'snow'];
+export const TILES = {};
 export function loadArt() {
   const jobs = [];
+  for (const k of TILE_KINDS) {
+    TILES[k] = [];
+    for (let v = 0; v < 6; v++) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { TILES[k][v] = i; res(); }; i.onerror = () => res(); i.src = `assets/terrain/${k}_${v}.png`; }));
+  }
   for (const [dir, names] of Object.entries(LIST)) for (const n of names) {
     jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { IMG[n] = i; res(); }; i.onerror = () => res(); i.src = `assets/world/${dir}/${n}.png`; }));
   }

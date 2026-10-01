@@ -1,7 +1,7 @@
 // Seven Holds - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, MATS, GOOD_COLOR,
+  PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG } from './art.js';
@@ -9,6 +9,7 @@ import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG } from './ar
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
 const GOLD = '#e2c15e';
+const GROUND_RGB = [[74, 118, 58], [128, 98, 54], [38, 92, 118], [140, 100, 56], [146, 132, 68], [194, 172, 112], [98, 94, 90], [224, 230, 236]];
 
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
 const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
@@ -71,7 +72,7 @@ export class Renderer {
   makeProps() {
     const g = this.game, out = [];
     for (let y = 1; y < g.H - 1; y++) for (let x = 1; x < g.W - 1; x++) {
-      if (g.terrain[y * g.W + x] !== T_GRASS || g.block[y * g.W + x]) continue;
+      const tt = g.terrain[y * g.W + x]; if ((tt !== T_GRASS && tt !== T_DRY) || g.block[y * g.W + x]) continue;
       const h = hash(x * 7 + 3, y * 13 + 5);
       if (h < 0.011) out.push({ x: x + hash(x, y + 9), y: y + hash(x + 9, y), k: h < 0.0055 ? 'bush_s' : h < 0.0085 ? 'bush_m' : 'rock', f: hash(y, x) > 0.5 });
     }
@@ -214,8 +215,9 @@ export class Renderer {
   node(ctx, n, vis, z) {
     const h = hash(n.x, n.y), [sx, sy] = this.toScreen(n.x + 0.5, n.y + 0.55), a = vis ? 1 : 0.65;
     if (n.kind === 'tree') {
-      const v = (h * 6) | 0, c = tinted('oak', 0, null, v & 1, [0.98, 1.1, 1.22][v % 3]);
-      const w = (50 + h * 22) * z;
+      const v = (h * 6) | 0, sp = n.v === 'pine' ? 'pine' : n.v === 'palm' ? 'palm' : 'oak';
+      const c = tinted(sp, 0, null, v & 1, sp === 'oak' ? [0.98, 1.1, 1.22][v % 3] : [0.95, 1, 1.08][v % 3]);
+      const w = (sp === 'oak' ? 50 + h * 22 : sp === 'pine' ? 40 + h * 16 : 44 + h * 14) * z;
       this.shadowAt(ctx, sx + 6 * z, sy - 1 * z, w * 0.34, 6 * z, 0.28 * a);
       this.sprite(ctx, c, sx, sy + 2 * z, w, false, a);
       this.hit(n, 'node', sx - w * 0.22, sy - w * 0.9, sx + w * 0.22, sy + 2 * z);
@@ -445,7 +447,7 @@ export class Minimap {
       if (g.fogOn && !seen[i]) c = [8, 10, 14];
       else {
         const t = g.terrain[i];
-        c = t === T_WATER ? [38, 92, 118] : t === T_FORD ? [140, 100, 56] : t === T_DIRT ? [128, 98, 54] : [74, 118, 58];
+        c = GROUND_RGB[t] || GROUND_RGB[0];
         if (g.fogOn && !vis[i]) c = [c[0] * 0.55, c[1] * 0.55, c[2] * 0.55];
       }
       d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
@@ -490,7 +492,7 @@ export function drawVale(canvas, game, { fog = false, poly = null, labels = fals
     const i = y * W + x;
     if (fog && game.fogOn && !seen[i]) continue;
     const t = game.terrain[i];
-    let c = t === T_WATER ? [38, 92, 118] : t === T_FORD ? [140, 100, 56] : t === T_DIRT ? [128, 98, 54] : [[102, 106, 44], [106, 110, 46], [96, 100, 40], [112, 114, 50]][(hash(x, y) * 4) | 0];
+    let c = t === T_GRASS ? [[102, 106, 44], [106, 110, 46], [96, 100, 40], [112, 114, 50]][(hash(x, y) * 4) | 0] : GROUND_RGB[t] || GROUND_RGB[0];
     if (fog && game.fogOn && !vis[i]) c = c.map((q) => q * 0.55);
     ctx.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
     ctx.fillRect(x * sx, y * sy, sx + 0.6, sy + 0.6);

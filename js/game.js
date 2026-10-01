@@ -3,7 +3,7 @@
 // No DOM access in this file, so it runs unchanged under Node for tests.
 
 import {
-  MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD,
+  MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
@@ -41,6 +41,8 @@ export class Game {
     this.terrain = map.terrain;
     this.resources = map.resources;
     this.resAt = map.resAt;
+    this.biome = map.biome;
+    this.biomeLabel = map.biomeLabel;
     this.nextId = 1;
     this.time = 0;
     this.outcome = null;
@@ -85,7 +87,7 @@ export class Game {
     });
     this.recomputeWalk();
     this.updateVisibility(true);
-    this.log(PLAYER, `A hall, two serfs and a starting purse: train serfs, raise cottages, a farm and a mine, then claim villages.`, 'info');
+    this.log(PLAYER, `${this.biomeLabel}. A hall, two serfs and a starting purse: train serfs, raise cottages, a farm and a mine, then claim villages.`, 'info');
   }
 
   nid() { return this.nextId++; }
@@ -119,7 +121,7 @@ export class Game {
     };
     for (const b of this.buildings) if (b.hp > 0) mark(b);
     for (const v of this.villages) mark(v);
-    for (let i = 0; i < W * H; i++) walk[i] = terrain[i] !== T_WATER && !block[i] ? 1 : 0;
+    for (let i = 0; i < W * H; i++) walk[i] = terrain[i] !== T_WATER && terrain[i] !== T_ROCK && !block[i] ? 1 : 0;
   }
 
   // ------------------------------------------------------------------ queries
@@ -311,7 +313,7 @@ export class Game {
         const ni = ny * W + nx;
         if (!walk[ni] || closed[ni] === run) continue;
         if (k >= 4 && (!walk[cy * W + nx] || !walk[ny * W + cx])) continue;
-        const step = (k >= 4 ? 1.414 : 1) * (terrain[ni] === T_DIRT ? 0.85 : 1);
+        const step = (k >= 4 ? 1.414 : 1) * GROUND_COST[terrain[ni]];
         const ng = g[cur] + step;
         if (stamp[ni] !== run || ng < g[ni]) {
           stamp[ni] = run; g[ni] = ng; came[ni] = cur;
@@ -350,7 +352,7 @@ export class Game {
     if (!u.path.length) return false;
     let step = u.speed ?? UNITS[u.kind].speed;
     const tileIdx = Math.floor(u.y) * this.W + Math.floor(u.x);
-    step *= (this.terrain[tileIdx] === T_DIRT ? 1.18 : 1) * dt;
+    step *= (1 / GROUND_COST[this.terrain[tileIdx]]) * dt;
     while (step > 0 && u.path.length) {
       const [px, py] = u.path[0];
       const dx = px - u.x, dy = py - u.y, d = Math.hypot(dx, dy);
@@ -740,12 +742,14 @@ export class Game {
     for (let y = ty; y < ty + s.size; y++) for (let x = tx; x < tx + s.size; x++) {
       const i = y * W + x, t = this.terrain[i];
       if (t === T_WATER || t === T_FORD) return { ok: false, reason: 'Cannot build on water' };
+      if (t === T_ROCK) return { ok: false, reason: 'Solid rock: nothing can be built here' };
       if (this.block[i]) return { ok: false, reason: 'Blocked' };
       if (this.resAt[i] >= 0 && this.resources[this.resAt[i]].amount > 0) {
         const n = this.resources[this.resAt[i]];
         if (!(s.onDeposit && MINEABLE.includes(n.kind))) return { ok: false, reason: 'Blocked by resources' };
       }
     }
+    if (this.wallsOff(tx, ty, s.size)) return { ok: false, reason: 'Would wall off a pocket of ground' };
     if (s.onDeposit) {
       const nodes = this.depositsUnder(tx, ty, s.size);
       if (!nodes.length) return { ok: false, reason: 'A mine must stand on a mineral deposit' };
@@ -755,6 +759,44 @@ export class Game {
     if (team === PLAYER && this.fogOn && !this.seen[team][Math.floor(ty + s.size / 2) * W + Math.floor(tx + s.size / 2)]) return { ok: false, reason: 'Unexplored: scout there first' };
     if (!this.units.some((u) => u.team === team && u.kind === 'serf' && u.hp > 0)) return { ok: false, reason: 'You need a serf to build' };
     return { ok: true };
+  }
+
+  // Would a footprint at (tx, ty) split the walkable ground around it into more separate pieces than before?
+  // (rock, water and other buildings make pockets; units sealed inside one are stuck for good)
+  wallsOff(tx, ty, size) {
+    const { W, H, walk } = this;
+    const ring = [];
+    let inBounds = 0;
+    for (let y = ty - 1; y <= ty + size; y++) for (let x = tx - 1; x <= tx + size; x++) {
+      if (x > tx - 1 && x < tx + size && y > ty - 1 && y < ty + size) continue;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      inBounds++;
+      if (walk[y * W + x]) ring.push(x + y * W);
+    }
+    if (ring.length === inBounds || ring.length < 2) return false; // a fully open ring cannot be split
+    const x0 = Math.max(0, tx - 10), x1 = Math.min(W - 1, tx + size + 9), y0 = Math.max(0, ty - 10), y1 = Math.min(H - 1, ty + size + 9);
+    const inFoot = (x, y) => x >= tx && x < tx + size && y >= ty && y < ty + size;
+    const comps = (blockFoot) => {
+      const seen = new Set(), want = new Set(ring);
+      let n = 0;
+      for (const r of ring) {
+        if (seen.has(r)) continue;
+        n++;
+        const st = [r]; seen.add(r);
+        while (st.length) {
+          const c = st.pop(), cx = c % W, cy = (c / W) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx < x0 || nx > x1 || ny < y0 || ny > y1) continue;
+            const ni = ny * W + nx;
+            if (seen.has(ni) || !walk[ni] || (blockFoot && inFoot(nx, ny))) continue;
+            seen.add(ni); st.push(ni);
+          }
+        }
+      }
+      return n;
+    };
+    return comps(true) > comps(false);
   }
 
   depositsUnder(tx, ty, size) {
@@ -1107,7 +1149,7 @@ export class Game {
       if (b.built < 1) continue;
       const p = this.players[b.team];
       switch (b.kind) {
-        case 'farm': p.food += 0.8 * dt * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (p.sci >= 1 ? 1.15 : 1); break;
+        case 'farm': p.food += 0.8 * dt * (FARM_SOIL[this.terrain[Math.floor(b.y) * this.W + Math.floor(b.x)]] || 0.9) * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (p.sci >= 1 ? 1.15 : 1); break;
         case 'foundry': this.smelt(b, p, dt); break;
         case 'keep': this.tickKeep(b, dt); break;
         case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; }

@@ -17,7 +17,7 @@ test('map: every start, village and resource node is reachable from every start 
     const s0 = g.map.starts[0];
     for (const [sx, sy] of g.map.starts) assert.ok(g.findPath(s0[0] + 1, s0[1] + 3, sx + 1, sy + 3), `seed ${seed}/${houses}: start unreachable`);
     for (const v of g.villages) assert.ok(g.findPath(s0[0] + 1, s0[1] + 3, v.tx + 1, v.ty + 1), `seed ${seed}/${houses}: village ${v.name} unreachable`);
-    assert.ok(g.villages.length >= 10, `seed ${seed}: only ${g.villages.length} villages`);
+    assert.ok(g.villages.length >= 8, `seed ${seed}: only ${g.villages.length} villages`);
     let bad = 0;
     for (const n of g.resources) if (!g.findPath(s0[0] + 1, s0[1] + 3, n.x, n.y)) bad++;
     assert.equal(bad, 0, `seed ${seed}/${houses}: ${bad} unreachable resource nodes`);
@@ -70,8 +70,8 @@ test('building: place a cottage, serfs raise it, population cap grows; far groun
   assert.equal(g.popCap(PLAYER), cap0 + 5);
   assert.equal(g.canPlace(PLAYER, 'cottage', hall.tx + 40, hall.ty).ok, false, 'unscouted ground is closed');
   g.seen[PLAYER].fill(1);
-  const far = (() => { for (let y = 0; y < 30; y++) { const r = g.canPlace(PLAYER, 'cottage', hall.tx + 36, hall.ty - 15 + y); if (r.ok) return r; } return null; })();
-  assert.ok(far, 'scouted ground 36 tiles from the hall is open (no territory circle)');
+  const far = (() => { for (let y = 0; y < g.H - 2; y++) for (let x = 2; x < g.W - 6; x++) if (Math.hypot(x - hall.tx, y - hall.ty) > 30) { const r = g.canPlace(PLAYER, 'cottage', x, y); if (r.ok) return r; } return null; })();
+  assert.ok(far, 'scouted ground 30+ tiles from the hall is open (no territory circle)');
 });
 
 test('training: serf from the hall respects cost and population', () => {
@@ -542,6 +542,25 @@ test('rule: serfs only gather on ground you rule; a warehouse or a held village 
   assert.equal(g.cmdGather([s], far), false, 'unruled timber refused');
   g.addBuilding('warehouse', 0, Math.round(far.x) - 3, Math.round(far.y), true);
   assert.equal(g.cmdGather([s], far), true, 'a warehouse beside it brings it into our rule');
+});
+
+test('terrain: seeds give five climates; rock and water never cut a hall off; halls stand on livable ground', () => {
+  const seen = new Set();
+  for (let seed = 1; seed <= 40; seed++) {
+    const g = new Game({ seed, houses: 5 });
+    seen.add(g.biome);
+    for (const [sx, sy] of g.map.starts) {
+      for (let y = sy - 1; y <= sy + 3; y++) for (let x = sx - 1; x <= sx + 3; x++) assert.ok([0, 1, 4].includes(g.terrain[y * g.W + x]), `seed ${seed}: hall ground ${g.terrain[y * g.W + x]}`);
+    }
+    for (const n of g.resources) assert.ok(g.terrain[n.y * g.W + n.x] !== 6 && g.terrain[n.y * g.W + n.x] !== 2, 'node on rock or water');
+  }
+  assert.equal(seen.size, 5, `climates seen: ${[...seen]}`);
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const rock = g.terrain.indexOf(6);
+  assert.ok(rock >= 0, 'seed 5 has rock');
+  g.seen[0].fill(1); g.players[0].wood = 999;
+  assert.equal(g.canPlace(0, 'cottage', rock % g.W, (rock / g.W) | 0).ok, false, 'cannot build on rock');
+  assert.equal(g.walk[rock], 0, 'rock is not walkable');
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

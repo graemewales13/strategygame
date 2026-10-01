@@ -1,5 +1,6 @@
 // Seven Holds - painted terrain and soft fog. Both are cached on offscreen canvases; render.js only blits them.
-import { PLAYER, T_DIRT, T_WATER, T_FORD } from './config.js';
+import { PLAYER, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW } from './config.js';
+import { TILES } from './art.js';
 
 const TS = 32;      // texture pixels per tile
 const CH = 16;      // tiles per chunk edge
@@ -40,41 +41,45 @@ export class TerrainCache {
     const ctr = (x, y) => { const [jx, jy] = jit(x, y); return [px(x) + TS / 2 + jx, py(y) + TS / 2 + jy]; };
     const range = [tx0 - 2, tx0 + N + 2, ty0 - 2, ty0 + N + 2];
 
-    // ---- grass: base + drifting patches of lighter and darker green
-    ctx.fillStyle = '#7b7b34'; ctx.fillRect(0, 0, size, size);
-    for (let y = ty0 - 1; y < ty0 + N + 1; y++) for (let x = tx0 - 1; x < tx0 + N + 1; x++) {
-      const n = vnoise(x * 0.18, y * 0.18), m = vnoise(x * 0.55 + 40, y * 0.55 + 9);
-      const r = TS * (1.1 + hash(x, y, 1) * 0.7);
-      const cxp = px(x) + TS * hash(x, y, 2), cyp = py(y) + TS * hash(x, y, 3);
-      const col = n > 0.5 ? [176, 168, 82] : [86, 88, 30];
-      const a = Math.abs(n - 0.5) * 0.75 + m * 0.1;
-      const gr = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, r);
-      gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`);
-      ctx.fillStyle = gr; ctx.fillRect(cxp - r, cyp - r, r * 2, r * 2);
-    }
-
-    // ---- dirt trails: soft edge, body, then ruts
-    const dirtLinks = (fn) => {
-      for (let y = range[2]; y < range[3]; y++) for (let x = range[0]; x < range[1]; x++) {
-        if (this.type(x, y) !== T_DIRT) continue;
-        const [ax, ay] = ctr(x, y);
-        fn(ax, ay, ax, ay);
-        for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) if (this.type(x + dx, y + dy) === T_DIRT) { const [bx, by] = ctr(x + dx, y + dy); fn(ax, ay, bx, by); }
+    // ---- ground: the painted tiles from the terrain sheet, stamped through the inverse of the iso projection,
+    // back to front so the rocks that rise above their tile are overlapped correctly
+    ctx.fillStyle = '#6f7a38'; ctx.fillRect(0, 0, size, size);
+    const KIND = { [T_GRASS]: 'grass', [T_DRY]: 'dry', [T_SAND]: 'sand', [T_ROCK]: 'rock', [T_DIRT]: 'dirt', [T_SNOW]: 'snow', [T_WATER]: 'grass', [T_FORD]: 'grass' };
+    const PLAIN_DIRT = [0, 1, 4, 5];
+    const stamp = (x, y) => {
+      let t = this.type(x, y);
+      if (t < 0) { // off the map: continue the nearest ground so the edge has no hole
+        t = this.type(Math.max(0, Math.min(g.W - 1, x)), Math.max(0, Math.min(g.H - 1, y)));
       }
+      const set = TILES[KIND[t]]; if (!set || !set.length) return;
+      const h = hash(x, y, 5);
+      const img = set[t === T_DIRT ? PLAIN_DIRT[(h * 4) | 0] % set.length : Math.min(set.length - 1, (h * set.length) | 0)];
+      if (!img) return;
+      const X = px(x), Y = py(y), w = img.width, hh = img.height;
+      ctx.save();
+      ctx.translate(X + TS / 2, Y + TS / 2); ctx.scale(1.035, 1.035); ctx.translate(-(X + TS / 2), -(Y + TS / 2));
+      ctx.transform(TS / w, -TS / w, TS / hh, TS / hh, X - TS / 2, Y + TS / 2);
+      ctx.drawImage(img, 0, 0);
+      ctx.restore();
     };
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    const stroke = (col, w, alpha = 1) => { ctx.strokeStyle = col; ctx.globalAlpha = alpha; ctx.lineWidth = w; dirtLinks((ax, ay, bx, by) => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx + 0.01, by); ctx.stroke(); }); ctx.globalAlpha = 1; };
-    stroke('#3f3a1c', TS * 1.7, 0.18);
-    stroke('#6b5530', TS * 1.45, 0.45);
-    stroke('#8f6f44', TS * 1.2, 1);
-    stroke('#a38356', TS * 0.75, 0.5);
-    // pebbles and cart ruts on dirt
+    for (let d = tx0 + ty0 - 2; d < tx0 + ty0 + 2 * N + 2; d++) for (let x = tx0 - 1; x < tx0 + N + 1; x++) { const y = d - x; if (y >= ty0 - 1 && y < ty0 + N + 1) stamp(x, y); }
+    // soften the seams where one ground meets another: a short fade of the neighbour's average colour
+    const AVG = this.avg || (this.avg = {});
+    const avgOf = (t) => {
+      if (AVG[t]) return AVG[t];
+      const set = TILES[KIND[t]], img = set && set[0]; if (!img) return [110, 120, 60];
+      const c1 = mk(1, 1), x1 = c1.getContext('2d'); x1.drawImage(img, 0, 0, 1, 1);
+      const d = x1.getImageData(0, 0, 1, 1).data; return (AVG[t] = [d[0], d[1], d[2]]);
+    };
     for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
-      if (this.type(x, y) !== T_DIRT) continue;
-      for (let k = 0; k < 3; k++) {
-        const h = hash(x, y, 20 + k);
-        ctx.fillStyle = h < 0.5 ? 'rgba(70,52,28,.55)' : 'rgba(200,175,130,.5)';
-        ctx.beginPath(); ctx.ellipse(px(x) + hash(x, y, 30 + k) * TS, py(y) + hash(x, y, 40 + k) * TS, 1.2 + h * 1.6, 1 + h, 0, 0, 7); ctx.fill();
+      const t = this.type(x, y); if (t < 0 || t === T_ROCK || t === T_WATER || t === T_FORD) continue;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = this.type(x + dx, y + dy);
+        if (n < 0 || n === t || n === T_ROCK || n === T_WATER || n === T_FORD) continue;
+        const [r, gg, b] = avgOf(n), bx = px(x) + TS / 2 + dx * TS * 0.5 + (hash(x, y, 8) - 0.5) * 6, by = py(y) + TS / 2 + dy * TS * 0.5 + (hash(x, y, 9) - 0.5) * 6;
+        const gr = ctx.createRadialGradient(bx, by, 0, bx, by, TS * 0.62);
+        gr.addColorStop(0, `rgba(${r | 0},${gg | 0},${b | 0},0.62)`); gr.addColorStop(1, `rgba(${r | 0},${gg | 0},${b | 0},0)`);
+        ctx.fillStyle = gr; ctx.fillRect(bx - TS, by - TS, TS * 2, TS * 2);
       }
     }
 
@@ -126,14 +131,14 @@ export class TerrainCache {
 
     // ---- grass tufts and flowers on top of everything that is land
     for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
-      if (this.type(x, y) !== 0) continue;
+      if (this.type(x, y) !== T_GRASS && this.type(x, y) !== T_DRY) continue;
       const h = hash(x, y, 70);
-      if (h > 0.62) {
+      if (h > 0.8) {
         const bx = px(x) + hash(x, y, 71) * TS, by = py(y) + hash(x, y, 72) * TS;
         ctx.strokeStyle = h > 0.85 ? 'rgba(176,168,84,.7)' : 'rgba(44,48,14,.55)'; ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - 2, by - 5); ctx.moveTo(bx + 2, by); ctx.lineTo(bx + 3, by - 6); ctx.moveTo(bx + 4, by); ctx.lineTo(bx + 6, by - 4); ctx.stroke();
       }
-      if (h < 0.07) {
+      if (h < 0.035) {
         const bx = px(x) + hash(x, y, 73) * TS, by = py(y) + hash(x, y, 74) * TS;
         ctx.fillStyle = ['#f0e070', '#f2f2f6', '#e07a8a', '#9ab4ec'][((h * 57) | 0) % 4];
         ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, 7); ctx.fill();

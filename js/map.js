@@ -1,7 +1,7 @@
 // Seven Holds - valley generation. Pure data, seeded, no DOM.
 // Guarantees: every start, village and resource node lies in ONE connected walkable region (the river has fords).
 
-import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, MATS } from './config.js';
+import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW, BIOMES, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, MATS } from './config.js';
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -49,74 +49,143 @@ export function createMap(seed, houses = 4) {
   const terrain = new Uint8Array(W * H);
   const idx = (x, y) => y * W + x;
 
-  // Ponds, marsh shallows
+  // ---- climate: one biome per game, then noise mixes grass, steppe, sand, snow and rock inside it
+  const total = Object.values(BIOMES).reduce((a, b) => a + b.weight, 0);
+  let roll = r() * total, biomeKey = 'temperate';
+  for (const [k, b] of Object.entries(BIOMES)) { roll -= b.weight; if (roll <= 0) { biomeKey = k; break; } }
+  const biome = BIOMES[biomeKey];
+  const warp = r() * 40;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const m = fbm(x / 24 + warp, y / 24, ns + 31) + biome.moist;
+      const c = fbm(x / 30, y / 30 + warp, ns + 57) + biome.cold;
+      let t = T_GRASS;
+      if (c > 0.6) t = T_SNOW;
+      else if (m < 0.33) t = T_SAND;
+      else if (m < 0.47) t = T_DRY;
+      terrain[idx(x, y)] = t;
+    }
+  }
+  // Rocky ridges (impassable): thin lines where a noise field crosses its middle, so they read as ridges with gaps
+  const ridgeCut = 0.014 + biome.rocky;
+  for (let y = 2; y < H - 2; y++) {
+    for (let x = 2; x < W - 2; x++) {
+      const n = fbm(x / 13, y / 13, ns + 77);
+      if (Math.abs(n - 0.5) < ridgeCut && fbm(x / 9, y / 9, ns + 91) > 0.46) terrain[idx(x, y)] = T_ROCK;
+    }
+  }
+  // Ponds and mud shallows
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const n = fbm(x / 17, y / 17, ns) * 0.65 + fbm(x / 7, y / 7, ns + 9) * 0.35;
-      if (n < 0.255) terrain[idx(x, y)] = T_WATER;
-      else if (n < 0.31) terrain[idx(x, y)] = T_DIRT;
+      if (n < 0.255 * biome.lakes) terrain[idx(x, y)] = T_WATER;
+      else if (n < 0.31 * biome.lakes && terrain[idx(x, y)] !== T_ROCK) terrain[idx(x, y)] = T_DIRT;
     }
   }
 
-  // River with fords
+  // Rivers: none, one or two, running from edge to edge at a random angle, with fords
   const riverTiles = [];
-  let rx = Math.floor(W * (0.4 + r() * 0.2));
-  for (let y = 0; y < H; y++) {
-    for (let k = -1; k <= 1; k++) {
-      const xx = rx + k;
-      if (xx >= 0 && xx < W) { terrain[idx(xx, y)] = T_WATER; riverTiles.push([xx, y]); }
+  const nRivers = (() => { const q = r(); return q < biome.rivers[0] ? 0 : q < biome.rivers[0] + biome.rivers[1] ? 1 : 2; })();
+  const fords = [];
+  for (let k = 0; k < nRivers; k++) {
+    const orient = r.int(0, 3);
+    const sx = [W * (0.35 + r() * 0.3), 0, W * (0.1 + r() * 0.2), W * (0.7 + r() * 0.2)][orient];
+    const sy = [0, H * (0.35 + r() * 0.3), 0, 0][orient];
+    let heading = [Math.PI / 2, 0, Math.PI / 4, (3 * Math.PI) / 4][orient];
+    let px = sx, py = sy, wob = 0;
+    const path = [];
+    for (let s = 0; s < 400 && px > -3 && py > -3 && px < W + 3 && py < H + 3; s++) {
+      wob = Math.max(-0.45, Math.min(0.45, wob + (r() - 0.5) * 0.35));
+      const hd = heading + wob;
+      px += Math.cos(hd); py += Math.sin(hd);
+      path.push([Math.round(px), Math.round(py)]);
     }
-    rx = Math.max(10, Math.min(W - 11, rx + r.int(-1, 1)));
+    const mid = path.length;
+    const fordAt = [0.2, 0.5, 0.8].map((f) => Math.floor(mid * f + r.int(-4, 4)));
+    path.forEach(([x, y], i) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        terrain[idx(xx, yy)] = T_WATER; riverTiles.push([xx, yy, i, k, fordAt]);
+      }
+    });
+    fordAt.forEach((i) => { if (path[i]) fords.push(path[i][1]); });
   }
-  const fords = [0.18, 0.5, 0.82].map((f) => Math.floor(H * f + r.int(-5, 5)));
-  for (const [x, y] of riverTiles) if (fords.some((fy) => Math.abs(y - fy) <= 1)) terrain[idx(x, y)] = T_FORD;
-  // Clear a margin of water at the very map edge so edge pans never show a lake
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (terrain[idx(x, y)] === T_WATER && (x < 2 || y < 2 || x >= W - 2 || y >= H - 2)) terrain[idx(x, y)] = T_GRASS;
+  for (const [x, y, i, , fordAt] of riverTiles) if (fordAt.some((f) => Math.abs(i - f) <= 1)) terrain[idx(x, y)] = T_FORD;
+  // Clear a margin of water and rock at the very map edge so edge pans never show a lake
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const t = terrain[idx(x, y)];
+    if ((t === T_WATER || t === T_ROCK) && (x < 2 || y < 2 || x >= W - 2 || y >= H - 2)) terrain[idx(x, y)] = T_GRASS;
+  }
 
-  // Main connected region
-  const comp = new Int16Array(W * H).fill(-1);
-  const sizes = [];
-  for (let s = 0; s < W * H; s++) {
-    if (comp[s] !== -1 || terrain[s] === T_WATER) continue;
-    const id = sizes.length;
-    let count = 0;
-    const stack = [s];
-    comp[s] = id;
+  const blocked = (t) => t === T_WATER || t === T_ROCK;
+  const isLand = (t) => t === T_GRASS || t === T_DIRT || t === T_DRY || t === T_SAND || t === T_SNOW;
+  const component = (sx, sy) => {
+    const seen = new Uint8Array(W * H), stack = [idx(sx, sy)];
+    seen[stack[0]] = 1;
     while (stack.length) {
-      const c = stack.pop();
-      count++;
-      const cx = c % W, cy = (c / W) | 0;
-      if (cx > 0 && comp[c - 1] === -1 && terrain[c - 1] !== T_WATER) { comp[c - 1] = id; stack.push(c - 1); }
-      if (cx < W - 1 && comp[c + 1] === -1 && terrain[c + 1] !== T_WATER) { comp[c + 1] = id; stack.push(c + 1); }
-      if (cy > 0 && comp[c - W] === -1 && terrain[c - W] !== T_WATER) { comp[c - W] = id; stack.push(c - W); }
-      if (cy < H - 1 && comp[c + W] === -1 && terrain[c + W] !== T_WATER) { comp[c + W] = id; stack.push(c + W); }
+      const c = stack.pop(), cx = c % W, cy = (c / W) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const ni = idx(nx, ny);
+        if (!seen[ni] && !blocked(terrain[ni])) { seen[ni] = 1; stack.push(ni); }
+      }
     }
-    sizes.push(count);
-  }
-  const main = sizes.indexOf(Math.max(...sizes));
-  const inMain = (x, y) => x >= 0 && y >= 0 && x < W && y < H && comp[idx(x, y)] === main;
-  const open = (x, y, s) => {
+    return seen;
+  };
+  const clearPatch = (x, y, s) => { // can a hall (9x9 clear patch) stand here? Pure ground check, connectivity comes later
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
       const xx = x + i, yy = y + j;
-      if (!inMain(xx, yy) || terrain[idx(xx, yy)] !== T_GRASS && terrain[idx(xx, yy)] !== T_DIRT) return false;
+      if (xx < 0 || yy < 0 || xx >= W || yy >= H || !isLand(terrain[idx(xx, yy)])) return false;
     }
     return true;
   };
 
-  // Start positions: spread corners, centre last. Hall is 3x3, we want a 9x9 clear patch.
-  const corners = [[13, 13], [W - 22, H - 22], [W - 22, 13], [13, H - 22], [Math.floor(W / 2) - 4, Math.floor(H / 2) - 4]];
+  // Start positions: shuffled anchors (corners, with the middle kept for the fifth house), jittered; each gets a livable 9x9 patch.
+  const anchors = r.shuffle([[13, 13], [W - 22, H - 22], [W - 22, 13], [13, H - 22]]);
+  anchors.push([Math.floor(W / 2) - 4, Math.floor(H / 2) - 4]);
+  if (r() < 0.4) { const j = r.int(0, 3); [anchors[j], anchors[4]] = [anchors[4], anchors[j]]; }
   const starts = [];
-  for (const [cx, cy] of corners.slice(0, Math.max(3, houses))) {
+  for (const [ax, ay] of anchors.slice(0, Math.max(3, houses))) {
+    const cx = ax + r.int(-6, 6), cy = ay + r.int(-6, 6);
     let found = null;
     for (let rad = 0; rad < 24 && !found; rad++) {
       for (let dy = -rad; dy <= rad && !found; dy++) for (let dx = -rad; dx <= rad && !found; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
         const x = cx + dx, y = cy + dy;
-        if (x >= 6 && y >= 6 && x <= W - 15 && y <= H - 15 && open(x - 3, y - 3, 9)) found = [x, y];
+        if (x >= 6 && y >= 6 && x <= W - 15 && y <= H - 15 && clearPatch(x - 3, y - 3, 9)) found = [x, y];
       }
     }
-    starts.push(found || [cx, cy]);
+    const [hx, hy] = found || [cx, cy];
+    for (let y = hy - 9; y <= hy + 11; y++) for (let x = hx - 9; x <= hx + 11; x++) {
+      if (x < 2 || y < 2 || x >= W - 2 || y >= H - 2) continue;
+      const t = terrain[idx(x, y)], d = Math.hypot(x - hx - 1, y - hy - 1);
+      if (d < 9 && (t === T_ROCK || t === T_SAND || t === T_SNOW)) terrain[idx(x, y)] = biomeKey === 'winter' || d > 5.5 ? T_DRY : T_GRASS;
+    }
+    starts.push([hx, hy]);
   }
+  // Every hall must reach every other: any start cut off by rock or water gets a trail (rock to dirt, water to ford)
+  for (let i = 1; i < starts.length; i++) {
+    const reach = component(starts[0][0], starts[0][1]);
+    if (reach[idx(starts[i][0], starts[i][1])]) continue;
+    const [x0, y0] = starts[i], [x1, y1] = starts[0], steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let s = 0; s <= steps; s++) for (let k = 0; k < 2; k++) {
+      const x = Math.round(x0 + ((x1 - x0) * s) / steps) + k, y = Math.round(y0 + ((y1 - y0) * s) / steps);
+      const t = terrain[idx(x, y)];
+      if (t === T_ROCK) terrain[idx(x, y)] = T_DIRT; else if (t === T_WATER) terrain[idx(x, y)] = T_FORD;
+    }
+  }
+  // Main connected region: the one holding the first hall (all halls are in it now)
+  const mainSet = component(starts[0][0], starts[0][1]);
+  const inMain = (x, y) => x >= 0 && y >= 0 && x < W && y < H && mainSet[idx(x, y)] === 1;
+  const open = (x, y, s) => {
+    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
+      const xx = x + i, yy = y + j;
+      if (!inMain(xx, yy) || !isLand(terrain[idx(xx, yy)]) || terrain[idx(xx, yy)] === T_FORD) return false;
+    }
+    return true;
+  };
 
   // Resource bookkeeping
   const resAt = new Int32Array(W * H).fill(-1);
@@ -125,9 +194,12 @@ export function createMap(seed, houses = 4) {
   for (const [sx, sy] of starts) for (let y = sy - 3; y <= sy + 5; y++) for (let x = sx - 3; x <= sx + 5; x++) if (x >= 0 && y >= 0 && x < W && y < H) reserved[idx(x, y)] = 1;
 
   const addNode = (kind, x, y, amount) => {
-    if (!inMain(x, y) || terrain[idx(x, y)] !== T_GRASS || resAt[idx(x, y)] !== -1 || reserved[idx(x, y)]) return false;
+    const t = x >= 0 && y >= 0 && x < W && y < H ? terrain[idx(x, y)] : T_WATER;
+    if (!inMain(x, y) || !isLand(t) || t === T_FORD || resAt[idx(x, y)] !== -1 || reserved[idx(x, y)]) return false;
     resAt[idx(x, y)] = resources.length;
-    resources.push({ id: resources.length, kind, x, y, amount, max: amount });
+    const node = { id: resources.length, kind, x, y, amount, max: amount };
+    if (kind === 'tree') node.v = t === T_SNOW ? 'pine' : t === T_SAND ? 'palm' : 'oak';
+    resources.push(node);
     return true;
   };
   const cluster = (kind, cx, cy, count, spread, amt) => {
@@ -157,7 +229,7 @@ export function createMap(seed, houses = 4) {
   });
 
   // Wilderness: stands of timber, bush patches, seams of gold
-  for (let i = 0; i < 46; i++) cluster('tree', r.int(4, W - 5), r.int(4, H - 5), r.int(6, 14), 3.4, treeAmt);
+  for (let i = 0; i < Math.round(46 * biome.trees); i++) cluster('tree', r.int(4, W - 5), r.int(4, H - 5), r.int(6, 14), 3.4, treeAmt);
   for (let i = 0; i < 12; i++) cluster('berry', r.int(4, W - 5), r.int(4, H - 5), r.int(3, 5), 1.8, berryAmt);
   for (let i = 0; i < 16; i++) cluster('gold', r.int(4, W - 5), r.int(4, H - 5), r.int(1, 3), 1.6, goldAmt);
 
@@ -165,7 +237,7 @@ export function createMap(seed, houses = 4) {
   const spots = [];
   const kinds = r.shuffle(Object.keys(VILLAGE_KINDS).concat(Object.keys(VILLAGE_KINDS)).concat(['hamlet', 'mine']));
   const want = 14;
-  for (let tries = 0; tries < 900 && spots.length < want; tries++) {
+  for (let tries = 0; tries < 2600 && spots.length < want; tries++) {
     const x = r.int(8, W - 12), y = r.int(8, H - 12);
     if (!open(x - 1, y - 1, VILLAGE_SIZE + 2)) continue;
     let blocked = false;
@@ -224,7 +296,7 @@ export function createMap(seed, houses = 4) {
     for (let s = 0; s <= steps; s++) {
       if (s % 7 === 0) { jx = r.int(-1, 1); jy = r.int(-1, 1); }
       const x = Math.round(x0 + ((x1 - x0) * s) / steps) + jx, y = Math.round(y0 + ((y1 - y0) * s) / steps) + jy;
-      if (x >= 0 && y >= 0 && x < W && y < H && terrain[idx(x, y)] === T_GRASS && resAt[idx(x, y)] === -1) terrain[idx(x, y)] = T_DIRT;
+      if (x >= 0 && y >= 0 && x < W && y < H && isLand(terrain[idx(x, y)]) && terrain[idx(x, y)] !== T_FORD && resAt[idx(x, y)] === -1) terrain[idx(x, y)] = T_DIRT;
     }
   };
   starts.forEach(([sx, sy]) => {
@@ -232,5 +304,5 @@ export function createMap(seed, houses = 4) {
     near.forEach((v) => line(sx + 1, sy + 3, v.tx + 1, v.ty + 1));
   });
 
-  return { w: W, h: H, seed, terrain, resources, resAt, starts, villages, fords };
+  return { w: W, h: H, seed, terrain, resources, resAt, starts, villages, fords, biome: biomeKey, biomeLabel: biome.label };
 }
