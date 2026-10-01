@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Seven Holds</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div id="brand"><canvas id="brandCrest" width="36" height="40"></canvas><span>Seven Holds</span></div>
+    <div id="resources">
+      <span class="res" data-res="food" title="Grain: feeds your levies. Farms, berries, hamlets."><i class="ico food"></i><b id="r-food">0</b></span>
+      <span class="res" data-res="wood" title="Timber: raises every building. Serfs fell trees."><i class="ico wood"></i><b id="r-wood">0</b></span>
+      <span class="res" data-res="gold" title="Coin: knights, spies, keeps. Mines, taverns, markets, villages."><i class="ico gold"></i><b id="r-gold">0</b></span>
+      <span class="res" id="r-popwrap" title="Population used / cap. Cottages add +5."><i class="ico pop"></i><b id="r-pop">0/0</b></span>
+    </div>
+    <div id="houses"></div>
+    <div id="holdbar" title="Hold 65% of villages for 45s to win"></div>
+    <div id="clockwrap">
+      <span id="clock">0:00</span>
+      <button id="btnSpeed" title="Game speed">1x</button>
+      <button id="btnMap" title="Campaign map (M / Tab)">Map</button>
+      <button id="btnMenu" title="Menu (Esc)">Menu</button>
+    </div>
+  </header>
+
+  <main id="field">
+    <canvas id="game"></canvas>
+    <div id="toasts"></div>
+    <div id="tip" class="hidden"></div>
+    <div id="pausedBanner" class="hidden">Paused</div>
+  </main>
+
+  <footer id="hud">
+    <section id="minimapWrap">
+      <canvas id="minimap" width="176" height="176"></canvas>
+      <div id="miniBtns"><button id="btnHome" title="Jump to your hall (H)">Hall</button><button id="btnIdle" title="Select next idle serf (.)">Idle</button><button id="btnArmy" title="Select all soldiers (,)">Army</button></div>
+    </section>
+    <section id="selPanel"></section>
+    <section id="cmdPanel"></section>
+  </footer>
+
+  <!-- Menu -->
+  <div id="menu" class="screen">
+    <div class="menuframe">
+      <div class="menuleft">
+        <h1>Seven Holds</h1>
+        <p class="sub">A small hall. A wide valley. Rule it.</p>
+        <button class="big" id="mBegin">Begin the Valley</button>
+        <div class="opt"><span>Houses</span>
+          <div class="seg" id="mHouses"><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button></div>
+        </div>
+        <button class="big alt" id="mNew">New Valley</button>
+        <button class="big alt" id="mMap">Campaign Map</button>
+        <div class="optrow">
+          <label class="chk"><input type="checkbox" id="mFog" checked> Fog of war</label>
+          <label class="chk"><input type="checkbox" id="mSeedLock"> Keep seed on New Valley</label>
+        </div>
+        <div class="optrow"><span class="seedlabel">Seed</span><input id="mSeed" type="text" inputmode="numeric" spellcheck="false"><button id="mSeedGo" class="small">Roll this seed</button></div>
+        <button class="big alt" id="mQuit">Quit</button>
+        <p class="tiny">Right-click to move, gather, sack, infiltrate. Drag to select. WASD pans. M opens the campaign map. Esc returns here.</p>
+      </div>
+      <div class="menuright">
+        <div class="valewrap"><canvas id="vale" width="440" height="440"></canvas><div class="valecap">The valley · seed <b id="mSeedShow"></b></div></div>
+        <div id="crests"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Campaign map -->
+  <div id="campaign" class="screen hidden">
+    <div class="cframe">
+      <div class="chead"><h2>Campaign Map</h2><span>Click a point to travel there · Esc or M returns to the field</span></div>
+      <div class="cbody"><canvas id="campaignCanvas" width="880" height="660"></canvas><div id="cTip" class="hidden"></div></div>
+      <div class="legend">
+        <span><i class="sw disc"></i>House hall / keep</span><span><i class="sw vil"></i>Village (tan = independent)</span><span><i class="sw gold"></i>Gold mine</span><span><i class="sw tree"></i>Timber</span><span><i class="sw berry"></i>Berries</span><span><i class="sw fog"></i>Unseen</span><span><i class="sw cam"></i>Camera</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="end" class="screen hidden"><div class="endbox"><h2 id="endTitle"></h2><p id="endText"></p><div><button class="big" id="eNew">New Valley</button><button class="big alt" id="eStay">Keep looking</button></div></div></div>
+  <div id="quit" class="screen hidden"><div class="endbox"><h2>The gates are shut.</h2><p>You may close this tab. Reload to ride out again.</p></div></div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
