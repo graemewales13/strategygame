@@ -587,4 +587,30 @@ test('village population: fed villages grow, dry ones starve, held ones house fo
   assert.notEqual(g.applyIntent({ type: 'settle', team: PLAYER, villageId: v.id }), true, 'cannot call settlers from a village you do not hold');
 });
 
+test('village folk: a quarter muster when attacked and fall back after; wanderers walk to another village and carry word of their lord', () => {
+  const g = new Game({ seed: 3, houses: 3, ai: false });
+  const v = g.villages[0];
+  v.pop = 16; v.hitT = 6;
+  for (let t = 0; t < 4; t += 0.1) { v.hitT = 6; g.tick(0.1); }
+  assert.equal(v.militia, 4, 'a quarter of 16 folk come out');
+  v.hitT = 0;
+  for (let t = 0; t < 4; t += 0.1) g.tick(0.1);
+  assert.equal(v.militia, 0, 'they go back in');
+  // wanderers
+  const from = g.villages.find((x) => x !== v && g.villages.some((o) => o !== x && Math.hypot(o.x - x.x, o.y - x.y) < 55));
+  from.owner = 1; from.pop = 12; from.wanderT = 0.1;
+  const dest = g.villages.filter((o) => o !== from && Math.hypot(o.x - from.x, o.y - from.y) <= 62);
+  dest.forEach((d) => { d.pop = 5; d.owner = -1; d.hitT = 0; });
+  const before = dest.reduce((a, d) => a + d.pop, 0) + from.pop;
+  g.tick(0.2);
+  assert.equal(g.wanderers.length, 1, 'a family sets out');
+  const w = g.wanderers[0], to = g.byId.get(w.to);
+  assert.ok(w.n >= 1 && from.pop < 12, 'folk left home');
+  from.wanderT = 1e9;
+  for (let t = 0; t < 400 && g.wanderers.length; t += 0.25) g.tick(0.25);
+  assert.equal(g.wanderers.length, 0, 'they arrive');
+  assert.ok(to.news?.some((q) => q.team === 1), 'and bring word of their lord');
+  assert.ok(to.pop >= 5 + w.n - 0.5, 'population moved');
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

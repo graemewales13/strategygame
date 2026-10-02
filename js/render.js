@@ -111,6 +111,7 @@ export class Renderer {
       if (u.x < x0 || u.x > x1 || u.y < y0 || u.y > y1) continue;
       items.push({ o: u, k: 3, z: u.x + u.y + 0.2 });
     }
+    for (const w of g.wanderers || []) if (isVis(w.x, w.y) && w.x > x0 && w.x < x1 && w.y > y0 && w.y < y1) items.push({ o: w, k: 5, z: w.x + w.y + 0.2 });
     items.sort((a, b) => a.z - b.z);
     for (const it of items) {
       const e = it.o;
@@ -118,6 +119,7 @@ export class Renderer {
       else if (it.k === 1) this.village(ctx, e, !(e.owner === PLAYER) && !isVis(e.x, e.y), ui, t, z);
       else if (it.k === 2) this.building(ctx, e, e.team !== PLAYER && !isVis(e.x, e.y), ui, t, z);
       else if (it.k === 3) this.unit(ctx, e, ui, t, z);
+      else if (it.k === 5) this.wanderer(ctx, e, t, z);
       else this.prop(ctx, e, z);
     }
     for (const u of g.units) u.hidden = false; // re-set each tick by infiltrators
@@ -206,6 +208,15 @@ export class Renderer {
     if (alpha !== 1) ctx.globalAlpha = 1;
     return h;
   }
+  // a family on the road between villages: one or two figures, a bundle on the back
+  wanderer(ctx, w, t, z) {
+    for (let i = 0; i < w.n; i++) {
+      const off = i * 0.45, [sx, sy] = this.toScreen(w.x - off * (w.face > 0 ? 1 : -1) * 0.5, w.y + off * 0.3), bob = Math.abs(Math.sin(t * 6 + i * 2 + w.id)) * 2 * z;
+      const c = tinted('serf', w.team, 'trim', w.face < 0, 1.3);
+      this.shadowAt(ctx, sx, sy + 1 * z, 5 * z, 2 * z, 0.3);
+      if (c) this.sprite(ctx, c, sx, sy - bob, (c.width / c.height) * (i ? 32 : 38) * z, false, 1);
+    }
+  }
   shadowAt(ctx, sx, sy, rx, ry, a = 0.3) { ctx.fillStyle = `rgba(10,12,4,${a})`; ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, 7); ctx.fill(); }
   prop(ctx, p, z) {
     const [sx, sy] = this.toScreen(p.x, p.y);
@@ -275,22 +286,28 @@ export class Renderer {
       const h = this.sprite(ctx, c, sx, sy, p.w * 2 * HW * z, false, 1);
       if (h != null) { const ww = p.w * 2 * HW * z; top = Math.min(top, sy - h); left = Math.min(left, sx - ww / 2); right = Math.max(right, sx + ww / 2); bottom = Math.max(bottom, sy); }
     }
-    // the folk themselves: one figure per two villagers, strolling between the houses
+    // the folk mostly stay indoors: one or two idle by the door; a quarter muster outside, facing the attackers
     if (!dim) {
-      const n = Math.min(9, Math.round(v.pop / 2)), tin = v.owner >= 0 ? v.owner : -1;
-      const folk = [];
-      for (let i = 0; i < n; i++) {
-        const h1 = hash(v.id * 7 + i, 3), h2 = hash(v.id * 11 + i, 5), sp = 0.12 + h1 * 0.14, ph = h2 * 40;
-        const ax = v.tx + 0.4 + h1 * (v.size - 0.8), ay = v.ty + 0.4 + h2 * (v.size - 0.8) + 0.5;
-        const wx = Math.sin(t * sp + ph) * 0.9, wy = Math.cos(t * sp * 0.8 + ph * 1.3) * 0.7;
-        const dx = Math.cos(t * sp + ph) * sp * 0.9 - Math.sin(t * sp * 0.8 + ph * 1.3) * sp * 0.56;
-        folk.push({ x: Math.max(v.tx - 0.3, Math.min(v.tx + v.size + 0.3, ax + wx)), y: Math.max(v.ty - 0.1, Math.min(v.ty + v.size + 0.6, ay + wy)), flip: dx < 0 });
+      const tin = v.owner >= 0 ? v.owner : -1, g = this.game, folk = [];
+      const calm = Math.min(2, Math.floor(v.pop / 7)), out = v.militia || 0;
+      for (let i = 0; i < calm && !out; i++) {
+        const h1 = hash(v.id * 7 + i, 3), sp = 0.1 + h1 * 0.08, ph = h1 * 40;
+        folk.push({ x: v.tx + v.size * (0.35 + 0.3 * i) + Math.sin(t * sp + ph) * 0.3, y: v.ty + v.size + 0.15 + Math.cos(t * sp * 0.8 + ph) * 0.15, flip: Math.cos(t * sp + ph) < 0, w: 36 });
+      }
+      if (out > 0) {
+        let ax = 1, ay = 1, best = 1e9;
+        for (const u of g.units) if (u.hp > 0 && (u.task?.targetId === v.id || (v.owner >= 0 && g.isEnemy(v.owner, u.team)))) { const d = Math.hypot(u.x - v.x, u.y - v.y); if (d < best && d < 14) { best = d; ax = u.x - v.x; ay = u.y - v.y; } }
+        const L = Math.hypot(ax, ay) || 1; ax /= L; ay /= L;
+        for (let i = 0; i < out; i++) {
+          const spread = (i - (out - 1) / 2) * 0.7, bob = Math.abs(Math.sin(t * 5 + i * 1.7)) * 0.08;
+          folk.push({ x: v.x + ax * (v.size / 2 + 0.9) - ay * spread, y: v.y + ay * (v.size / 2 + 0.9) + ax * spread - bob, flip: ax - ay < 0, w: 44, mil: true });
+        }
       }
       folk.sort((a, b) => a.x + a.y - (b.x + b.y));
       for (const f of folk) {
-        const [fx, fy] = this.toScreen(f.x, f.y), c = tinted('serf', tin, 'trim', f.flip, 1.35);
+        const [fx, fy] = this.toScreen(f.x, f.y), c = f.mil ? tinted('footman', tin, 'trim', f.flip, 1.15) : tinted('serf', tin, 'trim', f.flip, 1.35);
         this.shadowAt(ctx, fx, fy, 5 * z, 2 * z, 0.3);
-        if (c) this.sprite(ctx, c, fx, fy + 1 * z, (c.width / c.height) * 36 * z, false, 1);
+        if (c) this.sprite(ctx, c, fx, fy + 1 * z, (c.width / c.height) * f.w * z, false, 1);
       }
     }
     if (v.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, v.flash); this.diamond(ctx, v.tx, v.ty, v.size, v.size); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }

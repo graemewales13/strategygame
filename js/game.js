@@ -3,7 +3,7 @@
 // No DOM access in this file, so it runs unchanged under Node for tests.
 
 import {
-  MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD,
+  MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
@@ -49,6 +49,7 @@ export class Game {
     this.units = [];
     this.buildings = [];
     this.villages = [];
+    this.wanderers = [];
     this.projectiles = [];
     this.floaters = [];
     this.byId = new Map();
@@ -549,6 +550,42 @@ export class Game {
     }
     return n > 0;
   }
+  // A family sets out for another village: they walk the roads, add their number on arrival and carry word of their lord.
+  sendWanderers(v) {
+    if (v.pop < WANDER.minPop && !(v.hunger && v.pop >= 3)) return;
+    const cands = this.villages.filter((o) => o !== v && o.pop < o.popMax - 1 && Math.hypot(o.x - v.x, o.y - v.y) <= WANDER.range)
+      .sort((a, b) => ((b.stores.food || 0) - Math.hypot(b.x - v.x, b.y - v.y) * 0.8) - ((a.stores.food || 0) - Math.hypot(a.x - v.x, a.y - v.y) * 0.8));
+    const to = cands[Math.floor(Math.random() * Math.min(3, cands.length))];
+    if (!to) return;
+    const path = this.findPath(Math.floor(v.x), v.ty + v.size, Math.floor(to.x), to.ty + to.size);
+    if (!path || !path.length) return;
+    const n = v.pop >= 9 ? 2 : 1;
+    v.pop -= n;
+    this.wanderers.push({ id: this.nid(), from: v.id, to: to.id, n, team: v.owner, x: v.x, y: v.ty + v.size + 0.4, path, face: 1 });
+  }
+  updateWanderers(dt) {
+    for (const w of this.wanderers) {
+      let step = WANDER.speed * dt;
+      while (step > 0 && w.path.length) {
+        const [px, py] = w.path[0], dx = px - w.x, dy = py - w.y, d = Math.hypot(dx, dy);
+        if (d <= step) { w.x = px; w.y = py; w.path.shift(); step -= d; if (d > 0.001) w.face = dx >= 0 ? 1 : -1; } else { w.x += (dx / d) * step; w.y += (dy / d) * step; w.face = dx >= 0 ? 1 : -1; step = 0; }
+      }
+      if (w.path.length) continue;
+      w.done = true;
+      const to = this.byId.get(w.to), from = this.byId.get(w.from);
+      if (!to) continue;
+      to.pop = Math.min(to.popMax, to.pop + w.n);
+      if (w.team >= 0 && to.owner !== w.team && !this.isEnemy(w.team, to.owner)) {          // word of their lord spreads
+        const old = (to.news || (to.news = [])).find((q) => q.team === w.team);
+        if (old) old.t = WANDER.newsTime; else to.news.push({ team: w.team, amt: WANDER.newsPull, t: WANDER.newsTime });
+      }
+      if (to.owner >= 0 && w.team !== to.owner) to.loyalty = Math.max(0, to.loyalty - WANDER.unrest);   // strangers unsettle a held village
+      const mine = [to.owner, w.team].includes(PLAYER);
+      if (mine && from) this.log(PLAYER, `Folk of ${from.name} move to ${to.name}${w.team >= 0 && w.team !== to.owner ? `, speaking well of ${HOUSES[w.team].short}` : ''}.`, 'info');
+    }
+    this.wanderers = this.wanderers.filter((w) => !w.done);
+  }
+
   // a village you hold sends one of its folk out as a serf (needs grain and a free place in your population)
   settle(team, villageId) {
     const v = this.byId.get(villageId), p = this.players[team], say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return false; };
@@ -1150,6 +1187,7 @@ export class Game {
     this.updateBuildings(dt);
     this.updateEconomy(dt);
     this.updateVillages(dt);
+    this.updateWanderers(dt);
     this.updateUnits(dt);
     this.updateProjectiles(dt);
     if (this.aiOn) updateAI(this, dt);
@@ -1241,6 +1279,7 @@ export class Game {
       if (b.kind === 'academy') p *= 1 + 0.3 * (b.scholars || 0);
       pulls[b.team] += p;
     }
+    for (const w of v.news || []) pulls[w.team] += w.amt;   // word brought by wanderers from a village that team holds
     return pulls;
   }
 
@@ -1257,6 +1296,14 @@ export class Game {
         v.hunger = food < 2 ? 1 : 0;
         if (food > 10 && v.pop < v.popMax) v.pop = Math.min(v.popMax, v.pop + dt / POP_GROW);
         else if (food < 2 && v.pop > 2) v.pop = Math.max(2, v.pop - dt / 90);
+      }
+      { // a quarter of the folk muster at the walls while the village is under attack, and go back in afterwards
+        const want = v.hitT > 0 ? Math.floor(v.pop * MILITIA.share) : 0;
+        v.mT = (v.mT || 0) + dt; v.militia = v.militia || 0;
+        if (v.mT >= MILITIA.rampEvery) { v.mT = 0; if (v.militia < want) v.militia++; else if (v.militia > want) v.militia--; }
+        if (v.news?.length) { for (const w of v.news) w.t -= dt; v.news = v.news.filter((w) => w.t > 0); }
+        v.wanderT = (v.wanderT ?? (WANDER.every[0] + Math.random() * (WANDER.every[1] - WANDER.every[0]))) - dt * (v.hunger ? 3 : 1);
+        if (v.wanderT <= 0) { v.wanderT = WANDER.every[0] + Math.random() * (WANDER.every[1] - WANDER.every[0]); this.sendWanderers(v); }
       }
       if (v.hitT > 0) v.hitT -= dt;
       else if (v.protection < v.maxProtection) v.protection = Math.min(v.maxProtection, v.protection + 1.5 * dt);
@@ -1369,12 +1416,14 @@ export class Game {
   }
 
   hitVillage(u, v, dmg, s) {
-    v.protection -= dmg / (1 + 0.2 * v.garrison.length); v.hitT = 6; v.flash = 0.2;
+    const m = v.militia || 0;
+    v.protection -= dmg / (1 + 0.2 * v.garrison.length + 0.06 * m); v.hitT = 6; v.flash = 0.2;
+    if (m > 0) v.pop = Math.max(2, v.pop - MILITIA.loss * Math.min(m, 4));   // militia fall as they fight
     v.loyalty = Math.max(0, v.loyalty - 1.5);
     const loot = Math.min(2, v.stores.gold || 0);
     if (loot) { v.stores.gold -= loot; this.players[u.team].gold += loot * 0.6; }
     // the folk fight back: the sturdier the village, the harder it bites
-    u.hp -= (v.maxProtection / 32) * s.cd;
+    u.hp -= (v.maxProtection / 32) * s.cd * (1 + MILITIA.bite * m);
     if (u.hp <= 0) u.hp = 0;
     if (v.protection <= 0) this.submit(v, u.team, 'pillage');
   }

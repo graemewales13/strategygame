@@ -223,3 +223,7 @@ export const MARKET_RADIUS = 24;   // a market is stocked by mines, foundries an
 export const SHELF_CAP = 60;       // goods per kind on a market's shelf (100 with a warehouse beside it)
 export const SHELF_RESERVE = { food: 100, wood: 100, gold: 100, other: 10 }; // the stockpile keeps this much before the market stocks from it
 export const SPY_FEE = 25;         // coin to send a recruit out as a spy
+
+// Village folk stay indoors. A quarter muster to defend when it is attacked; now and then a family sets out for another village.
+export const MILITIA = { share: 0.25, rampEvery: 0.4, bite: 0.12, loss: 0.06 };
+export const WANDER = { every: [90, 160], minPop: 6, range: 62, speed: 1.7, newsPull: 0.3, newsTime: 90, unrest: 2 };
