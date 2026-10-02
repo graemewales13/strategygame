@@ -3,7 +3,7 @@
 // No DOM access in this file, so it runs unchanged under Node for tests.
 
 import {
-  MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL,
+  MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
@@ -138,6 +138,7 @@ export class Game {
   popCap(team) {
     let n = 0;
     for (const b of this.buildings) if (b.team === team && b.built >= 1 && b.hp > 0) n += BUILDINGS[b.kind].pop;
+    for (const v of this.villages) if (v.owner === team) n += Math.floor(v.pop * POP_HOUSING);   // folk of held villages are housed there
     return n;
   }
   canAfford(team, cost) {
@@ -379,6 +380,7 @@ export class Game {
       case 'leave': return this.leave(team, it.buildingId);
       case 'hire': return this.hire(team, it.buildingId, it.index);
       case 'levy': return this.setLevy(team, it.buildingId, it.villageId);
+      case 'settle': return this.settle(team, it.villageId);
       case 'drill': return this.drill(team, it.buildingId, it.unitId, it.kind);
       case 'place': return this.place(team, it.kind, it.tx, it.ty, it.ids, it.nodeId ?? null);
       case 'mine': return this.cmdMine(mine(), this.byId.get(it.buildingId));
@@ -546,6 +548,19 @@ export class Game {
       n++;
     }
     return n > 0;
+  }
+  // a village you hold sends one of its folk out as a serf (needs grain and a free place in your population)
+  settle(team, villageId) {
+    const v = this.byId.get(villageId), p = this.players[team], say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return false; };
+    if (!v || v.type !== 'village' || v.owner !== team) return say('Only a village you hold can send settlers.');
+    if (v.pop < 4) return say(`${v.name} is too small to spare anyone.`);
+    if (p.food < SETTLE_FOOD) return say(`Settlers need ${SETTLE_FOOD} grain for the road.`);
+    if (this.popUsed(team) + 1 > this.popCap(team) + 0) return say('Population capped: raise cottages.');
+    p.food -= SETTLE_FOOD; v.pop -= 1;
+    const u = this.addUnit('serf', team, v.x - 0.5 + (Math.random() - 0.5), v.ty + v.size + 0.7);
+    u.name = `Settler of ${v.name}`;
+    if (team === PLAYER) this.log(team, `A settler leaves ${v.name} (${Math.floor(v.pop)} folk remain).`, 'info');
+    return true;
   }
   setLevy(team, buildingId, villageId) {
     const b = this.byId.get(buildingId), v = this.byId.get(villageId);
@@ -1236,7 +1251,13 @@ export class Game {
         const base = VILLAGE_KINDS[v.kind].stores;
         for (const k in base) { const cap = v.kind === 'mine' && MATS.includes(k) ? base[k] * 1.5 : base[k]; if ((v.stores[k] || 0) < cap) v.stores[k] = Math.min(cap, (v.stores[k] || 0) + (v.kind === 'mine' && MATS.includes(k) ? 0.12 : 0.05) * dt); }
       }
-      if (v.owner >= 0 && v.pop < LEVY.villagePop) v.pop = Math.min(LEVY.villagePop, v.pop + dt / LEVY.regen);
+      { // the folk eat from the village store: fed villages grow, dry ones shrink
+        const food = v.stores.food || 0;
+        v.stores.food = Math.max(0, food - v.pop * POP_FOOD * dt);
+        v.hunger = food < 2 ? 1 : 0;
+        if (food > 10 && v.pop < v.popMax) v.pop = Math.min(v.popMax, v.pop + dt / POP_GROW);
+        else if (food < 2 && v.pop > 2) v.pop = Math.max(2, v.pop - dt / 90);
+      }
       if (v.hitT > 0) v.hitT -= dt;
       else if (v.protection < v.maxProtection) v.protection = Math.min(v.maxProtection, v.protection + 1.5 * dt);
       const pulls = this.pullsFor(v);
@@ -1262,7 +1283,7 @@ export class Game {
           v.owner = -1; v.lean = best; v.loyalty = 18; v.spyFlip = -1;
           this.log(lost, `${v.name} slips from its lord.`, 'warn');
         } else {
-          const spec = VILLAGE_KINDS[v.kind].tribute, rate = 0.4 + (0.8 * v.loyalty) / 100, p = this.players[v.owner];
+          const spec = VILLAGE_KINDS[v.kind].tribute, rate = (0.4 + (0.8 * v.loyalty) / 100) * (0.5 + 0.7 * (v.pop / v.popMax)), p = this.players[v.owner];
           const joy = v.joyT > 0 ? 1.3 : 1; p.food += spec.food * rate * joy * dt; p.wood += spec.wood * rate * joy * dt; p.gold += spec.gold * rate * joy * dt;
           if (v.joyT > 0) v.loyalty = Math.min(100, v.loyalty + 0.5 * dt);
         }
@@ -1275,6 +1296,7 @@ export class Game {
     const prev = v.owner;
     this.ejectAll(v);
     v.owner = team; v.lean = team; v.spyFlip = -1;
+    if (how === 'pillage') v.pop = Math.max(2, v.pop * 0.75);   // the sack costs lives
     v.loyalty = how === 'pillage' ? 48 : 62;
     v.protection = v.maxProtection * 0.4;
     v.hitT = 0; v.flash = 1;
@@ -1606,7 +1628,7 @@ export class Game {
       known: this.known, offers: this.offers,
       units: this.units.map((u) => ({ id: u.id, k: u.kind, t: u.team, x: +u.x.toFixed(2), y: +u.y.toFixed(2), hp: u.hp | 0 })),
       buildings: this.buildings.map((b) => ({ id: b.id, k: b.kind, t: b.team, tx: b.tx, ty: b.ty, hp: b.hp | 0, built: +b.built.toFixed(2), nodeIds: b.nodeIds })),
-      villages: this.villages.map((v) => ({ id: v.id, o: v.owner, loy: v.loyalty | 0, pro: v.protection | 0 })),
+      villages: this.villages.map((v) => ({ id: v.id, o: v.owner, loy: v.loyalty | 0, pro: v.protection | 0, pop: v.pop | 0 })),
     };
   }
 }

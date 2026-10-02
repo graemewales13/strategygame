@@ -563,4 +563,28 @@ test('terrain: seeds give five climates; rock and water never cut a hall off; ha
   assert.equal(g.walk[rock], 0, 'rock is not walkable');
 });
 
+test('village population: fed villages grow, dry ones starve, held ones house folk and send settlers', () => {
+  const g = new Game({ seed: 3, houses: 3, ai: false });
+  const v = g.villages.find((x) => x.kind === 'hamlet') || g.villages[0];
+  assert.ok(v.pop > 0 && v.pop <= v.popMax, 'starts with folk');
+  const p0 = v.pop; v.pop = 3; v.stores.food = 60;
+  for (let t = 0; t < 120; t += 0.5) g.tick(0.5);
+  assert.ok(v.pop > 4, `a fed village grows (${v.pop})`);
+  v.stores.food = 0; v.pop = 9;
+  for (let t = 0; t < 150; t += 0.5) { v.stores.food = 0; g.tick(0.5); }
+  assert.ok(v.pop < 9 && v.pop >= 2, `a dry village shrinks (${v.pop})`);
+  // hold it: its folk raise the cap and settlers can be called
+  v.owner = PLAYER; v.loyalty = 90; v.pop = 10; v.stores.food = 200;
+  const cap = g.popCap(PLAYER);
+  v.owner = -1; const capNo = g.popCap(PLAYER); v.owner = PLAYER;
+  assert.equal(cap - capNo, 5, 'ten villagers house five');
+  g.players[PLAYER].food = 100;
+  const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf').length;
+  assert.equal(g.applyIntent({ type: 'settle', team: PLAYER, villageId: v.id }), true);
+  assert.equal(g.units.filter((u) => u.team === PLAYER && u.kind === 'serf').length, serfs + 1);
+  assert.ok(g.players[PLAYER].food <= 80.01, 'grain spent');
+  v.owner = -1;
+  assert.notEqual(g.applyIntent({ type: 'settle', team: PLAYER, villageId: v.id }), true, 'cannot call settlers from a village you do not hold');
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

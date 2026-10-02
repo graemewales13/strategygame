@@ -275,6 +275,24 @@ export class Renderer {
       const h = this.sprite(ctx, c, sx, sy, p.w * 2 * HW * z, false, 1);
       if (h != null) { const ww = p.w * 2 * HW * z; top = Math.min(top, sy - h); left = Math.min(left, sx - ww / 2); right = Math.max(right, sx + ww / 2); bottom = Math.max(bottom, sy); }
     }
+    // the folk themselves: one figure per two villagers, strolling between the houses
+    if (!dim) {
+      const n = Math.min(9, Math.round(v.pop / 2)), tin = v.owner >= 0 ? v.owner : -1;
+      const folk = [];
+      for (let i = 0; i < n; i++) {
+        const h1 = hash(v.id * 7 + i, 3), h2 = hash(v.id * 11 + i, 5), sp = 0.12 + h1 * 0.14, ph = h2 * 40;
+        const ax = v.tx + 0.4 + h1 * (v.size - 0.8), ay = v.ty + 0.4 + h2 * (v.size - 0.8) + 0.5;
+        const wx = Math.sin(t * sp + ph) * 0.9, wy = Math.cos(t * sp * 0.8 + ph * 1.3) * 0.7;
+        const dx = Math.cos(t * sp + ph) * sp * 0.9 - Math.sin(t * sp * 0.8 + ph * 1.3) * sp * 0.56;
+        folk.push({ x: Math.max(v.tx - 0.3, Math.min(v.tx + v.size + 0.3, ax + wx)), y: Math.max(v.ty - 0.1, Math.min(v.ty + v.size + 0.6, ay + wy)), flip: dx < 0 });
+      }
+      folk.sort((a, b) => a.x + a.y - (b.x + b.y));
+      for (const f of folk) {
+        const [fx, fy] = this.toScreen(f.x, f.y), c = tinted('serf', tin, 'trim', f.flip, 1.35);
+        this.shadowAt(ctx, fx, fy, 5 * z, 2 * z, 0.3);
+        if (c) this.sprite(ctx, c, fx, fy + 1 * z, (c.width / c.height) * 36 * z, false, 1);
+      }
+    }
     if (v.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, v.flash); this.diamond(ctx, v.tx, v.ty, v.size, v.size); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
     ctx.globalAlpha = 1;
     this.hit(v, 'village', left, top, right, bottom);
@@ -283,7 +301,7 @@ export class Renderer {
     this.bar(ctx, m[0] - W / 2, top - 9, W, 4, v.loyalty / 100, '#5a9ad8');
     if (v.garrison?.length && v.owner === PLAYER) this.badge(ctx, m[0] + W / 2 + 12, top - 6, v.garrison.length, HOUSES[PLAYER], z);
     if (ui?.isSelected(v)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, v.tx - 0.2, v.ty - 0.2, v.size + 0.4, v.size + 0.4); ctx.stroke(); ctx.setLineDash([]); }
-    if (z > 0.7) { ctx.font = `${Math.round(11 * z + 2)}px Georgia, serif`; ctx.textAlign = 'center'; const [lx, ly] = this.toScreen(v.tx + v.size, v.ty + v.size); ctx.fillStyle = '#000'; ctx.fillText(v.name, lx + 1, ly + 15); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, lx, ly + 14); }
+    if (z > 0.7) { ctx.font = `${Math.round(11 * z + 2)}px Georgia, serif`; ctx.textAlign = 'center'; const [lx, ly] = this.toScreen(v.tx + v.size, v.ty + v.size); ctx.fillStyle = '#000'; ctx.fillText(v.name, lx + 1, ly + 15); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, lx, ly + 14); ctx.font = `${Math.round(9 * z + 2)}px Georgia, serif`; ctx.fillStyle = v.hunger ? '#e0866a' : '#cdbb8a'; ctx.fillText(`${Math.floor(v.pop)} folk`, lx, ly + 14 + 12 * z); }
   }
 
   // ---------------------------------------------------------------- buildings

@@ -67,3 +67,5 @@ Tests added: guard-scaled influence, remote mine haul and warehouse fix, market 
 |----|--------|---------|---------------|
 | T-027 | FIXED | Serfs, recruits and a spy stuck for minutes at one spot on a rocky map (soak seed 7) | The AI built a tavern and a market flush against a rock ridge, sealing a 6-tile pocket with units inside. `wallsOff()` in `canPlace` now refuses a footprint that splits the ground around it into more pieces than before ("Would wall off a pocket of ground"); a fully open ring skips the check, so it costs nothing in open country |
 | T-028 | FIXED | Test asked for open ground 36 tiles east of the hall; random start corners can put the hall on the right edge | Test now searches the whole map for scouted ground more than 30 tiles away |
+
+| T-029 | FIXED | Villages had no visible people and "pop" only mattered to the keep's levy | Real village population: growth and starvation from the village store, drawn villagers, panel line, housing and tribute effects, settlers (see README "Village population"). Test: fed villages grow, dry ones shrink, held ones house folk and send settlers |

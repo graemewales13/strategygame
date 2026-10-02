@@ -153,6 +153,13 @@ export const VILLAGE_WIN_SHARE = 0.65; // hold this share of villages ...
 export const VILLAGE_WIN_HOLD = 45;    // ... for this many seconds to win
 
 export const VILLAGE_SIZE = 3;
+// Folk living in each village. Independent villages grow while their store has grain and shrink when it runs dry;
+// a village you hold houses half its folk (they raise your population cap), pays tribute by how full it is, and can send settlers.
+export const VILLAGE_POP = { hamlet: 16, mine: 12, market: 18, hillfort: 10, abbey: 9, inn: 6 };
+export const POP_FOOD = 0.003;   // grain eaten per villager per second
+export const POP_GROW = 45;      // seconds per new villager while fed
+export const POP_HOUSING = 0.5;  // population cap you gain per villager in a village you hold
+export const SETTLE_FOOD = 20;   // grain to send for one settler (a serf) from a held village
 export const VILLAGE_KINDS = {
   hamlet:   { label: 'Hamlet',         folk: ['farmers', 'herders'],            protection: 220, loyalty: 26, tribute: { food: 0.8,  wood: 0.15, gold: 0.05 }, stores: { food: 80, wood: 20, gold: 8 },  blurb: 'Farmers and herders. Easy to turn, pays grain.' },
   mine:     { label: 'Mining camp',    folk: ['miners', 'haulers'],             protection: 300, loyalty: 18, tribute: { food: 0.1,  wood: 0.1,  gold: 0.9 },  stores: { food: 20, wood: 15, gold: 90, stone: 70, iron: 45, coal: 45, copper: 35, silver: 14 }, blurb: 'Miners and haulers. Pays coin; sells ore to caravans.' },

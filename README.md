@@ -103,6 +103,9 @@ MIT. See `LICENSE`.
 
 `node tools/soak.js [minutes] [seeds] [houses] [chaos]` plays headless matches, checks invariants (stuck units, negative stock, sync of garrisons, NaN, snapshots, tick time) and writes `logs/soak-latest.log`; `chaos` replaces the player's AI with a random intent generator. Findings and fixes are tracked in `TROUBLESHOOTING.md`.
 
+## Village population
+Every village has folk (hamlet 16, market town 18, mining camp 12, hillfort 10, abbey 9, inn 6 at most), drawn as villagers strolling about and counted in its panel. They eat from the village store (0.003 grain each per second): fed villages grow a villager every 45 s, a dry store shrinks them. Selling a village's grain to your camels can starve it; buying grain for it grows it. A village you hold houses half its folk (they raise your population cap), pays tribute by how full it is (50% empty to 120% full), can **Call settler** (one villager becomes your serf for 20 grain), and feeds a keep's levy. A sack costs a quarter of the folk.
+
 ## Random terrain
 Each game picks a climate from its seed (Green valley, Dry steppe, Desert flats, Rocky highland, Winter lands) and noise mixes seven ground types inside it, using the painted tiles cut from `assets/art-drop/shared/terrain` (`python3 tools/cut_terrain.py` rebuilds `assets/terrain/`). Rivers are random (none, one or two, at any angle, with fords), as are ponds, ridges, and which corner each house starts in. Rock ridges and water block movement and building; snow slows walking (x1.25 cost) and sand (x1.12); steppe and snow farms yield less. Halls always stand on a livable patch, every hall is connected to every other, and a building may not seal off a pocket of ground (units inside would be stuck). Pines grow in snow, palms in sand.
 

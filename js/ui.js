@@ -2,7 +2,7 @@
 import { camelSprite } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON,
+  VILLAGE_WIN_HOLD, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 
@@ -295,6 +295,7 @@ export class UI {
       case 'unload': { const u = this.selUnits().find((x) => x.kind === 'camel'); if (u) this.host.send({ type: 'unload', unitId: u.id }); break; }
       case 'want': this.want = this.want === d.good ? null : d.good; break;
       case 'spy': { const ids = this.selUnits().filter((u) => u.kind === 'recruit').map((u) => u.id); if (ids.length && !this.host.send({ type: 'role', ids, role: 'spy' })) this.toast(`A spy costs ${SPY_FEE} coin.`, 'warn'); break; }
+      case 'settle': { const v = this.selEntity(); if (v) this.host.send({ type: 'settle', villageId: v.id }); break; }
       case 'sendspy': case 'sendarmy': case 'sendcamel': case 'entervillage': {
         const v = this.selEntity(); if (!v) break;
         const mine = g.units.filter((u) => u.team === PLAYER && u.hp > 0 && !u.inside);
@@ -493,8 +494,9 @@ export class UI {
         <div class="stat"><label>Lord</label><span>${esc(lord)}</span></div>
         <div class="stat"><label>Loyalty</label><div class="meter"><i class="loy" style="width:${v.loyalty}%"></i></div><span class="v">${v.loyalty | 0}</span></div>
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
-        <div class="stat"><label>Influence</label><span>${this.pullText(v)}</span></div>
-        <div class="stat"><label>Folk</label><span>${v.folk.join(', ')}</span></div>${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
+        <div class="stat"><label>Population</label><div class="meter"><i class="loy" style="width:${(v.pop / v.popMax) * 100}%"></i></div><span class="v">${Math.floor(v.pop)}/${v.popMax}</span></div>
+        <div class="stat"><label>Folk</label><span>${v.folk.join(', ')} · ${v.hunger ? '<b style="color:#e0866a">starving: the store is out of grain</b>' : v.pop >= v.popMax ? 'at full strength' : 'growing (fed from the village store)'} · grain ${Math.floor(v.stores.food || 0)}</span></div>${v.owner === PLAYER ? `<div class="stat"><label>Housing</label><span>houses ${Math.floor(v.pop * POP_HOUSING)} of your population cap; tribute ${Math.round((0.5 + 0.7 * (v.pop / v.popMax)) * 100)}% of base</span></div>` : ''}
+        <div class="stat"><label>Influence</label><span>${this.pullText(v)}</span></div>${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
     } else if (s.type === 'node') {
       const n = g.resources[s.id]; if (!n) { this.clearSel(); return; }
       const res = NODE_RES[n.kind];
@@ -601,6 +603,7 @@ export class UI {
     html += this.btn('keephere', { glyph: '♚', art: 'keep', name: 'Raise keep', sub: costShort(BUILDINGS.keep.cost), off: !g.canAfford(PLAYER, BUILDINGS.keep.cost), tip: '<b>Raise a keep beside it</b><br>A keep with soldiers inside sways this village (and draws it from a rival). Then garrison it.' });
     if (mine) {
       html += this.btn('entervillage', { glyph: '⇥', name: 'Garrison', off: !army, tip: '<b>Garrison</b><br>Sends idle soldiers inside (max 6).' });
+      html += this.btn('settle', { glyph: GLYPH.serf, art: 'serf', name: 'Call settler', sub: SETTLE_FOOD + 'g', off: v.pop < 4 || g.players[PLAYER].food < SETTLE_FOOD || g.popUsed(PLAYER) >= g.popCap(PLAYER), tip: `<b>Call a settler</b><br>One villager leaves as a serf of yours (${SETTLE_FOOD} grain). Needs a free place in your population and at least 4 folk in the village; it regrows while the village has grain.` });
     } else {
       html += this.btn('sendspy', { glyph: GLYPH.spy, art: 'spy', name: 'Send spy', off: !spies, sub: spies ? `${spies} ready` : 'need a spy', tip: `<b>Send a spy</b><br>Sways loyalty without a fight. Spies can be caught.${spies ? '' : `<br><span class="need">Hire a recruit at a tavern, select it, press Become spy (${SPY_FEE} coin).</span>`}` });
       html += this.btn('sendarmy', { glyph: '⚔', name: 'Send army', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Sack</b><br>Sends every soldier to attack. Protection must reach zero.' });

@@ -1,6 +1,6 @@
 // Seven Holds - entity factories and geometry helpers. Positions are in TILE units (floats), not pixels.
 
-import { UNITS, BUILDINGS, VILLAGE_KINDS, VILLAGE_SIZE } from './config.js';
+import { UNITS, BUILDINGS, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_POP } from './config.js';
 
 export function makeUnit(id, kind, team, x, y) {
   const s = UNITS[kind];
@@ -37,7 +37,7 @@ export function makeVillage(id, spec) {
     loyalty: k.loyalty, folk: k.folk.slice(),
     stores: { ...k.stores },
     hp: k.protection, maxHp: k.protection,
-    spies: {}, flash: 0, garrison: [], pop: 8,
+    spies: {}, flash: 0, garrison: [], popMax: VILLAGE_POP[spec.kind] || 10, pop: Math.round((VILLAGE_POP[spec.kind] || 10) * 0.7),
   };
 }
 
