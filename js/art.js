@@ -125,6 +125,17 @@ export function oreSprite(kind, flip = false) {
   cache.set(key, c); return c;
 }
 
+// the people's own painted mine headframe, with a heap of this ore tipped in front so the deposit still reads
+export function paintedMine(faction, ore) {
+  const key = `pmine|${faction}|${ore}`; if (cache.has(key)) return cache.get(key);
+  const base = factionSprite(faction, 'mine'); if (!base) return null;   // not loaded yet or no kit: do not cache the miss
+  const c = document.createElement('canvas'); c.width = base.width; c.height = base.height; const x = c.getContext('2d');
+  x.drawImage(base, 0, 0);
+  const o = oreSprite(ore, false);
+  if (o && ore !== 'coal') { const w = base.width * 0.2; x.drawImage(o, base.width * 0.12, base.height * 0.8 - w * 0.4, w, w * o.height / o.width); }
+  cache.set(key, c); return c;
+}
+
 export function mineSprite(ore, team) {
   const key = `mine|${ore}|${team}`; let c = cache.get(key); if (c) return c;
   if (!IMG.rock) return null;

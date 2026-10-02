@@ -4,7 +4,7 @@ import {
   PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG, SIMG, VIMG, factionSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, factionSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -13,7 +13,7 @@ const GROUND_RGB = [[74, 118, 58], [128, 98, 54], [38, 92, 118], [140, 100, 56],
 
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
 const BSPR = { village: ['cottage_thatch', 1.5], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
-const FMUL = { keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, warehouse: 1.0, market: 1.05, forge: 1.0, foundry: 1.0, workshop: 1.0, tavern: 1.0, academy: 1.0, temple: 1.0, barracks: 1.05, archery: 1.05, stable: 1.0, tower: 0.9 }; // width of a people's own sprite, in footprints
+const FMUL = { mine: 1.15, keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, warehouse: 1.0, market: 1.05, forge: 1.0, foundry: 1.0, workshop: 1.0, tavern: 1.0, academy: 1.0, temple: 1.0, barracks: 1.05, archery: 1.05, stable: 1.0, tower: 0.9 }; // width of a people's own sprite, in footprints
 // which painted village stands for each kind, and how wide it draws (tiles) at 1x1 and 2x2 board size
 const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fortified', abbey: 'farm', inn: 'fishing', farm: 'farm' };
 const VWIDE = { '1tile': 3.4 };
@@ -333,7 +333,7 @@ export class Renderer {
   // ---------------------------------------------------------------- buildings
   building(ctx, b, dim, ui, t, z) {
     const f = HOUSES[b.team], prog = b.built, [name, mul] = BSPR[b.kind] || ['cottage', 1];
-    const own = b.kind === 'mine' || b.kind === 'village' ? null : factionSprite(f.faction, b.kind);   // the people's own painted building
+    const own = b.kind === 'village' ? null : b.kind === 'mine' ? paintedMine(f.faction, b.ore || 'stone') : factionSprite(f.faction, b.kind);   // the people's own painted building
     const c = own || (b.kind === 'mine' ? mineSprite(b.ore || 'stone', b.team) : b.kind === 'village' && VIMG['1tile'].hamlet ? VIMG['1tile'].hamlet : tinted(name, b.team, 'banner'));
     const [bx, by] = this.toScreen(b.tx + b.size, b.ty + b.size);            // bottom corner of the footprint
     let w = b.size * 2 * HW * z * (own ? (FMUL[b.kind] || 1) : b.kind === 'village' ? 1.1 : mul), h = c ? (c.height / c.width) * w : 0;

@@ -17,7 +17,7 @@ export const FACTIONS = {
   mongols:   { label: 'Mongols',   blurb: 'Gers, banners, Bactrian camels.' },
   scottish:  { label: 'Scottish',  blurb: 'Grey stone, heather thatch, tower houses.' },
 };
-export const FACTION_BUILDINGS = ['keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower'];
+export const FACTION_BUILDINGS = ['mine', 'keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower'];
 export const HOUSES = [
   { faction: 'egyptians', name: 'House Calder', short: 'Calder', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'Hold what you till' },
   { faction: 'romans', name: 'House Varr', short: 'Varr', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', motto: 'Blood and iron' },
