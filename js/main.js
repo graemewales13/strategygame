@@ -15,6 +15,7 @@ await loadArt();
 const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog });
 const host = new LocalHost(game);
 const renderer = new Renderer(document.getElementById('game'), game);
+if (params.get('vart') === '1') renderer.vart = '1tile';
 const minimap = new Minimap(document.getElementById('minimap'), game, renderer);
 const ui = new UI({ game, host, renderer, minimap, cfg });
 

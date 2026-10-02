@@ -1,11 +1,11 @@
 
-== seed 3: victory (Every rival house has fallen.) at 14:51
-  speed: 205x realtime, slowest tick 25.2 ms
-  House Calder alive serfs 16 army 14 camels 1 villages 5 | bld 25 (mines 3 market 1 tavern 1 keep 1) | grain 224 timber 17 coin 92 stone 146 iron 172 coal 243 steel 8 arms 3 sci 0
-  House Varr   FALLEN serfs 0 army 0 camels 0 villages 0 | bld 0 (mines 0 market 0 tavern 0 keep 0) | grain 53 timber 233 coin 348 stone 137 iron 223 coal 84 steel 2 arms 3 sci 0
-  House Cael   FALLEN serfs 0 army 0 camels 0 villages 0 | bld 0 (mines 0 market 0 tavern 0 keep 0) | grain 25 timber 31 coin 138 stone 142 iron 227 coal 230 steel 10 arms 3 sci 0
-  House Thorn  FALLEN serfs 0 army 0 camels 0 villages 0 | bld 0 (mines 0 market 0 tavern 0 keep 0) | grain 24 timber 132 coin 157 stone 191 iron 262 coal 262 steel 0 arms 0 sci 0
-  exchanges 31; treaties 2; wars 4
+== seed 1: no result at 15:00
+  speed: 189x realtime, slowest tick 21.2 ms
+  House Calder alive serfs 16 army 14 camels 1 villages 4 | bld 23 (mines 3 market 1 tavern 1 keep 1) | grain 19 timber 22 coin 116 stone 161 iron 28 coal 237 steel 2 arms 3 sci 0
+  House Varr   alive serfs 14 army 3 camels 1 villages 3 | bld 25 (mines 3 market 1 tavern 1 keep 1) | grain 21 timber 23 coin 154 stone 95 iron 201 coal 238 steel 10 arms 3 sci 0
+  House Cael   alive serfs 16 army 11 camels 0 villages 4 | bld 28 (mines 3 market 1 tavern 1 keep 1) | grain 43 timber 96 coin 105 stone 161 iron 218 coal 234 steel 10 arms 3 sci 0
+  House Thorn  FALLEN serfs 0 army 0 camels 0 villages 0 | bld 0 (mines 0 market 0 tavern 0 keep 0) | grain 460 timber 172 coin 418 stone 10 iron 119 coal 261 steel 0 arms 0 sci 0
+  exchanges 28; treaties 1; wars 5
 
 == anomalies
-  x1    population capped with timber to spare and no cottage rising (first @620s: seed 3: team 0 pop 37/37 wood 66 serfs 16 afford true spots 1227 {"Out of bounds":135,"Blocked by resources":197,"Solid rock: nothing can be built here":157,"Blocked":294,"Would wall off a pocket of ground":4,"Cannot build on water":11} bld hall,cottage,farm,barracks,mine,cottage,mill,warehouse,keep,cottage,archery,farm,mine,forge,market,tavern,cottage,mine,foundry)
+  none

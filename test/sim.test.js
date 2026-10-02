@@ -24,13 +24,13 @@ test('map: every start, village and resource node is reachable from every start 
   }
 });
 
-test('start: one hall, two serfs standing on walkable tiles, starting purse, no army, no keep', () => {
+test('start: one hall, three serfs standing on walkable tiles, starting purse, no army, no keep', () => {
   const g = new Game({ seed: 7, houses: 4 });
   for (let t = 0; t < 4; t++) {
     assert.equal(g.buildings.filter((b) => b.team === t).length, 1);
     assert.equal(g.buildings.find((b) => b.team === t).kind, 'hall');
     const us = g.units.filter((u) => u.team === t);
-    assert.equal(us.length, 2);
+    assert.equal(us.length, 3);
     for (const u of us) { assert.equal(u.kind, 'serf'); assert.ok(g.walk[Math.floor(u.y) * g.W + Math.floor(u.x)], 'serf spawned on blocked tile'); }
   }
   assert.ok(g.map.starts.length >= 4);
@@ -80,7 +80,7 @@ test('training: serf from the hall respects cost and population', () => {
   g.players[PLAYER].food = 1000;
   let ok = 0;
   for (let i = 0; i < 10; i++) if (g.applyIntent({ type: 'train', team: PLAYER, buildingId: hall.id, kind: 'serf' })) ok++;
-  assert.equal(ok, 4, `hall pop 6 with 2 serfs -> 4 more, got ${ok}`);
+  assert.equal(ok, 3, `hall pop 6 with 3 serfs -> 3 more, got ${ok}`);
   run(g, 20);
   assert.ok(g.units.filter((u) => u.team === PLAYER).length >= 3);
   assert.equal(g.train(PLAYER, hall.id, 'knight'), null, 'hall must not train knights');
@@ -275,7 +275,7 @@ test('garrison: right-click own hall/keep sends units inside; they vanish, heal,
   assert.equal(serfs[0].task.type, 'enter');
   run(g, 12);
   assert.ok(serfs.every((u) => u.inside === hall.id), 'inside');
-  assert.equal(hall.garrison.length, 2);
+  assert.equal(hall.garrison.length, 3);
   assert.ok(serfs[0].hp > 10, 'healed');
   assert.equal(g.unitAt(hall.x, hall.y, 3), null, 'hidden from picking');
   g.applyIntent({ type: 'leave', team: PLAYER, buildingId: hall.id });
@@ -340,11 +340,11 @@ test('keep: levy draws villagers in; drill turns recruits and serfs into soldier
   assert.equal(g.applyIntent({ type: 'drill', team: PLAYER, buildingId: keep.id, unitId: rec.id, kind: 'bowman' }), true);
   run(g, 14);
   assert.equal(rec.kind, 'bowman'); assert.ok(rec.speed > 0);
-  // a footman cannot be drilled again, and soldiers cannot build or gather
+  // a footman cannot be drilled again, and soldiers can build but not gather
   assert.equal(g.drill(PLAYER, keep.id, rec.id, 'knight'), false);
   const b = g.addBuilding('cottage', PLAYER, hall.tx, hall.ty - 6, false);
   rec.inside = null; rec.task = { type: 'idle' };
-  g.cmdBuild([rec], b); assert.notEqual(rec.task.type, 'build');
+  g.cmdBuild([rec], b); assert.equal(rec.task.type, 'build', 'soldiers raise buildings (slowly)');
   const tree = g.resources.find((n) => n.kind === 'tree'); g.cmdGather([rec], tree); assert.notEqual(rec.task.type, 'gather');
   // a serf can be drilled into a footman
   const s = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');

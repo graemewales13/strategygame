@@ -4,7 +4,7 @@ import {
   PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG, SIMG, factionSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG, SIMG, VIMG, factionSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -14,6 +14,9 @@ const GROUND_RGB = [[74, 118, 58], [128, 98, 54], [38, 92, 118], [140, 100, 56],
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
 const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
 const FMUL = { hall: 1.08, keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, warehouse: 1.0, market: 1.05, forge: 1.0, foundry: 1.0, workshop: 1.0, tavern: 1.0, academy: 1.0, temple: 1.0, barracks: 1.05, archery: 1.05, stable: 1.0, tower: 0.9 }; // width of a people's own sprite, in footprints
+// which painted village stands for each kind, and how wide it draws (tiles) at 1x1 and 2x2 board size
+const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fortified', abbey: 'farm', inn: 'fishing', farm: 'farm' };
+const VWIDE = { '1tile': 3.4, '4tile': 6.2 };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
 const USCALE = { recruit: 50, serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
@@ -277,12 +280,14 @@ export class Renderer {
     ctx.fillStyle = f ? f.primary : '#8a7a50'; ctx.globalAlpha = f ? 0.2 : 0.12; ctx.fill(); ctx.globalAlpha = 1;
     if (f) { ctx.strokeStyle = f.accent; ctx.lineWidth = 2; ctx.globalAlpha = 0.75; ctx.stroke(); ctx.globalAlpha = 1; }
     const comp = VCOMP[v.kind] || VCOMP.hamlet;
-    const parts = comp.map(([name, dx, dy, w]) => ({ name, dx, dy, w })).sort((a, b) => a.dx + a.dy - (b.dx + b.dy));
+    const vsz = this.vart || '4tile', vart = VIMG[vsz]?.[VART[v.kind] || 'hamlet'];
+    const grow = 0.85 + 0.3 * Math.min(1, (v.pop || 0) / 50);   // fuller villages look it
+    const parts = vart ? [{ name: '#v', img: vart, dx: 0, dy: 0.2, w: VWIDE[vsz] * grow }] : comp.map(([name, dx, dy, w]) => ({ name, dx, dy, w })).sort((a, b) => a.dx + a.dy - (b.dx + b.dy));
     let top = 1e9, midx = 0, left = 1e9, right = -1e9, bottom = -1e9;
     if (dim) ctx.globalAlpha = 0.78;
     for (const p of parts) {
       const [sx, sy] = this.toScreen(cx + p.dx + 0.7, cy + p.dy + 0.7);
-      const c = p.name === 'village_cluster' && SIMG.hamlet ? SIMG.hamlet : tinted(p.name, team, 'banner', false);
+      const c = p.img || (p.name === 'village_cluster' && SIMG.hamlet ? SIMG.hamlet : tinted(p.name, team, 'banner', false));
       if (p.name === 'gold') this.shadowAt(ctx, sx, sy, p.w * HW * z * 0.5, 7 * z, 0.3);
       const h = this.sprite(ctx, c, sx, sy, p.w * 2 * HW * z, false, 1);
       if (h != null) { const ww = p.w * 2 * HW * z; top = Math.min(top, sy - h); left = Math.min(left, sx - ww / 2); right = Math.max(right, sx + ww / 2); bottom = Math.max(bottom, sy); }
@@ -414,6 +419,7 @@ export class Renderer {
     this.hit(u, 'unit', sx - w * 0.4, sy - h * foot - bob, sx + w * 0.4, sy + 3 * z);
     if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }
     if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
+    if (u.name && (ui?.isSelected(u) || z >= 1.15) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
     if (u.hp < u.maxHp || ui?.isSelected(u)) { const bw = Math.max(20, w * 0.7); this.bar(ctx, sx - bw / 2, sy - h * foot - 8 - bob, bw, 3, u.hp / u.maxHp, this.hpColor(u.hp / u.maxHp)); }
   }
 

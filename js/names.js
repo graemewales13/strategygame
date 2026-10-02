@@ -1,0 +1,45 @@
+// Seven Holds - names for the folk. Every serf, soldier, spy and caravan driver is somebody: a given name from their people
+// plus a byname, ancient and a little strange. Pools are deliberately large so a house rarely repeats.
+
+export const NAMES = {
+  egyptians: {
+    first: ['Ankhaf', 'Bakenra', 'Djedi', 'Heknut', 'Intef', 'Khenti', 'Merit', 'Nebet', 'Pentu', 'Qenna', 'Rekhmi', 'Sobekhotep', 'Tjaru', 'Userkaf', 'Wenamun', 'Yuya', 'Zaa', 'Hori', 'Senet', 'Takhat', 'Ipuwer', 'Kanefer', 'Mentuhotep', 'Neferhet', 'Paser', 'Raia', 'Sethnakht', 'Tia', 'Henutmire', 'Baket', 'Khaemwaset', 'Meryre'],
+    by: ['the Scarab-Eyed', 'of the Red Land', 'Reed-Cutter', 'Nile-Born', 'the Jackal-Quiet', 'of Two Fields', 'Salt-Hand', 'the Embalmer\'s Son', 'Sun-Bitten', 'of the Black Land', 'Ibis-Footed', 'the Silent Lotus', 'Dust-Walker', 'of the Third Cataract'],
+  },
+  romans: {
+    first: ['Aulus', 'Brutia', 'Caecilius', 'Drusilla', 'Flavian', 'Galla', 'Hortensius', 'Iunia', 'Lucan', 'Marcia', 'Nonius', 'Ovidia', 'Plautus', 'Quintilla', 'Rufus', 'Septimus', 'Tiberia', 'Vibius', 'Camilla', 'Cassian', 'Fabrius', 'Gaius', 'Lepidus', 'Maximus', 'Nerva', 'Pollio', 'Sabina', 'Tullia', 'Valeria', 'Crispin', 'Domitian', 'Ennia'],
+    by: ['Ironhand', 'the Blind Augur', 'of the Seven Hills', 'Cohort-Born', 'the Stoic', 'Salt-Tongue', 'of the Appian Dust', 'the Lame Eagle', 'Wolf-Nursed', 'the Late', 'of the Cold Forum', 'Pitch-Hand', 'the Thrice Sworn', 'Ash-Laurel'],
+  },
+  vikings: {
+    first: ['Arnbjorn', 'Brynhild', 'Eirik', 'Frodi', 'Gudrun', 'Halfdan', 'Ingvar', 'Jorunn', 'Ketil', 'Ljot', 'Ragnvald', 'Sigrun', 'Thorgrim', 'Ulfar', 'Vigdis', 'Yngvild', 'Asgeir', 'Bard', 'Dagny', 'Egil', 'Floki', 'Geirrod', 'Hrafn', 'Ivar', 'Skuli', 'Solveig', 'Starkad', 'Torvald', 'Rolf', 'Svala', 'Orm', 'Gunnhild'],
+    by: ['Ash-Beard', 'Wave-Reader', 'the Unburied', 'Raven-Fed', 'Frost-Knuckle', 'of the Black Fjord', 'Oar-Breaker', 'the Sleepless', 'Whale-Road', 'Elk-Footed', 'Bone-Counter', 'the Seventh Son', 'Rune-Scarred', 'of the Long Dark'],
+  },
+  british: {
+    first: ['Aelfric', 'Brannoc', 'Cadwal', 'Dunstan', 'Eadburh', 'Godric', 'Hereward', 'Isolde', 'Kenelm', 'Leofwin', 'Morcant', 'Nechtan', 'Osric', 'Penda', 'Rhiannon', 'Sunniva', 'Tegwen', 'Uffa', 'Wulfstan', 'Aldith', 'Beornwyn', 'Cynric', 'Edric', 'Gwenllian', 'Hild', 'Oswin', 'Wystan', 'Ysolt', 'Maelgwn', 'Cuthred', 'Alwyn', 'Sceaf'],
+    by: ['Barrow-Born', 'the Hollow Oak', 'of the Standing Stones', 'Mist-Walker', 'Hedge-Wise', 'the Green-Handed', 'Cairn-Keeper', 'of the Drowned Wood', 'Thorn-Tongue', 'the Moor-Pale', 'Chalk-Giant\'s Kin', 'Bell-Ringer', 'of the Wicker Gate', 'Fen-Eyed'],
+  },
+  mongols: {
+    first: ['Arslan', 'Borte', 'Chagatai', 'Dolgan', 'Ebugen', 'Gerel', 'Hulegu', 'Jelme', 'Khulan', 'Mukhali', 'Naran', 'Ogodei', 'Qasar', 'Sorkan', 'Temujai', 'Toghrul', 'Ulagan', 'Yesui', 'Altan', 'Batu', 'Checheg', 'Dayan', 'Erdene', 'Ganbold', 'Kokochu', 'Muqali', 'Oyun', 'Sartaq', 'Tolui', 'Bayar', 'Khasar', 'Subei'],
+    by: ['Steppe-Wind', 'the Grey Wolf', 'Sky-Father\'s Son', 'of the Felt Ring', 'Horse-Whisperer', 'the Blue Banner', 'Salt-Lake', 'Mare-Milk', 'Eagle-Eyed', 'the Unwintered', 'Bone-Flute', 'of the Nine Tails', 'Dust-Rider', 'the Yurt-Burner'],
+  },
+  scottish: {
+    first: ['Aodh', 'Bridei', 'Calum', 'Drust', 'Eochaid', 'Fergus', 'Gillean', 'Hamish', 'Ishbel', 'Kenneth', 'Lachlan', 'Morag', 'Ness', 'Oighrig', 'Padraig', 'Rhuaidhri', 'Struan', 'Torquil', 'Una', 'Alasdair', 'Brodie', 'Ciaran', 'Dougal', 'Elspeth', 'Fionnlagh', 'Griogair', 'Iain', 'Mairead', 'Niall', 'Somhairle', 'Tavish', 'Cormac'],
+    by: ['of the Grey Loch', 'Heather-Wise', 'the Black Isle', 'Cairn-Dweller', 'Stag-Hearted', 'the Kelpie\'s Debt', 'Mist-Piper', 'of the Broken Brae', 'Peat-Smoke', 'the Painted', 'Raven-Crag', 'Thistle-Fist', 'of the Seventh Wave', 'the Standing Stone'],
+  },
+};
+
+const FALLBACK = 'british';
+
+// pick an unused name for a person of `faction`; `taken` is a Set of names already in play for that house
+export function pickName(faction, taken, rnd = Math.random) {
+  const pool = NAMES[faction] || NAMES[FALLBACK];
+  for (let tries = 0; tries < 40; tries++) {
+    const n = `${pool.first[Math.floor(rnd() * pool.first.length)]} ${pool.by[Math.floor(rnd() * pool.by.length)]}`;
+    if (!taken || !taken.has(n)) return n;
+  }
+  const f = pool.first[Math.floor(rnd() * pool.first.length)];
+  let k = 2; while (taken && taken.has(`${f} ${k}`)) k++;
+  return `${f} the ${k === 2 ? 'Younger' : 'Elder'} ${k}`;
+}
+// first name only, for log lines
+export const shortName = (name) => (name || '').split(' ')[0];

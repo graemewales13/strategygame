@@ -2,7 +2,7 @@
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
+  VILLAGE_WIN_HOLD, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 
@@ -218,7 +218,7 @@ export class UI {
     }
   }
   tryPlace(keep) {
-    const serfs = this.selUnits().filter((u) => u.kind === 'serf').map((u) => u.id);
+    const serfs = this.selUnits().filter((u) => BUILDERS[u.kind]).map((u) => u.id);
     const nd = this.placing === 'mine' ? this.game.depositsUnder(this.hoverTX, this.hoverTY, BUILDINGS.mine.size)[0] : null;
     const res = this.host.send({ type: 'place', kind: this.placing, tx: this.hoverTX, ty: this.hoverTY, ids: serfs, nodeId: nd ? nd.id : null });
     if (res) { if (!keep) { this.placing = null; $('game').classList.remove('placing'); } }
@@ -236,6 +236,7 @@ export class UI {
     if (tg && (tg.tagName === 'TEXTAREA' || (tg.tagName === 'INPUT' && tg.type !== 'checkbox'))) { if (k === 'enter' || k === 'escape') tg.blur?.(); if (k !== 'escape') return; }
     if (k === 'escape') return this.onEsc();
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
+    if (k === 'v') { this.r.vart = this.r.vart === '1tile' ? '4tile' : '1tile'; this.toast(`Village art: ${this.r.vart === '1tile' ? '1x1' : '2x2'} board squares.`, 'info'); return; }
     if (k === 't') { this.showStand = !this.showStand; $('standings').classList.toggle('hidden', !this.showStand); return; }
     if (k === 'm' || k === 'tab') { e.preventDefault(); return this.toggleCampaign(); }
     if (this.campaignOpen) return;
@@ -468,14 +469,14 @@ export class UI {
       const us = this.selUnits();
       if (us.length === 1) {
         const u = us[0], st = UNITS[u.kind], mine = u.team === PLAYER;
-        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${st.label} <small style="color:${HOUSES[u.team].accent};font-size:12px">${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${u.name ? `<b>${esc(u.name)}</b>${u.trait ? ` · ${esc(TRAITS[u.trait]?.label || '')}` : ''}<br>` : ''}${esc(st.info)}</div>
+        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${st.label} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : ''}${esc(st.info)}</div>
           <div class="stat"><label>Can</label><span>${esc(ABILITIES[u.kind] || '')}</span></div>
           <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(u.hp / u.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(u.hp)}/${u.maxHp}</span></div>
           <div class="stat"><label>Damage</label><span>${st.dmg}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${st.speed}</span></div>
           ${mine ? `<div class="stat"><label>Task</label><span>${this.taskText(u)}${u.carry && u.carry.amount > 0.5 ? ` · ${Math.floor(u.carry.amount)} ${u.carry.kind}` : ''}</span></div>` : ''}`;
       } else {
         const by = {}; us.forEach((u) => { by[u.kind] = (by[u.kind] || 0) + 1; });
-        html = `<div class="seltitle">${us.length} units</div><div class="selsub">Click a type to narrow the selection. Ctrl+1..9 stores a group.</div><div class="chips">${Object.entries(by).map(([k, n]) => `<span class="chip x" data-act="kind" data-kind="${k}">${GLYPH[k]?.length === 1 ? GLYPH[k] : ''} ${UNITS[k].label} × ${n}</span>`).join('')}</div>`;
+        html = `<div class="seltitle">${us.length} units</div><div class="selsub">${us.length <= 8 ? esc(us.map((u) => u.name?.split(' ')[0]).filter(Boolean).join(', ')) + '. ' : ''}Click a type to narrow the selection. Ctrl+1..9 stores a group.</div><div class="chips">${Object.entries(by).map(([k, n]) => `<span class="chip x" data-act="kind" data-kind="${k}">${GLYPH[k]?.length === 1 ? GLYPH[k] : ''} ${UNITS[k].label} × ${n}</span>`).join('')}</div>`;
       }
     } else if (s.type === 'building') {
       const b = g.byId.get(s.id); if (!b) { this.clearSel(); return; }
@@ -652,7 +653,7 @@ export class UI {
     let html = `<div class="ctitle">Options</div><div class="cgrid">`;
     html += this.btn('keephere', { glyph: '♚', art: 'keep', name: 'Raise keep', sub: costShort(BUILDINGS.keep.cost), off: !g.canAfford(PLAYER, BUILDINGS.keep.cost), tip: '<b>Raise a keep beside it</b><br>A keep with soldiers inside sways this village (and draws it from a rival). Then garrison it.' });
     if (mine) {
-      html += this.btn('entervillage', { glyph: '⇥', name: 'Garrison', off: !army, tip: '<b>Garrison</b><br>Sends idle soldiers inside (max 6).' });
+      html += this.btn('entervillage', { glyph: '⇥', name: 'Garrison', off: !army, tip: '<b>Garrison</b><br>Sends idle soldiers inside (max 8).' });
       html += this.btn('settle', { glyph: GLYPH.serf, art: 'serf', name: 'Call settler', sub: SETTLE_FOOD + 'g', off: v.pop < 4 || g.players[PLAYER].food < SETTLE_FOOD || g.popUsed(PLAYER) >= g.popCap(PLAYER), tip: `<b>Call a settler</b><br>One villager leaves as a serf of yours (${SETTLE_FOOD} grain). Needs a free place in your population and at least 4 folk in the village; it regrows while the village has grain.` });
     } else {
       html += this.btn('sendspy', { glyph: GLYPH.spy, art: 'spy', name: 'Send spy', off: !spies, sub: spies ? `${spies} ready` : 'need a spy', tip: `<b>Send a spy</b><br>Sways loyalty without a fight. Spies can be caught.${spies ? '' : `<br><span class="need">Hire a recruit at a tavern, select it, press Become spy (${SPY_FEE} coin).</span>`}` });
@@ -668,7 +669,7 @@ export class UI {
     const us = this.selUnits().filter((u) => u.team === PLAYER);
     const ent = this.selEntity();
     if (s.type === 'units' && us.length) {
-      if (us.some((u) => u.kind === 'serf')) html += this.buildGrid();
+      if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or hall to go inside.</div>`;
       html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}</div>`;
       if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));

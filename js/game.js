@@ -4,15 +4,17 @@
 
 import {
   MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
+  WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, MARKET_RADIUS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  GARRISON, VILLAGE_GARRISON, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
+  GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
+import { pickName, shortName } from './names.js';
 
 const SPIRAL = (() => {
   const a = [];
@@ -34,6 +36,7 @@ export class Game {
     this.fogOn = fog;
     this.aiOn = ai;
     this.seed = seed ?? Math.floor(Math.random() * 1e9) + 1;
+    { let a = (this.seed ^ 0x9e3779b9) >>> 0; this.rnd = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; this.named = []; }
     const map = createMap(this.seed, this.houses);
     this.map = map;
     this.W = map.w;
@@ -61,6 +64,7 @@ export class Game {
     const n = this.houses;
     this.players = Array.from({ length: n }, (_, i) => ({
       team: i, name: HOUSES[i].name, ...START_RES, alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
+      acc: {}, inc: {}, spent: 0, wageRate: 0, wageDebt: 0, brokeT: 0, deserterT: 0, earnedTotal: 0,
     }));
     this.known = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
     this.offers = []; // pending treaty offers { from, to, state, t }
@@ -85,10 +89,11 @@ export class Game {
       this.addBuilding('hall', team, sx, sy, true);
       this.addUnit('serf', team, sx + 1.2, sy + 3.6);
       this.addUnit('serf', team, sx + 2.0, sy + 3.6);
+      this.addUnit('serf', team, sx + 2.8, sy + 3.6);
     });
     this.recomputeWalk();
     this.updateVisibility(true);
-    this.log(PLAYER, `${this.biomeLabel}. A hall, two serfs and a starting purse: train serfs, raise cottages, a farm and a mine, then claim villages.`, 'info');
+    this.log(PLAYER, `${this.biomeLabel}. A hall, three serfs and a starting purse: train serfs, raise cottages, a farm and a mine, then claim villages.`, 'info');
   }
 
   nid() { return this.nextId++; }
@@ -96,6 +101,7 @@ export class Game {
 
   addUnit(kind, team, x, y) {
     const u = makeUnit(this.nid(), kind, team, x, y);
+    { const set = (this.named[team] ||= new Set()); u.name = pickName(HOUSES[team]?.faction, set, this.rnd); set.add(u.name); }
     if ((this.players?.[team]?.sci || 0) >= 3) { u.maxHp = Math.round(u.maxHp * 1.15); u.hp = u.maxHp; } // Drill
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -374,6 +380,7 @@ export class Game {
       case 'stop': mine().forEach((u) => { u.route = null; u.task = { type: 'idle' }; u.path = []; }); return true;
       case 'route': return this.cmdRoute(mine(), this.byId.get(it.targetId), it.want);
       case 'stoproute': return this.stopRoute(mine());
+      case 'sell': return this.sellGoods(team, it.marketId, it.good, it.amount) > 0;
       case 'attack':
       case 'pillage': return this.cmdAttack(mine(), this.byId.get(it.targetId));
       case 'infiltrate': return this.cmdInfiltrate(mine(), this.byId.get(it.villageId ?? it.targetId));
@@ -427,8 +434,8 @@ export class Game {
     const b = this.buildingAt(x, y);
     if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) return this.cmdAttack(units, b);
     if (b && b.team === team && b.built < 1) {
-      const serfs = units.filter((u) => u.kind === 'serf');
-      if (serfs.length) { this.cmdBuild(serfs, b, queue); return true; }
+      const serfs = units.filter((u) => BUILDERS[u.kind]);
+      if (serfs.length) { this.cmdBuild(serfs, b, queue); const rest = units.filter((u) => !BUILDERS[u.kind]); if (rest.length) this.cmdMove(rest, x, y); return true; }
     }
     if (b && b.team === team && b.kind === 'mine') {
       const serfs = units.filter((u) => u.kind === 'serf');
@@ -597,8 +604,8 @@ export class Game {
     if (this.popUsed(team) + 1 > this.popCap(team) + 0) return say('Population capped: raise cottages.');
     p.food -= SETTLE_FOOD; v.pop -= 1;
     const u = this.addUnit('serf', team, v.x - 0.5 + (Math.random() - 0.5), v.ty + v.size + 0.7);
-    u.name = `Settler of ${v.name}`;
-    if (team === PLAYER) this.log(team, `A settler leaves ${v.name} (${Math.floor(v.pop)} folk remain).`, 'info');
+    u.origin = v.name;
+    if (team === PLAYER) this.log(team, `${shortName(u.name)} leaves ${v.name} as a settler (${Math.floor(v.pop)} folk remain).`, 'info');
     return true;
   }
   setLevy(team, buildingId, villageId) {
@@ -647,7 +654,7 @@ export class Game {
         if (v.pop >= 1 && b.garrison.length < GARRISON.keep && p.food >= LEVY.food && this.popUsed(b.team) < this.popCap(b.team)) {
           b.levyT = 0; v.pop -= 1; p.food -= LEVY.food;
           const u = this.addUnit('recruit', b.team, b.x, b.y);
-          u.name = `Villager of ${v.name}`; u.trait = 'green'; u.inside = b.id; b.garrison.push(u.id);
+          u.origin = v.name; u.trait = 'green'; u.inside = b.id; b.garrison.push(u.id);
         } else if (v.pop < 1) b.levyT = LEVY.every; // wait for the village to regrow
       }
     } else if (b.levy != null) b.levy = null;
@@ -753,7 +760,7 @@ export class Game {
     const p = this.players[u.team];
     const take = Math.min(node.amount, MINE_RATE[node.kind] * dt * (p.sci >= 1 ? 1.1 : 1));
     node.amount -= take;
-    p[node.kind] += take * this.haulOf(b);
+    if (node.kind === 'gold') this.earn(u.team, 'mining', take * this.haulOf(b)); else p[node.kind] += take * this.haulOf(b);
     u.dig = (u.dig || 0) + take;
     if (u.dig >= 5 && u.team === PLAYER) { u.dig = 0; this.floaters.push({ x: b.x, y: b.y - 0.8, text: '+5', res: node.kind, age: 0 }); } else if (u.dig >= 5) u.dig = 0;
     if (node.amount <= 0) this.resAt[node.y * this.W + node.x] = -1;
@@ -772,7 +779,7 @@ export class Game {
   cmdBuild(units, b, queue = false) {
     if (!b || b.type !== 'building' || b.built >= 1) return false;
     for (const u of units) {
-      if (u.kind !== 'serf' || u.inside) continue;
+      if (!BUILDERS[u.kind] || u.inside) continue;
       if (queue && u.task.type === 'build' && u.task.targetId !== b.id) {
         const cur = this.byId.get(u.task.targetId);
         if (cur && cur.hp > 0 && cur.built < 1) { if (!u.buildQ.includes(b.id)) u.buildQ.push(b.id); continue; }
@@ -895,7 +902,7 @@ export class Game {
         this.setPath(u, u.pathGoal[0], u.pathGoal[1]);
       }
     }
-    let builders = (ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.team === team && u.kind === 'serf' && u.hp > 0);
+    let builders = (ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.team === team && BUILDERS[u.kind] && u.hp > 0);
     if (!builders.length) {
       builders = this.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0)
         .sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y)).slice(0, 2);
@@ -1088,7 +1095,7 @@ export class Game {
     if (k.stage === 'out') { this.exchange(u, t, k.want); this.caravanHome(u); return; }
     // home: unload what it carries into the stockpile
     const p = this.players[u.team];
-    if (u.cargo) for (const g in u.cargo) { p[g] = (p[g] || 0) + u.cargo[g]; if (u.team === PLAYER && u.cargo[g] >= 1) this.floaters.push({ x: t.x, y: t.y - 1, text: `+${Math.round(u.cargo[g])}`, res: g, age: 0 }); }
+    if (u.cargo) for (const g in u.cargo) { if (g === 'gold') this.earn(u.team, 'trade', u.cargo[g]); else p[g] = (p[g] || 0) + u.cargo[g]; if (u.team === PLAYER && u.cargo[g] >= 1) this.floaters.push({ x: t.x, y: t.y - 1, text: `+${Math.round(u.cargo[g])}`, res: g, age: 0 }); }
     u.cargo = {}; u.task = { type: 'idle' };
   }
   // ---- routes: a camel shuttles home shelf -> far market or village -> home, selling for coin, until told to stop
@@ -1133,7 +1140,7 @@ export class Game {
       if (k.stage === 'prep') {
         // back at the shelf: unsold goods go back on it, coin goes to the stockpile
         const p = this.players[u.team];
-        for (const g in u.cargo || {}) { p[g] = (p[g] || 0) + u.cargo[g]; if (u.team === PLAYER && u.cargo[g] >= 1) this.floaters.push({ x: home.x, y: home.y - 1, text: `+${Math.round(u.cargo[g])}`, res: g, age: 0 }); }
+        for (const g in u.cargo || {}) { if (g === 'gold') this.earn(u.team, 'trade', u.cargo[g]); else p[g] = (p[g] || 0) + u.cargo[g]; if (u.team === PLAYER && u.cargo[g] >= 1) this.floaters.push({ x: home.x, y: home.y - 1, text: `+${Math.round(u.cargo[g])}`, res: g, age: 0 }); }
         u.cargo = {};
         k.stage = 'wait'; k.t = 99;
       }
@@ -1269,9 +1276,58 @@ export class Game {
       b.job = null;
     }
   }
+  // every coin that comes in is booked by source, so the treasury strip can show where the money comes from
+  earn(team, src, amt) {
+    const p = this.players[team];
+    if (!(amt > 0)) return;
+    p.gold += amt; p.earnedTotal += amt; p.acc[src] = (p.acc[src] || 0) + amt;
+  }
+  // the army's pay: due every second, taken from the purse; an empty purse breeds trouble
+  payWages(p, dt) {
+    let rate = 0, n = 0, list = [];
+    for (const u of this.units) if (u.team === p.team && u.hp > 0 && WAGE[u.kind]) { n++; list.push(u); }
+    if (n > WAGE_FREE) { list.sort((a, b) => WAGE[b.kind] - WAGE[a.kind]); for (let i = WAGE_FREE; i < n; i++) rate += WAGE[list[i].kind]; }
+    p.wageRate = rate;
+    p.wageDebt += rate * dt;
+    if (p.wageDebt >= 1) {
+      const pay = Math.min(Math.floor(p.wageDebt), Math.floor(p.gold));
+      if (pay > 0) { p.gold -= pay; p.wageDebt -= pay; p.spent += pay; }
+      if (p.wageDebt >= 3) { p.brokeT += dt; } else p.brokeT = Math.max(0, p.brokeT - dt);
+    } else p.brokeT = Math.max(0, p.brokeT - dt);
+    p.broke = p.brokeT > BROKE.grace;
+    if (p.broke && list.length > WAGE_FREE) {
+      p.deserterT += dt;
+      if (p.deserterT >= BROKE.desertEvery) {
+        p.deserterT = 0;
+        const d = list.filter((u) => WAGE[u.kind]).sort((a, b) => a.hp - b.hp)[0];
+        if (d) { d.hp = 0; this.log(p.team === PLAYER ? PLAYER : -1, `${d.name || 'A soldier'} deserts for want of pay.`, 'bad'); p.wageDebt = Math.max(0, p.wageDebt - 3); }
+      }
+    } else p.deserterT = 0;
+  }
+  // a market buys from the stockpile at a fraction of worth that sags as you sell and recovers with time
+  sellPrice(b, k) { const glut = b.glut?.[k] || 0; return Math.max(SELL.floor, 1 / (1 + glut / SELL.glut)) * SELL.rate * RES_VALUE[k] / RES_VALUE.gold; }
+  sellGoods(team, marketId, good, amount) {
+    const b = this.byId.get(marketId), p = this.players[team], say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return 0; };
+    if (!b || b.team !== team || b.kind !== 'market' || b.built < 1 || b.hp <= 0) return say('Goods are sold at one of your markets.');
+    if (!ALL_GOODS.includes(good) || good === 'gold') return say('Nothing to sell there.');
+    b.glut ||= {};
+    let n = Math.min(Math.floor(p[good] || 0), Math.floor(amount || 20)), got = 0;
+    if (n < 1) return say(`You have no ${GOOD_LABEL[good].toLowerCase()} to sell.`);
+    for (let i = 0; i < n; i++) { got += this.sellPrice(b, good); b.glut[good] = (b.glut[good] || 0) + 1; }
+    p[good] -= n; this.earn(team, 'sales', got);
+    if (team === PLAYER) { this.floaters.push({ x: b.x, y: b.y - 1, text: `+${Math.round(got)}`, res: 'gold', age: 0 }); this.log(team, `Sold ${n} ${GOOD_LABEL[good].toLowerCase()} for ${Math.round(got)} coin.`, 'good'); }
+    return Math.round(got);
+  }
+
   updateEconomy(dt) {
     for (const p of this.players) {
       if (!p.alive) continue;
+      this.payWages(p, dt);
+      p.rateT = (p.rateT || 0) + dt;
+      if (p.rateT >= 1) {   // smoothed income by source, per second
+        for (const k of INCOME_SOURCES) { p.inc[k] = (p.inc[k] || 0) * 0.92 + ((p.acc[k] || 0) / p.rateT) * 0.08; p.acc[k] = 0; }
+        p.rateT = 0;
+      }
       // forge: steel -> arms levels
       if (p.arms < 3 && p.steel >= ARMS_STEEL && this.hasBuilding(p.team, 'forge')) {
         p.armsT += dt;
@@ -1325,9 +1381,9 @@ export class Game {
         case 'foundry': this.smelt(b, p, dt); break;
         case 'keep': this.tickKeep(b, dt); break;
         case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; }
-          p.gold += 0.35 * dt; break;
-        case 'market': p.gold += this.consumerIncome(b) * dt; this.supplyMarket(b, p, dt); break;
-        case 'temple': if (this.hasBuilding(b.team, 'academy')) p.gold += 0.3 * dt; break;
+          this.earn(b.team, 'tavern', 0.35 * dt); break;
+        case 'market': this.earn(b.team, 'market', this.consumerIncome(b) * dt); this.supplyMarket(b, p, dt); if (b.glut) for (const k in b.glut) b.glut[k] = Math.max(0, b.glut[k] - SELL.decay * dt); break;
+        case 'temple': if (this.hasBuilding(b.team, 'academy')) this.earn(b.team, 'temple', 0.3 * dt); break;
         case 'academy': {
           let n = 0;
           for (const u of this.units) if (u.team === b.team && u.kind === 'scholar' && u.hp > 0 && Math.hypot(u.x - b.x, u.y - b.y) < 8) n++;
@@ -1452,7 +1508,7 @@ export class Game {
           this.log(lost, `${v.name} slips from its lord.`, 'warn');
         } else {
           const spec = VILLAGE_KINDS[v.kind].tribute, rate = (0.4 + (0.8 * v.loyalty) / 100) * (0.5 + 0.7 * (v.pop / v.popMax)), p = this.players[v.owner];
-          const joy = v.joyT > 0 ? 1.3 : 1; p.food += spec.food * rate * joy * dt; p.wood += spec.wood * rate * joy * dt; p.gold += spec.gold * rate * joy * dt;
+          const joy = v.joyT > 0 ? 1.3 : 1; p.food += spec.food * rate * joy * dt; p.wood += spec.wood * rate * joy * dt; this.earn(v.owner, 'tribute', spec.gold * rate * joy * dt); this.earn(v.owner, 'tax', v.pop * TAX * (v.loyalty / 100) * dt);
           if (v.joyT > 0) v.loyalty = Math.min(100, v.loyalty + 0.5 * dt);
         }
       }
@@ -1528,6 +1584,7 @@ export class Game {
     let dmg = s.dmg;
     const arms = this.players[u.team].arms || 0;
     dmg += u.dmgAdd || 0;
+    if (this.players[u.team].broke) dmg *= BROKE.fight;
     if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
@@ -1542,7 +1599,7 @@ export class Game {
     if (m > 0) v.pop = Math.max(2, v.pop - MILITIA.loss * Math.min(m, 4));   // militia fall as they fight
     v.loyalty = Math.max(0, v.loyalty - 1.5);
     const loot = Math.min(2, v.stores.gold || 0);
-    if (loot) { v.stores.gold -= loot; this.players[u.team].gold += loot * 0.6; }
+    if (loot) { v.stores.gold -= loot; this.earn(u.team, 'loot', loot * 0.6); }
     // the folk fight back: the sturdier the village, the harder it bites
     u.hp -= (v.maxProtection / 32) * s.cd * (1 + MILITIA.bite * m);
     if (u.hp <= 0) u.hp = 0;
@@ -1622,7 +1679,7 @@ export class Game {
     u.path = [];
     const bonus = DROP_BONUS[drop.kind]?.[u.carry.kind] || 1;
     const amt = u.carry.amount * bonus;
-    this.players[u.team][u.carry.kind] += amt;
+    if (u.carry.kind === 'gold') this.earn(u.team, 'panning', amt); else this.players[u.team][u.carry.kind] += amt;
     if (u.team === PLAYER) this.floaters.push({ x: u.x, y: u.y - 0.6, text: `+${Math.round(amt)}`, res: u.carry.kind, age: 0 });
     u.carry = null;
     this.resumeOrIdle(u);
@@ -1663,8 +1720,9 @@ export class Game {
     }
     u.path = [];
     const time = BUILDINGS[b.kind].time;
-    b.built = Math.min(1, b.built + dt / time);
-    b.hp = Math.min(b.maxHp, b.hp + (b.maxHp * 0.88 * dt) / time);
+    const rate = BUILDERS[u.kind] || 1;
+    b.built = Math.min(1, b.built + (dt * rate) / time);
+    b.hp = Math.min(b.maxHp, b.hp + (b.maxHp * 0.88 * dt * rate) / time);
     if (b.built >= 1) {
       b.hp = b.maxHp;
       if (b.team === PLAYER) this.log(PLAYER, `${BUILDINGS[b.kind].label} complete.`, 'good');

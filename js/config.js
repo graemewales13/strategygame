@@ -80,16 +80,16 @@ export const NODE_RES = { tree: 'wood', berry: 'food', gold: 'gold' };
 export const GATHER_RATE = { wood: 0.95, food: 1.1, gold: 0.7 }; // per second while working
 export const CARRY_CAP = 10;
 
-export const START_RES = { food: 300, wood: 520, gold: 220, stone: 60, copper: 0, iron: 0, coal: 0, silver: 0, steel: 0, ware: 0 };
+export const START_RES = { food: 300, wood: 480, gold: 320, stone: 60, copper: 0, iron: 0, coal: 0, silver: 0, steel: 0, ware: 0 };
 
 // ---- Units -------------------------------------------------------------------------------
 // speed in tiles/sec, range in tiles, cooldown in seconds, bld = damage multiplier vs buildings, vil = vs villages
 export const UNITS = {
   serf:    { label: 'Serf',    hp: 40,  speed: 2.4, dmg: 3,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 50, wood: 0, gold: 0 },   time: 8,  from: ['hall', 'keep'], bld: 0.3, vil: 0.3, info: 'Gathers, builds, drops off. Weak in a fight.' },
   scout:   { label: 'Scout',   hp: 55,  speed: 4.4, dmg: 5,  range: 1,   cd: 1.0,  sight: 10, cost: { food: 40, wood: 20, gold: 0 },  time: 10, from: ['keep'],         bld: 0.2, vil: 0.4, info: 'Fast and far-sighted. Maps the valley.' },
-  footman: { label: 'Footman', hp: 90,  speed: 2.7, dmg: 10, range: 1,   cd: 1.1,  sight: 7,  cost: { food: 60, wood: 20, gold: 0 },  time: 14, from: ['barracks'],     bld: 0.5, vil: 1.0, info: 'Melee line infantry. Forge adds +3 damage.' },
-  bowman:  { label: 'Bowman',  hp: 50,  speed: 2.8, dmg: 7,  range: 5.5, cd: 1.3,  sight: 8,  cost: { food: 40, wood: 30, gold: 20 }, time: 16, from: ['archery'],      bld: 0.35, vil: 0.8, info: 'Ranged. Forge adds +2 damage.' },
-  knight:  { label: 'Knight',  hp: 150, speed: 3.9, dmg: 16, range: 1,   cd: 1.2,  sight: 7,  cost: { food: 80, wood: 0, gold: 60 },  time: 22, from: ['stable'],       bld: 0.5, vil: 1.0, info: 'Heavy cavalry. Forge adds +3 damage.' },
+  footman: { label: 'Footman', hp: 90,  speed: 2.7, dmg: 10, range: 1,   cd: 1.1,  sight: 7,  cost: { food: 60, wood: 20, gold: 15 },  time: 14, from: ['barracks'],     bld: 0.5, vil: 1.0, info: 'Melee line infantry. Forge adds +3 damage.' },
+  bowman:  { label: 'Bowman',  hp: 50,  speed: 2.8, dmg: 7,  range: 5.5, cd: 1.3,  sight: 8,  cost: { food: 40, wood: 30, gold: 30 }, time: 16, from: ['archery'],      bld: 0.35, vil: 0.8, info: 'Ranged. Forge adds +2 damage.' },
+  knight:  { label: 'Knight',  hp: 150, speed: 3.9, dmg: 16, range: 1,   cd: 1.2,  sight: 7,  cost: { food: 80, wood: 0, gold: 80 },  time: 22, from: ['stable'],       bld: 0.5, vil: 1.0, info: 'Heavy cavalry. Forge adds +3 damage.' },
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
@@ -100,7 +100,7 @@ export const UNITS = {
 // ---- Buildings ---------------------------------------------------------------------------
 export const BUILDINGS = {
   hall:      { label: 'Timber Hall',   size: 3, hp: 520,  sight: 8,  pop: 6, cost: null,                          time: 0,  requires: [],                      info: 'Your seat. Trains serfs, drop-off. Low HP. Raises nearby loyalty a little.' },
-  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 120, stone: 40 }, time: 36, requires: ['hall'],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; trains serfs and scouts, more pop.' },
+  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 150, stone: 40 }, time: 36, requires: ['hall'],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; trains serfs and scouts, more pop.' },
   cottage:   { label: 'Cottage',       size: 2, hp: 380,  sight: 5,  pop: 5, cost: { food: 0, wood: 60, gold: 0 },   time: 12, requires: ['hall'],          info: '+5 population.' },
   farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: ['hall'],          info: 'Steady grain. +25% beside a mill.' },
   mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['hall'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
@@ -111,7 +111,7 @@ export const BUILDINGS = {
   tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: ['hall'],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
   academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'Trains scholars. Unlocks the workshop and temple coin. Burns silver into science (3 levels).' },
   temple:    { label: 'Temple',        size: 2, hp: 590,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 50 }, time: 20, requires: ['keep'],          info: 'Strong loyalty aura. Coin trickle with an academy.' },
-  barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 20 }, time: 22, requires: ['hall'],          info: 'Trains footmen.' },
+  barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 40 }, time: 22, requires: ['hall'],          info: 'Trains footmen.' },
   archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
   stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
   mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: ['hall'], onDeposit: true, info: 'Raised on a mineral deposit. Assign serfs to dig; ore flows into your stockpile.' },
@@ -171,12 +171,12 @@ export const POP_GROW = 45;      // seconds per new villager while fed
 export const POP_HOUSING = 0.5;  // population cap you gain per villager in a village you hold
 export const SETTLE_FOOD = 20;   // grain to send for one settler (a serf) from a held village
 export const VILLAGE_KINDS = {
-  hamlet:   { label: 'Hamlet',         folk: ['farmers', 'herders'],            protection: 220, loyalty: 26, tribute: { food: 0.8,  wood: 0.15, gold: 0.05 }, stores: { food: 80, wood: 20, gold: 8 },  blurb: 'Farmers and herders. Easy to turn, pays grain.' },
-  mine:     { label: 'Mining camp',    folk: ['miners', 'haulers'],             protection: 300, loyalty: 18, tribute: { food: 0.1,  wood: 0.1,  gold: 0.9 },  stores: { food: 20, wood: 15, gold: 90, stone: 70, iron: 45, coal: 45, copper: 35, silver: 14 }, blurb: 'Miners and haulers. Pays coin; sells ore to caravans.' },
-  market:   { label: 'Market town',    folk: ['traders', 'watch'],              protection: 340, loyalty: 30, tribute: { food: 0.3,  wood: 0.3,  gold: 0.7 },  stores: { food: 40, wood: 40, gold: 70, stone: 20, copper: 25, ware: 10 }, blurb: 'Traders and the town watch. Good partner for trade.' },
-  hillfort: { label: 'Hillfort',       folk: ['spearmen', 'captain'],           protection: 620, loyalty: 10, tribute: { food: 0.2,  wood: 0.15, gold: 0.3 },  stores: { food: 30, wood: 25, gold: 25, iron: 25, steel: 6 }, blurb: 'Spearmen and a captain. Tough walls: bring a ram.' },
-  abbey:    { label: 'Abbey',          folk: ['monks', 'scribes'],              protection: 240, loyalty: 36, tribute: { food: 0.25, wood: 0.1,  gold: 0.45 }, stores: { food: 35, wood: 10, gold: 40, silver: 16, ware: 8 }, blurb: 'Monks and scribes. Loyal, but pays gently.' },
-  inn:      { label: 'Crossroads inn', folk: ['innkeep', 'sellswords'],         protection: 200, loyalty: 24, tribute: { food: 0.2,  wood: 0.1,  gold: 0.55 }, stores: { food: 25, wood: 10, gold: 35, coal: 18 }, blurb: 'Innkeep and sellswords. Cheap to sack.' },
+  hamlet:   { label: 'Hamlet',         folk: ['farmers', 'herders'],            protection: 220, loyalty: 26, tribute: { food: 0.8,  wood: 0.15, gold: 0.02 }, stores: { food: 80, wood: 20, gold: 8 },  blurb: 'Farmers and herders. Easy to turn, pays grain.' },
+  mine:     { label: 'Mining camp',    folk: ['miners', 'haulers'],             protection: 300, loyalty: 18, tribute: { food: 0.1,  wood: 0.1,  gold: 0.3 },  stores: { food: 20, wood: 15, gold: 90, stone: 70, iron: 45, coal: 45, copper: 35, silver: 14 }, blurb: 'Miners and haulers. Pays coin; sells ore to caravans.' },
+  market:   { label: 'Market town',    folk: ['traders', 'watch'],              protection: 340, loyalty: 30, tribute: { food: 0.3,  wood: 0.3,  gold: 0.25 },  stores: { food: 40, wood: 40, gold: 70, stone: 20, copper: 25, ware: 10 }, blurb: 'Traders and the town watch. Good partner for trade.' },
+  hillfort: { label: 'Hillfort',       folk: ['spearmen', 'captain'],           protection: 620, loyalty: 10, tribute: { food: 0.2,  wood: 0.15, gold: 0.1 },  stores: { food: 30, wood: 25, gold: 25, iron: 25, steel: 6 }, blurb: 'Spearmen and a captain. Tough walls: bring a ram.' },
+  abbey:    { label: 'Abbey',          folk: ['monks', 'scribes'],              protection: 240, loyalty: 36, tribute: { food: 0.25, wood: 0.1,  gold: 0.15 }, stores: { food: 35, wood: 10, gold: 40, silver: 16, ware: 8 }, blurb: 'Monks and scribes. Loyal, but pays gently.' },
+  inn:      { label: 'Crossroads inn', folk: ['innkeep', 'sellswords'],         protection: 200, loyalty: 24, tribute: { food: 0.2,  wood: 0.1,  gold: 0.2 }, stores: { food: 25, wood: 10, gold: 35, coal: 18 }, blurb: 'Innkeep and sellswords. Cheap to sack.' },
 };
 export const VILLAGE_NAMES = {
   hamlet: ['Aldermere', 'Fenwick', 'Hollin', 'Thatchley', 'Oakby', 'Lindow'],
@@ -194,8 +194,10 @@ export const FOG_REVEAL_MS = 0;
 
 // ---- garrisons, recruits, castle -----------------------------------------------------------
 // Units enter a friendly building or village by right-click. Capacity per building kind:
-export const GARRISON = { hall: 4, keep: 12, tower: 3, barracks: 6 };
-export const VILLAGE_GARRISON = 6;
+export const GARRISON = { hall: 4, keep: 8, tower: 3, barracks: 6 };
+export const VILLAGE_GARRISON = 8;
+// who can raise buildings, and how fast compared with a serf (soldiers can build a castle beside a village they mean to sway)
+export const BUILDERS = { serf: 1, recruit: 0.5, footman: 0.6, bowman: 0.6, knight: 0.4, scout: 0.3 };
 // What each kind of character may do (all orders are right-clicks).
 export const ABILITIES = {
   serf: 'Builds (queue with Shift), gathers, mines, enters buildings',
@@ -237,3 +239,14 @@ export const SPY_FEE = 25;         // coin to send a recruit out as a spy
 // Village folk stay indoors. A quarter muster to defend when it is attacked; now and then a family sets out for another village.
 export const MILITIA = { share: 0.25, rampEvery: 0.4, bite: 0.12, loss: 0.06 };
 export const WANDER = { every: [90, 160], minPop: 6, range: 62, speed: 1.7, newsPull: 0.3, newsTime: 90, unrest: 2 };
+
+// ---- money --------------------------------------------------------------------------------
+// Coin is the house's lifeblood. Sources: digging gold, selling ore and goods at a market, caravans, village tax and tribute, sacks.
+// The steady drain is the army's pay: soldiers beyond the household guard cost coin every second. An empty purse means
+// shrinking tempers: they fight at 70% and a man deserts every half minute.
+export const WAGE = { footman: 0.05, bowman: 0.065, knight: 0.12, scout: 0.03, spy: 0.05, scholar: 0.05 };   // coin per second each
+export const WAGE_FREE = 4;            // soldiers kept on the household: no pay due for the first few
+export const BROKE = { fight: 0.7, desertEvery: 30, grace: 20 };
+export const SELL = { rate: 0.6, glut: 60, decay: 0.6, floor: 0.35 };   // a market buys your stockpile at 60% of worth; each unit sold lowers the price (glut), which recovers
+export const TAX = 0.011;              // coin per second per villager in a village you hold, at full loyalty
+export const INCOME_SOURCES = ['mining', 'panning', 'market', 'tavern', 'temple', 'tax', 'tribute', 'trade', 'sales', 'loot'];
