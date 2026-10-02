@@ -147,3 +147,6 @@ Build **Village** (needs a keep, 100 grain, 150 timber, 30 coin, 30 s). When ser
 **Sack**: when soldiers take a village by force you carry off 80% of its stores (coin included); a fifth of the folk die, and of the survivors 15% become serfs and 20% soldiers (40% in a hillfort or inn) as long as you have room. Winning by influence or a spy brings no loot.
 **Castles**: serfs and soldiers can raise a keep beside a village (soldiers at 60% speed); a keep garrisons up to **8** soldiers.
 **Names**: every unit is named from its people's pool (`js/names.js`), shown in the selection panel and over selected units.
+
+### Playtesting tools
+`node tools/play.js [minutes] [seeds] [houses] [econ|rush|turtle]` plays house 0 like a person (only the intents the buttons send) against the AI and lists refused orders, stalls and outcomes. `tools/soak.js` runs all-AI matches; `tools/econ.js` prints a house's economy per minute.

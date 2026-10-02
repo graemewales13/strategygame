@@ -173,7 +173,7 @@ export const SETTLE_FOOD = 20;
 // every house begins in a home village of this many folk (cap FOUND.max); there is no hall
 export const HOME_POP = 30;
 export const INFLUENCE_HOME = { r: 14, w: 0.5, guard: true };   // a village you hold leans on its neighbours a little
-export const FOUND = { pop: 4, max: 50, grow: 22, loyalty: 82 };   // a founded village: folk at the start, cap, seconds per newcomer while fed
+export const FOUND = { limit: 3, pop: 4, max: 50, grow: 22, loyalty: 82 };   // a founded village: folk at the start, cap, seconds per newcomer while fed
 export const DRAFT = { minLeft: 2, mineFood: 10, soldierFood: 25, perCall: 5 };
 export const SACK = { stores: 0.8, serfs: 0.15, soldiers: 0.2, killed: 0.2 };   // share of the village's goods you carry off; share of survivors who join you as serfs or soldiers   // grain to send for one settler (a serf) from a held village
 export const VILLAGE_KINDS = {

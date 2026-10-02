@@ -192,7 +192,7 @@ function think(game, team, p) {
 }
 
 // nearest unmined deposit inside our territory, preferring ores we do not already dig
-function pickDeposit(game, team, seat) {
+export function pickDeposit(game, team, seat) {
   const order = ['gold', 'stone', 'iron', 'coal', 'copper', 'silver'];
   const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine').map((b) => b.ore));
   for (const ore of order) {
@@ -220,7 +220,7 @@ function nearestVillage(game, seat, pred, maxD) {
 }
 
 // Find a legal footprint with a one-tile lane around it. Keeps lean toward the nearest free village.
-function findSpot(game, team, seat, kind) {
+export function findSpot(game, team, seat, kind) {
   const s = BUILDINGS[kind].size;
   let ax = seat.x, ay = seat.y, rmin = 4, rmax = 13;
   if (kind === 'keep') {

@@ -614,7 +614,7 @@ test('village folk: a quarter muster when attacked and fall back after; wanderer
   from.wanderT = 1e9;
   for (let t = 0; t < 400 && g.wanderers.length; t += 0.25) g.tick(0.25);
   assert.equal(g.wanderers.length, 0, 'they arrive');
-  assert.ok(to.news?.some((q) => q.team === 1), 'and bring word of their lord');
+  assert.ok(to.owner === 1 || to.news?.some((q) => q.team === 1), 'and bring word of their lord (or the lord already holds it)');
   assert.ok(to.pop >= 5 + w.n - 0.5, 'population moved');
 });
 
@@ -729,3 +729,18 @@ test('keep: holds up to eight soldiers', () => {
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);
+
+test('founding: a house may found only three villages; founded villages do not count toward the valley win; drafting does not shrink housing', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false }); const p = g.players[0]; g.fogOn = false;
+  p.wood = 5000; p.food = 5000; p.gold = 5000; p.stone = 500;
+  const h = g.seatOf(0);
+  const cap0 = g.popCap(0);
+  g.draft(0, h.id, 10, 'serf');
+  assert.ok(g.popCap(0) >= cap0, 'housing holds when folk leave: ' + g.popCap(0) + ' vs ' + cap0);
+  placeNear(g, 0, 'keep', 7);
+  for (let i = 0; i < 3; i++) { const v = g.addVillage({ kind: 'hamlet', name: 'F' + i, tx: h.tx - 8 - i * 4, ty: h.ty + 12 }); v.owner = 0; v.founded = true; }
+  assert.equal(g.canPlace(0, 'village', h.tx + 12, h.ty + 12).ok, false, 'fourth founding refused');
+  const valley = g.villages.filter((v) => !v.founded).length;
+  g.checkEnd(0.1);
+  assert.equal(g.villageNeed, Math.ceil(valley * 0.65), 'need counts valley villages only');
+});

@@ -81,3 +81,11 @@ AI plan put the market after the forge (minute 8). Moved to fourth building.
 
 ### T-033 Timber hall removed
 The hall is gone: every house starts with an owned home village of 30 folk (the seat) and three serfs. Only mine, market, foundry, tavern, keep and barracks are available at first; the rest unlock through the `requires` chain and the build grid hides locked buildings. Village build button had no image (icon pointed at a removed path): now uses the 1tile hamlet art. Camels could not swap goods for coin when full (cap check counted coin): coin is now weightless for that check.
+
+### T-034 Playtest sweep (scripted human, cycle 8)
+- Founding villages was a runaway: villages were cheap, counted toward the 65% valley win, and the bot won at minute 10 holding 28 of 41. Now a house may found 3 villages (FOUND.limit) and founded villages are left out of the valley count.
+- Drafting villagers lowered the population cap (housing was half the village's current folk) so 12/10 pop appeared. Housing now has a floor (home village 30 folk, others 30% of max).
+- "Seam is spent" and "Keep is full" lines flooded the feed thousands of times: identical log lines within 6 s are now one. Diggers on a dry seam walk to another mine with ore and room.
+- Start vision was ~5 tiles, so deposits were not visible: home village now sees 13 tiles, held villages 8.
+- Idle serfs after a build go to grain or timber near the seat.
+- Known: Viking building art is not drawn yet, so the browser logs 404s and falls back to the shared kit.

@@ -102,7 +102,14 @@ export class Game {
   }
 
   nid() { return this.nextId++; }
-  log(team, text, kind = 'info') { this.events.push({ t: this.time, team, text, kind }); }
+  log(team, text, kind = 'info') {
+    // the same line twice within a few seconds is one line (orders re-issued every tick would otherwise flood the feed)
+    this._lastLog ||= new Map();
+    const last = this._lastLog.get(text);
+    if (last !== undefined && this.time - last < 6) return;
+    this._lastLog.set(text, this.time);
+    this.events.push({ t: this.time, team, text, kind });
+  }
 
   addUnit(kind, team, x, y) {
     const u = makeUnit(this.nid(), kind, team, x, y);
@@ -149,7 +156,7 @@ export class Game {
   popCap(team) {
     let n = 0;
     for (const b of this.buildings) if (b.team === team && b.built >= 1 && b.hp > 0) n += BUILDINGS[b.kind].pop;
-    for (const v of this.villages) if (v.owner === team) n += Math.floor(v.pop * POP_HOUSING);   // folk of held villages are housed there
+    for (const v of this.villages) if (v.owner === team) n += Math.floor(Math.max(v.pop, v.home >= 0 ? HOME_POP : 0.3 * (v.popMax || 50)) * POP_HOUSING);   // folk of held villages are housed there
     return n;
   }
   canAfford(team, cost) {
@@ -828,7 +835,16 @@ export class Game {
     const b = this.byId.get(u.task.buildingId);
     if (!b || b.hp <= 0 || b.built < 1) { u.task = { type: 'idle' }; return; }
     const node = b.nodeIds.map((id) => this.resources[id]).find((n) => n.amount > 0);
-    if (!node) { u.task = { type: 'idle' }; u.path = []; if (u.team === PLAYER) this.log(PLAYER, 'The seam is spent. The diggers stand idle.', 'warn'); return; }
+    if (!node) {
+      u.path = [];
+      // the seam is dry: walk on to another of the house's mines that still has ore and room, else stand idle
+      const next = this.buildings.filter((m) => m !== b && m.team === u.team && m.kind === 'mine' && m.built >= 1 && m.hp > 0 && this.minersOf(m) < MINE_MAX_WORKERS && m.nodeIds.some((id) => this.resources[id].amount > 0))
+        .sort((p, q) => Math.hypot(p.x - u.x, p.y - u.y) - Math.hypot(q.x - u.x, q.y - u.y))[0];
+      if (next) { this.cmdMine([u], next); if (u.team === PLAYER) this.log(PLAYER, 'A seam is spent: its diggers move to another mine.', 'info'); return; }
+      u.task = { type: 'idle' };
+      if (u.team === PLAYER) this.log(PLAYER, 'The seam is spent. The diggers stand idle: raise a mine on a new deposit.', 'warn');
+      return;
+    }
     if (distTo(u.x, u.y, b) > 1.3) {
       if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, b);
       this.follow(u, dt);
@@ -876,6 +892,7 @@ export class Game {
     const s = BUILDINGS[kind];
     if (!s || !s.cost) return { ok: false, reason: 'Unknown building' };
     for (const req of s.requires) if (!this.hasBuilding(team, req)) return { ok: false, reason: `Needs a ${BUILDINGS[req].label}` };
+    if (kind === 'village' && this.villages.filter((v) => v.owner === team && v.founded).length + this.buildings.filter((b) => b.team === team && b.kind === 'village' && b.hp > 0).length >= FOUND.limit) return { ok: false, reason: `A house may found only ${FOUND.limit} villages: win the rest` };
     if (!this.canAfford(team, s.cost)) return { ok: false, reason: 'Not enough goods' };
     const { W, H } = this;
     if (tx < 1 || ty < 1 || tx + s.size > W - 1 || ty + s.size > H - 1) return { ok: false, reason: 'Out of bounds' };
@@ -1777,6 +1794,16 @@ export class Game {
     else u.task = { type: 'idle' };
   }
 
+  // a serf with nothing left to do pitches in: grain or timber, whichever the house is short of, on ground it rules
+  serfFallback(u) {
+    u.task = { type: 'idle' };
+    if (u.kind !== 'serf') return;
+    const p = this.players[u.team], seat = this.seatOf(u.team);
+    if (!seat) return;
+    const node = this.nearestNode(u.x, u.y, p.wood < p.food ? 'wood' : 'food') || this.nearestNode(u.x, u.y, 'wood');
+    if (node && Math.hypot(node.x - seat.x, node.y - seat.y) < 24) this.cmdGather([u], node);
+  }
+
   doBuild(u, dt) {
     const b = this.byId.get(u.task.targetId);
     if (!b || b.hp <= 0 || b.built >= 1) {
@@ -1793,11 +1820,11 @@ export class Game {
       if (u.afterBuild?.mineId != null) {
         const m = this.byId.get(u.afterBuild.mineId); u.afterBuild = null;
         if (m && m.hp > 0 && m.built >= 1 && this.cmdMine([u], m)) return;
-        u.task = { type: 'idle' }; return;
+        this.serfFallback(u); return;
       }
       const back = u.afterBuild != null ? this.resources[u.afterBuild.nodeId] : null;
       u.afterBuild = null;
-      if (back && back.amount > 0) { u.task = { type: 'gather', nodeId: back.id }; this.setPath(u, back.x + 0.5, back.y + 0.5); } else u.task = { type: 'idle' };
+      if (back && back.amount > 0) { u.task = { type: 'gather', nodeId: back.id }; this.setPath(u, back.x + 0.5, back.y + 0.5); } else this.serfFallback(u);
       return;
     }
     if (distTo(u.x, u.y, b) > 1.25) {
@@ -1869,7 +1896,7 @@ export class Game {
       };
       for (const u of this.units) if (u.team === t && u.hp > 0) mark(u.x, u.y, UNITS[u.kind].sight);
       for (const b of this.buildings) if (b.team === t && b.hp > 0) mark(b.x, b.y, BUILDINGS[b.kind].sight);
-      for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, 6);
+      for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, v.home === t ? 13 : 8);
     }
     // meeting: a house is "known" once any of its people or buildings has been in sight (mutual: they have seen you too)
     for (let a = 0; a < this.houses; a++) for (let b = 0; b < this.houses; b++) {
@@ -1919,17 +1946,18 @@ export class Game {
     if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', reason: 'Your villages and castles are gone.' }; return; }
     if (living.length === 1) { this.outcome = { result: 'victory', reason: 'Every rival house has fallen.' }; return; }
     // village share victory: hold VILLAGE_WIN_SHARE of all villages for VILLAGE_WIN_HOLD seconds
-    const need = Math.ceil(this.villages.length * VILLAGE_WIN_SHARE);
+    const valley = this.villages.filter((v) => !v.founded);   // villages you found yourself do not count toward (or against) the valley
+    const need = Math.ceil(valley.length * VILLAGE_WIN_SHARE);
     const counts = new Array(this.houses).fill(0);
-    for (const v of this.villages) if (v.owner >= 0) counts[v.owner]++;
+    for (const v of valley) if (v.owner >= 0) counts[v.owner]++;
     const lead = counts.indexOf(Math.max(...counts));
     if (counts[lead] >= need) {
       if (this.winHold.team !== lead) this.winHold = { team: lead, t: 0 };
       this.winHold.t += dt;
       if (this.winHold.t >= VILLAGE_WIN_HOLD) {
         this.outcome = lead === PLAYER
-          ? { result: 'victory', reason: `You hold ${counts[lead]} of ${this.villages.length} villages. The valley is yours.` }
-          : { result: 'defeat', reason: `${this.players[lead].name} holds ${counts[lead]} of ${this.villages.length} villages.` };
+          ? { result: 'victory', reason: `You hold ${counts[lead]} of ${valley.length} villages. The valley is yours.` }
+          : { result: 'defeat', reason: `${this.players[lead].name} holds ${counts[lead]} of ${valley.length} villages.` };
       }
     } else this.winHold = { team: -1, t: 0 };
     this.villageNeed = need;
