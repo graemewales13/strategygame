@@ -91,7 +91,7 @@ for (const seed of seeds) {
     for (const v of g.villages) { for (const k in v.stores || {}) if (!(v.stores[k] >= 0)) flag('bad village stock', t, `${v.name} ${k}=${v.stores[k]}`); for (const id of v.garrison || []) { const u = g.byId.get(id); if (!u || u.inside !== v.id) flag('village garrison out of sync', t, v.name); } }
     for (const u of g.units) {
       if (u.hp <= 0) continue;
-      if (u.kind === 'camel' && g.cargoTotal(u) > 40.01) flag('camel overloaded', t, g.cargoTotal(u));
+      if (u.kind === 'camel' && g.cargoTotal(u) - ((u.cargo && u.cargo.gold) || 0) > 40.01) flag('camel overloaded', t, g.cargoTotal(u));
       if (u.inside && !g.byId.get(u.inside)) flag('unit inside a vanished building', t, `${u.kind} team ${u.team}`);
       const tid = u.task.targetId ?? u.task.buildingId;
       if (tid != null && MOVING.has(u.task.type) && !g.byId.get(tid)) { if (u._van && t - u._van >= 5) flag(`task '${u.task.type}' kept on a vanished target`, t, `${u.kind} team ${u.team}`); u._van = u._van || t; } else u._van = 0;

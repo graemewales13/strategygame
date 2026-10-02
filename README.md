@@ -1,6 +1,6 @@
 # Seven Holds
 
-A browser real-time strategy game in the spirit of *Seven Kingdoms* and *Age of Empires II*. You start with one timber hall and two serfs in a wide valley, and grow a house until you rule it. Plain HTML, CSS and JavaScript modules; canvas for the field. No build step, no dependencies.
+A browser real-time strategy game in the spirit of *Seven Kingdoms* and *Age of Empires II*. You start with a home village of thirty folk and three serfs in a wide valley, and grow a house until you rule it. Plain HTML, CSS and JavaScript modules; canvas for the field. No build step, no dependencies.
 
 You are yellow **House Calder**. Rivals: red **Varr**, blue **Cael**, green **Thorn**, violet **Ash**. Pick 3, 4 or 5 houses in the menu; empty seats are AI.
 
@@ -20,8 +20,8 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 
 ## How to play
 
-1. **Gather.** Drag-select your two serfs, right-click timber, berries or gold. They carry goods to the hall.
-2. **Grow.** Select the hall (**H**). Train serfs; raise cottages (population), a farm, a mill, a barracks. There is no territory circle: build anywhere you have scouted. Distance changes the *community* around a site instead (see "Rules in one page").
+1. **Gather.** Drag-select your three serfs, right-click timber, berries or gold. They carry goods to your village.
+2. **Grow.** Select your village (**H**). Draft serfs, miners and soldiers from its folk. At first you may raise only a mine, market, foundry, tavern, keep and barracks; cottage (needs a market), farm, mill, archery, tower, academy and the rest unlock as you build. There is no territory circle: build anywhere you have scouted. Distance changes the *community* around a site instead (see "Rules in one page").
 3. **Take villages.** Fourteen independent villages sit in the gaps. Three ways to win one:
    - **Pillage.** Soldiers fight it until its *protection* hits zero. It submits to you with middling loyalty. The folk fight back, hillforts hardest: bring rams.
    - **Influence.** A hall, keep, tower, tavern, temple or academy near a village slowly raises its *loyalty*. Past 72 it comes over without a sack. Scholars beside an academy amplify it.
@@ -56,7 +56,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 
 ## Tech tree (short)
 
-Hall → cottage, farm, mill, warehouse, market (camels), mine, foundry, barracks, tavern, tower, keep.
+Start: mine, market, foundry, tavern, keep, barracks. Then: market → cottage → farm → mill; mine → warehouse; keep → village, academy, temple; barracks → archery, tower; and so on.
 Barracks → archery range, forge. Keep + barracks → stable. Keep → academy, temple. Forge + academy → workshop (rams).
 
 Buildings have jobs, none are cosmetic: forge adds damage, mill and warehouse boost deliveries, keep/temple/tavern/academy/tower pull village loyalty, tavern trains spies, academy trains scholars and unlocks the workshop.
@@ -133,7 +133,7 @@ Money is the first measure of a house; the others are land influence (villages h
 Six peoples (`FACTIONS` in config): Egyptians, Romans, Vikings, British, Mongols, Scottish. Each house has a `faction` (Calder Egyptians, Varr Romans, Cael Scottish, Thorn British, Ash Mongols). Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Camels draw as dromedary (Mongols: Bactrian, Romans: donkey); the ram and hamlet use the shared art. Vikings still need their 18 buildings.
 
 ## Money and manpower (the economy)
-Start: hall, **three serfs**, 300 grain, 480 timber, **320 coin**, 60 stone. Coin is booked by source (hover the coin counter; the green/red figure beside it is net income per second after army pay). `node tools/econ.js [minutes] [seed] [team]` prints a per-minute table of any rival house.
+Start: a home village of **30 folk**, **three serfs**, 300 grain, 480 timber, **320 coin**, 60 stone. Coin is booked by source (hover the coin counter; the green/red figure beside it is net income per second after army pay). `node tools/econ.js [minutes] [seed] [team]` prints a per-minute table of any rival house.
 
 | Flow | How |
 | --- | --- |
@@ -143,7 +143,7 @@ Start: hall, **three serfs**, 300 grain, 480 timber, **320 coin**, 60 stone. Coi
 | Manpower | hall 6 + cottage 5 + keep 8 + half of the folk of every village you hold. Serfs 50 grain / 8 s. Villages feed more: **draft** serfs (20 grain), miners (10) or soldiers (25) |
 
 ## Villages you found
-Build **Village** (hall, 100 grain, 150 timber, 30 coin, 30 s). When serfs finish it, it becomes a living village of 4 settlers that grows (one every 22 s while fed; it tills its own fields) to **50**. It uses the supplied village art (hamlet, then farmland past 15 folk, then a market town past 35); V switches all villages between the 1x1 and 2x2 art, nothing else changes size. Select it: **Serfs ×5**, **Miners ×4** (to the nearest mine with free places), **Soldiers ×5** (footmen if you have a barracks and coin, else recruits). Never emptied below 2 folk.
+Build **Village** (needs a keep, 100 grain, 150 timber, 30 coin, 30 s). When serfs finish it, it becomes a living village of 4 settlers that grows (one every 22 s while fed; it tills its own fields) to **50**. Villages are always 1x1 tiles, drawn with the supplied art (hamlet, then farmland past 15 folk, then a market town past 35). Select it: **Serfs ×5**, **Miners ×4** (to the nearest mine with free places), **Soldiers ×5** (footmen if you have a barracks and coin, else recruits). Never emptied below 2 folk.
 **Sack**: when soldiers take a village by force you carry off 80% of its stores (coin included); a fifth of the folk die, and of the survivors 15% become serfs and 20% soldiers (40% in a hillfort or inn) as long as you have room. Winning by influence or a spy brings no loot.
 **Castles**: serfs and soldiers can raise a keep beside a village (soldiers at 60% speed); a keep garrisons up to **8** soldiers.
 **Names**: every unit is named from its people's pool (`js/names.js`), shown in the selection panel and over selected units.

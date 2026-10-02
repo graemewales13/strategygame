@@ -12,11 +12,11 @@ const GOLD = '#e2c15e';
 const GROUND_RGB = [[74, 118, 58], [128, 98, 54], [38, 92, 118], [140, 100, 56], [146, 132, 68], [194, 172, 112], [98, 94, 90], [224, 230, 236]];
 
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
-const BSPR = { village: ['cottage_thatch', 1.5], hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
-const FMUL = { hall: 1.08, keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, warehouse: 1.0, market: 1.05, forge: 1.0, foundry: 1.0, workshop: 1.0, tavern: 1.0, academy: 1.0, temple: 1.0, barracks: 1.05, archery: 1.05, stable: 1.0, tower: 0.9 }; // width of a people's own sprite, in footprints
+const BSPR = { village: ['cottage_thatch', 1.5], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
+const FMUL = { keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, warehouse: 1.0, market: 1.05, forge: 1.0, foundry: 1.0, workshop: 1.0, tavern: 1.0, academy: 1.0, temple: 1.0, barracks: 1.05, archery: 1.05, stable: 1.0, tower: 0.9 }; // width of a people's own sprite, in footprints
 // which painted village stands for each kind, and how wide it draws (tiles) at 1x1 and 2x2 board size
 const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fortified', abbey: 'farm', inn: 'fishing', farm: 'farm' };
-const VWIDE = { '1tile': 3.4, '4tile': 6.2 };
+const VWIDE = { '1tile': 3.4 };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
 const USCALE = { recruit: 50, serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
@@ -280,7 +280,7 @@ export class Renderer {
     ctx.fillStyle = f ? f.primary : '#8a7a50'; ctx.globalAlpha = f ? 0.2 : 0.12; ctx.fill(); ctx.globalAlpha = 1;
     if (f) { ctx.strokeStyle = f.accent; ctx.lineWidth = 2; ctx.globalAlpha = 0.75; ctx.stroke(); ctx.globalAlpha = 1; }
     const comp = VCOMP[v.kind] || VCOMP.hamlet;
-    const vsz = this.vart || '4tile';
+    const vsz = '1tile';
     // a village you founded shows the given village art by size: hamlet, then farmland, then a market town
     const art = v.founded ? ((v.pop || 0) <= 15 ? 'hamlet' : (v.pop || 0) <= 35 ? 'farm' : 'market') : (VART[v.kind] || 'hamlet');
     const vart = VIMG[vsz]?.[art];
@@ -333,10 +333,10 @@ export class Renderer {
   // ---------------------------------------------------------------- buildings
   building(ctx, b, dim, ui, t, z) {
     const f = HOUSES[b.team], prog = b.built, [name, mul] = BSPR[b.kind] || ['cottage', 1];
-    const own = b.kind === 'mine' ? null : factionSprite(f.faction, b.kind);   // the people's own painted building
-    const c = own || (b.kind === 'mine' ? mineSprite(b.ore || 'stone', b.team) : tinted(name, b.team, 'banner'));
+    const own = b.kind === 'mine' || b.kind === 'village' ? null : factionSprite(f.faction, b.kind);   // the people's own painted building
+    const c = own || (b.kind === 'mine' ? mineSprite(b.ore || 'stone', b.team) : b.kind === 'village' && VIMG['1tile'].hamlet ? VIMG['1tile'].hamlet : tinted(name, b.team, 'banner'));
     const [bx, by] = this.toScreen(b.tx + b.size, b.ty + b.size);            // bottom corner of the footprint
-    let w = b.size * 2 * HW * z * (own ? (FMUL[b.kind] || 1) : mul), h = c ? (c.height / c.width) * w : 0;
+    let w = b.size * 2 * HW * z * (own ? (FMUL[b.kind] || 1) : b.kind === 'village' ? 1.1 : mul), h = c ? (c.height / c.width) * w : 0;
     if (own && h > b.size * 2 * HW * z * 1.3) { h = b.size * 2 * HW * z * 1.3; w = (c.width / c.height) * h; }   // tall towers stay slim
     const dy = by - h + b.size * HH * z * 0.34;
     // house-colour footing
@@ -439,7 +439,7 @@ export class Renderer {
     this.diamond(ctx, tx, ty, s, s);
     ctx.fillStyle = chk.ok ? 'rgba(110,200,110,0.38)' : 'rgba(210,70,70,0.4)'; ctx.fill();
     ctx.strokeStyle = chk.ok ? '#8fe08f' : '#e07070'; ctx.lineWidth = 2; ctx.stroke();
-    const [name, mul] = BSPR[ui.placing] || ['cottage', 1], own = factionSprite(HOUSES[PLAYER].faction, ui.placing), c = own || tinted(name, PLAYER, 'banner');
+    const [name, mul] = BSPR[ui.placing] || ['cottage', 1], own = factionSprite(HOUSES[PLAYER].faction, ui.placing), c = own || (ui.placing === 'village' && VIMG['1tile'].hamlet) || tinted(name, PLAYER, 'banner');
     if (c) { const [bx, by] = this.toScreen(tx + s, ty + s), w = s * 2 * HW * this.cam.zoom * (own ? (FMUL[ui.placing] || 1) : mul), h = (c.height / c.width) * w; ctx.globalAlpha = 0.55; ctx.drawImage(c, bx - w / 2, by - h + s * HH * this.cam.zoom * 0.34, w, h); ctx.globalAlpha = 1; }
     const [lx, ly] = this.toScreen(tx + s / 2, ty);
     ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center';
@@ -559,10 +559,11 @@ export function drawVale(canvas, game, { fog = false, poly = null, labels = fals
     if (labels) { ctx.font = '11px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(v.name, cx + 1, cy + s + 11); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, cx, cy + s + 10); }
   }
   for (const b of game.buildings) {
-    if (b.kind !== 'hall' && b.kind !== 'keep') continue;
+    if (b.kind !== 'keep') continue;
     if (fog && game.fogOn && b.team !== PLAYER && !seen[Math.floor(b.y) * W + Math.floor(b.x)]) continue;
     drawDisc(ctx, b.x * sx, b.y * sy, Math.max(9, sx * 3), b.team);
   }
+  for (const v of game.villages) if (v.home != null && v.owner === v.home && (!fog || !game.fogOn || v.owner === PLAYER || seen[Math.floor(v.y) * W + Math.floor(v.x)])) drawDisc(ctx, v.x * sx, v.y * sy, Math.max(9, sx * 3), v.owner);
   if (!fog) game.map.starts.slice(0, game.houses).forEach(([x, y], i) => drawDisc(ctx, (x + 1.5) * sx, (y + 1.5) * sy, Math.max(9, sx * 3), i));
   if (poly) {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); poly.forEach(([x, y], i) => (i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy))); ctx.closePath(); ctx.stroke();

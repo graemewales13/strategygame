@@ -17,7 +17,7 @@ export const FACTIONS = {
   mongols:   { label: 'Mongols',   blurb: 'Gers, banners, Bactrian camels.' },
   scottish:  { label: 'Scottish',  blurb: 'Grey stone, heather thatch, tower houses.' },
 };
-export const FACTION_BUILDINGS = ['hall', 'keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower'];
+export const FACTION_BUILDINGS = ['keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower'];
 export const HOUSES = [
   { faction: 'egyptians', name: 'House Calder', short: 'Calder', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'Hold what you till' },
   { faction: 'romans', name: 'House Varr', short: 'Varr', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', motto: 'Blood and iron' },
@@ -85,7 +85,7 @@ export const START_RES = { food: 300, wood: 480, gold: 320, stone: 60, copper: 0
 // ---- Units -------------------------------------------------------------------------------
 // speed in tiles/sec, range in tiles, cooldown in seconds, bld = damage multiplier vs buildings, vil = vs villages
 export const UNITS = {
-  serf:    { label: 'Serf',    hp: 40,  speed: 2.4, dmg: 3,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 50, wood: 0, gold: 0 },   time: 8,  from: ['hall', 'keep'], bld: 0.3, vil: 0.3, info: 'Gathers, builds, drops off. Weak in a fight.' },
+  serf:    { label: 'Serf',    hp: 40,  speed: 2.4, dmg: 3,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 50, wood: 0, gold: 0 },   time: 8,  from: ['keep'], bld: 0.3, vil: 0.3, info: 'Gathers, builds, drops off. Weak in a fight.' },
   scout:   { label: 'Scout',   hp: 55,  speed: 4.4, dmg: 5,  range: 1,   cd: 1.0,  sight: 10, cost: { food: 40, wood: 20, gold: 0 },  time: 10, from: ['keep'],         bld: 0.2, vil: 0.4, info: 'Fast and far-sighted. Maps the valley.' },
   footman: { label: 'Footman', hp: 90,  speed: 2.7, dmg: 10, range: 1,   cd: 1.1,  sight: 7,  cost: { food: 60, wood: 20, gold: 15 },  time: 14, from: ['barracks'],     bld: 0.5, vil: 1.0, info: 'Melee line infantry. Forge adds +3 damage.' },
   bowman:  { label: 'Bowman',  hp: 50,  speed: 2.8, dmg: 7,  range: 5.5, cd: 1.3,  sight: 8,  cost: { food: 40, wood: 30, gold: 30 }, time: 16, from: ['archery'],      bld: 0.35, vil: 0.8, info: 'Ranged. Forge adds +2 damage.' },
@@ -99,31 +99,31 @@ export const UNITS = {
 
 // ---- Buildings ---------------------------------------------------------------------------
 export const BUILDINGS = {
-  hall:      { label: 'Timber Hall',   size: 3, hp: 520,  sight: 8,  pop: 6, cost: null,                          time: 0,  requires: [],                      info: 'Your seat. Trains serfs, drop-off. Low HP. Raises nearby loyalty a little.' },
-  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 150, stone: 40 }, time: 36, requires: ['hall'],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; trains serfs and scouts, more pop.' },
-  cottage:   { label: 'Cottage',       size: 2, hp: 380,  sight: 5,  pop: 5, cost: { food: 0, wood: 60, gold: 0 },   time: 12, requires: ['hall'],          info: '+5 population.' },
-  farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: ['hall'],          info: 'Steady grain. +25% beside a mill.' },
-  mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['hall'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
-  warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['hall'],          info: 'Drop-off for all goods, +10% delivered.' },
-  market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: ['hall'],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets and villages. Drop-off. Small coin trickle.' },
-  forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
+  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 150, stone: 40 }, time: 36, requires: [],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; trains serfs and scouts, more pop.' },
+  cottage:   { label: 'Cottage',       size: 2, hp: 380,  sight: 5,  pop: 5, cost: { food: 0, wood: 60, gold: 0 },   time: 12, requires: ['market'],          info: '+5 population.' },
+  farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: ['cottage'],          info: 'Steady grain. +25% beside a mill.' },
+  mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['farm'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
+  warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['mine'],          info: 'Drop-off for all goods, +10% delivered.' },
+  market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: [],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets and villages. Drop-off. Small coin trickle.' },
+  forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks', 'foundry'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
   workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Trains rams.' },
-  tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: ['hall'],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
+  tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: [],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
   academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'Trains scholars. Unlocks the workshop and temple coin. Burns silver into science (3 levels).' },
   temple:    { label: 'Temple',        size: 2, hp: 590,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 50 }, time: 20, requires: ['keep'],          info: 'Strong loyalty aura. Coin trickle with an academy.' },
-  barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 40 }, time: 22, requires: ['hall'],          info: 'Trains footmen.' },
+  barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 40 }, time: 22, requires: [],          info: 'Trains footmen.' },
   archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
   stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
-  mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: ['hall'], onDeposit: true, info: 'Raised on a mineral deposit. Assign serfs to dig; ore flows into your stockpile.' },
-  foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: ['hall'], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Automatic.' },
-  village:   { label: 'Village',       size: 3, hp: 400,  sight: 7,  pop: 0, cost: { food: 100, wood: 150, gold: 30 }, time: 30, requires: ['hall'], info: 'Found a village of your own: it starts with a few settlers and grows to 50 folk. Its people pay tax, till fields, house your population, and can be drafted as serfs, miners or soldiers.' },
-  tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['hall'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
+  mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: [], onDeposit: true, info: 'Raised on a mineral deposit. Assign serfs to dig; ore flows into your stockpile.' },
+  foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: [], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Automatic.' },
+  village:   { label: 'Village',       size: 3, hp: 400,  sight: 7,  pop: 0, cost: { food: 100, wood: 150, gold: 30 }, time: 30, requires: ['keep'], info: 'Found a village of your own: it starts with a few settlers and grows to 50 folk. Its people pay tax, till fields, house your population, and can be drafted as serfs, miners or soldiers.' },
+  tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['barracks'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
-export const BUILD_ORDER_UI = ['village', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'mine', 'foundry', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'keep'];
+// basic buildings first; the rest unlock as their requirements are built (market -> cottage -> farm -> mill, mine -> warehouse, barracks -> archery ...)
+export const BUILD_ORDER_UI = ['mine', 'market', 'foundry', 'tavern', 'keep', 'barracks', 'village', 'cottage', 'farm', 'mill', 'warehouse', 'archery', 'stable', 'tower', 'forge', 'workshop', 'academy', 'temple'];
+export const BASIC_BUILDINGS = ['mine', 'market', 'foundry', 'tavern', 'keep', 'barracks'];
 
 // Which buildings accept which goods from serfs
 export const DROP_OFF = {
-  hall: ['food', 'wood', 'gold'],
   keep: ['food', 'wood', 'gold'],
   warehouse: ['food', 'wood', 'gold'],
   market: ['food', 'wood', 'gold'],
@@ -136,13 +136,12 @@ export const DROP_BONUS = { mill: { wood: 1.2 }, warehouse: { food: 1.1, wood: 1
 //  - haul: ore dug far from any of your stores loses much of its yield on the road (a warehouse or market beside a remote mine fixes it)
 //  - consumers: a market earns from the cottages and villages around it
 export const HAUL = { free: 14, far: 60, min: 0.45 };       // distance to the nearest own store: full yield up to `free`, `min` of it at `far` and beyond
-export const STORES = ['hall', 'keep', 'warehouse', 'market'];
+export const STORES = ['keep', 'warehouse', 'market'];   // (a village you hold is a store too)
 export const CONSUMERS = { base: 0.15, each: 0.09, max: 10 };   // market coin per second = base + each * (own cottages and villages in reach, up to max)
 
 // Loyalty pull: who is leaning on a village. r = radius in tiles, w = weight at the building (falls off linearly).
 // `guard`: the pull scales with the soldiers garrisoned inside or standing watch within 5 tiles (0.35 with none, full at 4).
 export const INFLUENCE = {
-  hall: { r: 14, w: 0.5, guard: true },
   keep: { r: 30, w: 1.5, guard: true },
   tower: { r: 8, w: 0.3, guard: true },
   barracks: { r: 12, w: 0.35, guard: true },
@@ -154,7 +153,7 @@ export const INFLUENCE = {
 };
 // Rule: serfs may gather only on ground you rule: within these radii of one of your finished buildings or of a village you hold.
 // (Raising buildings anywhere is how you extend your rule; influence below is how villages come over.)
-export const RULE = { hall: 20, keep: 28, village: 14, default: 10 };
+export const RULE = { keep: 28, village: 20, default: 10 };
 export const GUARD = { floor: 0.35, full: 4, watch: 5 };
 export const LOYALTY_RATE = 1.6; // loyalty/sec per unit of net pull
 export const SUBMIT_LOYALTY = 72;
@@ -171,6 +170,9 @@ export const POP_FOOD = 0.003;   // grain eaten per villager per second
 export const POP_GROW = 45;      // seconds per new villager while fed
 export const POP_HOUSING = 0.5;  // population cap you gain per villager in a village you hold
 export const SETTLE_FOOD = 20;
+// every house begins in a home village of this many folk (cap FOUND.max); there is no hall
+export const HOME_POP = 30;
+export const INFLUENCE_HOME = { r: 14, w: 0.5, guard: true };   // a village you hold leans on its neighbours a little
 export const FOUND = { pop: 4, max: 50, grow: 22, loyalty: 82 };   // a founded village: folk at the start, cap, seconds per newcomer while fed
 export const DRAFT = { minLeft: 2, mineFood: 10, soldierFood: 25, perCall: 5 };
 export const SACK = { stores: 0.8, serfs: 0.15, soldiers: 0.2, killed: 0.2 };   // share of the village's goods you carry off; share of survivors who join you as serfs or soldiers   // grain to send for one settler (a serf) from a held village
@@ -198,7 +200,7 @@ export const FOG_REVEAL_MS = 0;
 
 // ---- garrisons, recruits, castle -----------------------------------------------------------
 // Units enter a friendly building or village by right-click. Capacity per building kind:
-export const GARRISON = { hall: 4, keep: 8, tower: 3, barracks: 6 };
+export const GARRISON = { keep: 8, tower: 3, barracks: 6 };
 export const VILLAGE_GARRISON = 8;
 // who can raise buildings, and how fast compared with a serf (soldiers can build a castle beside a village they mean to sway)
 export const BUILDERS = { serf: 1, recruit: 0.5, footman: 0.6, bowman: 0.6, knight: 0.4, scout: 0.3 };

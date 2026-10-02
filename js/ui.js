@@ -8,9 +8,9 @@ import { drawCrest, drawVale } from './render.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const ART_B = new Set(['hall','keep','cottage','farm','mill','warehouse','market','forge','workshop','tavern','academy','temple','barracks','archery','stable','tower','mine','foundry']);
+const ART_B = new Set(['keep','cottage','farm','mill','warehouse','market','forge','workshop','tavern','academy','temple','barracks','archery','stable','tower','mine','foundry']);
 const ART_U = new Set(['recruit','serf','scout','footman','bowman','knight','spy','scholar']);
-const artUrl = (kind, team = PLAYER) => FIMG[HOUSES[team].faction]?.[kind] ? FIMG[HOUSES[team].faction][kind].src : kind === 'camel' ? (SIMG.dromedary?.src || camelURL()) : ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
+const artUrl = (kind, team = PLAYER) => kind === 'village' ? 'assets/shared/villages/1tile/hamlet.png' : FIMG[HOUSES[team].faction]?.[kind] ? FIMG[HOUSES[team].faction][kind].src : kind === 'camel' ? (SIMG.dromedary?.src || camelURL()) : ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
 let _camel = null;
 function camelURL() { try { return (_camel ||= camelSprite(0).toDataURL()); } catch { return null; } }
 const icon = (kind, fallback) => { const u = artUrl(kind); return u ? `<img src="${u}" alt="" draggable="false">` : fallback; };
@@ -236,7 +236,6 @@ export class UI {
     if (tg && (tg.tagName === 'TEXTAREA' || (tg.tagName === 'INPUT' && tg.type !== 'checkbox'))) { if (k === 'enter' || k === 'escape') tg.blur?.(); if (k !== 'escape') return; }
     if (k === 'escape') return this.onEsc();
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
-    if (k === 'v') { this.r.vart = this.r.vart === '1tile' ? '4tile' : '1tile'; this.toast(`Village art: ${this.r.vart === '1tile' ? '1x1' : '2x2'} board squares.`, 'info'); return; }
     if (k === 't') { this.showStand = !this.showStand; $('standings').classList.toggle('hidden', !this.showStand); return; }
     if (k === 'm' || k === 'tab') { e.preventDefault(); return this.toggleCampaign(); }
     if (this.campaignOpen) return;
@@ -262,7 +261,7 @@ export class UI {
   }
   setPaused(p) { this.paused = p; $('pausedBanner').classList.toggle('hidden', !p); }
 
-  focusHall() { const s = this.game.seatOf(PLAYER); if (!s) return; this.r.centerOn(s.x, s.y); this.sel = { type: 'building', ids: [], id: s.id }; }
+  focusHall() { const s = this.game.seatOf(PLAYER); if (!s) return; this.r.centerOn(s.x, s.y); this.sel = { type: s.type === 'village' ? 'village' : 'building', ids: [], id: s.id }; }
   selectIdleSerf() {
     const idle = this.game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && !u.inside && u.task.type === 'idle');
     if (!idle.length) return this.toast('No idle serfs.', 'info');
@@ -474,7 +473,7 @@ export class UI {
       const vs = g.villagesOf(PLAYER).length;
       html = `<div class="seltitle">${esc(HOUSES[PLAYER].name)}</div><div class="selsub">${esc(HOUSES[PLAYER].motto)}</div>
         <div class="stat"><label>Serfs</label><span>${serfs}</span></div><div class="stat"><label>Soldiers</label><span>${army}</span></div><div class="stat"><label>Villages</label><span>${vs} of ${g.villages.length}</span></div>
-        <div class="selsub">Select your hall (<b>H</b>) to build and train. Drag to select units. Right-click to act.</div>`;
+        <div class="selsub">Press <b>H</b> for your home village: draft serfs and raise buildings. Drag to select units. Right-click to act.</div>`;
     } else if (s.type === 'units') {
       const us = this.selUnits();
       if (us.length === 1) {
@@ -544,14 +543,18 @@ export class UI {
   buildGrid() {
     const g = this.game, p = g.players[PLAYER];
     let html = `<div class="ctitle">Raise a building</div><div class="cgrid">`;
+    const locked = [];
     for (const kind of BUILD_ORDER_UI) {
       const s = BUILDINGS[kind];
       const miss = s.requires.filter((r) => !g.hasBuilding(PLAYER, r)).map((r) => BUILDINGS[r].label);
+      if (miss.length) { locked.push(`${s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery')} (${miss.join(' + ')})`); continue; }   // not unlocked yet: hidden
       const afford = g.canAfford(PLAYER, s.cost);
-      const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s${miss.length ? `<br><span class="need">Needs: ${miss.join(', ')}</span>` : ''}`;
-      html += this.btn('place', { off: miss.length || !afford, glyph: GLYPH[kind], art: kind, name: s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery').replace('Timber ', ''), sub: costShort(s.cost), data: { kind }, tip });
+      const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s`;
+      html += this.btn('place', { off: !afford, glyph: GLYPH[kind], art: kind, name: s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery'), sub: costShort(s.cost), data: { kind }, tip });
     }
-    return html + `</div>`;
+    html += `</div>`;
+    if (locked.length) html += `<div class="hint">Unlocks as you build: ${esc(locked.join(', '))}.</div>`;
+    return html;
   }
   trainGrid(b) {
     const g = this.game, p = g.players[PLAYER];
@@ -667,6 +670,7 @@ export class UI {
       html += this.btn('entervillage', { glyph: '⇥', name: 'Garrison', off: !army, tip: '<b>Garrison</b><br>Sends idle soldiers inside (max 8).' });
       const free = Math.floor(v.pop) - DRAFT.minLeft, room = g.popCap(PLAYER) + 1 - g.popUsed(PLAYER), food = g.players[PLAYER].food;
       const minesOpen = g.buildings.some((b) => b.team === PLAYER && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && g.minersOf(b) < MINE_MAX_WORKERS);
+      html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serf', sub: SETTLE_FOOD + 'g', data: { role: 'serf', n: 1 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft a serf</b><br>One villager becomes a serf of yours (${SETTLE_FOOD} grain). Serfs gather, build and dig.` });
       html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serfs ×5', sub: SETTLE_FOOD * 5 + 'g', data: { role: 'serf', n: 5 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft serfs</b><br>Up to five villagers leave as serfs (${SETTLE_FOOD} grain each). They regrow while the village has grain.` });
       html += this.btn('draft', { glyph: '⛏', art: 'mine', name: 'Miners ×4', sub: DRAFT.mineFood * 4 + 'g', data: { role: 'mine', n: 4 }, off: free < 1 || room < 1 || !minesOpen || food < DRAFT.mineFood, tip: '<b>Send miners</b><br>Villagers walk to your nearest mine with free places and start digging.' });
       html += this.btn('draft', { glyph: '⚔', art: 'footman', name: 'Soldiers ×5', sub: `${DRAFT.soldierFood}g${g.hasBuilding(PLAYER, 'barracks') ? ' +15c' : ''}`, data: { role: 'soldier', n: 5 }, off: free < 1 || room < 1 || food < DRAFT.soldierFood, tip: `<b>Raise soldiers</b><br>Villagers take up spears: footmen if you have a barracks (needs coin for arms), otherwise recruits to drill in a keep. Soldiers beyond the first ${WAGE_FREE} draw pay.` });
@@ -685,14 +689,14 @@ export class UI {
     const ent = this.selEntity();
     if (s.type === 'units' && us.length) {
       if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
-      if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or hall to go inside.</div>`;
+      if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
       html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}</div>`;
       if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));
       if (us.some((u) => u.kind === 'recruit')) html += `<div class="ctitle">Role</div><div class="cgrid c4">${this.btn('spy', { glyph: GLYPH.spy, art: 'spy', name: 'Become spy', sub: SPY_FEE + 'c', off: g.players[PLAYER].gold < SPY_FEE, tip: `<b>Become a spy</b><br>${SPY_FEE} coin. Spies right-click an independent or rival village to sway its loyalty (and can be caught).` })}</div><div class="hint">Or right-click a keep to garrison, then drill into a soldier.</div>`;
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click: a deposit with a <b>mine</b> to dig, timber, berries or gold to gather, a building site to build.</div>`;
       if (!us.some((u) => u.kind === 'serf' || u.kind === 'camel' || u.kind === 'recruit')) {
         const sp = us.some((u) => u.kind === 'spy');
-        html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>hall, keep, tower, barracks</b> or a village you hold to go <b>inside</b>. Attacking a house at peace declares war.</div>`;
+        html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>keep, tower, barracks</b> or a village you hold to go <b>inside</b>. Attacking a house at peace declares war.</div>`;
       }
     } else if (ent && ent.type === 'building' && ent.team === PLAYER) {
       if (ent.built < 1) html = `<div class="hint">Under construction. Select serfs and right-click this building to help raise it.</div>`;
@@ -704,7 +708,7 @@ export class UI {
         else if (GARRISON[ent.kind] && ent.garrison.length) html += `<div class="cgrid" style="margin-top:6px">${this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' })}</div>`;
         if (ent.kind === 'mine') html += `<div class="ctitle">Diggers</div><div class="cgrid">${this.btn('mineidle', { glyph: '⛏', name: 'Send serfs', tip: '<b>Assign serfs</b><br>Sends the nearest idle or gathering serfs to dig here (max 4).' })}${this.btn('unmine', { glyph: '■', name: 'Release', tip: '<b>Release diggers</b><br>They stand down.' })}</div><div class="hint">Or select serfs and right-click the mine or the deposit. Ore goes straight into your stockpile.</div>`;
         if (ent.kind === 'foundry') html += `<div class="hint">Smelts on its own from your stockpile: <b>iron + coal → steel</b> (forges turn it into arms), <b>copper + coal → fine ware</b> (content villages). Sell the surplus through a market's camels.</div>`;
-        if (ent.kind === 'hall' || ent.kind === 'keep') html += this.buildGrid();
+        if (ent.kind === 'keep') html += this.buildGrid();
         if (!html) html = `<div class="hint">${esc(BUILDINGS[ent.kind].info)}</div>`;
         else if (Object.values(UNITS).some((u) => u.from.includes(ent.kind))) html += `<div class="hint">Right-click the field to set a <b>rally point</b>; on a resource, new serfs gather it.</div>`;
       }
@@ -717,7 +721,7 @@ export class UI {
       const n = g.resources[s.id], mined = MINEABLE.includes(n.kind), hasMine = mined && g.buildings.some((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(n.id));
       html = `<div class="ctitle">Options</div><div class="cgrid">${mined && !hasMine ? this.btn('minehere', { glyph: '⛏', art: 'mine', name: 'Build mine', sub: costShort(BUILDINGS.mine.cost), off: !g.canAfford(PLAYER, BUILDINGS.mine.cost), tip: `<b>Mine</b><br>Raised beside the deposit; then assign serfs. <span class="cost">${costText(BUILDINGS.mine.cost, g.players[PLAYER])}</span>` }) : ''}${!mined ? this.btn('gathernode', { glyph: '⚒', name: 'Gather', sub: '4 idle serfs', tip: '<b>Gather</b><br>Sends up to four idle serfs.' }) : ''}</div><div class="hint">${mined ? (hasMine ? 'A mine stands here: select it to send diggers.' : 'Ore needs a <b>Mine</b>. Once built, serfs dig it into your stockpile.') : 'Select serfs and right-click to gather.'}</div>`;
     } else {
-      html = `<div class="hint">Press <b>H</b> for your hall. From the hall: <b>train serfs</b> and <b>raise buildings</b>. Right-click timber, berries or gold with serfs to gather. <b>M</b> opens the campaign map.</div>`;
+      html = `<div class="hint">Press <b>H</b> for your home village: <b>draft serfs</b> and <b>raise buildings</b>. Right-click timber, berries or gold with serfs to gather. <b>M</b> opens the campaign map.</div>`;
     }
     if (html !== this.sigCmd) { this.sigCmd = html; $('cmdPanel').innerHTML = html; }
   }

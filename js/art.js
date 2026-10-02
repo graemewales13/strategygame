@@ -28,7 +28,7 @@ export function loadArt() {
     jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { IMG[n] = i; res(); }; i.onerror = () => res(); i.src = `assets/world/${dir}/${n}.png`; }));
   }
   for (const f of Object.keys(FACTIONS)) { FIMG[f] = {}; for (const k of FACTION_BUILDINGS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { FIMG[f][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/factions/${f}/buildings/${k}.png`; })); }
-  for (const sz of ['1tile', '4tile']) for (const k of VILLAGE_ART_KEYS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { VIMG[sz][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/${sz}/${k}.png`; }));
+  for (const sz of ['1tile']) for (const k of VILLAGE_ART_KEYS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { VIMG[sz][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/${sz}/${k}.png`; }));
   for (const n of SHARED) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { SIMG[n.split('/')[1]] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/${n}.png`; }));
   return Promise.all(jobs);
 }

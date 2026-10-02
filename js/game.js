@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, MARKET_RADIUS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -86,14 +86,19 @@ export class Game {
 
     map.villages.forEach((spec) => this.addVillage(spec));
     map.starts.slice(0, n).forEach(([sx, sy], team) => {
-      this.addBuilding('hall', team, sx, sy, true);
+      // no hall: a house begins in its home village of thirty folk, with three serfs already at work
+      const names = FOUNDED[HOUSES[team].faction] || FOUNDED.british;
+      const v = this.addVillage({ kind: 'hamlet', name: names[0], tx: sx, ty: sy });
+      v.owner = team; v.lean = team; v.home = team; v.founded = true; v.loyalty = FOUND.loyalty + 10;
+      v.pop = HOME_POP; v.popMax = FOUND.max; v.stores = { food: 140, wood: 10, gold: 10 };
+      v.protection = v.maxProtection = 320; v.hp = v.maxHp = 320;
       this.addUnit('serf', team, sx + 1.2, sy + 3.6);
       this.addUnit('serf', team, sx + 2.0, sy + 3.6);
       this.addUnit('serf', team, sx + 2.8, sy + 3.6);
     });
     this.recomputeWalk();
     this.updateVisibility(true);
-    this.log(PLAYER, `${this.biomeLabel}. A hall, three serfs and a starting purse: train serfs, raise cottages, a farm and a mine, then claim villages.`, 'info');
+    this.log(PLAYER, `${this.biomeLabel}. Your home village of thirty folk, three serfs and a starting purse: draft more serfs, raise a mine, a market and a keep, then claim the villages around you.`, 'info');
   }
 
   nid() { return this.nextId++; }
@@ -134,8 +139,7 @@ export class Game {
   // ------------------------------------------------------------------ queries
   alive(team) { return this.players[team]?.alive; }
   isEnemy(a, b) { return a !== b && b >= 0 && this.rel[a][b] === 'war'; }
-  // a keep stands in for a lost hall (it is the other seat of the house), so a house that loses its hall can still raise buildings
-  hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && (b.kind === kind || (kind === 'hall' && b.kind === 'keep')) && b.built >= 1 && b.hp > 0); }
+  hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
   popUsed(team) {
     let n = 0;
     for (const u of this.units) if (u.team === team && u.hp > 0) n++;
@@ -157,8 +161,11 @@ export class Game {
     const p = this.players[team];
     for (const k in cost) if (cost[k]) p[k] -= cost[k] * sign;
   }
+  // the seat of a house: its home village while it holds it, else a keep, else any village it holds
   seatOf(team) {
-    return this.buildings.find((b) => b.team === team && b.kind === 'keep' && b.hp > 0) || this.buildings.find((b) => b.team === team && b.kind === 'hall' && b.hp > 0);
+    return this.villages.find((v) => v.home === team && v.owner === team)
+      || this.buildings.find((b) => b.team === team && b.kind === 'keep' && b.hp > 0)
+      || this.villages.find((v) => v.owner === team);
   }
   villagesOf(team) { return this.villages.filter((v) => v.owner === team); }
   militaryOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && !u.inside); }
@@ -233,6 +240,11 @@ export class Game {
       if (!DROP_OFF[b.kind] || !DROP_OFF[b.kind].includes(res)) continue;
       const d = distTo(u.x, u.y, b);
       if (d < bd) { best = b; bd = d; }
+    }
+    if (res === 'food' || res === 'wood' || res === 'gold') for (const v of this.villages) {   // a village you hold takes goods too
+      if (v.owner !== u.team) continue;
+      const d = distTo(u.x, u.y, v);
+      if (d < bd) { best = v; bd = d; }
     }
     return best;
   }
@@ -423,7 +435,12 @@ export class Game {
     const eu = this.unitAt(x, y, 0.75);
     if (eu && eu.team !== team && this.canSee(team, eu.x, eu.y)) return this.cmdAttack(units, eu);
     const v = this.villageAt(x, y);
-    if (v && v.owner === team) return this.cmdEnter(units, v);
+    if (v && v.owner === team) {
+      const carriers = units.filter((u) => u.kind === 'serf' && u.carry && ['food', 'wood', 'gold'].includes(u.carry.kind));
+      carriers.forEach((u) => { u.task = { type: 'return', resume: null }; this.setPathToEntity(u, v); });
+      const rest = units.filter((u) => !carriers.includes(u));
+      return rest.length ? this.cmdEnter(rest, v) : true;
+    }
     if (v && v.owner !== team && this.wasSeen(team, v.x, v.y)) {
       const spies = units.filter((u) => u.kind === 'spy'), rest = units.filter((u) => u.kind !== 'spy' && u.kind !== 'serf' && u.kind !== 'scholar');
       if (spies.length) this.cmdInfiltrate(spies, v);
@@ -464,7 +481,7 @@ export class Game {
     return this.cmdMove(units, x, y);
   }
 
-  // ---- garrisons: right-click a friendly hall, keep, tower, barracks or village to go inside --------------------
+  // ---- garrisons: right-click a friendly keep, tower, barracks or village to go inside --------------------
   garrisonCap(t) { return t.type === 'village' ? VILLAGE_GARRISON : (GARRISON[t.kind] || 0); }
   cmdEnter(units, t) {
     if (!t || t.hp <= 0 && t.type !== 'village') return false;
@@ -832,6 +849,7 @@ export class Game {
     if (b._haulT === undefined || this.time - b._haulT > 5) {
       let d = 1e9;
       for (const o of this.buildings) if (o.team === b.team && o.hp > 0 && o.built >= 1 && STORES.includes(o.kind)) d = Math.min(d, Math.hypot(o.x - b.x, o.y - b.y));
+      for (const v of this.villages) if (v.owner === b.team) d = Math.min(d, Math.hypot(v.x - b.x, v.y - b.y));
       b._haul = d <= HAUL.free ? 1 : Math.max(HAUL.min, 1 - (1 - HAUL.min) * (d - HAUL.free) / (HAUL.far - HAUL.free));
       b._haulT = this.time;
     }
@@ -1254,7 +1272,7 @@ export class Game {
       const fee = this.feeFor(u, t), r = (this.priceAt(t, give) / this.priceAt(t, want)) * (1 - fee), avail = this.availFor(t, want);
       const total = this.cargoTotal(u);
       let s = Math.floor(u.cargo[give]);
-      for (; s > 0; s--) { const got = Math.floor(s * r); if (got <= avail && total - s + got <= CAMEL_CAP) break; }
+      for (; s > 0; s--) { const got = Math.floor(s * r); if (got <= avail && (want === 'gold' || total - s + got <= CAMEL_CAP)) break; }   // coin is light: it never fills the saddlebags
       const got = Math.floor(s * r);
       if (s < 1 || got < 1) continue;
       if (t.type === 'village') { t.stores[want] -= got; t.stores[give] = (t.stores[give] || 0) + s; }
@@ -1514,6 +1532,12 @@ export class Game {
       if (inf.guard) p *= GUARD.floor + (1 - GUARD.floor) * Math.min(1, this.guardOf(b) / GUARD.full);
       if (b.kind === 'academy') p *= 1 + 0.3 * (b.scholars || 0);
       pulls[b.team] += p;
+    }
+    for (const o of this.villages) {   // villages you hold lean on the ones around them, steadier with soldiers inside
+      if (o === v || o.owner < 0) continue;
+      const d = Math.hypot(v.x - o.x, v.y - o.y), inf = INFLUENCE_HOME;
+      if (d >= inf.r) continue;
+      pulls[o.owner] += (1 - d / inf.r) * inf.w * (GUARD.floor + (1 - GUARD.floor) * Math.min(1, o.garrison.length / GUARD.full));
     }
     for (const w of v.news || []) pulls[w.team] += w.amt;   // word brought by wanderers from a village that team holds
     return pulls;
@@ -1876,8 +1900,7 @@ export class Game {
     if (rebuilt) this.recomputeWalk();
     for (const p of this.players) {
       if (!p.alive) continue;
-      const seat = this.buildings.some((b) => b.team === p.team && (b.kind === 'hall' || b.kind === 'keep') && b.hp > 0);
-      if (!seat) this.eliminate(p.team);
+      if (!this.seatOf(p.team)) this.eliminate(p.team);
     }
   }
 
@@ -1893,7 +1916,7 @@ export class Game {
 
   checkEnd(dt) {
     const living = this.players.filter((p) => p.alive).map((p) => p.team);
-    if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', reason: 'Your hall and keep are gone.' }; return; }
+    if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', reason: 'Your villages and castles are gone.' }; return; }
     if (living.length === 1) { this.outcome = { result: 'victory', reason: 'Every rival house has fallen.' }; return; }
     // village share victory: hold VILLAGE_WIN_SHARE of all villages for VILLAGE_WIN_HOLD seconds
     const need = Math.ceil(this.villages.length * VILLAGE_WIN_SHARE);

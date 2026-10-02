@@ -1,11 +1,12 @@
 
-== seed 6: defeat (Your hall and keep are gone.) at 20:51
-  speed: 166x realtime, slowest tick 15.9 ms
-  House Calder FALLEN serfs 0 army 0 camels 0 villages 0 | bld 0 (mines 0 market 0 tavern 0 keep 0) | grain 47 timber 219 coin 74 stone 179 iron 8 coal 5 steel 10 arms 3 sci 2
-  House Varr   FALLEN serfs 0 army 0 camels 0 villages 0 | bld 0 (mines 0 market 0 tavern 0 keep 0) | grain 23 timber 111 coin 5 stone 122 iron 10 coal 1 steel 6 arms 3 sci 3
-  House Cael   FALLEN serfs 0 army 0 camels 0 villages 0 | bld 0 (mines 0 market 0 tavern 0 keep 0) | grain 4 timber 138 coin 692 stone 128 iron 10 coal 10 steel 0 arms 0 sci 0
-  House Thorn  alive serfs 17 army 11 camels 2 villages 5 | bld 24 (mines 3 market 1 tavern 1 keep 0) | grain 43 timber 185 coin 5 stone 150 iron 57 coal 0 steel 0 arms 2 sci 1
-  exchanges 177; treaties 2; wars 4
+== seed 3: no result at 15:00
+  speed: 113x realtime, slowest tick 22.9 ms
+  House Calder alive serfs 21 army 32 camels 2 villages 8 | bld 24 (mines 3 market 1 tavern 1 keep 1) | grain 544 timber 99 coin 537 stone 158 iron 51 coal 0 steel 0 arms 2 sci 0
+  House Varr   alive serfs 2 army 0 camels 0 villages 2 | bld 0 (mines 0 market 0 tavern 0 keep 0) | grain 13 timber 80 coin 211 stone 99 iron 0 coal 4 steel 0 arms 0 sci 0
+  House Cael   alive serfs 21 army 21 camels 2 villages 5 | bld 22 (mines 3 market 1 tavern 1 keep 1) | grain 700 timber 533 coin 580 stone 115 iron 0 coal 137 steel 1 arms 0 sci 0
+  House Thorn  alive serfs 21 army 16 camels 2 villages 12 | bld 23 (mines 3 market 1 tavern 1 keep 1) | grain 954 timber 73 coin 249 stone 144 iron 179 coal 0 steel 0 arms 1 sci 1
+  exchanges 64; treaties 3; wars 3
 
 == anomalies
-  none
+  x3    population capped with timber to spare and no cottage rising (first @830s: seed 3: team 1 pop 10/8 wood 73 serfs 10 afford true spots 0 {"Needs a Market":2025} bld )
+  x1    over half the serfs idle (first @700s: seed 3: team 1: 5/9)

@@ -1,14 +1,14 @@
 // Seven Holds - rival houses. They run on the host and play through the same game methods a player's intents reach.
-// They start with a hall and two serfs only: no keep, no army. They train serfs, gather, build in a fixed order,
+// They start with a home village of thirty folk and three serfs: no keep, no army. They train serfs, gather, build in a fixed order,
 // raise a keep toward the nearest free village, contest villages, send a spy, then eventually go to war.
 
 import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, WAGE_FREE, ALL_GOODS, RES_VALUE } from './config.js';
 
 const WAR_AFTER = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
-  ['cottage', 1], ['farm', 1], ['mine', 1], ['market', 1], ['barracks', 1], ['cottage', 2], ['mill', 1], ['mine', 2], ['warehouse', 1], ['keep', 1], ['cottage', 3], ['tavern', 1], ['archery', 1],
-  ['farm', 2], ['mine', 3], ['forge', 1], ['foundry', 1], ['cottage', 4], ['stable', 1], ['temple', 1], ['academy', 1], ['cottage', 5],
-  ['tower', 1], ['workshop', 1], ['farm', 3], ['cottage', 6], ['cottage', 7],
+  ['mine', 1], ['market', 1], ['barracks', 1], ['cottage', 1], ['tavern', 1], ['keep', 1], ['farm', 1], ['cottage', 2], ['mine', 2], ['warehouse', 1], ['foundry', 1], ['mill', 1],
+  ['archery', 1], ['cottage', 3], ['forge', 1], ['mine', 3], ['stable', 1], ['temple', 1], ['academy', 1], ['village', 1], ['cottage', 4], ['farm', 2],
+  ['tower', 1], ['workshop', 1], ['cottage', 5], ['cottage', 6], ['cottage', 7],
 ];
 
 export function updateAI(game, dt) {
@@ -29,16 +29,17 @@ function think(game, team, p) {
   const serfs = game.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0);
   const t = game.time;
 
-  // 1. serfs first: from the hall (or keep)
+  // 1. serfs first: drafted from the home village (or trained at a keep)
   const serfWant = 5 + Math.min(11, Math.floor(t / 55));
   if (serfs.length + queued(game, team, 'serf') < serfWant) {
-    const trainer = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && UNITS.serf.from.includes(b.kind) && b.queue.length < 2);
-    if (trainer) game.train(team, trainer.id, 'serf');
+    const keepT = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && UNITS.serf.from.includes(b.kind) && b.queue.length < 2);
+    if (keepT) game.train(team, keepT.id, 'serf');
+    else if (seat.type === 'village') game.draft(team, seat.id, Math.min(2, serfWant - serfs.length), 'serf');
   }
 
   // 2. build in order; make room for population when it is about to cap
   const building = game.buildings.filter((b) => b.team === team && b.built < 1 && b.hp > 0).length;
-  const needCottage = game.popUsed(team) + 2 >= game.popCap(team) && !game.buildings.some((b) => b.team === team && b.kind === 'cottage' && b.built < 1);
+  const needCottage = game.hasBuilding(team, 'market') && game.popUsed(team) + 2 >= game.popCap(team) && !game.buildings.some((b) => b.team === team && b.kind === 'cottage' && b.built < 1);
   if (building < 2 || needCottage && building < 4) {
     let next = null;
     if (needCottage && serfs.length) next = 'cottage';
@@ -180,12 +181,12 @@ function think(game, team, p) {
       const ready = army.filter((u) => u.task.type === 'idle');
       if (ready.length >= 7) {
         const foe = game.buildings.filter((b) => b.team === target.team && b.hp > 0)
-          .sort((a, c) => (c.kind === 'keep' || c.kind === 'hall' ? 1 : 0) - (a.kind === 'keep' || a.kind === 'hall' ? 1 : 0) || Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
+          .sort((a, c) => (c.kind === 'keep' ? 1 : 0) - (a.kind === 'keep' ? 1 : 0) || Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
         if (foe) game.cmdAttack(ready, foe);
       }
     }
   } else {
-    // return stragglers to the hall
+    // return stragglers home
     for (const u of army) if (u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) > 12) game.cmdMove([u], seat.x + (Math.random() - 0.5) * 4, seat.y + 4);
   }
 }

@@ -78,3 +78,6 @@ Symptom: AI houses sat on 500-900 coin by minute 8 and earned most of it from vi
 
 ### T-032 Market built late starved the early economy
 AI plan put the market after the forge (minute 8). Moved to fourth building.
+
+### T-033 Timber hall removed
+The hall is gone: every house starts with an owned home village of 30 folk (the seat) and three serfs. Only mine, market, foundry, tavern, keep and barracks are available at first; the rest unlock through the `requires` chain and the build grid hides locked buildings. Village build button had no image (icon pointed at a removed path): now uses the 1tile hamlet art. Camels could not swap goods for coin when full (cap check counted coin): coin is now weightless for that check.
