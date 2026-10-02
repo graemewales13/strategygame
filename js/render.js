@@ -4,7 +4,7 @@ import {
   PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG, SIMG, VIMG, factionSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG, SIMG, VIMG, PVIL, factionSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -12,7 +12,7 @@ const GOLD = '#e2c15e';
 const GROUND_RGB = [[74, 118, 58], [128, 98, 54], [38, 92, 118], [140, 100, 56], [146, 132, 68], [194, 172, 112], [98, 94, 90], [224, 230, 236]];
 
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
-const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
+const BSPR = { village: ['cottage_thatch', 1.5], hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
 const FMUL = { hall: 1.08, keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, warehouse: 1.0, market: 1.05, forge: 1.0, foundry: 1.0, workshop: 1.0, tavern: 1.0, academy: 1.0, temple: 1.0, barracks: 1.05, archery: 1.05, stable: 1.0, tower: 0.9 }; // width of a people's own sprite, in footprints
 // which painted village stands for each kind, and how wide it draws (tiles) at 1x1 and 2x2 board size
 const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fortified', abbey: 'farm', inn: 'fishing', farm: 'farm' };
@@ -280,7 +280,8 @@ export class Renderer {
     ctx.fillStyle = f ? f.primary : '#8a7a50'; ctx.globalAlpha = f ? 0.2 : 0.12; ctx.fill(); ctx.globalAlpha = 1;
     if (f) { ctx.strokeStyle = f.accent; ctx.lineWidth = 2; ctx.globalAlpha = 0.75; ctx.stroke(); ctx.globalAlpha = 1; }
     const comp = VCOMP[v.kind] || VCOMP.hamlet;
-    const vsz = this.vart || '4tile', vart = VIMG[vsz]?.[VART[v.kind] || 'hamlet'];
+    const vsz = this.vart || '4tile', stage = (v.pop || 0) <= 15 ? 'hamlet' : (v.pop || 0) <= 35 ? 'village' : 'town';
+    const vart = (v.founded && v.owner >= 0 && PVIL[HOUSES[v.owner].faction]?.[stage]) || VIMG[vsz]?.[VART[v.kind] || 'hamlet'];
     const grow = 0.85 + 0.3 * Math.min(1, (v.pop || 0) / 50);   // fuller villages look it
     const parts = vart ? [{ name: '#v', img: vart, dx: 0, dy: 0.2, w: VWIDE[vsz] * grow }] : comp.map(([name, dx, dy, w]) => ({ name, dx, dy, w })).sort((a, b) => a.dx + a.dy - (b.dx + b.dy));
     let top = 1e9, midx = 0, left = 1e9, right = -1e9, bottom = -1e9;

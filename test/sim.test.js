@@ -636,4 +636,87 @@ test('routes: a camel shuttles shelf goods to a village and brings back coin, re
   assert.equal(g.standings()[0].money, Math.floor(p.gold));
 });
 
+test('names: every unit has a name from its people, unique within the house', () => {
+  const g = new Game({ seed: 4, houses: 4, ai: false });
+  for (let i = 0; i < 30; i++) g.addUnit('serf', 0, g.seatOf(0).x + 2, g.seatOf(0).y + 4);
+  const us = g.units.filter((u) => u.team === 0);
+  assert.ok(us.every((u) => u.name && u.name.includes(' ')), 'all named');
+  assert.equal(new Set(us.map((u) => u.name)).size, us.length, 'unique');
+  assert.notEqual(g.units.find((u) => u.team === 1).name.split(' ')[0], '', 'rivals named too');
+});
+
+test('wages: soldiers beyond the household cost coin; an empty purse breeds desertion and weak blows', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false }); const p = g.players[0];
+  for (let i = 0; i < 14; i++) g.addUnit('footman', 0, g.seatOf(0).x + 3, g.seatOf(0).y + 5);
+  run(g, 2);
+  assert.ok(Math.abs(p.wageRate - 10 * 0.05) < 0.001, 'ten paid soldiers: ' + p.wageRate);
+  const g0 = p.gold; run(g, 60);
+  assert.ok(g0 - p.gold >= 28 && g0 - p.gold <= 32, 'a minute of pay: ' + (g0 - p.gold));
+  p.gold = 0; run(g, 100);
+  assert.ok(p.broke, 'broke');
+  assert.ok(g.units.filter((u) => u.team === 0 && u.kind === 'footman').length < 14, 'deserters');
+  assert.equal(g.units.filter((u) => u.team === 0 && u.kind === 'footman').length >= 4, true, 'the household guard stays');
+});
+
+test('selling: a market buys the stockpile; price sags with each sale and recovers', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false }); const p = g.players[0];
+  const mk = placeNear(g, 0, 'market'); p.iron = 200;
+  const first = g.sellPrice(mk, 'iron');
+  const got = g.sellGoods(0, mk.id, 'iron', 60);
+  assert.ok(got > 30 && p.iron === 140, 'sold 60 iron for ' + got);
+  assert.ok(g.sellPrice(mk, 'iron') < first * 0.6, 'glut');
+  assert.ok(p.inc && p.acc.sales > 0, 'booked as sales');
+  run(g, 120);
+  assert.ok(g.sellPrice(mk, 'iron') > first * 0.85, 'recovers');
+  assert.equal(g.applyIntent({ type: 'sell', team: 0, marketId: mk.id, good: 'gold', amount: 5 }), false);
+});
+
+test('village: a founded village grows to 50, drafts serfs, miners and soldiers; soldiers can raise a keep', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false }); const p = g.players[0]; g.fogOn = false;
+  p.wood = 2000; p.food = 2000; p.gold = 2000; p.stone = 300;
+  const h = g.seatOf(0); g.addBuilding('cottage', 0, h.tx - 6, h.ty, true); g.addBuilding('cottage', 0, h.tx - 6, h.ty + 3, true); g.addBuilding('cottage', 0, h.tx - 6, h.ty + 6, true);
+  let site = null;
+  for (let r = 6; r < 18 && !site; r++) for (let a = 0; a < 60 && !site; a++) { const tx = Math.round(h.x + Math.cos(a / 60 * 6.283) * r - 1.5), ty = Math.round(h.y + Math.sin(a / 60 * 6.283) * r - 1.5); if (g.canPlace(0, 'village', tx, ty).ok) site = [tx, ty]; }
+  assert.ok(site, 'a site');
+  const b = g.place(0, 'village', site[0], site[1]);
+  assert.ok(b, 'placed'); run(g, 70);
+  const v = g.villages.find((x) => x.owner === 0 && x.founded);
+  assert.ok(v, 'village founded'); assert.equal(v.popMax, 50); assert.ok(v.pop >= 4 && v.pop < 9, 'starts small: ' + v.pop);
+  assert.ok(!g.buildings.includes(b), 'the site becomes the village');
+  v.pop = 30; v.stores.food = 90;
+  assert.equal(g.draft(0, v.id, 3, 'serf'), 3); assert.equal(Math.round(v.pop), 27);
+  const m = g.addBuilding('mine', 0, h.tx + 5, h.ty + 6, true); m.nodeIds = []; m.ore = 'stone';
+  assert.equal(g.draft(0, v.id, 2, 'mine') > 0, true);
+  assert.ok(g.units.some((u) => u.team === 0 && u.task.type === 'mine'), 'miners dig');
+  g.addBuilding('barracks', 0, h.tx + 6, h.ty - 6, true);
+  assert.equal(g.draft(0, v.id, 4, 'soldier'), 4);
+  assert.ok(g.units.filter((u) => u.kind === 'footman' && u.origin === v.name).length === 4, 'footmen from the village');
+  // soldiers raise a keep
+  const kp = g.place(0, 'keep', h.tx + 8, h.ty + 8, g.units.filter((u) => u.kind === 'footman').map((u) => u.id));
+  if (kp) { run(g, 5); assert.ok(g.units.some((u) => u.kind === 'footman' && u.task.type === 'build'), 'soldiers build'); }
+  v.pop = 1; assert.equal(g.draft(0, v.id, 1, 'serf'), 0, 'the village is never emptied');
+  run(g, 600); const v2 = g.villages.find((x) => x.founded); assert.ok(v2.pop > 10, 'it grows: ' + v2.pop);
+});
+
+test('sack: the victor takes the stores and the survivors take service as serfs and soldiers', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false }); const p = g.players[0];
+  const v = g.villages.find((x) => x.kind === 'mine'); v.pop = 20; v.owner = -1; v.stores.gold = 100; v.stores.iron = 40;
+  const gold0 = p.gold, iron0 = p.iron, units0 = g.units.length;
+  g.submit(v, 0, 'pillage');
+  assert.ok(p.gold >= gold0 + 70, 'coin taken: ' + (p.gold - gold0)); assert.ok(p.iron >= iron0 + 30, 'iron taken');
+  assert.ok(g.units.length >= units0 + 3, 'survivors join: ' + (g.units.length - units0));
+  assert.ok(v.pop < 16, 'the village shrank');
+  assert.ok(g.events.some((e) => /take service/.test(e.text)), 'logged');
+  const v2 = g.villages.find((x) => x.kind === 'hamlet'); v2.pop = 10; const n = g.units.length; g.submit(v2, 1, 'castle');
+  assert.equal(g.units.length, n, 'a peaceful submission brings no loot');
+});
+
+test('keep: holds up to eight soldiers', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false }); const h = g.seatOf(0);
+  const keep = g.addBuilding('keep', 0, h.tx + 6, h.ty, true); g.recomputeWalk();
+  const us = Array.from({ length: 10 }, () => g.addUnit('footman', 0, keep.x, keep.ty + 5));
+  g.cmdEnter(us, keep); run(g, 30);
+  assert.equal(keep.garrison.length, 8);
+});
+
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

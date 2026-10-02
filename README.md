@@ -131,3 +131,19 @@ Money is the first measure of a house; the others are land influence (villages h
 
 ## Peoples and painted kits
 Six peoples (`FACTIONS` in config): Egyptians, Romans, Vikings, British, Mongols, Scottish. Each house has a `faction` (Calder Egyptians, Varr Romans, Cael Scottish, Thorn British, Ash Mongols). Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Camels draw as dromedary (Mongols: Bactrian, Romans: donkey); the ram and hamlet use the shared art. Vikings still need their 18 buildings.
+
+## Money and manpower (the economy)
+Start: hall, **three serfs**, 300 grain, 480 timber, **320 coin**, 60 stone. Coin is booked by source (hover the coin counter; the green/red figure beside it is net income per second after army pay). `node tools/econ.js [minutes] [seed] [team]` prints a per-minute table of any rival house.
+
+| Flow | How |
+| --- | --- |
+| Income | digging or panning gold (0.6–0.7/s a serf; seams are finite), **selling the stockpile at a market** (60% of worth, each sale lowers the price, it recovers), caravans on routes (profit over worth), market consumers, taverns, **village tax** (0.011/s per villager), village tribute, sacks |
+| Upkeep | **army pay**: footman 0.05, bowman 0.065, knight 0.12 coin/s each beyond the first four (household guard). An empty purse for 20 s: soldiers hit at 70% and one deserts every 30 s |
+| Up-front | footman 15c, bowman 30c, knight 80c, keep 150c, barracks 40c, village 30c plus timber and grain |
+| Manpower | hall 6 + cottage 5 + keep 8 + half of the folk of every village you hold. Serfs 50 grain / 8 s. Villages feed more: **draft** serfs (20 grain), miners (10) or soldiers (25) |
+
+## Villages you found
+Build **Village** (hall, 100 grain, 150 timber, 30 coin, 30 s). When serfs finish it, it becomes a living village of 4 settlers that grows (one every 22 s while fed; it tills its own fields) to **50**. It looks bigger at 16 and 36 folk. Select it: **Serfs ×5**, **Miners ×4** (to the nearest mine with free places), **Soldiers ×5** (footmen if you have a barracks and coin, else recruits). Never emptied below 2 folk.
+**Sack**: when soldiers take a village by force you carry off 80% of its stores (coin included); a fifth of the folk die, and of the survivors 15% become serfs and 20% soldiers (40% in a hillfort or inn) as long as you have room. Winning by influence or a spy brings no loot.
+**Castles**: serfs and soldiers can raise a keep beside a village (soldiers at 60% speed); a keep garrisons up to **8** soldiers.
+**Names**: every unit is named from its people's pool (`js/names.js`), shown in the selection panel and over selected units.

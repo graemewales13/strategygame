@@ -2,7 +2,7 @@
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
+  VILLAGE_WIN_HOLD, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 
@@ -310,6 +310,8 @@ export class UI {
         if (ids.length) this.host.send({ type: 'stoproute', ids });
         break;
       }
+      case 'sell': { const m = this.selEntity(); if (m && m.kind === 'market') this.host.send({ type: 'sell', marketId: m.id, good: d.good, amount: 20 }); break; }
+      case 'draft': { const v = this.selEntity(); if (v) this.host.send({ type: 'draft', villageId: v.id, role: d.role, n: +d.n }); break; }
       case 'settle': { const v = this.selEntity(); if (v) this.host.send({ type: 'settle', villageId: v.id }); break; }
       case 'sendspy': case 'sendarmy': case 'sendcamel': case 'entervillage': {
         const v = this.selEntity(); if (!v) break;
@@ -406,6 +408,14 @@ export class UI {
   renderTop() {
     const g = this.game, p = g.players[PLAYER];
     $('r-food').textContent = Math.floor(p.food); $('r-wood').textContent = Math.floor(p.wood); $('r-gold').textContent = Math.floor(p.gold);
+    {
+      const inc = Object.values(p.inc || {}).reduce((a, v) => a + v, 0), net = inc - (p.wageRate || 0);
+      const el = $('r-net'), txt = `${net >= 0 ? '+' : '−'}${Math.abs(net).toFixed(1)}/s`;
+      if (el.textContent !== txt) el.textContent = txt;
+      el.className = net >= 0 ? 'up' : 'down';
+      const parts = INCOME_SOURCES.filter((k) => (p.inc?.[k] || 0) >= 0.005).map((k) => `${k} +${p.inc[k].toFixed(2)}`);
+      $('r-gold').parentElement.dataset.tip = encodeURIComponent(`<b>Treasury</b><br>Income ${inc.toFixed(2)}/s${parts.length ? ': ' + parts.join(', ') : ''}<br>Army pay −${(p.wageRate || 0).toFixed(2)}/s (the first ${WAGE_FREE} soldiers are household)${p.broke ? '<br><span class="need">Purse empty: soldiers fight at 70% and desert.</span>' : ''}`);
+    }
     const used = g.popUsed(PLAYER), cap = g.popCap(PLAYER);
     {
       const parts = [];
@@ -506,7 +516,7 @@ export class UI {
       const v = g.byId.get(s.id); if (!v) { this.clearSel(); return; }
       const k = VILLAGE_KINDS[v.kind], lord = v.owner >= 0 ? HOUSES[v.owner].name : 'Independent';
       const tr = k.tribute;
-      html = `<div class="seltitle">${esc(v.name)} <small style="color:#cdbb8a;font-size:12px">${k.label}</small></div><div class="selsub">${esc(k.blurb)}</div>
+      html = `<div class="seltitle">${esc(v.name)} <small style="color:#cdbb8a;font-size:12px">${v.founded ? 'Village' : k.label}</small></div><div class="selsub">${v.founded ? 'Founded by your house. Its folk till, pay tax and can be drafted.' : esc(k.blurb)}${v.owner === PLAYER ? ` Tax <b>+${(v.pop * TAX * (v.loyalty / 100)).toFixed(2)}</b> coin/s.` : ''}</div>
         <div class="stat"><label>Lord</label><span>${esc(lord)}</span></div>
         <div class="stat"><label>Loyalty</label><div class="meter"><i class="loy" style="width:${v.loyalty}%"></i></div><span class="v">${v.loyalty | 0}</span></div>
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
@@ -592,7 +602,8 @@ export class UI {
     const g = this.game, shelf = b.stock || {}, any = ALL_GOODS.some((k) => (shelf[k] || 0) >= 1);
     let html = `<div class="tentwrap"><div class="tcol"><div class="ctitle">Treaties (houses you have met)</div>${this.treatyRows()}<div class="hint">Trade treaties let your camels use their markets and villages. Independent mining villages need none.</div></div>`;
     html += `<div class="tcol"><div class="ctitle">Shelf (fed by mines, foundries, farms, mills and warehouses within ${MARKET_RADIUS} tiles)</div>${any ? this.goodChips(shelf, '', null, SHELF_CAP) : '<div class="hint">Empty: raise a mine, foundry, farm or warehouse near this market.</div>'}`;
-    const me = g.players[PLAYER];
+    const me = g.players[PLAYER], sellable = ALL_GOODS.filter((k) => k !== 'gold' && (me[k] || 0) >= 1);
+    html += `<div class="ctitle">Sell from your stockpile (click = 20) · price falls as you sell</div>${sellable.length ? `<div class="goods sellrow">${sellable.map((k) => `<span class="gchip" data-act="sell" data-good="${k}" data-tip="${encodeURIComponent(`<b>Sell ${GOOD_LABEL[k]}</b><br>${g.sellPrice(b, k).toFixed(2)} coin each now (worth ${(RES_VALUE[k] / RES_VALUE.gold).toFixed(1)}).<br>Caravans to a distant market or village fetch more.`)}">${dot(k)}${GOOD_LABEL[k]} ${Math.floor(me[k])} · ${g.sellPrice(b, k).toFixed(1)}c</span>`).join('')}</div>` : '<div class="hint">Nothing in the stockpile worth selling yet. Mines and foundries fill it.</div>'}`;
     html += `<div class="hint">Train a <b>camel</b>, then click a partner's market or a village and press <b>Select route</b>. Trade so far: <b>+${Math.floor(me.tradeEarned || 0)} coin</b> over ${me.trips || 0} trips.</div></div></div>`;
     return html;
   }
@@ -654,7 +665,11 @@ export class UI {
     html += this.btn('keephere', { glyph: '♚', art: 'keep', name: 'Raise keep', sub: costShort(BUILDINGS.keep.cost), off: !g.canAfford(PLAYER, BUILDINGS.keep.cost), tip: '<b>Raise a keep beside it</b><br>A keep with soldiers inside sways this village (and draws it from a rival). Then garrison it.' });
     if (mine) {
       html += this.btn('entervillage', { glyph: '⇥', name: 'Garrison', off: !army, tip: '<b>Garrison</b><br>Sends idle soldiers inside (max 8).' });
-      html += this.btn('settle', { glyph: GLYPH.serf, art: 'serf', name: 'Call settler', sub: SETTLE_FOOD + 'g', off: v.pop < 4 || g.players[PLAYER].food < SETTLE_FOOD || g.popUsed(PLAYER) >= g.popCap(PLAYER), tip: `<b>Call a settler</b><br>One villager leaves as a serf of yours (${SETTLE_FOOD} grain). Needs a free place in your population and at least 4 folk in the village; it regrows while the village has grain.` });
+      const free = Math.floor(v.pop) - DRAFT.minLeft, room = g.popCap(PLAYER) + 1 - g.popUsed(PLAYER), food = g.players[PLAYER].food;
+      const minesOpen = g.buildings.some((b) => b.team === PLAYER && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && g.minersOf(b) < MINE_MAX_WORKERS);
+      html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serfs ×5', sub: SETTLE_FOOD * 5 + 'g', data: { role: 'serf', n: 5 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft serfs</b><br>Up to five villagers leave as serfs (${SETTLE_FOOD} grain each). They regrow while the village has grain.` });
+      html += this.btn('draft', { glyph: '⛏', art: 'mine', name: 'Miners ×4', sub: DRAFT.mineFood * 4 + 'g', data: { role: 'mine', n: 4 }, off: free < 1 || room < 1 || !minesOpen || food < DRAFT.mineFood, tip: '<b>Send miners</b><br>Villagers walk to your nearest mine with free places and start digging.' });
+      html += this.btn('draft', { glyph: '⚔', art: 'footman', name: 'Soldiers ×5', sub: `${DRAFT.soldierFood}g${g.hasBuilding(PLAYER, 'barracks') ? ' +15c' : ''}`, data: { role: 'soldier', n: 5 }, off: free < 1 || room < 1 || food < DRAFT.soldierFood, tip: `<b>Raise soldiers</b><br>Villagers take up spears: footmen if you have a barracks (needs coin for arms), otherwise recruits to drill in a keep. Soldiers beyond the first ${WAGE_FREE} draw pay.` });
     } else {
       html += this.btn('sendspy', { glyph: GLYPH.spy, art: 'spy', name: 'Send spy', off: !spies, sub: spies ? `${spies} ready` : 'need a spy', tip: `<b>Send a spy</b><br>Sways loyalty without a fight. Spies can be caught.${spies ? '' : `<br><span class="need">Hire a recruit at a tavern, select it, press Become spy (${SPY_FEE} coin).</span>`}` });
       html += this.btn('sendarmy', { glyph: '⚔', name: 'Send army', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Sack</b><br>Sends every soldier to attack. Protection must reach zero.' });

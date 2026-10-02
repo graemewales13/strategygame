@@ -195,3 +195,6 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 #standings.hidden{display:none}
 .stand{border-collapse:collapse}.stand th,.stand td{padding:2px 8px;text-align:right}.stand td:first-child,.stand th:first-child{text-align:left;font-weight:600}
 .stand tr.me td{background:rgba(255,220,140,.1)}.stand tr.fallen{opacity:.4}.stand td.lead{color:#ffd76a;font-weight:700}
+
+#r-net{margin-left:6px;font-size:11px;font-weight:600;opacity:.95}#r-net.up{color:#9be08a}#r-net.down{color:#ff8e7a}
+.sellrow .gchip{cursor:pointer}

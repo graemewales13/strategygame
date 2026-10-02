@@ -96,7 +96,7 @@ for (const seed of seeds) {
       const tid = u.task.targetId ?? u.task.buildingId;
       if (tid != null && MOVING.has(u.task.type) && !g.byId.get(tid)) { if (u._van && t - u._van >= 5) flag(`task '${u.task.type}' kept on a vanished target`, t, `${u.kind} team ${u.team}`); u._van = u._van || t; } else u._van = 0;
     }
-    for (const b of g.buildings) if (b.kind === 'mine' && b.hp > 0 && b.built >= 1 && !g.minersOf(b) && t > 200 && !g.players[b.team].glut?.[b.ore]) flag('mine with no diggers', t, `team ${b.team} ${b.ore}`);
+    for (const b of g.buildings) if (b.kind === 'mine' && b.hp > 0 && b.built >= 1 && !g.minersOf(b) && t > 200 && !g.players[b.team].glut?.[b.ore] && b.nodeIds.some((id) => g.resources[id]?.amount > 0)) flag('mine with no diggers', t, `team ${b.team} ${b.ore}`);
   };
   try {
     for (; t < minutes * 60 && !g.outcome; t += 0.1) { const w = performance.now(); g.tick(0.1); worst = Math.max(worst, performance.now() - w); if (CHAOS && Math.round(t * 10) % 15 === 0) chaos(); if (Math.round(t * 10) % 100 === 0) sample(); }

@@ -116,9 +116,10 @@ export const BUILDINGS = {
   stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
   mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: ['hall'], onDeposit: true, info: 'Raised on a mineral deposit. Assign serfs to dig; ore flows into your stockpile.' },
   foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: ['hall'], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Automatic.' },
+  village:   { label: 'Village',       size: 3, hp: 400,  sight: 7,  pop: 0, cost: { food: 100, wood: 150, gold: 30 }, time: 30, requires: ['hall'], info: 'Found a village of your own: it starts with a few settlers and grows to 50 folk. Its people pay tax, till fields, house your population, and can be drafted as serfs, miners or soldiers.' },
   tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['hall'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
-export const BUILD_ORDER_UI = ['cottage', 'farm', 'mill', 'warehouse', 'market', 'mine', 'foundry', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'keep'];
+export const BUILD_ORDER_UI = ['village', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'mine', 'foundry', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'keep'];
 
 // Which buildings accept which goods from serfs
 export const DROP_OFF = {
@@ -169,7 +170,10 @@ export const VILLAGE_POP = { hamlet: 16, mine: 12, market: 18, hillfort: 10, abb
 export const POP_FOOD = 0.003;   // grain eaten per villager per second
 export const POP_GROW = 45;      // seconds per new villager while fed
 export const POP_HOUSING = 0.5;  // population cap you gain per villager in a village you hold
-export const SETTLE_FOOD = 20;   // grain to send for one settler (a serf) from a held village
+export const SETTLE_FOOD = 20;
+export const FOUND = { pop: 4, max: 50, grow: 22, loyalty: 82 };   // a founded village: folk at the start, cap, seconds per newcomer while fed
+export const DRAFT = { minLeft: 2, mineFood: 10, soldierFood: 25, perCall: 5 };
+export const SACK = { stores: 0.8, serfs: 0.15, soldiers: 0.2, killed: 0.2 };   // share of the village's goods you carry off; share of survivors who join you as serfs or soldiers   // grain to send for one settler (a serf) from a held village
 export const VILLAGE_KINDS = {
   hamlet:   { label: 'Hamlet',         folk: ['farmers', 'herders'],            protection: 220, loyalty: 26, tribute: { food: 0.8,  wood: 0.15, gold: 0.02 }, stores: { food: 80, wood: 20, gold: 8 },  blurb: 'Farmers and herders. Easy to turn, pays grain.' },
   mine:     { label: 'Mining camp',    folk: ['miners', 'haulers'],             protection: 300, loyalty: 18, tribute: { food: 0.1,  wood: 0.1,  gold: 0.3 },  stores: { food: 20, wood: 15, gold: 90, stone: 70, iron: 45, coal: 45, copper: 35, silver: 14 }, blurb: 'Miners and haulers. Pays coin; sells ore to caravans.' },

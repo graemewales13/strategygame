@@ -72,3 +72,9 @@ Tests added: guard-scaled influence, remote mine haul and warehouse fix, market 
 
 ### T-030 Routes unprofitable at distance
 Symptom: route quote empty for a far village (fee 0.38, price 1.5x gave ratio < 1). Fix: lower fees (0.1-0.3 villages, 0.06-0.22 markets), steeper scarcity premium (up to 1.9x), village purse regen by population. Test: `routes: a camel shuttles shelf goods...`.
+
+### T-031 Coin had no use and came from the wrong place (cycle 7)
+Symptom: AI houses sat on 500-900 coin by minute 8 and earned most of it from village tribute (mining camp 0.9/s); mining and trade were invisible; stone/coal piled to 1000. Cause: no coin sink, tribute far too rich, ore could only leave by caravan. Fix: army wages, coin in soldier costs, village tribute cut to a third plus tax by population, markets buy the stockpile (with glut), AI digs gold first, sells surplus, runs camels on routes and sizes its army by what income can pay. Probe: `tools/econ.js`.
+
+### T-032 Market built late starved the early economy
+AI plan put the market after the forge (minute 8). Moved to fourth building.

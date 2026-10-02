@@ -2,12 +2,12 @@
 // They start with a hall and two serfs only: no keep, no army. They train serfs, gather, build in a fixed order,
 // raise a keep toward the nearest free village, contest villages, send a spy, then eventually go to war.
 
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, WAGE_FREE, ALL_GOODS, RES_VALUE } from './config.js';
 
 const WAR_AFTER = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
-  ['cottage', 1], ['farm', 1], ['barracks', 1], ['mine', 1], ['cottage', 2], ['mill', 1], ['warehouse', 1], ['keep', 1], ['cottage', 3], ['archery', 1],
-  ['farm', 2], ['mine', 2], ['forge', 1], ['market', 1], ['tavern', 1], ['mine', 3], ['foundry', 1], ['cottage', 4], ['stable', 1], ['temple', 1], ['academy', 1], ['cottage', 5],
+  ['cottage', 1], ['farm', 1], ['mine', 1], ['market', 1], ['barracks', 1], ['cottage', 2], ['mill', 1], ['mine', 2], ['warehouse', 1], ['keep', 1], ['cottage', 3], ['tavern', 1], ['archery', 1],
+  ['farm', 2], ['mine', 3], ['forge', 1], ['foundry', 1], ['cottage', 4], ['stable', 1], ['temple', 1], ['academy', 1], ['cottage', 5],
   ['tower', 1], ['workshop', 1], ['farm', 3], ['cottage', 6], ['cottage', 7],
 ];
 
@@ -68,9 +68,9 @@ function think(game, team, p) {
       const hi = m.ore === 'stone' ? 160 : 260, lo = m.ore === 'stone' ? 100 : 180;   // hysteresis: stand down above hi, resume below lo (no flapping)
       p.glut = p.glut || {};
       if (p[m.ore] > hi) p.glut[m.ore] = true; else if (p[m.ore] < lo) p.glut[m.ore] = false;
-      const glut = !!p.glut[m.ore];
+      const glut = !!p.glut[m.ore] && m.ore !== 'gold';
       if (glut) { for (const u of serfs) if (u.task.type === 'mine' && u.task.buildingId === m.id) { u.task = { type: 'idle' }; u.path = []; } continue; }
-      const want = Math.min(MINE_MAX_WORKERS, t > 240 ? 3 : 2);
+      const want = m.ore === 'gold' ? MINE_MAX_WORKERS : Math.min(MINE_MAX_WORKERS, t > 240 ? 3 : 2);
       if (game.minersOf(m) >= want || serfs.length < 6) continue;
       const free = serfs.filter((u) => u.task.type === 'gather' || u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(c.x - m.x, c.y - m.y))[0];
       if (free) game.cmdMine([free], m);
@@ -85,25 +85,8 @@ function think(game, team, p) {
       p.offerT = 90;
       for (const q of game.players) if (q.alive && q.team !== team && game.known[team][q.team] && game.rel[team][q.team] === 'peace' && !(q.team === PLAYER && game.offers.some((o) => o.from === team && o.to === PLAYER))) { game.proposeRelation(team, q.team, 'trade'); break; }
     }
-    const camels = game.units.filter((u) => u.team === team && u.kind === 'camel' && u.hp > 0);
-    const partners = game.players.filter((q) => q.alive && q.team !== team && q.team !== PLAYER && game.rel[team][q.team] === 'trade' && game.known[team][q.team]).map((q) => game.marketsOf(q.team)[0]).filter(Boolean);
-    if (!camels.length && queued(game, team, 'camel') === 0 && p.gold > 120) game.train(team, mk.id, 'camel');
-    const camel = camels.find((c) => c.task.type === 'idle' && Math.hypot(c.x - mk.x, c.y - mk.y) < 6);
-    if (camel && p.tradeT <= 0) {
-      p.tradeT = 40;
-      const shelf = mk.stock || {};
-      const sellable = [...MATS, 'food', 'wood', 'gold'];
-      const keep = { food: 150, wood: 150, gold: 150 };
-      const surplus = sellable.filter((g) => (shelf[g] || 0) >= 25 && (!keep[g] || true)).sort((a, c) => shelf[c] - shelf[a])[0];
-      const wants = ['coal', 'iron', 'copper', 'silver', 'stone'].filter((g) => g !== surplus && p[g] < 40 && (g !== 'iron' && g !== 'coal' || game.hasBuilding(team, 'foundry') || p.arms < 3) && (g !== 'silver' || game.hasBuilding(team, 'academy')));
-      let dest = null, need = null;
-      for (const w of wants) {   // a partner house's market first, else an independent village that stores it
-        dest = partners.find((m) => (m.stock?.[w] || 0) >= 10) || game.villages.find((v) => (v.owner === -1 || v.owner === team || game.rel[team][v.owner] === 'trade') && (v.stores?.[w] || 0) >= 10 && Math.hypot(v.x - mk.x, v.y - mk.y) < 70);
-        if (dest) { need = w; break; }
-      }
-      if (surplus && dest && game.load(team, camel.id, surplus, 30)) game.cmdCaravan([camel], dest, need);
-    }
   }
+  treasury(game, team, p, seat, serfs);
 
   // 3. idle serfs go to work, spread by share: timber 45%, grain 35%, coin 20% (coin only once barracks stand)
   const share = { wood: 0.45, food: 0.35, gold: game.hasBuilding(team, 'barracks') ? 0.2 : 0 };
@@ -129,7 +112,10 @@ function think(game, team, p) {
 
   // 4. army
   const army = game.militaryOf(team);
-  const armyCap = Math.min(26, 3 + Math.floor(t / 65));
+  const incTot = Object.values(p.inc || {}).reduce((a, v) => a + v, 0);
+  const payable = WAGE_FREE + Math.max(0, Math.floor((incTot - 0.1) / 0.06));   // soldiers the income can keep paid
+  const rich = Math.max(0, Math.floor((p.gold - 250) / 45));   // a full purse buys men; a thin one holds the line it can pay for
+  const armyCap = Math.min(30, Math.min(3 + Math.floor(t / 65), payable) + rich);
   const queuedMil = game.buildings.filter((b) => b.team === team).reduce((n, b) => n + b.queue.filter((q) => q.kind !== 'serf').length, 0);
   if (army.length + queuedMil < armyCap) {
     const picks = [];
@@ -206,11 +192,11 @@ function think(game, team, p) {
 
 // nearest unmined deposit inside our territory, preferring ores we do not already dig
 function pickDeposit(game, team, seat) {
-  const order = ['stone', 'iron', 'coal', 'copper', 'silver'];
+  const order = ['gold', 'stone', 'iron', 'coal', 'copper', 'silver'];
   const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine').map((b) => b.ore));
   for (const ore of order) {
     if (have.has(ore)) continue;
-    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < (ore === 'stone' ? 16 : 30)).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
+    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < (ore === 'stone' ? 16 : ore === 'gold' ? 36 : 30)).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
     for (const n of cands) if (game.mineSpot(team, n)) return n;
   }
   return null;
@@ -266,4 +252,57 @@ function findSpot(game, team, seat, kind) {
     }
   }
   return tried[0] || null;
+}
+
+// ---- the treasurer: dig gold, sell what the stockpile does not need, run camels to the best buyer, draft villagers, found villages
+const KEEP = { stone: 120, iron: 70, coal: 70, copper: 35, silver: 30, steel: 24, ware: 3, food: 220, wood: 260 };
+function treasury(game, team, p, seat, serfs) {
+  const markets = game.marketsOf(team);
+  const mk = markets[0];
+  p.sellT = (p.sellT ?? 10) - 1.5; p.routeT = (p.routeT ?? 30) - 1.5; p.draftT = (p.draftT ?? 20) - 1.5; p.foundT = (p.foundT ?? 150) - 1.5;
+  // sell the surplus: anything above what we keep for building, smelting and arms
+  if (mk && p.sellT <= 0) {
+    p.sellT = 6;
+    for (const k of ALL_GOODS) {
+      if (k === 'gold') continue;
+      const spare = Math.floor((p[k] || 0) - (KEEP[k] ?? 40));
+      if (spare >= 15 && game.sellPrice(mk, k) >= RES_VALUE[k] / RES_VALUE.gold * 0.34) game.sellGoods(team, mk.id, k, Math.min(40, spare));
+    }
+  }
+  // camels on routes: one per two mines, to the village or partner market that pays best for the shelf
+  if (mk) {
+    const camels = game.units.filter((u) => u.team === team && u.kind === 'camel' && u.hp > 0);
+    const mines = game.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0).length;
+    const want = Math.min(3, Math.ceil(mines / 2));
+    const q = game.buildings.filter((b) => b.team === team).reduce((n, b) => n + b.queue.filter((x) => x.kind === 'camel').length, 0);
+    if (camels.length + q < want && p.gold > 90 && game.popUsed(team) < game.popCap(team)) game.train(team, mk.id, 'camel');
+    if (p.routeT <= 0) {
+      p.routeT = 25;
+      const idle = camels.filter((c) => !c.route && c.task.type === 'idle');
+      if (idle.length) {
+        let best = null, bs = 0;
+        const cands = [...game.villages, ...game.buildings.filter((b) => b.kind === 'market' && b.team !== team && b.built >= 1)];
+        for (const t of cands) {
+          if (!game.canDeal(team, t).ok || game.canDeal(team, t).own) continue;
+          const d = Math.hypot(t.x - mk.x, t.y - mk.y); if (d > 70) continue;
+          const qq = game.routeQuote(mk, t), score = qq.profit * Math.min(1, game.availFor(t, 'gold') / 40) / (1 + d / 25);
+          if (qq.n >= 4 && score > bs) { bs = score; best = t; }
+        }
+        if (best) game.cmdRoute([idle[0]], best, 'gold');
+      }
+    }
+  }
+  // villagers: draft serfs when short; found a village once the economy stands; draft soldiers for the army
+  const held = game.villages.filter((v) => v.owner === team);
+  if (p.draftT <= 0 && held.length) {
+    p.draftT = 20;
+    const want = 5 + Math.min(11, Math.floor(game.time / 55));
+    const v = held.slice().sort((a, b) => b.pop - a.pop)[0];
+    if (serfs.length < want + 4 && v && v.pop >= 6 && p.food > 90) game.draft(team, v.id, 2, 'serf');
+  }
+  if (p.foundT <= 0 && game.time > 240 && held.length < 2 && !game.buildings.some((b) => b.team === team && b.kind === 'village' && b.built < 1) && game.canAfford(team, BUILDINGS.village.cost) && p.wood > 260) {
+    p.foundT = 120;
+    const spot = findSpot(game, team, seat, 'village');
+    if (spot) game.place(team, 'village', spot[0], spot[1]);
+  }
 }

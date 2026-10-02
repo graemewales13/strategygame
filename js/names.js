@@ -43,3 +43,13 @@ export function pickName(faction, taken, rnd = Math.random) {
 }
 // first name only, for log lines
 export const shortName = (name) => (name || '').split(' ')[0];
+
+// names for villages a house founds, in the tongue of its people
+export const FOUNDED = {
+  egyptians: ['Per-Hori', 'Nubt', 'Khemenu', 'Tjeny', 'Iunu', 'Per-Sobek', 'Dendera', 'Behdet', 'Sau', 'Per-Ra'],
+  romans: ['Castra Nova', 'Vicus Aurelii', 'Pagus Ferrum', 'Colonia Fabrii', 'Villa Lunae', 'Forum Cato', 'Mansio Tertia', 'Municipium'],
+  vikings: ['Ravnsby', 'Thorsvik', 'Ulfhaugr', 'Skarholm', 'Frodsey', 'Gudvang', 'Eirikstad', 'Hrafnvag'],
+  british: ['Wulfmere', 'Oakhallow', 'Cadbury Dene', 'Brannock', 'Edgeworth', 'Hartsmoor', 'Penhallow', 'Whitbarrow'],
+  mongols: ['Ordu Khulan', 'Gerel Tal', 'Mukhali Nuur', 'Khar Usan', 'Tolui Gol', 'Altan Khoto', 'Naran Ger', 'Bayar Uul'],
+  scottish: ['Dun Ciaran', 'Glenmorag', 'Loch Struan', 'Bridei Brae', 'Ben Tavish', 'Kirk Aodh', 'Inver Ness', 'Craig Drust'],
+};

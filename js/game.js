@@ -9,12 +9,12 @@ import {
   INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, MARKET_RADIUS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
+  FOUND, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
-import { pickName, shortName } from './names.js';
+import { pickName, shortName, FOUNDED } from './names.js';
 
 const SPIRAL = (() => {
   const a = [];
@@ -380,6 +380,7 @@ export class Game {
       case 'stop': mine().forEach((u) => { u.route = null; u.task = { type: 'idle' }; u.path = []; }); return true;
       case 'route': return this.cmdRoute(mine(), this.byId.get(it.targetId), it.want);
       case 'stoproute': return this.stopRoute(mine());
+      case 'draft': return this.draft(team, it.villageId, it.n || 1, it.role || 'serf') > 0;
       case 'sell': return this.sellGoods(team, it.marketId, it.good, it.amount) > 0;
       case 'attack':
       case 'pillage': return this.cmdAttack(mine(), this.byId.get(it.targetId));
@@ -607,6 +608,66 @@ export class Game {
     u.origin = v.name;
     if (team === PLAYER) this.log(team, `${shortName(u.name)} leaves ${v.name} as a settler (${Math.floor(v.pop)} folk remain).`, 'info');
     return true;
+  }
+  // a finished Village site turns into a living village of the house: a few settlers who grow to fifty
+  foundVillage(b) {
+    const team = b.team, list = FOUNDED[HOUSES[team].faction] || FOUNDED.british, used = new Set(this.villages.map((v) => v.name));
+    const name = list.find((n) => !used.has(n)) || `${list[0]} ${this.villages.length}`;
+    b.hp = 0; b.founded = true;
+    const v = this.addVillage({ kind: 'hamlet', name, tx: b.tx, ty: b.ty });
+    v.owner = team; v.lean = team; v.loyalty = FOUND.loyalty; v.founded = true;
+    v.pop = FOUND.pop; v.popMax = FOUND.max; v.stores = { food: 70, wood: 10, gold: 10 };
+    v.protection = v.maxProtection = 260; v.hp = v.maxHp = 260;
+    if (team === PLAYER) this.log(PLAYER, `${name} is founded. Its folk will grow to ${FOUND.max}: draft them as serfs, miners or soldiers.`, 'good');
+    return v;
+  }
+  // villagers leave a village you hold to work (serf), dig (mine) or fight (soldier)
+  draft(team, villageId, n, role) {
+    const v = this.byId.get(villageId), p = this.players[team], say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return 0; };
+    if (!v || v.type !== 'village' || v.owner !== team) return say('Only a village you hold can send its folk out.');
+    n = Math.max(1, Math.min(n | 0 || 1, Math.floor(v.pop) - DRAFT.minLeft));
+    if (Math.floor(v.pop) - DRAFT.minLeft < 1) return say(`${v.name} is too small to spare anyone.`);
+    let mine = null;
+    if (role === 'mine') {
+      mine = this.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && this.minersOf(b) < MINE_MAX_WORKERS)
+        .sort((a, c) => Math.hypot(a.x - v.x, a.y - v.y) - Math.hypot(c.x - v.x, c.y - v.y))[0];
+      if (!mine) return say('No mine of yours has a free place to dig.');
+      n = Math.min(n, MINE_MAX_WORKERS - this.minersOf(mine));
+    }
+    const soldier = role === 'soldier', foodEach = soldier ? DRAFT.soldierFood : role === 'mine' ? DRAFT.mineFood : SETTLE_FOOD, goldEach = soldier && this.hasBuilding(team, 'barracks') ? UNITS.footman.cost.gold : 0;
+    let made = 0;
+    for (let i = 0; i < n; i++) {
+      if (p.food < foodEach) { say(`The road needs ${foodEach} grain a head.`); break; }
+      if (p.gold < goldEach) { say('Arms for a footman cost coin.'); break; }
+      if (this.popUsed(team) + 1 > this.popCap(team) + 1) { say('Population capped: raise cottages.'); break; }
+      p.food -= foodEach; p.gold -= goldEach; v.pop -= 1;
+      const x = v.x - 1.2 + i * 0.7, y = v.ty + v.size + 0.7;
+      const u = this.addUnit(soldier ? (goldEach ? 'footman' : 'recruit') : 'serf', team, x, y);
+      u.origin = v.name; made++;
+      if (mine) this.cmdMine([u], mine);
+    }
+    if (made && team === PLAYER) this.log(team, `${made} ${soldier ? 'men take up spears' : role === 'mine' ? 'miners leave' : 'settlers leave'} ${v.name} (${Math.floor(v.pop)} folk remain).`, 'info');
+    return made;
+  }
+  // the spoils of a sack: most of the stores, and survivors who take service
+  plunder(v, team) {
+    const p = this.players[team], got = {};
+    for (const k in v.stores) {
+      const amt = Math.floor((v.stores[k] || 0) * SACK.stores);
+      if (amt < 1) continue;
+      v.stores[k] -= amt; got[k] = amt;
+      if (k === 'gold') this.earn(team, 'loot', amt); else p[k] = (p[k] || 0) + amt;
+    }
+    const fort = v.kind === 'hillfort' || v.kind === 'inn';
+    let ns = Math.floor(v.pop * (fort ? 0.4 : SACK.soldiers)), nw = Math.floor(v.pop * SACK.serfs);
+    const room = Math.max(0, this.popCap(team) + 4 - this.popUsed(team));
+    ns = Math.min(ns, room); nw = Math.min(nw, Math.max(0, room - ns));
+    for (let i = 0; i < ns + nw; i++) {
+      const u = this.addUnit(i < ns ? 'recruit' : 'serf', team, v.x - 1.5 + (i % 5) * 0.7, v.ty + v.size + 0.8 + Math.floor(i / 5) * 0.6);
+      u.origin = v.name; v.pop -= 1;
+    }
+    const goods = Object.entries(got).filter(([, n]) => n >= 1).map(([k, n]) => `${n} ${GOOD_LABEL[k]?.toLowerCase() || k}`).join(', ');
+    return { got, serfs: nw, soldiers: ns, text: `${goods ? `Spoils: ${goods}. ` : ''}${nw} serfs and ${ns} soldiers of ${v.name} take service.` };
   }
   setLevy(team, buildingId, villageId) {
     const b = this.byId.get(buildingId), v = this.byId.get(villageId);
@@ -1471,7 +1532,8 @@ export class Game {
         const food = v.stores.food || 0;
         v.stores.food = Math.max(0, food - v.pop * POP_FOOD * dt);
         v.hunger = food < 2 ? 1 : 0;
-        if (food > 10 && v.pop < v.popMax) v.pop = Math.min(v.popMax, v.pop + dt / POP_GROW);
+        if (v.founded && v.owner >= 0) v.stores.food = Math.min(90, (v.stores.food || 0) + (0.08 + v.pop * 0.0045) * dt);   // their own fields
+        if (food > 10 && v.pop < v.popMax) v.pop = Math.min(v.popMax, v.pop + dt / (v.founded ? FOUND.grow : POP_GROW));
         else if (food < 2 && v.pop > 2) v.pop = Math.max(2, v.pop - dt / 90);
       }
       { // a quarter of the folk muster at the walls while the village is under attack, and go back in afterwards
@@ -1520,13 +1582,14 @@ export class Game {
     const prev = v.owner;
     this.ejectAll(v);
     v.owner = team; v.lean = team; v.spyFlip = -1;
-    if (how === 'pillage') v.pop = Math.max(2, v.pop * 0.75);   // the sack costs lives
+    let spoils = null;
+    if (how === 'pillage') { v.pop = Math.max(2, v.pop * (1 - SACK.killed)); spoils = this.plunder(v, team); }   // the sack costs lives
     v.loyalty = how === 'pillage' ? 48 : 62;
     v.protection = v.maxProtection * 0.4;
     v.hitT = 0; v.flash = 1;
     const who = HOUSES[team].short;
     const text = { pillage: `${v.name} falls to ${who} after the sack.`, castle: `${v.name} bows to ${who}'s influence.`, spy: `${v.name} is turned by ${who}'s spy.` }[how] || `${v.name} submits to ${who}.`;
-    this.log(team === PLAYER || prev === PLAYER ? PLAYER : -1, text, team === PLAYER ? 'good' : 'warn');
+    this.log(team === PLAYER || prev === PLAYER ? PLAYER : -1, text + (spoils ? ' ' + spoils.text : ''), team === PLAYER ? 'good' : 'warn');
   }
 
   updateUnits(dt) {
@@ -1725,6 +1788,7 @@ export class Game {
     b.hp = Math.min(b.maxHp, b.hp + (b.maxHp * 0.88 * dt * rate) / time);
     if (b.built >= 1) {
       b.hp = b.maxHp;
+      if (b.kind === 'village') { this.foundVillage(b); return; }
       if (b.team === PLAYER) this.log(PLAYER, `${BUILDINGS[b.kind].label} complete.`, 'good');
     }
   }

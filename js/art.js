@@ -12,6 +12,8 @@ export const IMG = {};
 export const FIMG = {};
 export const SIMG = {};
 export const VIMG = { '1tile': {}, '4tile': {} };   // independent village art in two footprints, by type
+export const PVIL = {};   // a people's own founded village by growth stage: PVIL[faction][hamlet|village|town]
+export const VILLAGE_STAGES = ['hamlet', 'village', 'town'];
 export const VILLAGE_ART_KEYS = ['hamlet', 'farm', 'fishing', 'mining', 'fortified', 'market'];
 const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet'];
 export const factionSprite = (faction, kind) => FIMG[faction]?.[kind] || null;
@@ -29,6 +31,7 @@ export function loadArt() {
   }
   for (const f of Object.keys(FACTIONS)) { FIMG[f] = {}; for (const k of FACTION_BUILDINGS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { FIMG[f][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/factions/${f}/buildings/${k}.png`; })); }
   for (const sz of ['1tile', '4tile']) for (const k of VILLAGE_ART_KEYS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { VIMG[sz][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/${sz}/${k}.png`; }));
+  for (const f of Object.keys(FACTIONS)) { PVIL[f] = {}; for (const st of VILLAGE_STAGES) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { PVIL[f][st] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/peoples/${f}/${st}.png`; })); }
   for (const n of SHARED) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { SIMG[n.split('/')[1]] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/${n}.png`; }));
   return Promise.all(jobs);
 }
