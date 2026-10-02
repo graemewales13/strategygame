@@ -157,6 +157,10 @@ export const RULE = { keep: 28, village: 20, default: 10 };
 export const GUARD = { floor: 0.35, full: 4, watch: 5 };
 export const LOYALTY_RATE = 1.6; // loyalty/sec per unit of net pull
 export const SUBMIT_LOYALTY = 72;
+// Influence over a free village builds slowly: castles, markets, taverns and temples nearby (or a spy inside) lean on it for minutes, not seconds.
+export const FREE_RATE = 0.4;     // multiplier on LOYALTY_RATE while the village is still independent
+// Buildings within this many tiles of a village's walls are part of the town: they change hands with it.
+export const TOWN_RANGE = 4;
 export const SPY_RATE = 1.7;     // loyalty/sec while a spy is inside
 export const SPY_CATCH = 0.004;  // base catch chance per second, plus protection/16000
 // difficulty tiers. playerMul scales the player's starting purse and stores; aiMul scales every coin an AI house earns;

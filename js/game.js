@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, MARKET_RADIUS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
@@ -122,6 +122,7 @@ export class Game {
   }
   addBuilding(kind, team, tx, ty, built) {
     const b = makeBuilding(this.nid(), kind, team, tx, ty, built);
+    if (kind !== 'village') { const tv = this.townOf(b); if (tv) b.town = tv.id; }   // raised beside a village: part of that town
     this.buildings.push(b);
     this.byId.set(b.id, b);
     return b;
@@ -1595,7 +1596,7 @@ export class Game {
       if (v.owner < 0) {
         if (best >= 0 && bp > 0.02) {
           v.lean = best;
-          v.loyalty = Math.min(100, v.loyalty + bp * LOYALTY_RATE * dt);
+          v.loyalty = Math.min(100, v.loyalty + bp * LOYALTY_RATE * FREE_RATE * (v.spyFlip === best ? 2.5 : 1) * dt);
         } else {
           const base = VILLAGE_KINDS[v.kind].loyalty;
           v.loyalty += (base - v.loyalty) * 0.03 * dt;
@@ -1620,11 +1621,34 @@ export class Game {
     }
   }
 
+  // the village a building belongs to: the nearest one whose walls are within TOWN_RANGE tiles of it
+  townOf(b) {
+    let best = null, bd = TOWN_RANGE + 0.01;
+    for (const v of this.villages) {
+      const dx = Math.max(v.tx - (b.tx + b.size), b.tx - (v.tx + VILLAGE_SIZE), 0), dy = Math.max(v.ty - (b.ty + b.size), b.ty - (v.ty + VILLAGE_SIZE), 0), d = Math.max(dx, dy);
+      if (d < bd) { bd = d; best = v; }
+    }
+    return best;
+  }
+  // when a village changes hands, the buildings of the old lord that stand in its town go with it
+  claimTown(v, team, prev) {
+    let n = 0;
+    for (const b of this.buildings) {
+      if (b.hp <= 0 || b.kind === 'village' || b.team === team || b.team !== prev || prev < 0) continue;
+      if (this.townOf(b) !== v) continue;
+      this.ejectAll(b); b.queue = []; b.rally = null; b.team = team; b.town = v.id; b.flash = 1; n++;
+      for (const u of this.units) if (u.team !== team && u.task?.buildingId === b.id) { u.task = { type: 'idle' }; u.path = []; }
+    }
+    if (n) { this.recomputeWalk?.(); this.updateVisibility?.(true); }
+    return n;
+  }
+
   submit(v, team, how) {
     if (v.owner === team) return;
     const prev = v.owner;
     this.ejectAll(v);
     v.owner = team; v.lean = team; v.spyFlip = -1;
+    const taken = this.claimTown(v, team, prev);
     let spoils = null;
     if (how === 'pillage') { v.pop = Math.max(2, v.pop * (1 - SACK.killed)); spoils = this.plunder(v, team); }   // the sack costs lives
     v.loyalty = how === 'pillage' ? 48 : 62;
@@ -1632,7 +1656,7 @@ export class Game {
     v.hitT = 0; v.flash = 1;
     const who = HOUSES[team].short;
     const text = { pillage: `${v.name} falls to ${who} after the sack.`, castle: `${v.name} bows to ${who}'s influence.`, spy: `${v.name} is turned by ${who}'s spy.` }[how] || `${v.name} submits to ${who}.`;
-    this.log(team === PLAYER || prev === PLAYER ? PLAYER : -1, text + (spoils ? ' ' + spoils.text : ''), team === PLAYER ? 'good' : 'warn');
+    this.log(team === PLAYER || prev === PLAYER ? PLAYER : -1, text + (taken ? ` ${taken} building${taken > 1 ? 's' : ''} in the town change hands.` : '') + (spoils ? ' ' + spoils.text : ''), team === PLAYER ? 'good' : 'warn');
   }
 
   updateUnits(dt) {

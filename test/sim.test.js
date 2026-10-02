@@ -1,7 +1,7 @@
 // Headless sim tests: `npm test` or `node test/sim.test.js`. No dependencies.
 import assert from 'node:assert/strict';
 import { Game } from '../js/game.js';
-import { PLAYER, UNITS, INFLUENCE_HOME } from '../js/config.js';
+import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE } from '../js/config.js';
 
 // Deterministic runs: the sim uses Math.random for spawn jitter and spy catches.
 let _s = 12345;
@@ -137,7 +137,7 @@ test('castle influence: a keep next to a village slowly turns it without a sack'
   const v = g.villages[0];
   const k = g.addBuilding('keep', PLAYER, Math.round(v.x) - 8, Math.round(v.y) - 2, true);
   g.recomputeWalk();
-  run(g, 120);
+  run(g, 360);
   assert.equal(v.owner, PLAYER, `loyalty ${v.loyalty}`);
   const before = g.players[PLAYER].gold + g.players[PLAYER].food + g.players[PLAYER].wood;
   run(g, 30);
@@ -146,7 +146,7 @@ test('castle influence: a keep next to a village slowly turns it without a sack'
 
 test('loyalty decays when the lord has no influence nearby', () => {
   const g = new Game({ seed: 5, houses: 3, ai: false });
-  const v = g.villages[0];
+  const seat = g.seatOf(PLAYER), v = g.villages.filter((x) => !x.founded).sort((a, b) => Math.hypot(b.x - seat.x, b.y - seat.y) - Math.hypot(a.x - seat.x, a.y - seat.y))[0];
   v.owner = PLAYER; v.loyalty = 60;
   run(g, 1000, 0.5);
   assert.equal(v.owner, -1, 'village should slip away');
@@ -742,7 +742,7 @@ test('founding: a house may found only three villages; founded villages do not c
   assert.equal(g.canPlace(0, 'village', h.tx + 12, h.ty + 12).ok, false, 'fourth founding refused');
   const valley = g.villages.filter((v) => !v.founded).length;
   g.checkEnd(0.1);
-  assert.equal(g.villageNeed, Math.ceil(valley * 0.65), 'need counts valley villages only');
+  assert.equal(g.villageNeed, Math.ceil(valley * VILLAGE_WIN_SHARE), 'need counts valley villages only');
 });
 
 test('victory: a house that holds the tier fortune for 90 s wins by wealth; rivals can win it too', () => {
@@ -770,4 +770,17 @@ test('victory: unloyal villages do not count toward the land win', () => {
   g.tick(1); assert.equal(g.winHold.team, -1, 'sullen villages do not win');
   for (const v of valley) v.loyalty = 90;
   g.tick(1); assert.equal(g.winHold.team, 0, 'loyal ones start the clock');
+});
+
+test('town: a rival village that falls takes the buildings standing within four tiles with it', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const v = g.villages[0];
+  v.owner = 1; v.loyalty = 60;
+  const near = g.addBuilding('market', 1, v.tx + 3 + 2, v.ty, true);
+  const far = g.addBuilding('market', 1, v.tx + 3 + 12, v.ty, true);
+  assert.equal(near.town, v.id, 'a building raised beside a village is marked as part of the town');
+  assert.equal(far.town, undefined);
+  g.submit(v, PLAYER, 'pillage');
+  assert.equal(near.team, PLAYER, 'the town building changes hands');
+  assert.equal(far.team, 1, 'a distant building stays with its lord');
 });

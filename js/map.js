@@ -236,7 +236,7 @@ export function createMap(seed, houses = 4) {
   // Villages in the gaps
   const spots = [];
   const kinds = r.shuffle(Object.keys(VILLAGE_KINDS).concat(Object.keys(VILLAGE_KINDS)).concat(['hamlet', 'mine']));
-  const want = 14;
+  const want = 26;
   for (let tries = 0; tries < 2600 && spots.length < want; tries++) {
     const x = r.int(8, W - 12), y = r.int(8, H - 12);
     if (!open(x - 1, y - 1, VILLAGE_SIZE + 2)) continue;
@@ -244,7 +244,7 @@ export function createMap(seed, houses = 4) {
     for (let j = -1; j <= VILLAGE_SIZE && !blocked; j++) for (let i = -1; i <= VILLAGE_SIZE; i++) if (resAt[idx(x + i, y + j)] !== -1) { blocked = true; break; }
     if (blocked) continue;
     if (starts.some(([sx, sy]) => (x - sx) ** 2 + (y - sy) ** 2 < 25 * 25)) continue;
-    if (spots.some(([vx, vy]) => (x - vx) ** 2 + (y - vy) ** 2 < 15 * 15)) continue;
+    if (spots.some(([vx, vy]) => (x - vx) ** 2 + (y - vy) ** 2 < 12 * 12)) continue;
     spots.push([x, y]);
   }
   const used = {};
