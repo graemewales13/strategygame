@@ -202,7 +202,7 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 /* splash + painted main menu */
 .splash { background: #05070a; cursor: pointer; }
 .splashimg { position: relative; width: min(100vw, calc(100vh * 1168 / 784)); aspect-ratio: 1168 / 784; background: url(assets/menu/auld-world-splash.jpg) center/100% 100% no-repeat; animation: splashin 1.4s ease-out; }
-.splashhint { position: absolute; left: 0; right: 0; bottom: 3%; text-align: center; color: #e8d9ae; font: 600 15px/1 Georgia, serif; letter-spacing: .22em; text-transform: uppercase; text-shadow: 0 1px 6px #000, 0 0 14px #000; animation: pulse 2.2s ease-in-out infinite; }
+.splashhint { position: absolute; left: 0; right: 0; top: 3.5%; text-align: center; color: #e8d9ae; font: 600 15px/1 Georgia, serif; letter-spacing: .22em; text-transform: uppercase; text-shadow: 0 1px 6px #000, 0 0 14px #000; animation: pulse 2.2s ease-in-out infinite; }
 #splash.gone { opacity: 0; pointer-events: none; transition: opacity .6s; }
 @keyframes splashin { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
 @keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
