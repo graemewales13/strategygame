@@ -31,7 +31,8 @@ for (const seed of seeds) {
     const ss = serfs(), idle = ss.filter((u) => u.task.type === 'idle');
     // 1. manpower: draft serfs until 8, then miners/soldiers by style
     const want = style === 'rush' ? 6 : 8;
-    if (ss.length < want && me.food >= 20) intent({ type: 'draft', villageId: h.id, n: 2, role: 'serf' });
+    const big = () => myVillages().sort((a, b) => b.pop - a.pop)[0] || h;
+    if (ss.length < want && me.food >= 20) intent({ type: 'draft', villageId: big().id, n: 2, role: 'serf' });
     // 2. build order
     const order = style === 'rush' ? ['mine', 'barracks', 'market', 'keep', 'tavern', 'cottage', 'farm', 'village'] : ['mine', 'market', 'cottage', 'barracks', 'tavern', 'keep', 'cottage', 'farm', 'cottage', 'tower', 'archery', 'cottage', 'village', 'cottage', 'tower', 'foundry', 'cottage', 'warehouse', 'temple', 'cottage', 'academy', 'cottage', 'cottage'];
     const counts = {};
@@ -55,9 +56,9 @@ for (const seed of seeds) {
       if (node) intent({ type: 'gather', ids: [u.id], nodeId: node.id });
     }
     // 4. miners from the village, soldiers when barracks stand
-    if (built('mine').some((b) => g.minersOf(b) < 4) && me.food >= 40) intent({ type: 'draft', villageId: h.id, n: 2, role: 'mine' });
+    if (built('mine').some((b) => g.minersOf(b) < 4) && me.food >= 40) intent({ type: 'draft', villageId: big().id, n: 2, role: 'mine' });
     const army = g.militaryOf(T).length, goal = style === 'rush' ? 14 : style === 'turtle' ? 12 : Math.min(14, 4 + Math.floor(g.time / 90));
-    if (built('barracks').length && army < goal && me.gold >= 60 && me.food >= 25) intent({ type: 'draft', villageId: (myVillages().sort((a, b) => b.pop - a.pop)[0] || h).id, n: 2, role: 'soldier' });
+    if (built('barracks').length && army < goal && me.gold >= 60 && me.food >= 25) intent({ type: 'draft', villageId: big().id, n: 2, role: 'soldier' });
     // 5. keep: levy nearest village; garrison; camels
     const kp = built('keep')[0];
     if (kp && !kp.levyVillage) { const v = g.villages.filter((x) => x.owner < 0).sort((a, b) => Math.hypot(a.x - kp.x, a.y - kp.y) - Math.hypot(b.x - kp.x, b.y - kp.y))[0]; if (v) intent({ type: 'levy', buildingId: kp.id, villageId: v.id }); }
@@ -67,6 +68,7 @@ for (const seed of seeds) {
       const tg = g.villages.filter((v) => v.owner < 0).map((v) => ({ v, q: g.routeQuote(mk, v) })).sort((a, b) => b.q.profit - a.q.profit)[0];
       if (tg && tg.q.n >= 4) intent({ type: 'route', ids: [c.id], targetId: tg.v.id, want: 'gold' });
     }
+    for (const o of g.offers.filter((o) => o.to === T)) intent({ type: 'respond', from: o.from, accept: true });
     // 6. sell glut
     if (mk) for (const k of ['stone', 'iron', 'coal', 'copper', 'silver']) if (me[k] > 150) intent({ type: 'sell', marketId: mk.id, good: k, amount: me[k] - 100 });
     // 7. defence: soldiers (garrisoned too) sally at the nearest enemy near our holdings; otherwise stand at the keep
@@ -94,6 +96,8 @@ for (const seed of seeds) {
     }
   }
   if (process.env.EV) for (const e of g.events) if (e.team === T && e.t > +process.env.EV && e.kind !== "warn") console.log("   ev", Math.round(e.t), e.text);
+  if (process.env.WV) { console.log("villages", g.villages.filter((v) => v.owner === T).map((v) => `${v.name} pop ${Math.floor(v.pop)} ${v.home >= 0 ? "HOME" : ""}`).join(", ")); console.log("warns", g.events.filter((e) => e.team === T && e.kind === "warn").slice(-6).map((e) => Math.round(e.t) + " " + e.text).join(" | ")); }
+  if (process.env.REL) { console.log("rel", JSON.stringify(g.rel)); console.log(g.events.filter((e) => e.kind === "war").slice(0, 12).map((e) => Math.round(e.t) + " " + e.text).join("\n")); }
   console.log(`== seed ${seed} (${style}) ${g.outcome ? 'OUTCOME ' + JSON.stringify(g.outcome) : 'no result'} t=${Math.round(g.time / 60)}m`);
   for (const r of rows.filter((_, i) => i % 3 === 2 || i === rows.length - 1)) console.log('  ' + r);
   console.log('  standings: ' + g.standings().map((s) => `${s.name.split(' ').pop()} $${s.money} v${s.land} a${s.army}${s.alive ? '' : ' X'}`).join(' | '));
