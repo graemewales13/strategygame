@@ -1,4 +1,4 @@
-// Seven Holds - balance, stats and constants. No DOM access: this file is shared by the host sim and the client.
+// Auld World - balance, stats and constants. No DOM access: this file is shared by the host sim and the client.
 
 export const TILE = 32;
 export const MAP_W = 112;

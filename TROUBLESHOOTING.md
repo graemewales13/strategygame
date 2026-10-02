@@ -1,4 +1,4 @@
-# Seven Holds - troubleshooting log
+# Auld World - troubleshooting log
 
 How this works: `node tools/soak.js [minutes] [seeds] [houses]` plays headless matches with **every** house (the player's too) under the AI,
 checks invariants every 10 s and writes `logs/soak-latest.log`. Findings are triaged here: **ID, symptom, cause, fix, how it is guarded**.
@@ -92,3 +92,6 @@ The hall is gone: every house starts with an owned home village of 30 folk (the 
 
 ### T-035 Tiers and ways to win (cycle 9)
 Bot matrix (4 houses, 6 seeds each; W = wins): Easy econ 6/6, trader 6/6, rush 5/6, turtle 5/6, conquer 2/6; Mid econ 5/6, trader 4/6, turtle 4/6, rush 3/6, conquer 2/6; Hard (70 min cap) econ 1/6, trader 1/6, conquer 2/6. Wealth wins land at 20-27 min (Easy), 32-41 (Mid), 50-57 (Hard). Findings: a conqueror took 12 of 14 villages in 6 minutes and won on land at minute 7: now a village counts toward the land win only at 55+ loyalty (a sack leaves it near 48), share 70%, hold 120 s. Hard at 9000 fortune was lost to the AI by minute 40 for every peaceful style: now 10000 fortune, rivals x1.1 income, your purse x0.9. Bots do not manage loyalty, so land wins are under-sampled.
+
+## T-036 - Rebrand to Auld World
+The game is now **Auld World** (was Seven Holds). Title, header, README, package name, source headers and the console tag changed; the splash and main menu use the new `assets/menu/auld-world-splash.jpg` and `auld-world-menu.jpg`. The menu picture carries its own labels (Continue, New Game, Campaign, Skirmish, Options, Quit), so the six hotspots in `index.html` sit at tops 27.9 / 36.5 / 45.1 / 53.7 / 62.4 / 71.0 %; if the picture is swapped again, re-measure the label centres and subtract 4.6. The Python prototype under `legacy/` keeps its old name. The debugging hook `window.__seven` is unchanged.

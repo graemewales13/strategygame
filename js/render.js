@@ -1,4 +1,4 @@
-// Seven Holds - isometric canvas drawing. Reads game state, never changes it.
+// Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
   PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,

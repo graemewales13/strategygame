@@ -1,4 +1,4 @@
-// Seven Holds - painted terrain and soft fog. Both are cached on offscreen canvases; render.js only blits them.
+// Auld World - painted terrain and soft fog. Both are cached on offscreen canvases; render.js only blits them.
 import { PLAYER, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW } from './config.js';
 import { TILES } from './art.js';
 

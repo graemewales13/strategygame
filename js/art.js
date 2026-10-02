@@ -1,4 +1,4 @@
-// Seven Holds - painted art. The sprites are cut from the concept boards (assets/world/*) and recoloured per house at load.
+// Auld World - painted art. The sprites are cut from the concept boards (assets/world/*) and recoloured per house at load.
 // Nothing here is drawn procedurally except the ram, which the boards do not show.
 import { HOUSES, GOOD_COLOR, FACTIONS, FACTION_BUILDINGS } from './config.js';
 

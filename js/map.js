@@ -1,4 +1,4 @@
-// Seven Holds - valley generation. Pure data, seeded, no DOM.
+// Auld World - valley generation. Pure data, seeded, no DOM.
 // Guarantees: every start, village and resource node lies in ONE connected walkable region (the river has fords).
 
 import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW, BIOMES, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, MATS } from './config.js';

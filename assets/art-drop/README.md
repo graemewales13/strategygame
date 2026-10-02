@@ -1,4 +1,4 @@
-# Seven Holds art — first delivery for Claude
+# Auld World art — first delivery for Claude
 
 Painted isometric set from the art instruction. JPG sheets (the generator does not emit true PNG alpha). Magenta (#FF00FF) backgrounds are the chroma key; Claude should key them to alpha before dropping into the game.
 

@@ -1,4 +1,4 @@
-// Seven Holds - rival houses. They run on the host and play through the same game methods a player's intents reach.
+// Auld World - rival houses. They run on the host and play through the same game methods a player's intents reach.
 // They start with a home village of thirty folk and three serfs: no keep, no army. They train serfs, gather, build in a fixed order,
 // raise a keep toward the nearest free village, contest villages, send a spy, then eventually go to war.
 

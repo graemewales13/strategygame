@@ -1,4 +1,4 @@
-// Seven Holds - soak harness. Plays headless matches with EVERY house (the player's too) under the AI and records anomalies.
+// Auld World - soak harness. Plays headless matches with EVERY house (the player's too) under the AI and records anomalies.
 //   node tools/soak.js [minutes=25] [seeds=1,2,3] [houses=4]     -> prints a report and writes logs/soak-latest.log
 import { Game } from '../js/game.js';
 import { UNITS, BUILDINGS } from '../js/config.js';

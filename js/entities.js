@@ -1,4 +1,4 @@
-// Seven Holds - entity factories and geometry helpers. Positions are in TILE units (floats), not pixels.
+// Auld World - entity factories and geometry helpers. Positions are in TILE units (floats), not pixels.
 
 import { UNITS, BUILDINGS, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_POP } from './config.js';
 

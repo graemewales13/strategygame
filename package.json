@@ -1,7 +1,7 @@
 {
-  "name": "seven-holds",
+  "name": "auld-world",
   "version": "0.2.0",
-  "description": "Seven Holds - a browser real-time strategy game (valley, villages, houses).",
+  "description": "Auld World - a browser real-time strategy game (valley, villages, houses).",
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 8000",

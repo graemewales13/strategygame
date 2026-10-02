@@ -1,4 +1,4 @@
-// Seven Holds - entry point. Single-player: the host (Game) lives in this tab; the client talks to it through net.js.
+// Auld World - entry point. Single-player: the host (Game) lives in this tab; the client talks to it through net.js.
 import { DEFAULT_HOUSES } from './config.js';
 import { Game } from './game.js';
 import { LocalHost } from './net.js';
@@ -40,7 +40,7 @@ function reportError(where, e) {
   const key = where + ':' + (e && e.message);
   if (seenErr.has(key)) return;
   seenErr.add(key);
-  console.error('[seven-holds]', where, e);
+  console.error('[auld-world]', where, e);
   let box = document.getElementById('errbox');
   if (!box) { box = document.createElement('div'); box.id = 'errbox'; document.body.appendChild(box); }
   box.textContent = `Display problem (${where}): ${e && e.message}. Press F12 for details; the game keeps running.`;

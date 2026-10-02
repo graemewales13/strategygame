@@ -1,4 +1,4 @@
-// Seven Holds - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
+// Auld World - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,

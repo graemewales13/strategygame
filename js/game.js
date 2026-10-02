@@ -1,4 +1,4 @@
-// Seven Holds - the host-authoritative simulation. One Game object owns ALL state and ticks on dt.
+// Auld World - the host-authoritative simulation. One Game object owns ALL state and ticks on dt.
 // Clients never mutate it directly: they send intents through applyIntent() (see net.js) and read state to draw.
 // No DOM access in this file, so it runs unchanged under Node for tests.
 

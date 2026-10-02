@@ -1,4 +1,4 @@
-# Seven Holds
+# Auld World
 
 A browser real-time strategy game in the spirit of *Seven Kingdoms* and *Age of Empires II*. You start with a home village of thirty folk and three serfs in a wide valley, and grow a house until you rule it. Plain HTML, CSS and JavaScript modules; canvas for the field. No build step, no dependencies.
 

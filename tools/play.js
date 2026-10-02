@@ -1,4 +1,4 @@
-// Seven Holds - scripted human player. Team 0 is driven only through applyIntent (what the buttons send); rivals run the AI.
+// Auld World - scripted human player. Team 0 is driven only through applyIntent (what the buttons send); rivals run the AI.
 //   node tools/play.js [minutes=20] [seeds=1,2,3] [houses=4] [style=econ|rush|turtle]
 import { Game } from '../js/game.js';
 import { BUILDINGS } from '../js/config.js';

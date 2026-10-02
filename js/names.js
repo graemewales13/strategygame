@@ -1,4 +1,4 @@
-// Seven Holds - names for the folk. Every serf, soldier, spy and caravan driver is somebody: a given name from their people
+// Auld World - names for the folk. Every serf, soldier, spy and caravan driver is somebody: a given name from their people
 // plus a byname, ancient and a little strange. Pools are deliberately large so a house rarely repeats.
 
 export const NAMES = {

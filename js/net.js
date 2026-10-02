@@ -1,4 +1,4 @@
-// Seven Holds - network seam (STUB). Single-player ships first.
+// Auld World - network seam (STUB). Single-player ships first.
 //
 // The design is host-authoritative:
 //   * the HOST owns the one Game object and ticks it;
