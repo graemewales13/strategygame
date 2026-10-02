@@ -1,6 +1,6 @@
 // Seven Holds - painted art. The sprites are cut from the concept boards (assets/world/*) and recoloured per house at load.
 // Nothing here is drawn procedurally except the ram, which the boards do not show.
-import { HOUSES, GOOD_COLOR } from './config.js';
+import { HOUSES, GOOD_COLOR, FACTIONS, FACTION_BUILDINGS } from './config.js';
 
 const LIST = {
   b: ['hall', 'keep', 'keep_blue', 'cottage', 'cottage_thatch', 'farm', 'mill', 'warehouse', 'market', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower', 'village_cluster'],
@@ -8,6 +8,11 @@ const LIST = {
   u: ['serf', 'serf_dig1', 'serf_dig2', 'scout', 'footman', 'bowman', 'knight', 'spy', 'scholar'],
 };
 export const IMG = {};
+// per-people painted sprites (assets/factions/<f>/buildings/<kind>.png) and shared ones (assets/shared/units/*.png ...)
+export const FIMG = {};
+export const SIMG = {};
+const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet'];
+export const factionSprite = (faction, kind) => FIMG[faction]?.[kind] || null;
 // painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow
 export const TILE_KINDS = ['grass', 'dry', 'sand', 'rock', 'dirt', 'snow'];
 export const TILES = {};
@@ -20,6 +25,8 @@ export function loadArt() {
   for (const [dir, names] of Object.entries(LIST)) for (const n of names) {
     jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { IMG[n] = i; res(); }; i.onerror = () => res(); i.src = `assets/world/${dir}/${n}.png`; }));
   }
+  for (const f of Object.keys(FACTIONS)) { FIMG[f] = {}; for (const k of FACTION_BUILDINGS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { FIMG[f][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/factions/${f}/buildings/${k}.png`; })); }
+  for (const n of SHARED) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { SIMG[n.split('/')[1]] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/${n}.png`; }));
   return Promise.all(jobs);
 }
 

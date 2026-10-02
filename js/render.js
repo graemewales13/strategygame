@@ -4,7 +4,7 @@ import {
   PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG, SIMG, factionSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -13,6 +13,7 @@ const GROUND_RGB = [[74, 118, 58], [128, 98, 54], [38, 92, 118], [140, 100, 56],
 
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
 const BSPR = { hall: ['hall', 1.0], keep: ['keep_blue', 1.02], cottage: ['cottage', 1.2], farm: ['farm', 1.0], mill: ['mill', 1.2], warehouse: ['warehouse', 1.0], market: ['market', 1.0], forge: ['forge', 1.0], workshop: ['workshop', 1.0], tavern: ['tavern', 1.2], academy: ['academy', 1.0], temple: ['temple', 1.25], barracks: ['barracks', 1.0], archery: ['archery', 1.0], stable: ['stable', 1.0], tower: ['tower', 1.15], foundry: ['forge', 1.14], mine: ['rock', 1.35] };
+const FMUL = { hall: 1.08, keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, warehouse: 1.0, market: 1.05, forge: 1.0, foundry: 1.0, workshop: 1.0, tavern: 1.0, academy: 1.0, temple: 1.0, barracks: 1.05, archery: 1.05, stable: 1.0, tower: 0.9 }; // width of a people's own sprite, in footprints
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
 const USCALE = { recruit: 50, serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
@@ -281,7 +282,7 @@ export class Renderer {
     if (dim) ctx.globalAlpha = 0.78;
     for (const p of parts) {
       const [sx, sy] = this.toScreen(cx + p.dx + 0.7, cy + p.dy + 0.7);
-      const c = tinted(p.name, team, 'banner', false);
+      const c = p.name === 'village_cluster' && SIMG.hamlet ? SIMG.hamlet : tinted(p.name, team, 'banner', false);
       if (p.name === 'gold') this.shadowAt(ctx, sx, sy, p.w * HW * z * 0.5, 7 * z, 0.3);
       const h = this.sprite(ctx, c, sx, sy, p.w * 2 * HW * z, false, 1);
       if (h != null) { const ww = p.w * 2 * HW * z; top = Math.min(top, sy - h); left = Math.min(left, sx - ww / 2); right = Math.max(right, sx + ww / 2); bottom = Math.max(bottom, sy); }
@@ -324,9 +325,11 @@ export class Renderer {
   // ---------------------------------------------------------------- buildings
   building(ctx, b, dim, ui, t, z) {
     const f = HOUSES[b.team], prog = b.built, [name, mul] = BSPR[b.kind] || ['cottage', 1];
-    const c = b.kind === 'mine' ? mineSprite(b.ore || 'stone', b.team) : tinted(name, b.team, 'banner');
+    const own = b.kind === 'mine' ? null : factionSprite(f.faction, b.kind);   // the people's own painted building
+    const c = own || (b.kind === 'mine' ? mineSprite(b.ore || 'stone', b.team) : tinted(name, b.team, 'banner'));
     const [bx, by] = this.toScreen(b.tx + b.size, b.ty + b.size);            // bottom corner of the footprint
-    const w = b.size * 2 * HW * z * mul, h = c ? (c.height / c.width) * w : 0;
+    let w = b.size * 2 * HW * z * (own ? (FMUL[b.kind] || 1) : mul), h = c ? (c.height / c.width) * w : 0;
+    if (own && h > b.size * 2 * HW * z * 1.3) { h = b.size * 2 * HW * z * 1.3; w = (c.width / c.height) * h; }   // tall towers stay slim
     const dy = by - h + b.size * HH * z * 0.34;
     // house-colour footing
     this.diamond(ctx, b.tx, b.ty, b.size, b.size); ctx.fillStyle = f.primary; ctx.globalAlpha = 0.24; ctx.fill(); ctx.globalAlpha = 1;
@@ -390,8 +393,9 @@ export class Renderer {
     const striking = st.dmg > 0 && u.cooldown > st.cd - 0.25;
     const working = !moving && (u.task.type === 'gather' || u.task.type === 'build' || u.task.type === 'mine');
     let c, w, h;
-    if (u.kind === 'ram') { c = ramSprite(u.team); w = 78 * z; }
-    else if (u.kind === 'camel') { c = camelSprite(u.team); w = 62 * z; }
+    let rightArt = false;   // the painted animals look right; the older art looks left
+    if (u.kind === 'ram') { const s2 = SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
+    else if (u.kind === 'camel') { const fac = HOUSES[u.team].faction, s2 = fac === 'mongols' ? SIMG.bactrian : fac === 'romans' ? SIMG.donkey : SIMG.dromedary; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }
     else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light); w = (c ? c.width / c.height : 1) * 40 * z; }
     else { c = tinted(st.art || u.kind, u.team, 'trim', false, light); const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh; }
     if (!c) return;
@@ -402,7 +406,7 @@ export class Renderer {
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
     ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
-    ctx.scale(flip ? -sxScale : sxScale, 1);
+    ctx.scale((flip !== rightArt) ? -sxScale : sxScale, 1);
     const foot = u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
     ctx.drawImage(c, -w / 2, -h * foot - bob, w, h);
     if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
@@ -426,8 +430,8 @@ export class Renderer {
     this.diamond(ctx, tx, ty, s, s);
     ctx.fillStyle = chk.ok ? 'rgba(110,200,110,0.38)' : 'rgba(210,70,70,0.4)'; ctx.fill();
     ctx.strokeStyle = chk.ok ? '#8fe08f' : '#e07070'; ctx.lineWidth = 2; ctx.stroke();
-    const [name, mul] = BSPR[ui.placing] || ['cottage', 1], c = tinted(name, PLAYER, 'banner');
-    if (c) { const [bx, by] = this.toScreen(tx + s, ty + s), w = s * 2 * HW * this.cam.zoom * mul, h = (c.height / c.width) * w; ctx.globalAlpha = 0.55; ctx.drawImage(c, bx - w / 2, by - h + s * HH * this.cam.zoom * 0.34, w, h); ctx.globalAlpha = 1; }
+    const [name, mul] = BSPR[ui.placing] || ['cottage', 1], own = factionSprite(HOUSES[PLAYER].faction, ui.placing), c = own || tinted(name, PLAYER, 'banner');
+    if (c) { const [bx, by] = this.toScreen(tx + s, ty + s), w = s * 2 * HW * this.cam.zoom * (own ? (FMUL[ui.placing] || 1) : mul), h = (c.height / c.width) * w; ctx.globalAlpha = 0.55; ctx.drawImage(c, bx - w / 2, by - h + s * HH * this.cam.zoom * 0.34, w, h); ctx.globalAlpha = 1; }
     const [lx, ly] = this.toScreen(tx + s / 2, ty);
     ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center';
     let note = '';

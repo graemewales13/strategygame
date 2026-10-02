@@ -8,12 +8,22 @@ export const MIN_HOUSES = 3;
 export const MAX_HOUSES = 5;
 export const DEFAULT_HOUSES = 4;
 
+// the six peoples. Painted building kits exist for those with art in assets/factions/<id>/buildings (others borrow the common set).
+export const FACTIONS = {
+  egyptians: { label: 'Egyptians', blurb: 'Mudbrick halls, dromedary caravans.' },
+  romans:    { label: 'Romans',    blurb: 'Colonnades, tile roofs, donkey trains.' },
+  vikings:   { label: 'Vikings',   blurb: 'Longhouses and carved timber.' },
+  british:   { label: 'British',   blurb: 'Timber frames and thatch.' },
+  mongols:   { label: 'Mongols',   blurb: 'Gers, banners, Bactrian camels.' },
+  scottish:  { label: 'Scottish',  blurb: 'Grey stone, heather thatch, tower houses.' },
+};
+export const FACTION_BUILDINGS = ['hall', 'keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower'];
 export const HOUSES = [
-  { name: 'House Calder', short: 'Calder', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'Hold what you till' },
-  { name: 'House Varr', short: 'Varr', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', motto: 'Blood and iron' },
-  { name: 'House Cael', short: 'Cael', color: 'blue', primary: '#3a6ea8', accent: '#92c6ff', dark: '#1c334d', motto: 'Still waters' },
-  { name: 'House Thorn', short: 'Thorn', color: 'green', primary: '#37753f', accent: '#97d17c', dark: '#173a1c', motto: 'We endure' },
-  { name: 'House Ash', short: 'Ash', color: 'violet', primary: '#7a4a98', accent: '#cb9ce0', dark: '#30203f', motto: 'From embers' },
+  { faction: 'egyptians', name: 'House Calder', short: 'Calder', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'Hold what you till' },
+  { faction: 'romans', name: 'House Varr', short: 'Varr', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', motto: 'Blood and iron' },
+  { faction: 'scottish', name: 'House Cael', short: 'Cael', color: 'blue', primary: '#3a6ea8', accent: '#92c6ff', dark: '#1c334d', motto: 'Still waters' },
+  { faction: 'british', name: 'House Thorn', short: 'Thorn', color: 'green', primary: '#37753f', accent: '#97d17c', dark: '#173a1c', motto: 'We endure' },
+  { faction: 'mongols', name: 'House Ash', short: 'Ash', color: 'violet', primary: '#7a4a98', accent: '#cb9ce0', dark: '#30203f', motto: 'From embers' },
 ];
 
 // Terrain ids

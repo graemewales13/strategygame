@@ -128,3 +128,6 @@ Money is the first measure of a house; the others are land influence (villages h
 - Select a partner's market or a village: the **trade board** shows its coin purse, what it sells, what it pays for your shelf goods (scarce there = dear) and the profit of a full load.
 - **Select route** sends your nearest free camel: load the best-selling goods at its home market, sell them for coin (or the good chosen under *Bring home*), walk back, repeat. **Stop route** ends it. Fees grow with distance; independent villages pay a little less than treaty markets.
 - Village purses refill from their folk (bigger villages pay more); AI markets pay from their treasury.
+
+## Peoples and painted kits
+Six peoples (`FACTIONS` in config): Egyptians, Romans, Vikings, British, Mongols, Scottish. Each house has a `faction` (Calder Egyptians, Varr Romans, Cael Scottish, Thorn British, Ash Mongols). Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Camels draw as dromedary (Mongols: Bactrian, Romans: donkey); the ram and hamlet use the shared art. Vikings still need their 18 buildings.
