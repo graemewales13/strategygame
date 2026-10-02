@@ -303,6 +303,11 @@ export class UI {
         if (camels[0]) this.host.send({ type: 'route', ids: [camels[0].id], targetId: t.id, want: this.want || 'gold' });
         break;
       }
+      case 'routecamel': {
+        const t = this.selEntity(), u = g.byId.get(+d.id); if (!t || !u || u.kind !== 'camel') break;
+        if (!this.host.send({ type: 'route', ids: [u.id], targetId: t.id, want: this.want || 'gold' })) this.toast('That camel cannot take that road.', 'warn');
+        break;
+      }
       case 'stopgo': {
         const sel = this.selUnits().filter((u) => u.kind === 'camel' && u.route), t = this.selEntity();
         const ids = sel.length ? sel.map((u) => u.id) : g.units.filter((u) => u.team === PLAYER && u.route && t && u.route.targetId === t.id).map((u) => u.id);
@@ -628,11 +633,23 @@ export class UI {
     if (!home) return html + `<div class="hint">Raise a <b>market</b> and train a camel to start a route.</div>`;
     const q = g.routeQuote(home, t), items = Object.entries(q.items);
     const camels = g.units.filter((u) => u.team === PLAYER && u.kind === 'camel' && u.hp > 0);
-    const running = camels.filter((u) => u.route?.targetId === t.id).length;
-    html += `<div class="ctitle">Your shelf sells here at +${Math.round(q.fee * 100)}% fee</div>`;
-    html += items.length ? `<div class="hint">A full camel carries ${items.map(([k, n]) => `${n} ${GOOD_LABEL[k].toLowerCase()}`).join(', ')} for about <b>+${Math.floor(q.profit)} coin</b> a trip.</div>` : `<div class="hint">Nothing on your market's shelf sells at a profit here yet. Mines, farms and foundries feed it.</div>`;
-    const free = camels.filter((u) => u.route?.targetId !== t.id).sort((a, b) => (a.route ? 1 : 0) - (b.route ? 1 : 0))[0];
-    html += `<div class="cgrid">${this.btn('selroute', { glyph: '🐪', art: 'camel', name: 'Select route', sub: running ? `${running} on it` : free ? 'send a camel' : 'train a camel', off: !free, tip: `<b>Select route</b><br>A camel loads your best-selling goods at the home market, sells them here for ${this.want ? GOOD_LABEL[this.want].toLowerCase() : 'coin'}, and walks home. It repeats until you stop it.` })}${running ? this.btn('stopgo', { glyph: '■', name: 'Stop route', tip: '<b>Stop route</b><br>Camels finish and come home.' }) : ''}</div>`;
+    const running = camels.filter((u) => u.route?.targetId === t.id || u.task?.targetId === t.id && u.task.type === 'caravan').length;
+    html += `<div class="ctitle">A camel's load from your market · fee ${Math.round(q.fee * 100)}%</div>`;
+    if (items.length) {
+      const per = (k) => { const r = (g.priceAt(t, k) * (1 - q.fee)) / RES_VALUE[k]; return (RES_VALUE[k] * (r - 1)) / RES_VALUE.gold; };
+      html += `<table class="stand tradetbl"><tr><th>Good</th><th>Carries</th><th>Pays each</th><th>Profit</th></tr>${items.map(([k, n]) => `<tr><td>${dot(k)}${GOOD_LABEL[k]}</td><td>${n}</td><td>${g.priceAt(t, k).toFixed(1)}</td><td class="lead">+${Math.floor(n * per(k))}</td></tr>`).join('')}</table>`;
+      html += `<div class="hint">One trip with a full camel: about <b>+${Math.floor(q.profit)} coin</b>.</div>`;
+    } else html += `<div class="hint">Nothing on your market's shelf sells at a profit here yet. Mines, farms and foundries feed it.</div>`;
+    html += `<div class="ctitle">Choose a camel (${camels.length})</div>`;
+    if (!camels.length) html += `<div class="hint">Train a camel at a market first.</div>`;
+    else {
+      const rows = camels.slice().sort((a, b) => (a.route || a.task?.type === 'caravan' ? 1 : 0) - (b.route || b.task?.type === 'caravan' ? 1 : 0) || Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y)).slice(0, 8);
+      html += `<div class="cgrid">${rows.map((u) => {
+        const here = u.route?.targetId === t.id, busy = !here && (u.route || u.task?.type === 'caravan'), load = Math.floor(Object.values(u.cargo || {}).reduce((a, n) => a + n, 0));
+        const sub = here ? `on this route · +${Math.floor(u.route.earned || 0)}` : busy ? 'on another route' : load ? `carrying ${load}` : `idle · ${Math.round(Math.hypot(u.x - t.x, u.y - t.y))} tiles`;
+        return this.btn('routecamel', { glyph: '🐪', art: 'camel', name: esc(u.name || 'Camel'), sub, off: here, data: { id: u.id }, tip: `<b>${esc(u.name || 'Camel')}</b><br>Loads at the nearest market of yours, sells here for ${this.want ? GOOD_LABEL[this.want].toLowerCase() : 'coin'}, walks home and repeats until stopped.` });
+      }).join('')}${running ? this.btn('stopgo', { glyph: '■', name: 'Stop route', sub: `${running} on it`, tip: '<b>Stop route</b><br>Camels finish their trip and stand down.' }) : ''}</div>`;
+    }
     html += `<div class="ctitle">Bring home</div>${this.goodChips(null, 'want', this.want || 'gold')}<div class="hint">Coin is the default: money is the point.</div>`;
     return html;
   }
