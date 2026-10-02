@@ -4,7 +4,7 @@ import {
   PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG, SIMG, VIMG, PVIL, factionSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, IMG, SIMG, VIMG, factionSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -280,8 +280,10 @@ export class Renderer {
     ctx.fillStyle = f ? f.primary : '#8a7a50'; ctx.globalAlpha = f ? 0.2 : 0.12; ctx.fill(); ctx.globalAlpha = 1;
     if (f) { ctx.strokeStyle = f.accent; ctx.lineWidth = 2; ctx.globalAlpha = 0.75; ctx.stroke(); ctx.globalAlpha = 1; }
     const comp = VCOMP[v.kind] || VCOMP.hamlet;
-    const vsz = this.vart || '4tile', stage = (v.pop || 0) <= 15 ? 'hamlet' : (v.pop || 0) <= 35 ? 'village' : 'town';
-    const vart = (v.founded && v.owner >= 0 && PVIL[HOUSES[v.owner].faction]?.[stage]) || VIMG[vsz]?.[VART[v.kind] || 'hamlet'];
+    const vsz = this.vart || '4tile';
+    // a village you founded shows the given village art by size: hamlet, then farmland, then a market town
+    const art = v.founded ? ((v.pop || 0) <= 15 ? 'hamlet' : (v.pop || 0) <= 35 ? 'farm' : 'market') : (VART[v.kind] || 'hamlet');
+    const vart = VIMG[vsz]?.[art];
     const grow = 0.85 + 0.3 * Math.min(1, (v.pop || 0) / 50);   // fuller villages look it
     const parts = vart ? [{ name: '#v', img: vart, dx: 0, dy: 0.2, w: VWIDE[vsz] * grow }] : comp.map(([name, dx, dy, w]) => ({ name, dx, dy, w })).sort((a, b) => a.dx + a.dy - (b.dx + b.dy));
     let top = 1e9, midx = 0, left = 1e9, right = -1e9, bottom = -1e9;

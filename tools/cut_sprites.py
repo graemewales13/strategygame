@@ -50,8 +50,6 @@ for f in sorted(glob.glob(os.path.join(DROP, '**', '*.jpg'), recursive=True)):
         dest = os.path.join(ROOT, 'factions', parts[1], 'buildings', os.path.splitext(parts[3])[0] + '.png')
     elif parts[0] == 'shared' and parts[1] in ('units', 'villages', 'nodes') and len(parts) == 3 and not parts[2].startswith(('six', 'nodes-sheet')):
         dest = os.path.join(ROOT, 'shared', parts[1], os.path.splitext(parts[2])[0] + '.png')
-    elif parts[0] == 'villages' and len(parts) == 4 and parts[1] == 'peoples':
-        dest = os.path.join(ROOT, 'shared', 'villages', 'peoples', parts[2], os.path.splitext(parts[3])[0] + '.png')
     elif parts[0] == 'villages' and len(parts) == 3:
         dest = os.path.join(ROOT, 'shared', 'villages', parts[1], os.path.splitext(parts[2])[0] + '.png')
     else:
