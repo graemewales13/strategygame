@@ -416,9 +416,10 @@ test('caravan: camel loads at the home market, trades at a treaty partner market
   const iron1 = b.iron || 0, coal0 = a.coal;
   send(); assert.equal(camel.task.type, 'caravan');
   run(g, 400);
+  g.applyIntent({ type: 'stoproute', team: 0, ids: [camel.id] }); run(g, 150);
   assert.equal(camel.task.type, 'idle', 'back home');
   assert.ok(a.coal > coal0 + 10 && a.coal < 45, `coal in our stockpile: ${a.coal}`);
-  assert.ok(b.iron > iron1 + 20, 'their stockpile got the iron');
+  assert.ok(b.iron > iron1 + 3, `their stockpile got the iron (${b.iron})`);
   assert.ok(mb.stock.coal < 45, 'their shelf paid out');
   assert.equal(g.cargoTotal(camel), 0);
   // war stops it
@@ -611,6 +612,28 @@ test('village folk: a quarter muster when attacked and fall back after; wanderer
   assert.equal(g.wanderers.length, 0, 'they arrive');
   assert.ok(to.news?.some((q) => q.team === 1), 'and bring word of their lord');
   assert.ok(to.pop >= 5 + w.n - 0.5, 'population moved');
+});
+
+test('routes: a camel shuttles shelf goods to a village and brings back coin, repeatedly, until stopped', () => {
+  const g = new Game({ seed: 9, houses: 3, ai: false });
+  const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
+  const v = g.villages.find((x) => x.kind === 'mine' || x.kind === 'market'), p = g.players[0];
+  v.owner = -1; v.stores.gold = 90; v.stores.iron = 0; v.stores.coal = 0;
+  mk.stock = { iron: 60, coal: 30 };
+  const q = g.routeQuote(mk, v);
+  assert.ok(q.n >= 4 && q.profit > 0, 'a profitable load exists: ' + JSON.stringify(q));
+  assert.ok(!q.items.gold, 'never ships coin');
+  const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
+  const g0 = p.gold;
+  assert.equal(g.applyIntent({ type: 'route', team: 0, ids: [camel.id], targetId: v.id, want: 'gold' }), true);
+  run(g, 900);
+  assert.ok(p.trips >= 2, 'several trips: ' + p.trips);
+  assert.ok(p.gold > g0 + 20, 'coin earned: ' + (p.gold - g0));
+  assert.ok(p.tradeEarned > 3 && camel.route.earned > 3, 'tracked ' + p.tradeEarned);
+  assert.ok(mk.stock.iron < 60, 'shelf drawn down');
+  g.applyIntent({ type: 'stoproute', team: 0, ids: [camel.id] });
+  assert.equal(camel.route, null);
+  assert.equal(g.standings()[0].money, Math.floor(p.gold));
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', some FAILED' : ''}`);

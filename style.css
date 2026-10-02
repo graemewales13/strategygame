@@ -190,3 +190,8 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 #cmdPanel::-webkit-scrollbar, #selPanel::-webkit-scrollbar { width: 8px; }
 #cmdPanel::-webkit-scrollbar-thumb, #selPanel::-webkit-scrollbar-thumb { background: #7a5a2c; border-radius: 4px; }
 #cmdPanel { scrollbar-width: thin; scrollbar-color: #7a5a2c transparent; }
+
+#standings{position:fixed;top:54px;right:12px;z-index:30;background:rgba(24,18,10,.92);border:1px solid #8a6a34;border-radius:6px;padding:8px 10px;color:#eadfc4;font-size:12px}
+#standings.hidden{display:none}
+.stand{border-collapse:collapse}.stand th,.stand td{padding:2px 8px;text-align:right}.stand td:first-child,.stand th:first-child{text-align:left;font-weight:600}
+.stand tr.me td{background:rgba(255,220,140,.1)}.stand tr.fallen{opacity:.4}.stand td.lead{color:#ffd76a;font-weight:700}

@@ -69,3 +69,6 @@ Tests added: guard-scaled influence, remote mine haul and warehouse fix, market 
 | T-028 | FIXED | Test asked for open ground 36 tiles east of the hall; random start corners can put the hall on the right edge | Test now searches the whole map for scouted ground more than 30 tiles away |
 
 | T-029 | FIXED | Villages had no visible people and "pop" only mattered to the keep's levy | Real village population: growth and starvation from the village store, drawn villagers, panel line, housing and tribute effects, settlers (see README "Village population"). Test: fed villages grow, dry ones shrink, held ones house folk and send settlers |
+
+### T-030 Routes unprofitable at distance
+Symptom: route quote empty for a far village (fee 0.38, price 1.5x gave ratio < 1). Fix: lower fees (0.1-0.3 villages, 0.06-0.22 markets), steeper scarcity premium (up to 1.9x), village purse regen by population. Test: `routes: a camel shuttles shelf goods...`.

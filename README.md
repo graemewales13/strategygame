@@ -121,3 +121,10 @@ The point of the game is to expand and rule, so **nothing stops you building as 
 | **Workforce** | Diggers, builders and gatherers are serfs, housed by cottages and held villages; remote sites need serfs to walk there and back |
 | **Consumers** | A market's coin grows with the cottages and villages of yours within 24 tiles, and its shelf only fills from suppliers that near |
 | **Loyalty drifts away** | A village you hold with no castle, temple or garrison near it slowly forgets you and slips back to independence |
+
+## Trade routes and standings
+Money is the first measure of a house; the others are land influence (villages held), population, army, science and loyalty. Press **T** for the standings table.
+
+- Select a partner's market or a village: the **trade board** shows its coin purse, what it sells, what it pays for your shelf goods (scarce there = dear) and the profit of a full load.
+- **Select route** sends your nearest free camel: load the best-selling goods at its home market, sell them for coin (or the good chosen under *Bring home*), walk back, repeat. **Stop route** ends it. Fees grow with distance; independent villages pay a little less than treaty markets.
+- Village purses refill from their folk (bigger villages pay more); AI markets pay from their treasury.
