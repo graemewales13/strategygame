@@ -35,6 +35,18 @@ ui.refreshMenu();
 drawCrest(document.getElementById('brandCrest').getContext('2d'), 18, 20, 34, 0);
 if (params.get('start') === '1') ui.closeMenu();
 
+const seenErr = new Set();
+function reportError(where, e) {
+  const key = where + ':' + (e && e.message);
+  if (seenErr.has(key)) return;
+  seenErr.add(key);
+  console.error('[seven-holds]', where, e);
+  let box = document.getElementById('errbox');
+  if (!box) { box = document.createElement('div'); box.id = 'errbox'; document.body.appendChild(box); }
+  box.textContent = `Display problem (${where}): ${e && e.message}. Press F12 for details; the game keeps running.`;
+}
+window.addEventListener('error', (ev) => reportError('script', ev.error || new Error(ev.message)));
+
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
@@ -43,9 +55,10 @@ function frame(now) {
     let sim = dt * ui.speed;
     while (sim > 1e-6) { const s = Math.min(0.05, sim); game.tick(s); sim -= s; }
   }
-  ui.update(dt);
-  renderer.draw(ui);
-  minimap.draw(dt);
+  // one bad frame must not freeze the whole game: report it and keep going
+  try { ui.update(dt); } catch (e) { reportError('update', e); }
+  try { renderer.draw(ui); } catch (e) { reportError('draw', e); }
+  try { minimap.draw(dt); } catch (e) { reportError('minimap', e); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

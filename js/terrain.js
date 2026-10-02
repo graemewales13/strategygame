@@ -25,6 +25,7 @@ export class TerrainCache {
   type(x, y) { const g = this.g; if (x < 0 || y < 0 || x >= g.W || y >= g.H) return -1; return g.terrain[y * g.W + x]; }
 
   chunk(cx, cy) {
+    if (this.terrainRef !== this.g.terrain) { this.chunks.clear(); this.terrainRef = this.g.terrain; }   // a new valley repaints
     const key = cy * this.cw + cx;
     let c = this.chunks.get(key);
     if (!c) { c = this.paint(cx, cy); this.chunks.set(key, c); }
@@ -181,6 +182,8 @@ export class FogLayer {
     this.acc += dt;
     if (this.acc < 0.1) return;
     const step = Math.min(1, this.acc * 6); this.acc = 0; this.last = now;
+    if (this.seenRef !== g.seen[PLAYER] && this.seenRef) { this.cur.fill(1); this.drawn = false; }   // a new valley starts under fog
+    this.seenRef = g.seen[PLAYER];
     const seen = g.seen[PLAYER], vis = g.vis[PLAYER], d = this.img.data, cur = this.cur;
     let dirty = false;
     for (let i = 0; i < cur.length; i++) {
