@@ -744,3 +744,30 @@ test('founding: a house may found only three villages; founded villages do not c
   g.checkEnd(0.1);
   assert.equal(g.villageNeed, Math.ceil(valley * 0.65), 'need counts valley villages only');
 });
+
+test('victory: a house that holds the tier fortune for 90 s wins by wealth; rivals can win it too', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false, diff: 'easy' });
+  g.players[0].gold = g.diff.wealth + 10;
+  for (let t = 0; t < 95 && !g.outcome; t += 0.5) { g.players[0].gold = g.diff.wealth + 10; g.tick(0.5); }
+  assert.ok(g.outcome && g.outcome.result === 'victory' && g.outcome.kind === 'wealth', JSON.stringify(g.outcome));
+  const h = new Game({ seed: 4, houses: 3, ai: false, diff: 'easy' });
+  for (let t = 0; t < 95 && !h.outcome; t += 0.5) { h.players[1].gold = h.diff.wealth + 10; h.tick(0.5); }
+  assert.ok(h.outcome && h.outcome.result === 'defeat' && h.outcome.kind === 'wealth', 'a rival fortune ends the game');
+});
+
+test('difficulty: tiers scale the purse, rival income and army cap', () => {
+  const e = new Game({ seed: 4, houses: 3, diff: 'easy' }), m = new Game({ seed: 4, houses: 3, diff: 'mid' }), hd = new Game({ seed: 4, houses: 3, diff: 'hard' });
+  assert.ok(e.players[0].gold > m.players[0].gold && m.players[0].gold > hd.players[0].gold, 'player purse falls with tier');
+  assert.equal(m.players[1].gold, hd.players[1].gold, 'rivals start alike');
+  e.earn(1, 'mining', 100); hd.earn(1, 'mining', 100);
+  assert.ok(e.players[1].gold < hd.players[1].gold, 'rivals earn more on hard');
+});
+
+test('victory: unloyal villages do not count toward the land win', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false });
+  const valley = g.villages.filter((v) => !v.founded);
+  for (const v of valley) { v.owner = 0; v.loyalty = 40; }
+  g.tick(1); assert.equal(g.winHold.team, -1, 'sullen villages do not win');
+  for (const v of valley) v.loyalty = 90;
+  g.tick(1); assert.equal(g.winHold.team, 0, 'loyal ones start the clock');
+});

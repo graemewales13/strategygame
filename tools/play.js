@@ -99,7 +99,7 @@ for (const seed of seeds) {
     if (t >= nextStep) { nextStep = t + 2; step(); }
     for (; evIdx < g.events.length; evIdx++) { const e = g.events[evIdx]; if (e.team === T && e.kind === 'warn') { const k = e.text.replace(/\d+/g, 'N'); if (!seenWarn.has(k)) { seenWarn.add(k); flag('warn: ' + k, e.t, e.text); } else flag('warn: ' + k, e.t, e.text); } }
     if (Math.round(t * 10) % 600 === 0) {
-      const s = g.standings()[0];
+      const s = g.standings()[0]; if (process.env.VIL) console.log(Math.round(t / 60), "valley", g.villages.filter((v) => !v.founded).length, "mine", g.villages.filter((v) => v.owner === T && !v.founded).length, "need", g.villageNeed, "hold", JSON.stringify(g.winHold));
       rows.push(`${Math.round(t / 60)}m pop ${g.popUsed(T)}/${g.popCap(T)} serfs ${serfs().length} army ${g.militaryOf(T).length} coin ${Math.floor(me.gold)} (${(me.inc && Object.values(me.inc).reduce((a, b) => a + b, 0) || 0).toFixed(1)}/s) food ${Math.floor(me.food)} wood ${Math.floor(me.wood)} stone ${Math.floor(me.stone)} bld ${g.buildings.filter((b) => b.team === T && b.hp > 0).length} vill ${s.land} loyalty ${s.loyalty} alive ${g.alive(T)}`);
       if (!g.alive(T)) { flag('player eliminated', t, `at ${Math.round(t / 60)}m`); break; }
       if (g.popUsed(T) > g.popCap(T) + 2) flag('pop over cap', t, g.popUsed(T) + '/' + g.popCap(T));

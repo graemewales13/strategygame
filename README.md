@@ -150,3 +150,17 @@ Build **Village** (needs a keep, 100 grain, 150 timber, 30 coin, 30 s). When ser
 
 ### Playtesting tools
 `node tools/play.js [minutes] [seeds] [houses] [econ|rush|turtle]` plays house 0 like a person (only the intents the buttons send) against the AI and lists refused orders, stalls and outcomes. `tools/soak.js` runs all-AI matches; `tools/econ.js` prints a house's economy per minute.
+
+### Ways to win and lose, and the three tiers
+- **Wealth:** hold the tier's fortune (coin plus the market value of ores, steel and ware; grain and timber do not count) for 90 s. Every house races for it, the AIs too.
+- **Land:** hold 70% of the valley's villages for 120 s. Only villages at 55+ loyalty count (a sacked village starts near 48 and must be won over with castles, taverns, temples and soldiers inside), and villages you found yourself do not count.
+- **Conquest:** be the last house with a seat.
+- You lose when a rival gets there first, or your last village and keep fall.
+
+| Tier | Your purse | Rival income | Rival army cap | First war | Fortune to win |
+|---|---|---|---|---|---|
+| Easy | x1.5 | x0.8 | 14 | 20 min | 4000 |
+| Mid | x1.0 | x1.0 | 22 | 14 min | 6000 |
+| Hard | x0.9 | x1.1 | 32 | 10 min | 10000 |
+
+Set it in the Skirmish panel or with `?diff=easy|mid|hard`. `tools/play.js [min] [seeds] [houses] [style] [tier]` (styles econ, trader, conquer, rush, turtle; `QUIET=1` for one line per run) is how the tiers were compared.

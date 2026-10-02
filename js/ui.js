@@ -2,7 +2,7 @@
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 
@@ -445,7 +445,7 @@ export class UI {
     }
     const need = g.villageNeed ?? Math.ceil(g.villages.length * VILLAGE_WIN_SHARE);
     const lead = Math.max(...counts), hold = g.winHold;
-    const valley = g.villages.filter((v) => !v.founded), vc = counts.map((_, i) => valley.filter((v) => v.owner === i).length);
+    const valley = g.villages.filter((v) => !v.founded), vc = counts.map((_, i) => valley.filter((v) => v.owner === i && v.loyalty >= LAND_LOYALTY).length);
     const wealth = Math.floor(g.wealthOf(PLAYER)), wneed = g.diff.wealth, rh = g.richHold;
     const wtxt = rh.team >= 0 ? `<b>${esc(HOUSES[rh.team].short)}</b> wealth ${Math.floor(g.wealthOf(rh.team))}/${wneed}: <b>${Math.max(0, Math.ceil(WEALTH_HOLD - rh.t))}s</b> to win` : `Wealth ${wealth}/${wneed}`;
     $('holdbar').innerHTML = (hold.team >= 0 ? `<b>${esc(HOUSES[hold.team].short)}</b> holds ${vc[hold.team]}/${valley.length} villages: <b>${Math.max(0, Math.ceil(VILLAGE_WIN_HOLD - hold.t))}s</b> to win` : `Villages ${vc[PLAYER]}/${valley.length} · need ${need}`) + ` · ${wtxt}`;

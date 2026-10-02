@@ -165,11 +165,12 @@ export const SPY_CATCH = 0.004;  // base catch chance per second, plus protectio
 export const DIFFICULTY = {
   easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, think: 1.5, wealth: 4000 },
   mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.0,  armyCap: 22, warAfter: 840,  think: 1.15, wealth: 6000 },
-  hard: { label: 'Hard', playerMul: 0.85, aiMul: 1.2, armyCap: 32, warAfter: 600,  think: 1.0, wealth: 9000 },
+  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.1, armyCap: 32, warAfter: 600,  think: 1.0, wealth: 10000 },
 };
 export const WEALTH_HOLD = 90;   // seconds a house must keep its fortune to win by wealth
-export const VILLAGE_WIN_SHARE = 0.65; // hold this share of villages ...
-export const VILLAGE_WIN_HOLD = 45;    // ... for this many seconds to win
+export const VILLAGE_WIN_SHARE = 0.7; // hold this share of villages ...
+export const LAND_LOYALTY = 55;     // only villages at least this loyal count toward the land win: a sacked village must be won over
+export const VILLAGE_WIN_HOLD = 120;   // ... for this many seconds to win
 
 export const VILLAGE_SIZE = 3;
 // Folk living in each village. Independent villages grow while their store has grain and shrink when it runs dry;
