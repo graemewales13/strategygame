@@ -2,7 +2,7 @@
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 
@@ -445,7 +445,11 @@ export class UI {
     }
     const need = g.villageNeed ?? Math.ceil(g.villages.length * VILLAGE_WIN_SHARE);
     const lead = Math.max(...counts), hold = g.winHold;
-    $('holdbar').innerHTML = hold.team >= 0 ? `<b>${esc(HOUSES[hold.team].short)}</b> holds ${counts[hold.team]}/${g.villages.length} villages: <b>${Math.max(0, Math.ceil(VILLAGE_WIN_HOLD - hold.t))}s</b> to win` : `Villages ${counts[PLAYER]}/${g.villages.length} · need ${need}${lead > counts[PLAYER] ? '' : ''}`;
+    const valley = g.villages.filter((v) => !v.founded), vc = counts.map((_, i) => valley.filter((v) => v.owner === i).length);
+    const wealth = Math.floor(g.wealthOf(PLAYER)), wneed = g.diff.wealth, rh = g.richHold;
+    const wtxt = rh.team >= 0 ? `<b>${esc(HOUSES[rh.team].short)}</b> wealth ${Math.floor(g.wealthOf(rh.team))}/${wneed}: <b>${Math.max(0, Math.ceil(WEALTH_HOLD - rh.t))}s</b> to win` : `Wealth ${wealth}/${wneed}`;
+    $('holdbar').innerHTML = (hold.team >= 0 ? `<b>${esc(HOUSES[hold.team].short)}</b> holds ${vc[hold.team]}/${valley.length} villages: <b>${Math.max(0, Math.ceil(VILLAGE_WIN_HOLD - hold.t))}s</b> to win` : `Villages ${vc[PLAYER]}/${valley.length} · need ${need}`) + ` · ${wtxt}`;
+    if (false) $('holdbar').innerHTML = hold.team >= 0 ? `<b>${esc(HOUSES[hold.team].short)}</b> holds ${counts[hold.team]}/${g.villages.length} villages: <b>${Math.max(0, Math.ceil(VILLAGE_WIN_HOLD - hold.t))}s</b> to win` : `Villages ${counts[PLAYER]}/${g.villages.length} · need ${need}${lead > counts[PLAYER] ? '' : ''}`;
     document.querySelectorAll('.res').forEach((el) => { const r = el.dataset.res; if (r) el.classList.toggle('low', p[r] < 20); });
   }
 
@@ -738,7 +742,26 @@ export class UI {
       else this.toast(`${cfg.houses} houses from the next New Valley.`, 'info');
       this.refreshMenu();
     });
+    const dseg = $('mDiff');
+    const refreshDiff = () => dseg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.d === cfg.diff));
+    dseg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      cfg.diff = b.dataset.d; refreshDiff();
+      if (!this.started) this.onReroll?.({ seed: this.game.seed, houses: cfg.houses }); else this.toast(`${b.textContent} from the next New Valley.`, 'info');
+    });
+    refreshDiff();
     $('mBegin').onclick = () => this.closeMenu();
+    $('mBack').onclick = () => this.showMain();
+    $('hContinue').onclick = () => this.closeMenu();
+    $('hNew').onclick = () => this.newValley();
+    $('hMap').onclick = () => { this.closeMenu(true); this.toggleCampaign(); };
+    $('hSkirmish').onclick = () => this.showSetup();
+    $('hOptions').onclick = () => this.showSetup();
+    $('hQuit').onclick = () => { $('quit').classList.remove('hidden'); };
+    const splash = $('splash'), leave = () => { if (splash.classList.contains('gone')) return; splash.classList.add('gone'); setTimeout(() => splash.classList.add('hidden'), 650); $('mainmenu').classList.remove('hidden'); };
+    splash.addEventListener('click', leave);
+    window.addEventListener('keydown', () => { if (!splash.classList.contains('hidden')) leave(); }, true);
+    if (new URLSearchParams(location.search).get('start') === '1') { splash.classList.add('hidden'); }
     $('mNew').onclick = () => this.newValley();
     $('mMap').onclick = () => { this.closeMenu(true); this.toggleCampaign(); };
     $('mQuit').onclick = () => { $('quit').classList.remove('hidden'); };
@@ -752,6 +775,7 @@ export class UI {
     $('mBegin').textContent = this.started ? 'Resume the Valley' : 'Begin the Valley';
     $('mFog').checked = g.fogOn;
     $('mHouses').querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.n === this.cfg.houses));
+    $('mDiff').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.d === this.cfg.diff));
     drawVale($('vale'), g, { fog: false });
     const box = $('crests'); box.innerHTML = '';
     for (let i = 0; i < MAX_HOUSES; i++) {
@@ -760,8 +784,10 @@ export class UI {
       box.appendChild(d); drawCrest(d.querySelector('canvas').getContext('2d'), 22, 24, 40, i);
     }
   }
-  openMenu() { this.menuOpen = true; this.setPaused(false); this.refreshMenu(); $('menu').classList.remove('hidden'); $('campaign').classList.add('hidden'); this.campaignOpen = false; }
-  closeMenu(keepStarted) { this.menuOpen = false; this.started = true; $('menu').classList.add('hidden'); if (!this.firstFocus) { this.focusHall(); this.firstFocus = true; } }
+  openMenu() { this.menuOpen = true; this.setPaused(false); this.refreshMenu(); this.showMain(); $('campaign').classList.add('hidden'); this.campaignOpen = false; }
+  showMain() { $('menu').classList.add('hidden'); $('mainmenu').classList.remove('hidden'); }
+  showSetup() { $('mainmenu').classList.add('hidden'); $('menu').classList.remove('hidden'); this.refreshMenu(); }
+  closeMenu(keepStarted) { this.menuOpen = false; this.started = true; $('menu').classList.add('hidden'); $('mainmenu').classList.add('hidden'); if (!this.firstFocus) { this.focusHall(); this.firstFocus = true; } }
   newValley() {
     const seed = $('mSeedLock').checked ? this.game.seed : undefined;
     this.onReroll?.({ seed, houses: this.cfg.houses });
@@ -769,7 +795,7 @@ export class UI {
     $('end').classList.add('hidden');
   }
   toggleCampaign() { this.campaignOpen ? this.closeCampaign() : this.openCampaign(); }
-  openCampaign() { if (this.menuOpen && !this.started) return; this.campaignOpen = true; this.menuOpen = false; $('menu').classList.add('hidden'); $('campaign').classList.remove('hidden'); this.drawCampaign(); }
+  openCampaign() { if (this.menuOpen && !this.started) return; this.campaignOpen = true; this.menuOpen = false; $('menu').classList.add('hidden'); $('mainmenu').classList.add('hidden'); $('campaign').classList.remove('hidden'); this.drawCampaign(); }
   closeCampaign() { this.campaignOpen = false; $('campaign').classList.add('hidden'); }
   drawCampaign() {
     const r = this.r;

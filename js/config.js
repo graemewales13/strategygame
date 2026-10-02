@@ -159,6 +159,15 @@ export const LOYALTY_RATE = 1.6; // loyalty/sec per unit of net pull
 export const SUBMIT_LOYALTY = 72;
 export const SPY_RATE = 1.7;     // loyalty/sec while a spy is inside
 export const SPY_CATCH = 0.004;  // base catch chance per second, plus protection/16000
+// difficulty tiers. playerMul scales the player's starting purse and stores; aiMul scales every coin an AI house earns;
+// armyCap and warAfter govern how big and how soon rival armies come; think slows or quickens their decisions;
+// wealth is the fortune (coin plus goods at market value) that wins the game when held for WEALTH_HOLD seconds.
+export const DIFFICULTY = {
+  easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, think: 1.5, wealth: 4000 },
+  mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.0,  armyCap: 22, warAfter: 840,  think: 1.15, wealth: 6000 },
+  hard: { label: 'Hard', playerMul: 0.85, aiMul: 1.2, armyCap: 32, warAfter: 600,  think: 1.0, wealth: 9000 },
+};
+export const WEALTH_HOLD = 90;   // seconds a house must keep its fortune to win by wealth
 export const VILLAGE_WIN_SHARE = 0.65; // hold this share of villages ...
 export const VILLAGE_WIN_HOLD = 45;    // ... for this many seconds to win
 

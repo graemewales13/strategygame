@@ -198,3 +198,17 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 
 #r-net{margin-left:6px;font-size:11px;font-weight:600;opacity:.95}#r-net.up{color:#9be08a}#r-net.down{color:#ff8e7a}
 .sellrow .gchip{cursor:pointer}
+
+/* splash + painted main menu */
+.splash { background: #05070a; cursor: pointer; }
+.splashimg { position: relative; width: min(100vw, calc(100vh * 1168 / 784)); aspect-ratio: 1168 / 784; background: url(assets/menu/splash-valley.jpg) center/100% 100% no-repeat; animation: splashin 1.4s ease-out; }
+.splashhint { position: absolute; left: 0; right: 0; bottom: 3%; text-align: center; color: #e8d9ae; font: 600 15px/1 Georgia, serif; letter-spacing: .22em; text-transform: uppercase; text-shadow: 0 1px 6px #000, 0 0 14px #000; animation: pulse 2.2s ease-in-out infinite; }
+#splash.gone { opacity: 0; pointer-events: none; transition: opacity .6s; }
+@keyframes splashin { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
+@keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+#mainmenu { background: #05070a; }
+.mmimg { position: relative; width: min(100vw, calc(100vh * 1168 / 784)); aspect-ratio: 1168 / 784; background: url(assets/menu/menu-main.jpg) center/100% 100% no-repeat; }
+.hot { position: absolute; left: 4.6%; width: 30.8%; height: 9.2%; background: transparent; border: 0; border-radius: 6px; cursor: pointer; padding: 0; transition: background .15s, box-shadow .15s; }
+.hot:hover, .hot:focus-visible { background: radial-gradient(ellipse at 50% 50%, rgba(255,214,120,.22), rgba(255,214,120,.04) 70%); box-shadow: 0 0 0 1px rgba(255,214,120,.35) inset, 0 0 22px rgba(255,200,90,.25); outline: none; }
+.hot:active { background: rgba(255,214,120,.3); }
+.hidden { display: none !important; }

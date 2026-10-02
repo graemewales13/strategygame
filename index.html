@@ -47,15 +47,32 @@
     <section id="cmdPanel"></section>
   </footer>
 
-  <!-- Menu -->
-  <div id="menu" class="screen">
+  <!-- Splash and main menu (painted art; the labels are in the picture, the buttons are hotspots over it) -->
+  <div id="splash" class="screen splash"><div class="splashimg"><div class="splashhint">Click anywhere to begin</div></div></div>
+  <div id="mainmenu" class="screen hidden">
+    <div class="mmimg" id="mmimg">
+      <button class="hot" id="hContinue" style="top:29.2%" aria-label="Continue"></button>
+      <button class="hot" id="hNew" style="top:38.7%" aria-label="New Hold"></button>
+      <button class="hot" id="hMap" style="top:48.0%" aria-label="Campaign Map"></button>
+      <button class="hot" id="hSkirmish" style="top:57.6%" aria-label="Skirmish"></button>
+      <button class="hot" id="hOptions" style="top:67.0%" aria-label="Options"></button>
+      <button class="hot" id="hQuit" style="top:76.6%" aria-label="Quit"></button>
+    </div>
+  </div>
+
+  <!-- Skirmish and options -->
+  <div id="menu" class="screen hidden">
     <div class="menuframe">
       <div class="menuleft">
         <h1>Seven Holds</h1>
-        <p class="sub">A small hall. A wide valley. Rule it.</p>
+        <p class="sub">A village of thirty. A wide valley. Rule it.</p>
         <button class="big" id="mBegin">Begin the Valley</button>
+        <button class="big alt" id="mBack">Back to the menu</button>
         <div class="opt"><span>Houses</span>
           <div class="seg" id="mHouses"><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button></div>
+        </div>
+        <div class="opt"><span>Difficulty</span>
+          <div class="seg" id="mDiff"><button data-d="easy">Easy</button><button data-d="mid">Mid</button><button data-d="hard">Hard</button></div>
         </div>
         <button class="big alt" id="mNew">New Valley</button>
         <button class="big alt" id="mMap">Campaign Map</button>

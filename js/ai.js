@@ -4,7 +4,7 @@
 
 import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, WAGE_FREE, ALL_GOODS, RES_VALUE } from './config.js';
 
-const WAR_AFTER = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
+const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
   ['mine', 1], ['market', 1], ['barracks', 1], ['cottage', 1], ['tavern', 1], ['keep', 1], ['farm', 1], ['cottage', 2], ['mine', 2], ['warehouse', 1], ['foundry', 1], ['mill', 1],
   ['archery', 1], ['cottage', 3], ['forge', 1], ['mine', 3], ['stable', 1], ['temple', 1], ['academy', 1], ['village', 1], ['cottage', 4], ['farm', 2],
@@ -16,7 +16,7 @@ export function updateAI(game, dt) {
     if (!p.ai || !p.alive) continue;
     p.think -= dt;
     if (p.think > 0) continue;
-    p.think = 1.5;
+    p.think = 1.5 * game.diff.think;
     think(game, p.team, p);
   }
 }
@@ -116,7 +116,7 @@ function think(game, team, p) {
   const incTot = Object.values(p.inc || {}).reduce((a, v) => a + v, 0);
   const payable = WAGE_FREE + Math.max(0, Math.floor((incTot - 0.1) / 0.06));   // soldiers the income can keep paid
   const rich = Math.max(0, Math.floor((p.gold - 250) / 45));   // a full purse buys men; a thin one holds the line it can pay for
-  const armyCap = Math.min(30, Math.min(3 + Math.floor(t / 65), payable) + rich);
+  const armyCap = Math.min(game.diff.armyCap, Math.min(3 + Math.floor(t / 65), payable) + rich);
   const queuedMil = game.buildings.filter((b) => b.team === team).reduce((n, b) => n + b.queue.filter((q) => q.kind !== 'serf').length, 0);
   if (army.length + queuedMil < armyCap) {
     const picks = [];
@@ -167,7 +167,7 @@ function think(game, team, p) {
   }
 
   // 6. war: late, and only with a real army
-  if (t > WAR_AFTER && army.length >= 9) {
+  if (t > game.diff.warAfter && army.length >= 9) {
     let target = null, bd = 1e9;
     for (const q of game.players) {
       if (!q.alive || q.team === team) continue;

@@ -6,20 +6,21 @@ import { Renderer, Minimap, drawCrest } from './render.js';
 import { UI } from './ui.js';
 import { loadArt } from './art.js';
 
-const cfg = { houses: DEFAULT_HOUSES, fog: true };
+const cfg = { houses: DEFAULT_HOUSES, fog: true, diff: 'mid' };
 const params = new URLSearchParams(location.search);
 if (params.get('houses')) cfg.houses = Math.max(3, Math.min(5, +params.get('houses')));
 if (params.get('fog') === '0') cfg.fog = false;
+if (['easy', 'mid', 'hard'].includes(params.get('diff'))) cfg.diff = params.get('diff');
 
 await loadArt();
-const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog });
+const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff });
 const host = new LocalHost(game);
 const renderer = new Renderer(document.getElementById('game'), game);
 const minimap = new Minimap(document.getElementById('minimap'), game, renderer);
 const ui = new UI({ game, host, renderer, minimap, cfg });
 
 ui.onReroll = (opts) => {
-  game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog });
+  game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog, diff: cfg.diff });
   ui.setGame(game);
   ui.firstFocus = false;
   centerOnHall();

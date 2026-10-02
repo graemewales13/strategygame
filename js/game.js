@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD,
+  INFLUENCE, LOYALTY_RATE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, DIFFICULTY, WEALTH_HOLD,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, MARKET_RADIUS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
@@ -31,7 +31,8 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ setup
-  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true } = {}) {
+  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid' } = {}) {
+    this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
     this.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, houses));
     this.fogOn = fog;
     this.aiOn = ai;
@@ -57,13 +58,13 @@ export class Game {
     this.floaters = [];
     this.byId = new Map();
     this.alertT = new Array(this.houses).fill(-99);
-    this.winHold = { team: -1, t: 0 };
+    this.winHold = { team: -1, t: 0 }; this.richHold = { team: -1, t: 0 };
     this.visT = 0;
     this.events.length = 0;
 
     const n = this.houses;
     this.players = Array.from({ length: n }, (_, i) => ({
-      team: i, name: HOUSES[i].name, ...START_RES, alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
+      team: i, name: HOUSES[i].name, ...START_RES, ...(i === PLAYER ? Object.fromEntries(Object.entries(START_RES).map(([k, v]) => [k, Math.round(v * this.diff.playerMul)])) : {}), alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
       acc: {}, inc: {}, spent: 0, wageRate: 0, wageDebt: 0, brokeT: 0, deserterT: 0, earnedTotal: 0,
     }));
     this.known = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
@@ -1376,6 +1377,7 @@ export class Game {
   earn(team, src, amt) {
     const p = this.players[team];
     if (!(amt > 0)) return;
+    if (p.ai) amt *= this.diff.aiMul;
     p.gold += amt; p.earnedTotal += amt; p.acc[src] = (p.acc[src] || 0) + amt;
   }
   // the army's pay: due every second, taken from the purse; an empty purse breeds trouble
@@ -1941,10 +1943,17 @@ export class Game {
     this.cleanup();
   }
 
+  // a house's fortune: coin plus the market value of its stockpile, counted in coin (grain and timber are bulk, not wealth)
+  wealthOf(team) {
+    const p = this.players[team];
+    let w = p.gold;
+    for (const k of ALL_GOODS) if (k !== 'gold' && k !== 'food' && k !== 'wood') w += ((p[k] || 0) * RES_VALUE[k]) / RES_VALUE.gold;
+    return w;
+  }
   checkEnd(dt) {
     const living = this.players.filter((p) => p.alive).map((p) => p.team);
-    if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', reason: 'Your villages and castles are gone.' }; return; }
-    if (living.length === 1) { this.outcome = { result: 'victory', reason: 'Every rival house has fallen.' }; return; }
+    if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', kind: 'fallen', reason: 'Your villages and castles are gone.' }; return; }
+    if (living.length === 1) { this.outcome = { result: 'victory', kind: 'conquest', reason: 'Every rival house has fallen.' }; return; }
     // village share victory: hold VILLAGE_WIN_SHARE of all villages for VILLAGE_WIN_HOLD seconds
     const valley = this.villages.filter((v) => !v.founded);   // villages you found yourself do not count toward (or against) the valley
     const need = Math.ceil(valley.length * VILLAGE_WIN_SHARE);
@@ -1956,11 +1965,20 @@ export class Game {
       this.winHold.t += dt;
       if (this.winHold.t >= VILLAGE_WIN_HOLD) {
         this.outcome = lead === PLAYER
-          ? { result: 'victory', reason: `You hold ${counts[lead]} of ${valley.length} villages. The valley is yours.` }
-          : { result: 'defeat', reason: `${this.players[lead].name} holds ${counts[lead]} of ${valley.length} villages.` };
+          ? { result: 'victory', kind: 'land', reason: `You hold ${counts[lead]} of ${valley.length} villages. The valley is yours.` }
+          : { result: 'defeat', kind: 'land', reason: `${this.players[lead].name} holds ${counts[lead]} of ${valley.length} villages.` };
       }
     } else this.winHold = { team: -1, t: 0 };
     this.villageNeed = need;
+    // wealth victory: the fortune the tier asks for, held for WEALTH_HOLD seconds
+    const rich = living.map((t) => [t, this.wealthOf(t)]).sort((a, b) => b[1] - a[1])[0];
+    if (rich && rich[1] >= this.diff.wealth) {
+      if (this.richHold.team !== rich[0]) this.richHold = { team: rich[0], t: 0 };
+      this.richHold.t += dt;
+      if (this.richHold.t >= WEALTH_HOLD && !this.outcome) this.outcome = rich[0] === PLAYER
+        ? { result: 'victory', kind: 'wealth', reason: `Your treasury holds ${Math.floor(rich[1])} coin of wealth. The valley is bought.` }
+        : { result: 'defeat', kind: 'wealth', reason: `${this.players[rich[0]].name} has grown rich enough to buy the valley.` };
+    } else this.richHold = { team: -1, t: 0 };
   }
 
   // ------------------------------------------------------------------ snapshot for a future network client
