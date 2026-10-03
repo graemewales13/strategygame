@@ -175,7 +175,7 @@ export class UI {
     this.clickAt(d.sx, d.sy, d.shift);
   }
   clickAt(sx, sy, shift) {
-    const g = this.game, r = this.r, h = r.pick(sx, sy);
+    const g = this.game, r = this.r, h = r.pick(sx, sy, ['unit']) || r.pick(sx, sy);   // a person under the cursor wins over the building or village behind them
     if (h && h.type === 'unit') {
       const u = h.o, now = performance.now();
       if (u.team === PLAYER) {
@@ -301,6 +301,25 @@ export class UI {
         const camels = g.units.filter((u) => u.team === PLAYER && u.kind === 'camel' && u.hp > 0 && u.route?.targetId !== t.id);
         camels.sort((a, c) => (a.route ? 1 : 0) - (c.route ? 1 : 0) || Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(c.x - t.x, c.y - t.y));
         if (camels[0]) this.host.send({ type: 'route', ids: [camels[0].id], targetId: t.id, want: this.want || 'gold' });
+        break;
+      }
+      case 'serfjob': {
+        const all = this.selUnits().filter((u) => u.kind === 'serf'), serfs = d.id ? all.filter((u) => u.id === +d.id) : all;
+        if (!serfs.length) break;
+        if (d.job === 'home') {
+          const homes = g.villages.filter((v) => v.owner === PLAYER);
+          let sent = 0;
+          for (const u of serfs) { const v = homes.slice().sort((a, c) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(c.x - u.x, c.y - u.y))[0]; if (v && this.host.send({ type: 'enter', ids: [u.id], targetId: v.id })) sent++; }
+          if (!sent) this.toast('No village of yours to go home to.', 'warn');
+          break;
+        }
+        const kind = d.job === 'wood' ? 'tree' : 'berry';
+        let sent = 0;
+        for (const u of serfs) {
+          const n = g.resources.filter((r) => r.kind === kind && r.amount > 0 && g.ruled(PLAYER, r.x + 0.5, r.y + 0.5)).sort((a, c) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(c.x - u.x, c.y - u.y))[0];
+          if (n && this.host.send({ type: 'gather', ids: [u.id], nodeId: n.id })) sent++;
+        }
+        if (!sent) this.toast(kind === 'tree' ? 'No timber on your ground within reach. Raise a market or keep near trees.' : 'No berries on your ground within reach.', 'warn');
         break;
       }
       case 'routecamel': {
@@ -487,7 +506,7 @@ export class UI {
       const us = this.selUnits();
       if (us.length === 1) {
         const u = us[0], st = UNITS[u.kind], mine = u.team === PLAYER;
-        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${st.label} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : ''}${esc(st.info)}</div>${b.town != null && g.byId.get(b.town) ? `<div class="hint">Part of the town of <b>${esc(g.byId.get(b.town).name)}</b>: it changes hands with the village.</div>` : ''}
+        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${st.label} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : ''}${esc(st.info)}</div>
           <div class="stat"><label>Can</label><span>${esc(ABILITIES[u.kind] || '')}</span></div>
           <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(u.hp / u.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(u.hp)}/${u.maxHp}</span></div>
           <div class="stat"><label>Damage</label><span>${st.dmg}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${st.speed}</span></div>
@@ -499,7 +518,7 @@ export class UI {
     } else if (s.type === 'building') {
       const b = g.byId.get(s.id); if (!b) { this.clearSel(); return; }
       const st = BUILDINGS[b.kind], mine = b.team === PLAYER;
-      html = `${portrait(b.kind, HOUSES[b.team].accent, b.team)}<div class="seltitle">${st.label} <small style="color:${HOUSES[b.team].accent};font-size:12px">${esc(HOUSES[b.team].short)}</small></div><div class="selsub">${esc(st.info)}</div>
+      html = `${portrait(b.kind, HOUSES[b.team].accent, b.team)}<div class="seltitle">${st.label} <small style="color:${HOUSES[b.team].accent};font-size:12px">${esc(HOUSES[b.team].short)}</small></div><div class="selsub">${esc(st.info)}</div>${b.town != null && g.byId.get(b.town) ? `<div class="hint">Part of the town of <b>${esc(g.byId.get(b.town).name)}</b>: it changes hands with the village.</div>` : ''}
         <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(b.hp / b.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(b.hp)}/${b.maxHp}</span></div>`;
       if (b.built < 1) html += `<div class="stat"><label>Building</label><div class="meter"><i class="prog" style="width:${b.built * 100}%"></i></div><span class="v">${Math.floor(b.built * 100)}%</span></div><div class="selsub">Right-click with serfs to help.</div>`;
       if (mine && b.built >= 1 && st.pop) html += `<div class="stat"><label>Population</label><span>+${st.pop}</span></div>`;
@@ -703,6 +722,15 @@ export class UI {
     return html + `</div>`;
   }
 
+  // serfs: one set of job buttons for the whole group, and a row for each serf with its own
+  serfPanel(serfs) {
+    const job = (j, glyph, label, id, tip) => `<button class="cbtn mini" data-act="serfjob" data-job="${j}" ${id != null ? `data-id="${id}"` : ''} data-tip="${encodeURIComponent(tip)}">${glyph} ${label}</button>`;
+    let html = `<div class="ctitle">Serfs (${serfs.length})</div><div class="serfjobs">${job('wood', '🪓', 'Cut timber', null, '<b>Cut timber</b><br>Each selected serf walks to the nearest tree on your ground and starts felling.')}${job('food', '🫐', 'Pick berries', null, '<b>Pick berries</b><br>Each selected serf goes to the nearest berry bush on your ground.')}${job('home', '⌂', 'Go home', null, '<b>Go home</b><br>Each selected serf walks back to the nearest village of yours and goes inside.')}</div>`;
+    if (serfs.length > 1) html += serfs.slice(0, 10).map((u) => `<div class="serfrow"><span class="sn">${esc(u.name || 'Serf')}</span><span class="st">${esc(this.taskText(u))}</span>${job('wood', '🪓', '', u.id, '<b>Cut timber</b>')}${job('home', '⌂', '', u.id, '<b>Go home</b>')}</div>`).join('') + (serfs.length > 10 ? `<div class="hint">…and ${serfs.length - 10} more.</div>` : '');
+    else html += `<div class="hint">${esc(serfs[0].name || 'Serf')}: <b>${esc(this.taskText(serfs[0]))}</b></div>`;
+    return html;
+  }
+
   renderCmd() {
     const g = this.game, s = this.sel;
     let html = '';
@@ -710,6 +738,7 @@ export class UI {
     const ent = this.selEntity();
     if (s.type === 'units' && us.length) {
       if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
+      if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
       html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}</div>`;
       if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));

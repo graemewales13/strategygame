@@ -40,7 +40,7 @@ function reportError(where, e) {
   const key = where + ':' + (e && e.message);
   if (seenErr.has(key)) return;
   seenErr.add(key);
-  console.error('[auld-world]', where, e);
+  console.error('[auld-world]', where, e, e && e.stack);
   let box = document.getElementById('errbox');
   if (!box) { box = document.createElement('div'); box.id = 'errbox'; document.body.appendChild(box); }
   box.textContent = `Display problem (${where}): ${e && e.message}. Press F12 for details; the game keeps running.`;
