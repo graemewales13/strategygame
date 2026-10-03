@@ -130,7 +130,7 @@ Money is the first measure of a house; the others are land influence (villages h
 - Village purses refill from their folk (bigger villages pay more); AI markets pay from their treasury.
 
 ## Peoples and painted kits
-Six peoples (`FACTIONS` in config): Egyptians, Romans, Vikings, British, Mongols, Scottish. Each house has a `faction` (Calder Egyptians, Varr Romans, Cael Scottish, Thorn British, Ash Mongols). Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Camels draw as dromedary (Mongols: Bactrian, Romans: donkey); the ram and hamlet use the shared art. Vikings still need their 18 buildings.
+Five peoples (`FACTIONS` in config): Egyptians, Romans, British, Mongols, Scottish. Vikings are not a house. Calder is Egyptian, Varr Roman, Cael Scottish, Thorn British, Ash Mongol. Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Camels draw as dromedary (Mongols: Bactrian, Romans: donkey); the ram and hamlet use the shared art. There is no Viking kit.
 
 ## Money and manpower (the economy)
 Start: a home village of **30 folk**, **three serfs**, 300 grain, 480 timber, **320 coin**, 60 stone. Coin is booked by source (hover the coin counter; the green/red figure beside it is net income per second after army pay). `node tools/econ.js [minutes] [seed] [team]` prints a per-minute table of any rival house.
@@ -151,11 +151,12 @@ Build **Village** (needs a keep, 100 grain, 150 timber, 30 coin, 30 s). When ser
 ### Playtesting tools
 `node tools/play.js [minutes] [seeds] [houses] [econ|rush|turtle]` plays house 0 like a person (only the intents the buttons send) against the AI and lists refused orders, stalls and outcomes. `tools/soak.js` runs all-AI matches; `tools/econ.js` prints a house's economy per minute.
 
-### Ways to win and lose, and the three tiers
-- **Wealth:** hold the tier's fortune (coin plus the market value of ores, steel and ware; grain and timber do not count) for 90 s. Every house races for it, the AIs too.
-- **Land:** hold 70% of the valley's villages for 120 s. Only villages at 55+ loyalty count (a sacked village starts near 48 and must be won over with castles, taverns, temples and soldiers inside), and villages you found yourself do not count.
-- **Conquest:** be the last house with a seat.
+### Ways to win and lose
+- **Conquest:** be the last house with a seat. A rival with no home village and no soldiers forfeits after 45 s.
+- **Land:** hold 70% of the independent villages for 120 s. Only villages at 55+ loyalty count. Villages you founded do not count.
+- **Wealth** is off (`WEALTH_WIN` in config). Turn it on to race for the tier fortune.
 - You lose when a rival gets there first, or your last village and keep fall.
+The first five buildings are the game: mine, market, keep, barracks, tavern. The rest unlock after them.
 
 | Tier | Your purse | Rival income | Rival army cap | First war | Fortune to win |
 |---|---|---|---|---|---|

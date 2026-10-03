@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, WEALTH_WIN, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
@@ -2050,12 +2050,41 @@ export class Game {
     for (const k of ALL_GOODS) if (k !== 'gold' && k !== 'food' && k !== 'wood') w += ((p[k] || 0) * RES_VALUE[k]) / RES_VALUE.gold;
     return w;
   }
-  // Victory is conquest only: every rival house must fall or forfeit. Wealth and village share no longer win the game (they still count in the standings).
+  // Two wins. Last house standing, or hold the independent villages. Fortune is off unless WEALTH_WIN.
   checkEnd(dt) {
     const living = this.players.filter((p) => p.alive).map((p) => p.team);
     if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', kind: 'fallen', reason: 'Your villages and castles are gone.' }; return; }
     this.rivalsLeft = living.length - 1;
-    if (living.length === 1) this.outcome = { result: 'victory', kind: 'conquest', reason: this.forfeits ? 'Every rival house has fallen or forfeited.' : 'Every rival house has fallen.' };
+    if (living.length === 1) { this.outcome = { result: 'victory', kind: 'conquest', reason: this.forfeits ? 'Every rival house has fallen or forfeited.' : 'Every rival house has fallen.' }; return; }
+    const countable = this.villages.filter((v) => !v.home);
+    if (countable.length) {
+      for (const team of living) {
+        const held = countable.filter((v) => v.owner === team && v.loyalty >= LAND_LOYALTY).length;
+        if (held / countable.length >= VILLAGE_WIN_SHARE) {
+          this.landHold = this.landHold || {};
+          this.landHold[team] = (this.landHold[team] || 0) + dt;
+          if (this.landHold[team] >= VILLAGE_WIN_HOLD) {
+            const won = team === PLAYER;
+            this.outcome = { result: won ? 'victory' : 'defeat', kind: 'land', reason: won ? 'You hold the villages.' : `${this.players[team].name} holds the villages.` };
+            return;
+          }
+        } else if (this.landHold) this.landHold[team] = 0;
+      }
+    }
+    if (WEALTH_WIN) {
+      const need = (DIFFICULTY[this.diff] || DIFFICULTY.mid).wealth;
+      for (const team of living) {
+        if (this.wealthOf(team) >= need) {
+          this.wealthHold = this.wealthHold || {};
+          this.wealthHold[team] = (this.wealthHold[team] || 0) + dt;
+          if (this.wealthHold[team] >= WEALTH_HOLD) {
+            const won = team === PLAYER;
+            this.outcome = { result: won ? 'victory' : 'defeat', kind: 'wealth', reason: won ? 'Your fortune held.' : `${this.players[team].name} holds the fortune.` };
+            return;
+          }
+        } else if (this.wealthHold) this.wealthHold[team] = 0;
+      }
+    }
   }
   // A house that has lost its home village and has no soldiers left cannot fight on: after FORFEIT_AFTER seconds it forfeits and its holdings go free.
   checkForfeit(dt) {

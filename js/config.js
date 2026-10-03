@@ -12,11 +12,10 @@ export const MIN_HOUSES = 3;
 export const MAX_HOUSES = 5;
 export const DEFAULT_HOUSES = 4;
 
-// the six peoples. Painted building kits exist for those with art in assets/factions/<id>/buildings (others borrow the common set).
+// Five peoples. Vikings are not a house. Each kit is the building art in assets/factions/<id>/buildings.
 export const FACTIONS = {
   egyptians: { label: 'Egyptians', blurb: 'Mudbrick halls, dromedary caravans.' },
   romans:    { label: 'Romans',    blurb: 'Colonnades, tile roofs, donkey trains.' },
-  vikings:   { label: 'Vikings',   blurb: 'Longhouses and carved timber.' },
   british:   { label: 'British',   blurb: 'Timber frames and thatch.' },
   mongols:   { label: 'Mongols',   blurb: 'Gers, banners, Bactrian camels.' },
   scottish:  { label: 'Scottish',  blurb: 'Grey stone, heather thatch, tower houses.' },
@@ -97,7 +96,7 @@ export const UNITS = {
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
-  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click up to three markets (yours or a treaty partner's) and it loops between them for ever.' },
+  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click up to three markets (yours or a treaty partner) and it loops between them for ever.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
 };
 
@@ -118,13 +117,14 @@ export const BUILDINGS = {
   archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
   stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
   mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: [], onDeposit: true, info: 'Raised on a mineral deposit. Assign serfs to dig; ore flows into your stockpile.' },
-  foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: [], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Automatic.' },
+  foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: ['mine'], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Needs a mine first.' },
   village:   { label: 'Village',       size: 3, hp: 400,  sight: 7,  pop: 0, cost: { food: 100, wood: 150, gold: 30 }, time: 30, requires: ['keep'], info: 'Found a village of your own: it starts with a few settlers and grows to 50 folk. Its people pay tax, till fields, house your population, and can be drafted as serfs, miners or soldiers.' },
   tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['barracks'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
 // basic buildings first; the rest unlock as their requirements are built (market -> cottage -> farm -> mill, mine -> warehouse, barracks -> archery ...)
-export const BUILD_ORDER_UI = ['mine', 'market', 'foundry', 'tavern', 'keep', 'barracks', 'village', 'cottage', 'farm', 'mill', 'warehouse', 'archery', 'stable', 'tower', 'forge', 'workshop', 'academy', 'temple'];
-export const BASIC_BUILDINGS = ['mine', 'market', 'foundry', 'tavern', 'keep', 'barracks'];
+export const BUILD_ORDER_UI = ['mine', 'market', 'keep', 'barracks', 'tavern', 'foundry', 'village', 'cottage', 'farm', 'mill', 'warehouse', 'archery', 'stable', 'tower', 'forge', 'workshop', 'academy', 'temple'];
+// The first five are the game. The rest unlock after them.
+export const BASIC_BUILDINGS = ['mine', 'market', 'keep', 'barracks', 'tavern'];
 
 // Which buildings accept which goods from serfs
 export const DROP_OFF = {
@@ -176,7 +176,8 @@ export const DIFFICULTY = {
   hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.1, armyCap: 32, warAfter: 600,  think: 1.0, wealth: 10000 },
 };
 export const FORFEIT_AFTER = 45;   // seconds a house with no home village and no soldiers holds out before it forfeits
-export const WEALTH_HOLD = 90;   // seconds a house must keep its fortune to win by wealth
+export const WEALTH_WIN = false; // fortune race is off until the village loop is obvious. Set true to race for coin.
+export const WEALTH_HOLD = 90;   // seconds a house must keep its fortune to win by wealth, if WEALTH_WIN
 export const VILLAGE_WIN_SHARE = 0.7; // hold this share of villages ...
 export const LAND_LOYALTY = 55;     // only villages at least this loyal count toward the land win: a sacked village must be won over
 export const VILLAGE_WIN_HOLD = 120;   // ... for this many seconds to win
