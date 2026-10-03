@@ -1,8 +1,12 @@
 // Auld World - balance, stats and constants. No DOM access: this file is shared by the host sim and the client.
 
 export const TILE = 32;
-export const MAP_W = 112;
-export const MAP_H = 112;
+// The board is 320 x 320, about 8x the area of the old 112 x 112 valley. Headless tests set AULD_MAP=112 to run the old small board quickly.
+const ENV_MAP = typeof process !== 'undefined' && process.env && +process.env.AULD_MAP;
+export const MAP_W = ENV_MAP || 320;
+export const MAP_H = MAP_W;
+export const AREA_MUL = (MAP_W * MAP_H) / (112 * 112);   // the board is this many times the old 112x112 valley (about 8x)
+export const VISION_MUL = Math.sqrt(8);               // sight radii grow by this, so the ground revealed as you travel is 8x larger
 export const PLAYER = 0;
 export const MIN_HOUSES = 3;
 export const MAX_HOUSES = 5;
@@ -93,7 +97,7 @@ export const UNITS = {
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
-  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Load goods at a market, then right-click another market or village to trade there.' },
+  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click up to three markets (yours or a treaty partner's) and it loops between them for ever.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
 };
 
@@ -171,6 +175,7 @@ export const DIFFICULTY = {
   mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.0,  armyCap: 22, warAfter: 840,  think: 1.15, wealth: 6000 },
   hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.1, armyCap: 32, warAfter: 600,  think: 1.0, wealth: 10000 },
 };
+export const FORFEIT_AFTER = 45;   // seconds a house with no home village and no soldiers holds out before it forfeits
 export const WEALTH_HOLD = 90;   // seconds a house must keep its fortune to win by wealth
 export const VILLAGE_WIN_SHARE = 0.7; // hold this share of villages ...
 export const LAND_LOYALTY = 55;     // only villages at least this loyal count toward the land win: a sacked village must be won over
@@ -209,6 +214,7 @@ export const VILLAGE_NAMES = {
 
 export const RELATIONS = ['peace', 'trade', 'war'];
 export const DEFAULT_RELATION = 'peace';
+export const WAR_MIN = 60;   // seconds after a declaration before either side will hear of peace
 
 export const FOG_REVEAL_MS = 0;
 
@@ -229,7 +235,7 @@ export const ABILITIES = {
   spy: 'Right-click a village to infiltrate it (gains influence)',
   scholar: 'Heals friends, boosts academy influence',
   ram: 'Siege: right-click walls',
-  camel: 'Carries up to 40 goods: load at a market, right-click a market or village to trade',
+  camel: 'Carries up to 40 goods: select it, then click up to 3 markets to loop between (markets only)',
 };
 // Keep (castle) drills garrisoned recruits and serfs into soldiers.
 export const DRILL = {
@@ -250,8 +256,20 @@ export const TRAITS = {
 };
 
 // ---- caravans: camels carry goods between markets and villages ------------------------------
+export const ROUTE_STOPS = 3;      // markets a camel keeps on its circuit
 export const CAMEL_CAP = 40;       // goods per camel
-export const MARKET_RADIUS = 24;   // a market is stocked by mines, foundries and warehouses within this many tiles
+// ---- communities. A market and the people and works around it form a district. The flow it models:
+//   SUPPLY (mines dig, farms and mills grow)  ->  WORKS (foundries, forges, workshops make steel and ware)  ->  MARKET (shelf, camels, coin)  ->  HOMES (cottages, towns) who pay, and SERVICE (taverns, temples, abbeys) who keep them content.
+// Each of the four links present within DISTRICT.r adds a bonus; all four make the district thrive. Held villages count as links too (by kind),
+// so a mining camp, a hamlet and an abbey beside your market are a ready-made community. Buildings dotted about alone get nothing and work slowly.
+export const DISTRICT = { r: 20, perLink: 0.25, thrive: 0.25, lone: 0.6 };
+export const LINKS = {
+  supply:  { label: 'Supply',  blds: ['mine', 'farm', 'mill'],                  towns: ['mine', 'hamlet'],  tip: 'mines, farms or mills (or a mining camp or hamlet you hold)' },
+  works:   { label: 'Works',   blds: ['foundry', 'forge', 'workshop', 'warehouse'], towns: ['hillfort'],    tip: 'a foundry, forge, workshop or warehouse (or a hillfort you hold)' },
+  homes:   { label: 'Homes',   blds: ['cottage'],                               towns: ['market'],          tip: 'cottages (or a market town, or any village you founded)' },
+  service: { label: 'Service', blds: ['tavern', 'temple', 'academy'],           towns: ['abbey', 'inn'],    tip: 'a tavern, temple or academy (or an abbey or inn you hold)' },
+};
+export const MARKET_RADIUS = 20;   // a market is stocked by mines, foundries and warehouses within this many tiles
 export const SHELF_CAP = 60;       // goods per kind on a market's shelf (100 with a warehouse beside it)
 export const SHELF_RESERVE = { food: 100, wood: 100, gold: 100, other: 10 }; // the stockpile keeps this much before the market stocks from it
 export const SPY_FEE = 25;         // coin to send a recruit out as a spy

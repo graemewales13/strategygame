@@ -221,3 +221,25 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .serfrow { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 2px 0; }
 .serfrow .sn { width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f0e2b6; }
 .serfrow .st { width: 170px; color: #cdbb8a; }
+/* diplomacy panel */
+#diplo { position: fixed; z-index: 30; width: 320px; background: linear-gradient(#2a1d10, #1b130b); border: 1px solid #b08f58; border-radius: 6px; box-shadow: 0 8px 28px #000c; padding: 10px 12px; color: #e8d9ae; font: 13px/1.35 Georgia, serif; }
+#diplo .dhead { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+#diplo .dhead .dx { margin-left: auto; background: none; border: 0; color: #cdbb8a; font-size: 18px; cursor: pointer; }
+#diplo .dline { margin: 6px 0; color: #cdbb8a; font-size: 12px; }
+#diplo .drow { display: flex; gap: 6px; margin: 6px 0; }
+#diplo .dbtn { flex: 1; padding: 7px 4px; background: #4a331a; color: #f0e2b6; border: 1px solid #8a6636; border-radius: 4px; cursor: pointer; font: inherit; font-size: 12px; }
+#diplo .dbtn:hover:not(:disabled) { background: #66471f; }
+#diplo .dbtn.warbtn { border-color: #a04030; background: #4a1e16; }
+#diplo .dbtn.warbtn:hover:not(:disabled) { background: #6a2a1e; }
+#diplo .dbtn:disabled { opacity: .45; cursor: not-allowed; }
+#diplo .dbtn.cur { box-shadow: 0 0 0 2px #e8c260 inset; opacity: 1; }
+#diplo .dnote { font-size: 11.5px; color: #b9a67a; }
+.links { display: flex; align-items: center; gap: 4px; margin: 3px 0; flex-wrap: wrap; }
+.links .lk { padding: 2px 8px; border: 1px solid #5a4325; border-radius: 10px; font-size: 12px; color: #8d7a52; background: #1c140b; }
+.links .lk.on { color: #f6e7b4; border-color: #c9a64e; background: #3d2c14; }
+.links .arr { color: #8d7a52; font-size: 12px; }
+.stoplist { margin: 2px 0 4px; }
+.stoprow { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 1px 4px; border-radius: 3px; }
+.stoprow.cur { background: #3d2c1488; }
+.stoprow .sn { width: 190px; color: #f0e2b6; }
+.stoprow .st { flex: 1; color: #cdbb8a; }

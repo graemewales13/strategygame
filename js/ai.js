@@ -270,7 +270,7 @@ function treasury(game, team, p, seat, serfs) {
       if (spare >= 15 && game.sellPrice(mk, k) >= RES_VALUE[k] / RES_VALUE.gold * 0.34) game.sellGoods(team, mk.id, k, Math.min(40, spare));
     }
   }
-  // camels on routes: one per two mines, to the village or partner market that pays best for the shelf
+  // camels on routes: one per two mines, to the partner market that pays best for the shelf
   if (mk) {
     const camels = game.units.filter((u) => u.team === team && u.kind === 'camel' && u.hp > 0);
     const mines = game.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0).length;
@@ -282,10 +282,10 @@ function treasury(game, team, p, seat, serfs) {
       const idle = camels.filter((c) => !c.route && c.task.type === 'idle');
       if (idle.length) {
         let best = null, bs = 0;
-        const cands = [...game.villages, ...game.buildings.filter((b) => b.kind === 'market' && b.team !== team && b.built >= 1)];
+        const cands = game.buildings.filter((b) => b.kind === 'market' && b.team !== team && b.built >= 1);   // camels trade with markets only
         for (const t of cands) {
           if (!game.canDeal(team, t).ok || game.canDeal(team, t).own) continue;
-          const d = Math.hypot(t.x - mk.x, t.y - mk.y); if (d > 70) continue;
+          const d = Math.hypot(t.x - mk.x, t.y - mk.y); if (d > 200) continue;
           const qq = game.routeQuote(mk, t), score = qq.profit * Math.min(1, game.availFor(t, 'gold') / 40) / (1 + d / 25);
           if (qq.n >= 4 && score > bs) { bs = score; best = t; }
         }

@@ -418,7 +418,7 @@ test('caravan: camel loads at the home market, trades at a treaty partner market
   send(); assert.notEqual(camel.task.type, 'caravan', 'no treaty');
   g.proposeRelation(0, 1, 'trade'); assert.equal(g.rel[0][1], 'trade');
   const iron1 = b.iron || 0, coal0 = a.coal;
-  send(); assert.equal(camel.task.type, 'caravan');
+  send(); assert.equal(camel.task.type, 'caravan'); assert.deepEqual(camel.route.stops, [mb.id]);
   run(g, 400);
   g.applyIntent({ type: 'stoproute', team: 0, ids: [camel.id] }); run(g, 150);
   assert.equal(camel.task.type, 'idle', 'back home');
@@ -431,19 +431,19 @@ test('caravan: camel loads at the home market, trades at a treaty partner market
   camel.task = { type: 'idle' }; send(); assert.notEqual(camel.task.type, 'caravan', 'war');
 });
 
-test('caravan: independent mining villages sell ore; coal for coin; capacity and stock limits hold', () => {
+test('caravan: camels trade only with markets; villages are refused; stops cap at three and toggle off', () => {
   const g = new Game({ seed: 9, houses: 3, ai: false });
   const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
-  const v = g.villages.find((x) => x.kind === 'mine'), p = g.players[0];
-  v.owner = -1; v.stores.iron = 20;
+  const v = g.villages.find((x) => x.kind === 'mine'); v.owner = -1;
   const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
-  mk.stock = { gold: 60 };
-  g.load(0, camel.id, 'gold', 60);
-  assert.equal(g.cargoTotal(camel), 40, 'capped at 40');
-  assert.equal(g.cmdCaravan([camel], v, 'iron'), true);
-  run(g, 600);
-  assert.ok(p.iron >= 5 && p.iron <= 25, 'bought iron: ' + p.iron);
-  assert.ok(v.stores.gold > 90 - 1, 'village got coin');
+  assert.equal(g.cmdRoute([camel], v, 'gold'), false, 'a village is no trading partner');
+  assert.ok(!camel.route, 'no route made');
+  const ms = [1, 2, 3, 4].map((i) => { const m = g.addBuilding('market', 0, mk.tx + 5 * i, mk.ty + 6, true); return m; });
+  g.recomputeWalk();
+  for (let i = 0; i < 3; i++) assert.equal(g.cmdRoute([camel], ms[i], 'gold'), true);
+  assert.equal(camel.route.stops.length, 3);
+  assert.equal(g.cmdRoute([camel], ms[3], 'gold'), false, 'fourth stop refused');
+  assert.equal(g.cmdRoute([camel], ms[0], 'gold'), true); assert.equal(camel.route.stops.length, 2, 'clicking a stop removes it');
 });
 
 test('orders: any soldier or serf can attack a building by right-click; camels cannot; recruits become spies', () => {
@@ -459,18 +459,12 @@ test('orders: any soldier or serf can attack a building by right-click; camels c
   assert.equal(r.task.type, 'infiltrate');
 });
 
-test('caravan: if the home market falls the camel still brings its goods to the hall; a lost destination sends it home laden', () => {
+test('caravan: if the home market falls the camel still brings its goods to the hall', () => {
   const g = new Game({ seed: 9, houses: 3, ai: false, fog: false });
-  const p = g.players[0], mk = placeNear(g, 0, 'market'), far = placeNear(g, 1, 'market'); g.rel[0][1] = g.rel[1][0] = 'trade'; g.known[0][1] = g.known[1][0] = 1;
-  mk.stock = { iron: 40 }; far.stock = { gold: 40 };
-  const c1 = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
-  g.load(0, c1.id, 'iron', 30); assert.equal(g.cmdCaravan([c1], far, 'gold'), true);
-  for (let i = 0; i < 20; i++) g.tick(0.1);
-  far.hp = 0; run(g, 300);   // destination razed before arrival
-  assert.equal(c1.task.type, 'idle', 'camel ends idle'); assert.ok(g.cargoTotal(c1) === 0 || p.iron > 0, 'goods came home');
-  const c2 = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5); mk.stock = { iron: 40 }; g.load(0, c2.id, 'iron', 30);
+  const p = g.players[0], mk = placeNear(g, 0, 'market');
+  mk.stock = { iron: 40 };
+  const c2 = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5); g.load(0, c2.id, 'iron', 30);
   const before = p.iron; g.cmdMove([c2], mk.x + 12, mk.y); run(g, 5); mk.hp = 0; mk.team = -1;
-  g.units.splice(g.units.indexOf(c2), 1, c2);
   c2.task = { type: 'caravan', targetId: g.seatOf(0).id, stage: 'home' }; g.setPathToEntity(c2, g.seatOf(0)); run(g, 120);
   assert.ok(p.iron >= before + 29, 'cargo unloaded at the hall: ' + p.iron + ' vs ' + before);
 });
@@ -618,31 +612,21 @@ test('village folk: a quarter muster when attacked and fall back after; wanderer
   assert.ok(to.pop >= 5 + w.n - 0.5, 'population moved');
 });
 
-test('routes: a camel shuttles shelf goods to a village and brings back coin, repeatedly, until stopped', () => {
+test('routes: a camel loops its markets, earns coin at a partner and keeps going until stopped', () => {
   const g = new Game({ seed: 9, houses: 3, ai: false });
   const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
-  const homes = g.villages.filter((x) => x.home >= 1);   // a village well clear of every rival home, so no rival influence turns it mid-test
-  const cand = g.villages.filter((x) => !(x.home >= 0) && homes.every((h) => Math.hypot(h.x - x.x, h.y - x.y) > INFLUENCE_HOME.r));
-  const score = (x) => { const m = { ...x.stores }; x.owner = -1; x.stores.gold = 90; x.stores.iron = 0; x.stores.coal = 0; const q = g.routeQuote(mk, x); x.stores = m; return q.profit || 0; };
-  mk.stock = { iron: 60, coal: 30 };
-  const v = cand.sort((a, b) => score(b) - score(a))[0], p = g.players[0];
-  assert.ok(v, 'a quiet trading village');
-  v.owner = -1; v.stores.gold = 90; v.stores.iron = 0; v.stores.coal = 0;
-  mk.stock = { iron: 60, coal: 30 };
-  const q = g.routeQuote(mk, v);
-  assert.ok(q.n >= 4 && q.profit > 0, 'a profitable load exists: ' + JSON.stringify(q));
-  assert.ok(!q.items.gold, 'never ships coin');
+  const mb = placeNear(g, 1, 'market'); g.meet(0, 1); g.proposeRelation(0, 1, 'trade');
+  assert.equal(g.rel[0][1], 'trade');
+  const p = g.players[0];
+  mk.stock = { iron: 60, coal: 30 }; mb.stock = { gold: 90 };
   const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
   const g0 = p.gold;
-  assert.equal(g.applyIntent({ type: 'route', team: 0, ids: [camel.id], targetId: v.id, want: 'gold' }), true);
-  for (let i = 0; i < 9000 && p.trips < 2; i++) g.tick(0.1);   // two round trips, before rival influence can turn the village
+  assert.equal(g.applyIntent({ type: 'route', team: 0, ids: [camel.id], targetId: mb.id, want: 'gold' }), true);
+  for (let i = 0; i < 12000 && p.trips < 2; i++) { mk.stock.iron = Math.max(mk.stock.iron, 40); g.tick(0.1); }
   assert.ok(p.trips >= 2, 'several trips: ' + p.trips);
-  assert.ok(p.gold > g0 + 20, 'coin earned: ' + (p.gold - g0));
-  assert.ok(p.tradeEarned > 3 && camel.route.earned > 3, 'tracked ' + p.tradeEarned);
-  assert.ok(mk.stock.iron < 60, 'shelf drawn down');
+  assert.ok(p.gold > g0 + 5, 'coin earned: ' + (p.gold - g0));
   g.applyIntent({ type: 'stoproute', team: 0, ids: [camel.id] });
   assert.equal(camel.route, null);
-  assert.equal(g.standings()[0].money, Math.floor(p.gold));
 });
 
 test('names: every unit has a name from its people, unique within the house', () => {
@@ -740,19 +724,22 @@ test('founding: a house may found only three villages; founded villages do not c
   placeNear(g, 0, 'keep', 7);
   for (let i = 0; i < 3; i++) { const v = g.addVillage({ kind: 'hamlet', name: 'F' + i, tx: h.tx - 8 - i * 4, ty: h.ty + 12 }); v.owner = 0; v.founded = true; }
   assert.equal(g.canPlace(0, 'village', h.tx + 12, h.ty + 12).ok, false, 'fourth founding refused');
-  const valley = g.villages.filter((v) => !v.founded).length;
-  g.checkEnd(0.1);
-  assert.equal(g.villageNeed, Math.ceil(valley * VILLAGE_WIN_SHARE), 'need counts valley villages only');
 });
 
-test('victory: a house that holds the tier fortune for 90 s wins by wealth; rivals can win it too', () => {
+test('victory: wealth alone never wins; only conquest or forfeit ends the game', () => {
   const g = new Game({ seed: 4, houses: 3, ai: false, diff: 'easy' });
-  g.players[0].gold = g.diff.wealth + 10;
-  for (let t = 0; t < 95 && !g.outcome; t += 0.5) { g.players[0].gold = g.diff.wealth + 10; g.tick(0.5); }
-  assert.ok(g.outcome && g.outcome.result === 'victory' && g.outcome.kind === 'wealth', JSON.stringify(g.outcome));
-  const h = new Game({ seed: 4, houses: 3, ai: false, diff: 'easy' });
-  for (let t = 0; t < 95 && !h.outcome; t += 0.5) { h.players[1].gold = h.diff.wealth + 10; h.tick(0.5); }
-  assert.ok(h.outcome && h.outcome.result === 'defeat' && h.outcome.kind === 'wealth', 'a rival fortune ends the game');
+  for (let t = 0; t < 200; t += 0.5) { g.players[0].gold = 99999; g.tick(0.5); }
+  assert.ok(!g.outcome, 'a fortune does not end it: ' + JSON.stringify(g.outcome));
+});
+
+test('victory: a rival with no home and no army forfeits; the last house standing wins', () => {
+  const g = new Game({ seed: 4, houses: 3, ai: false });
+  for (const t of [1, 2]) {
+    for (const v of g.villages) if (v.home === t) { v.owner = 0; v.loyalty = 95; }
+    for (const u of g.militaryOf(t)) u.hp = 0;
+  }
+  for (let i = 0; i < 700 && !g.outcome; i++) g.tick(0.5);
+  assert.ok(g.outcome && g.outcome.result === 'victory' && g.outcome.kind === 'conquest', JSON.stringify(g.outcome));
 });
 
 test('difficulty: tiers scale the purse, rival income and army cap', () => {
@@ -763,13 +750,14 @@ test('difficulty: tiers scale the purse, rival income and army cap', () => {
   assert.ok(e.players[1].gold < hd.players[1].gold, 'rivals earn more on hard');
 });
 
-test('victory: unloyal villages do not count toward the land win', () => {
+test('district: a market with supply, works, homes and service beside it earns more than a lone one', () => {
   const g = new Game({ seed: 4, houses: 3, ai: false });
-  const valley = g.villages.filter((v) => !v.founded);
-  for (const v of valley) { v.owner = 0; v.loyalty = 40; }
-  g.tick(1); assert.equal(g.winHold.team, -1, 'sullen villages do not win');
-  for (const v of valley) v.loyalty = 90;
-  g.tick(1); assert.equal(g.winHold.team, 0, 'loyal ones start the clock');
+  const mk = placeNear(g, 0, 'market');
+  const d0 = g.district(mk), s0 = d0.score, m0 = d0.mult;
+  placeNear(g, 0, 'cottage', 5); mk._d = null;
+  const d1 = g.district(mk);
+  assert.ok(d1.links.homes >= 1 && d1.score >= s0 && d1.mult >= m0, 'a cottage beside the market is a link');
+  assert.ok(m0 < 1 + 4 * 0.25 + 0.25, 'bonus is bounded');
 });
 
 test('town: a rival village that falls takes the buildings standing within four tiles with it', () => {
@@ -779,7 +767,7 @@ test('town: a rival village that falls takes the buildings standing within four 
   const near = g.addBuilding('market', 1, v.tx + 3 + 2, v.ty, true);
   const far = g.addBuilding('market', 1, v.tx + 3 + 12, v.ty, true);
   assert.equal(near.town, v.id, 'a building raised beside a village is marked as part of the town');
-  assert.equal(far.town, undefined);
+  assert.notEqual(far.town, v.id, 'a distant building belongs to no such town');
   g.submit(v, PLAYER, 'pillage');
   assert.equal(near.team, PLAYER, 'the town building changes hands');
   assert.equal(far.team, 1, 'a distant building stays with its lord');

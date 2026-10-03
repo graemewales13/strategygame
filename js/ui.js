@@ -2,7 +2,7 @@
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 
@@ -103,7 +103,8 @@ export class UI {
     const cmd = $('cmdPanel');
     cmd.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd(b.dataset); });
     $('selPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd(b.dataset); });
-    $('houses').addEventListener('click', (e) => { const b = e.target.closest('[data-house]'); if (b) this.cycleRelation(+b.dataset.house); });
+    $('houses').addEventListener('click', (e) => { const b = e.target.closest('[data-house]'); if (b) this.toggleDiplo(+b.dataset.house); });
+    $('diplo').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
 
     // tooltips
     document.addEventListener('mouseover', (e) => {
@@ -187,6 +188,13 @@ export class UI {
         this.lastClick = { t: now, id: u.id };
       } else this.sel = { type: 'units', ids: [u.id], id: null };
       return;
+    }
+    if (h && h.type === 'building' && h.o.kind === 'market' && this.sel.type === 'units') {
+      const sel = this.selUnits(), camels = sel.filter((u) => u.kind === 'camel');
+      if (camels.length && camels.length === sel.length) {   // camels selected: clicking a market adds it to their loop
+        if (!this.host.send({ type: 'route', ids: camels.map((u) => u.id), targetId: h.o.id })) this.toast(g.diploNote || 'Cannot add that market.', 'warn');
+        return;
+      }
     }
     if (h && h.type === 'building') { this.sel = { type: 'building', ids: [], id: h.o.id }; return; }
     if (h && h.type === 'village') { this.sel = { type: 'village', ids: [], id: h.o.id }; return; }
@@ -324,7 +332,12 @@ export class UI {
       }
       case 'routecamel': {
         const t = this.selEntity(), u = g.byId.get(+d.id); if (!t || !u || u.kind !== 'camel') break;
-        if (!this.host.send({ type: 'route', ids: [u.id], targetId: t.id, want: this.want || 'gold' })) this.toast('That camel cannot take that road.', 'warn');
+        if (!this.host.send({ type: 'route', ids: [u.id], targetId: t.id })) this.toast(g.diploNote || 'That camel cannot take that road.', 'warn');
+        break;
+      }
+      case 'routestop': {
+        const ids = this.selUnits().filter((x) => x.kind === 'camel').map((x) => x.id);
+        if (ids.length) this.host.send({ type: 'route', ids, targetId: +d.market });
         break;
       }
       case 'stopgo': {
@@ -350,7 +363,8 @@ export class UI {
       case 'sendarmyb': { const b = this.selEntity(); const a = g.militaryOf(PLAYER).map((u) => u.id); if (b && a.length) this.host.send({ type: 'attack', ids: a, targetId: b.id }); break; }
       case 'minehere': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (n) { this.placing = 'mine'; $('game').classList.add('placing'); this.hoverTX = Math.round(n.x - 1); this.hoverTY = Math.round(n.y - 1); } break; }
       case 'gathernode': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (!n) break; const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - n.x, a.y - n.y) - Math.hypot(c.x - n.x, c.y - n.y)).slice(0, 4); if (!serfs.length) this.toast('No idle serfs.', 'warn'); else this.host.send({ type: 'gather', ids: serfs.map((u) => u.id), nodeId: n.id }); break; }
-      case 'treaty': { const r = this.host.send({ type: 'relation', other: +d.team, state: d.state }); if (r === 'pending') this.toast(`Offer sent to ${HOUSES[+d.team].name}.`, 'info'); else if (r && d.state === 'trade') this.toast(`Trade treaty with ${HOUSES[+d.team].name}.`, 'good'); break; }
+      case 'treaty': this.treaty(+d.team, d.state); break;
+      case 'diploclose': this.diploOpen = null; this.renderDiplo(); break;
       case 'respond': this.host.send({ type: 'respond', from: +d.team, accept: d.accept === '1' }); break;
       case 'mineidle': {
         const b = this.selEntity(); if (!b) break;
@@ -377,13 +391,36 @@ export class UI {
     }
     this.sigCmd = this.sigSel = '';
   }
-  cycleRelation(team) {
-    const g = this.game; if (team === PLAYER || !g.alive(team)) return;
-    const cur = g.rel[PLAYER][team];
-    const next = RELATIONS[(RELATIONS.indexOf(cur) + 1) % RELATIONS.length];
-    const r = this.host.send({ type: 'relation', other: team, state: next });
-    if (r === 'pending') this.toast(`Offer sent to ${HOUSES[team].name}.`, 'info');
-    else if (r) this.toast(`${HOUSES[team].name}: ${next}.`, next === 'war' ? 'war' : 'info');
+  // One treaty request, with the reason shown whenever it is refused
+  treaty(team, state) {
+    const g = this.game, name = HOUSES[team].name;
+    const r = this.host.send({ type: 'relation', other: team, state });
+    if (r === 'pending') this.toast(`Offer sent to ${name}.`, 'info');
+    else if (r) this.toast(state === 'war' ? `War on ${name}!` : state === 'trade' ? `Trade treaty with ${name}.` : `Peace with ${name}.`, state === 'war' ? 'war' : 'good');
+    else this.toast(g.diploNote || `${name} refuses.`, 'warn');
+    this.sigDiplo = ''; this.renderDiplo();
+  }
+  toggleDiplo(team) { if (team === PLAYER) return; this.diploOpen = this.diploOpen === team ? null : team; this.sigDiplo = ''; this.renderDiplo(); }
+  // the diplomacy panel under a house's chip: where you stand, and the three explicit choices
+  renderDiplo() {
+    const el = $('diplo'), g = this.game, t = this.diploOpen;
+    if (t == null || !g.alive(t)) { this.diploOpen = null; if (!el.classList.contains('hidden')) el.classList.add('hidden'); return; }
+    const rel = g.rel[PLAYER][t], known = g.known[PLAYER][t], wait = Math.ceil(g.parleyIn(PLAYER, t));
+    const pend = g.offers.some((o) => o.from === PLAYER && o.to === t);
+    const army = (x) => g.militaryOf(x).length, held = (x) => g.villages.filter((v) => v.owner === x).length;
+    const btn = (state, label, why) => `<button class="dbtn ${rel === state ? 'cur' : ''} ${state === 'war' ? 'warbtn' : ''}" data-act="treaty" data-team="${t}" data-state="${state}" ${rel === state || why ? 'disabled' : ''} title="${esc(why || '')}">${label}</button>`;
+    const peaceWhy = !known ? 'Not met' : rel === 'war' && wait > 0 ? `Parley in ${wait}s` : pend ? 'Offer sent' : '';
+    const tradeWhy = !known ? 'Not met' : rel === 'war' ? 'Make peace first' : pend ? 'Offer sent' : '';
+    const html = `<div class="dhead"><b style="color:${HOUSES[t].accent}">${esc(HOUSES[t].name)}</b><span class="rel ${rel}">${known ? rel : 'unmet'}</span><button class="dx" data-act="diploclose">×</button></div>`
+      + (known ? `<div class="dline">Army ${army(t)} (yours ${army(PLAYER)}) · Villages ${held(t)} (yours ${held(PLAYER)})</div>` : `<div class="dline">Not met. Scout toward them to open talks.</div>`)
+      + `<div class="drow">${btn('peace', 'Peace', peaceWhy)}${btn('trade', 'Trade treaty', tradeWhy)}${btn('war', 'Declare war', '')}</div>`
+      + `<div class="dnote">${rel === 'war' ? (wait > 0 ? `They will not parley for ${wait}s.` : 'They may take peace if they are not winning.') : rel === 'trade' ? 'Camels may use their markets. Peace cancels it; war breaks it.' : rel === 'peace' ? 'No fighting, no trade. A treaty lets your camels use their markets.' : ''}${pend ? ' Your offer is waiting.' : ''}</div>`;
+    if (html !== this.sigDiplo) {
+      this.sigDiplo = html; el.innerHTML = html;
+    }
+    const chip = document.querySelector(`#houses [data-house="${t}"]`);
+    if (chip) { const r = chip.getBoundingClientRect(); el.style.left = Math.max(8, Math.min(window.innerWidth - 330, r.left)) + 'px'; el.style.top = r.bottom + 6 + 'px'; }
+    el.classList.remove('hidden');
   }
 
   // ------------------------------------------------------------ per-frame
@@ -409,7 +446,7 @@ export class UI {
     // events -> toasts
     for (const ev of g.events.splice(0)) if (ev.team === PLAYER || ev.team === -1) this.toast(ev.text, ev.kind);
     this.hudT -= dt;
-    if (this.hudT <= 0) { this.hudT = 0.12; this.renderOffers(); this.renderTop(); this.renderSel(); this.renderCmd(); }
+    if (this.hudT <= 0) { this.hudT = 0.12; this.renderOffers(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
@@ -460,20 +497,16 @@ export class UI {
     let html = '';
     for (let i = 0; i < g.houses; i++) {
       const pl = g.players[i], me = i === PLAYER, rel = me ? '' : g.rel[PLAYER][i];
-      const tip = me ? `<b>${esc(pl.name)}</b><br>${esc(HOUSES[i].motto)}` : `<b>${esc(pl.name)}</b> · relation: ${rel}<br>Click to cycle peace → trade treaty → war.<br><span class='info'>${g.known[PLAYER][i] ? 'A trade treaty lets Trading Tents exchange goods.' : 'Not met yet: scout toward them to treat.'}</span>`;
+      const tip = me ? `<b>${esc(pl.name)}</b><br>${esc(HOUSES[i].motto)}` : `<b>${esc(pl.name)}</b> · relation: ${rel}<br>Click for diplomacy: peace, trade treaty or war.<br><span class='info'>${g.known[PLAYER][i] ? 'A trade treaty lets Trading Tents exchange goods.' : 'Not met yet: scout toward them to treat.'}</span>`;
       html += `<div class="hchip ${me ? 'me' : ''} ${pl.alive ? '' : 'fallen'}" data-house="${i}" data-tip="${encodeURIComponent(tip)}"><canvas width="22" height="24" data-crest="${i}"></canvas><span>${esc(HOUSES[i].short)}</span>${me ? '' : `<span class="rel ${rel}">${g.known[PLAYER][i] ? rel : '?'}</span>`}<span class="vcount">${counts[i]}v</span></div>`;
     }
     if (html !== this.sigHouses) {
       this.sigHouses = html; $('houses').innerHTML = html;
       $('houses').querySelectorAll('canvas[data-crest]').forEach((c) => { const x = c.getContext('2d'); x.clearRect(0, 0, 22, 24); drawCrest(x, 11, 12, 20, +c.dataset.crest); });
     }
-    const need = g.villageNeed ?? Math.ceil(g.villages.length * VILLAGE_WIN_SHARE);
-    const lead = Math.max(...counts), hold = g.winHold;
-    const valley = g.villages.filter((v) => !v.founded), vc = counts.map((_, i) => valley.filter((v) => v.owner === i && v.loyalty >= LAND_LOYALTY).length);
-    const wealth = Math.floor(g.wealthOf(PLAYER)), wneed = g.diff.wealth, rh = g.richHold;
-    const wtxt = rh.team >= 0 ? `<b>${esc(HOUSES[rh.team].short)}</b> wealth ${Math.floor(g.wealthOf(rh.team))}/${wneed}: <b>${Math.max(0, Math.ceil(WEALTH_HOLD - rh.t))}s</b> to win` : `Wealth ${wealth}/${wneed}`;
-    $('holdbar').innerHTML = (hold.team >= 0 ? `<b>${esc(HOUSES[hold.team].short)}</b> holds ${vc[hold.team]}/${valley.length} villages: <b>${Math.max(0, Math.ceil(VILLAGE_WIN_HOLD - hold.t))}s</b> to win` : `Villages ${vc[PLAYER]}/${valley.length} · need ${need}`) + ` · ${wtxt}`;
-    if (false) $('holdbar').innerHTML = hold.team >= 0 ? `<b>${esc(HOUSES[hold.team].short)}</b> holds ${counts[hold.team]}/${g.villages.length} villages: <b>${Math.max(0, Math.ceil(VILLAGE_WIN_HOLD - hold.t))}s</b> to win` : `Villages ${counts[PLAYER]}/${g.villages.length} · need ${need}${lead > counts[PLAYER] ? '' : ''}`;
+    const left = g.players.filter((x) => x.alive && x.team !== PLAYER);
+    const crip = left.filter((x) => (x.crippledT || 0) > 0);
+    $('holdbar').innerHTML = left.length ? `Rivals left <b>${left.length}</b>${crip.length ? ' · ' + crip.map((x) => esc(HOUSES[x.team].short) + ' forfeits ' + Math.max(0, Math.ceil(FORFEIT_AFTER - x.crippledT)) + 's').join(', ') : ''}` : 'Every rival has fallen.';
     document.querySelectorAll('.res').forEach((el) => { const r = el.dataset.res; if (r) el.classList.toggle('low', p[r] < 20); });
   }
 
@@ -629,47 +662,52 @@ export class UI {
   goodChips(map, act, sel, cap) {
     return `<div class="goods">${ALL_GOODS.map((x) => { const n = Math.floor(map?.[x] || 0); if (act !== 'want' && map && n < 1) return ''; return `<span class="gchip ${sel === x ? 'on' : ''} ${act && n < 1 && act !== 'want' ? 'off' : ''}" ${act ? `data-act="${act}" data-good="${x}"` : ''} data-tip="${encodeURIComponent(`<b>${GOOD_LABEL[x]}</b> · worth ${RES_VALUE[x]}${cap ? `<br>${n} / ${cap}` : ''}`)}">${dot(x)}${GOOD_LABEL[x]}${n ? ` ${n}` : ''}</span>`; }).join('')}</div>`;
   }
+  // the community round a market: which of the four links stand within reach, and what they are worth
+  districtHtml(m) {
+    const g = this.game, d = g.district(m);
+    const chip = (k) => `<span class="lk ${d.links[k] > 0 ? 'on' : ''}" data-tip="${encodeURIComponent(`<b>${LINKS[k].label}</b><br>${d.links[k] > 0 ? 'Here: ' + esc(d.names[k].slice(0, 4).join(', ')) : 'Missing: ' + LINKS[k].tip}`)}">${LINKS[k].label} ${d.links[k]}</span>`;
+    const miss = Object.keys(LINKS).filter((k) => !d.links[k]);
+    return `<div class="ctitle">Community · ${d.score}/4 links${d.thriving ? ' · thriving' : ''} · market coin ×${d.mult.toFixed(2)}</div><div class="links">${Object.keys(LINKS).map(chip).join('<span class="arr">→</span>')}</div>`
+      + `<div class="hint">${miss.length ? `Add ${miss.map((k) => LINKS[k].label.toLowerCase()).join(' and ')} within ${DISTRICT.r} tiles: each link adds +${Math.round(DISTRICT.perLink * 100)}% market coin, faster foundries, richer villages.` : 'Supply feeds works, works feed the market, homes and service keep it paid. Foundries here run fast; villages here pay more.'}</div>`;
+  }
+  // where a mine or foundry stands in the chain
+  chainLine(b) {
+    const g = this.game, d = g.districtAt(PLAYER, b.x, b.y), m = g.nearestMarket(PLAYER, b.x, b.y, DISTRICT.r);
+    if (b.kind === 'mine') return d ? `<div class="hint">Ore flows to your market ${Math.round(Math.hypot(b.x - m.x, b.y - m.y))} tiles away. Its community of ${d.score}/4 speeds the haul by <b>+${8 * d.score}%</b>. A foundry beside it turns ore into steel and ware.</div>` : `<div class="hint">No market of yours within ${DISTRICT.r} tiles: ore reaches your stores slowly. Raise a market and a foundry beside it.</div>`;
+    if (b.kind === 'foundry') return d ? `<div class="hint">In a community of ${d.score}/4: this foundry works at <b>×${(0.8 + 0.15 * d.score + (d.links.supply > 0 ? 0.3 : 0)).toFixed(2)}</b>${d.links.supply > 0 ? '' : ' (a mine, farm or mill beside it adds +0.30)'}.</div>` : `<div class="hint">Alone: no market within ${DISTRICT.r} tiles, so it works at ×${DISTRICT.lone}. Build it beside a market and a mine.</div>`;
+    return '';
+  }
   marketPanel(b) {
     const g = this.game, shelf = b.stock || {}, any = ALL_GOODS.some((k) => (shelf[k] || 0) >= 1);
-    let html = `<div class="tentwrap"><div class="tcol"><div class="ctitle">Treaties (houses you have met)</div>${this.treatyRows()}<div class="hint">Trade treaties let your camels use their markets and villages. Independent mining villages need none.</div></div>`;
+    let html = this.districtHtml(b) + `<div class="tentwrap"><div class="tcol"><div class="ctitle">Treaties (houses you have met)</div>${this.treatyRows()}<div class="hint">Trade treaties let your camels use their markets.</div></div>`;
     html += `<div class="tcol"><div class="ctitle">Shelf (fed by mines, foundries, farms, mills and warehouses within ${MARKET_RADIUS} tiles)</div>${any ? this.goodChips(shelf, '', null, SHELF_CAP) : '<div class="hint">Empty: raise a mine, foundry, farm or warehouse near this market.</div>'}`;
     const me = g.players[PLAYER], sellable = ALL_GOODS.filter((k) => k !== 'gold' && (me[k] || 0) >= 1);
     html += `<div class="ctitle">Sell from your stockpile (click = 20) · price falls as you sell</div>${sellable.length ? `<div class="goods sellrow">${sellable.map((k) => `<span class="gchip" data-act="sell" data-good="${k}" data-tip="${encodeURIComponent(`<b>Sell ${GOOD_LABEL[k]}</b><br>${g.sellPrice(b, k).toFixed(2)} coin each now (worth ${(RES_VALUE[k] / RES_VALUE.gold).toFixed(1)}).<br>Caravans to a distant market or village fetch more.`)}">${dot(k)}${GOOD_LABEL[k]} ${Math.floor(me[k])} · ${g.sellPrice(b, k).toFixed(1)}c</span>`).join('')}</div>` : '<div class="hint">Nothing in the stockpile worth selling yet. Mines and foundries fill it.</div>'}`;
-    html += `<div class="hint">Train a <b>camel</b>, then click a partner's market or a village and press <b>Select route</b>. Trade so far: <b>+${Math.floor(me.tradeEarned || 0)} coin</b> over ${me.trips || 0} trips.</div></div></div>`;
+    html += `<div class="hint">Train a <b>camel</b>, select it, then click up to three markets for its loop. Trade so far: <b>+${Math.floor(me.tradeEarned || 0)} coin</b> over ${me.trips || 0} trips.</div></div></div>`;
     return html;
   }
-  // what a far market or village has to sell, what it pays for our shelf goods, and the route button
+  // a market that is not the camel's own base: what is on its shelf, what a camel could earn there per trip, and a camel to send
   tradeBoard(t) {
-    const g = this.game, chk = g.canDeal(PLAYER, t);
-    const name = t.type === 'village' ? t.name : `${HOUSES[t.team].short}'s market`;
-    let html = `<div class="ctitle">Trade board · ${esc(name)}</div>`;
-    if (!chk.ok) return html + `<div class="hint">${esc(chk.reason)}${t.type === 'building' ? ' Open the nearest market of yours to propose a treaty.' : ''}</div>`;
-    const home = g.nearestMarket(PLAYER, t.x, t.y);
+    const g = this.game;
+    if (t.type === 'village') return `<div class="hint">Camels trade only with markets. Raise a market near this village and its folk become customers.</div>`;
+    const chk = g.canDeal(PLAYER, t);
+    const name = chk.own ? 'Your market' : `${HOUSES[t.team].short}'s market`;
+    let html = `<div class="ctitle">${esc(name)} · goods and what a camel earns here</div>`;
+    if (!chk.ok) return html + `<div class="hint">${esc(chk.reason)} Open the diplomacy panel (click their house at the top) to propose a trade treaty.</div>`;
     const have = ALL_GOODS.filter((k) => k !== 'gold' && g.stockOf(t, k) >= 1);
-    const purse = g.availFor(t, 'gold');
-    html += `<div class="hint">Coin in their purse: <b>${purse}</b>. ${have.length ? 'They can sell:' : 'Nothing on their shelf to buy.'}</div>`;
-    if (have.length) html += `<div class="goods">${have.map((k) => `<span class="gchip" data-tip="${encodeURIComponent(`<b>${GOOD_LABEL[k]}</b><br>They pay ${g.priceAt(t, k).toFixed(1)} each (worth ${RES_VALUE[k]})`)}">${dot(k)}${GOOD_LABEL[k]} ${g.stockOf(t, k)}</span>`).join('')}</div>`;
-    if (!home) return html + `<div class="hint">Raise a <b>market</b> and train a camel to start a route.</div>`;
-    const q = g.routeQuote(home, t), items = Object.entries(q.items);
+    html += `<div class="hint">${chk.own ? 'A camel can move your surplus here from its home shelf.' : `Coin in their purse: <b>${g.availFor(t, 'gold')}</b>.`} ${have.length ? 'On the shelf:' : 'The shelf is empty.'}</div>`;
+    if (have.length) html += `<div class="goods">${have.map((k) => `<span class="gchip" data-tip="${encodeURIComponent(`<b>${GOOD_LABEL[k]}</b><br>Pays ${g.priceAt(t, k).toFixed(1)} each (worth ${RES_VALUE[k]})`)}">${dot(k)}${GOOD_LABEL[k]} ${g.stockOf(t, k)} · ${g.priceAt(t, k).toFixed(1)}</span>`).join('')}</div>`;
     const camels = g.units.filter((u) => u.team === PLAYER && u.kind === 'camel' && u.hp > 0);
-    const running = camels.filter((u) => u.route?.targetId === t.id || u.task?.targetId === t.id && u.task.type === 'caravan').length;
-    html += `<div class="ctitle">A camel's load from your market · fee ${Math.round(q.fee * 100)}%</div>`;
-    if (items.length) {
-      const per = (k) => { const r = (g.priceAt(t, k) * (1 - q.fee)) / RES_VALUE[k]; return (RES_VALUE[k] * (r - 1)) / RES_VALUE.gold; };
-      html += `<table class="stand tradetbl"><tr><th>Good</th><th>Carries</th><th>Pays each</th><th>Profit</th></tr>${items.map(([k, n]) => `<tr><td>${dot(k)}${GOOD_LABEL[k]}</td><td>${n}</td><td>${g.priceAt(t, k).toFixed(1)}</td><td class="lead">+${Math.floor(n * per(k))}</td></tr>`).join('')}</table>`;
-      html += `<div class="hint">One trip with a full camel: about <b>+${Math.floor(q.profit)} coin</b>.</div>`;
-    } else html += `<div class="hint">Nothing on your market's shelf sells at a profit here yet. Mines, farms and foundries feed it.</div>`;
-    html += `<div class="ctitle">Choose a camel (${camels.length})</div>`;
-    if (!camels.length) html += `<div class="hint">Train a camel at a market first.</div>`;
-    else {
-      const rows = camels.slice().sort((a, b) => (a.route || a.task?.type === 'caravan' ? 1 : 0) - (b.route || b.task?.type === 'caravan' ? 1 : 0) || Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y)).slice(0, 8);
-      html += `<div class="cgrid">${rows.map((u) => {
-        const here = u.route?.targetId === t.id, busy = !here && (u.route || u.task?.type === 'caravan'), load = Math.floor(Object.values(u.cargo || {}).reduce((a, n) => a + n, 0));
-        const sub = here ? `on this route · +${Math.floor(u.route.earned || 0)}` : busy ? 'on another route' : load ? `carrying ${load}` : `idle · ${Math.round(Math.hypot(u.x - t.x, u.y - t.y))} tiles`;
-        return this.btn('routecamel', { glyph: '🐪', art: 'camel', name: esc(u.name || 'Camel'), sub, off: here, data: { id: u.id }, tip: `<b>${esc(u.name || 'Camel')}</b><br>Loads at the nearest market of yours, sells here for ${this.want ? GOOD_LABEL[this.want].toLowerCase() : 'coin'}, walks home and repeats until stopped.` });
-      }).join('')}${running ? this.btn('stopgo', { glyph: '■', name: 'Stop route', sub: `${running} on it`, tip: '<b>Stop route</b><br>Camels finish their trip and stand down.' }) : ''}</div>`;
-    }
-    html += `<div class="ctitle">Bring home</div>${this.goodChips(null, 'want', this.want || 'gold')}<div class="hint">Coin is the default: money is the point.</div>`;
+    html += `<div class="ctitle">Send a camel (it keeps up to ${ROUTE_STOPS} markets on a loop)</div>`;
+    if (!camels.length) return html + `<div class="hint">Train a camel at one of your markets first.</div>`;
+    const busy = (u) => (u.route?.stops?.length ? 1 : 0);
+    const rows = camels.slice().sort((a, b) => busy(a) - busy(b) || Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y)).slice(0, 9);
+    html += `<div class="cgrid">${rows.map((u) => {
+      const home = g.routeHome(u), on = u.route?.stops?.includes(t.id), full = !on && (u.route?.stops?.length || 0) >= ROUTE_STOPS;
+      const isHome = home && home.id === t.id, q = home && !isHome ? g.quoteStop(home, t) : null;
+      const sub = on ? 'on its loop · click to remove' : isHome ? 'its home market' : full ? 'already has 3 markets' : q && q.n >= 4 ? (chk.own ? 'moves goods here' : `+${Math.floor(q.profit)} coin a trip`) : 'nothing worth carrying yet';
+      return this.btn('routecamel', { glyph: '🐪', art: 'camel', name: esc(u.name?.split(' ')[0] || 'Camel'), sub, off: isHome || full, data: { id: u.id }, tip: `<b>${esc(u.name || 'Camel')}</b><br>${on ? 'Click to take this market off its loop.' : 'Adds this market to its loop: home shelf, here, home, next market, home... until stopped.'}${u.route?.stops?.length ? `<br>${u.route.stops.length} market${u.route.stops.length > 1 ? 's' : ''} on its loop now.` : ''}` });
+    }).join('')}</div>`;
     return html;
   }
   standingsHtml() {
@@ -678,21 +716,22 @@ export class UI {
     const cell = (r, k, f = (x) => x) => `<td class="${r[k] === best(k) && r[k] > 0 ? 'lead' : ''}">${f(r[k])}</td>`;
     return `<table class="stand"><tr><th></th><th>Money</th><th>Land</th><th>Folk</th><th>Army</th><th>Science</th><th>Loyalty</th></tr>${rows.map((r) => `<tr class="${r.team === PLAYER ? 'me' : ''} ${r.alive ? '' : 'fallen'}"><td style="color:${HOUSES[r.team].accent}">${esc(HOUSES[r.team].short)}</td>${cell(r, 'money')}${cell(r, 'land')}${cell(r, 'pop')}${cell(r, 'army')}${cell(r, 'sci')}${cell(r, 'loyalty', (x) => x + '%')}</tr>`).join('')}</table>`;
   }
+  // a camel's loop: its markets, what each is worth per trip, and how to change them
   camelPanel(us) {
-    const g = this.game, u = us[0], m = g.nearestMarket(PLAYER, u.x, u.y, 4.5), shelf = m?.stock || {};
-    const total = g.cargoTotal(u), single = us.length === 1;
-    let html = `<div class="ctitle">Caravan · carrying ${Math.floor(total)}/${CAMEL_CAP}</div>`;
-    html += single ? (total >= 1 ? this.goodChips(u.cargo, '', null) : '<div class="hint">Empty.</div>') : '';
-    if (m && single) {
-      html += `<div class="ctitle">Load from the shelf (click = 20) <span class="gchip" data-act="unload">⇩ Unload</span></div>${ALL_GOODS.some((k) => (shelf[k] || 0) >= 1) ? this.goodChips(shelf, 'load', null, SHELF_CAP) : '<div class="hint">Shelf empty.</div>'}`;
-    } else if (single) html += `<div class="hint">Walk the camel next to one of your markets to load goods.</div>`;
-    const routed = us.filter((u) => u.route);
-    if (routed.length) {
-      const e = routed.reduce((a, u) => a + u.route.earned, 0), tr = routed.reduce((a, u) => a + u.route.trips, 0), tg = g.byId.get(routed[0].route.targetId);
-      html += `<div class="ctitle">On a route to ${esc(tg ? (tg.type === 'village' ? tg.name : HOUSES[tg.team].short + "'s market") : '?')}</div><div class="hint">${tr} trips, <b>+${Math.floor(e)} coin</b> earned. Stage: ${esc(routed[0].task.stage || '')}.</div><div class="cgrid c4">${this.btn('stopgo', { glyph: '■', name: 'Stop route', tip: '<b>Stop route</b><br>Finish up and come home.' })}</div>`;
+    const g = this.game, u = us[0], single = us.length === 1, r = u.route, stops = (r?.stops || []).map((id) => g.byId.get(id)).filter(Boolean);
+    const home = g.routeHome(u), total = g.cargoTotal(u);
+    let html = `<div class="ctitle">${single ? esc(u.name || 'Camel') : us.length + ' camels'} · loop of ${stops.length}/${ROUTE_STOPS} markets${single ? ` · carrying ${Math.floor(total)}/${CAMEL_CAP}` : ''}</div>`;
+    if (!home) html += `<div class="hint">Raise a market first: a camel works out of one of yours.</div>`;
+    else html += `<div class="hint">Home: <b>${esc(HOUSES[PLAYER].short)}'s market</b> (${Math.round(Math.hypot(u.x - home.x, u.y - home.y))} tiles away).</div>`;
+    if (stops.length) {
+      html += `<div class="stoplist">${stops.map((m, i) => {
+        const q = home ? g.quoteStop(home, m) : { n: 0, profit: 0 }, own = m.team === PLAYER, here = single && r.i === i && u.task.stage && u.task.stage !== 'wait';
+        return `<div class="stoprow ${here ? 'cur' : ''}"><span class="sn">${i + 1}. ${esc(g.stopName(m))}</span><span class="st">${q.n >= 4 ? (own ? 'moves goods' : `+${Math.floor(q.profit)} coin/trip`) : 'nothing to carry yet'}</span><button class="cbtn mini" data-act="routestop" data-market="${m.id}" data-tip="${encodeURIComponent('<b>Remove this stop</b>')}">×</button></div>`;
+      }).join('')}</div>`;
+      if (single) html += `<div class="hint">${r.trips} trips so far, <b>+${Math.floor(r.earned)} coin</b>. Now: ${esc(({ prep: 'at home, loading', wait: 'at home, loading', out: 'on the road to a market', back: 'walking home', home: 'walking home' })[u.task.stage] || 'idle')}.</div>`;
+      html += `<div class="cgrid c4">${this.btn('stopgo', { glyph: '■', name: 'Stop loop', tip: '<b>Stop loop</b><br>Finish up and come home; clears every stop.' })}</div>`;
     }
-    html += `<div class="ctitle">Routes: click a far market or village, then <i>Select route</i></div>`;
-    html += `<div class="ctitle">Buy at the far market (right-click it)</div>${this.goodChips(null, 'want', this.want)}<div class="hint">Pick what to bring home (or none to just stock a market of yours). Then <b>right-click</b> a treaty partner's market or a village. Camels return to their home market and unload into your stockpile.</div>`;
+    html += stops.length < ROUTE_STOPS ? `<div class="hint"><b>Click a market</b> on the map to add it (yours, or a treaty partner's). Click one of its stops again to remove it.</div>` : `<div class="hint">Three markets: the loop is full. Click a stop's × to swap one.</div>`;
     return html;
   }
   pullText(v) {
@@ -718,7 +757,6 @@ export class UI {
       html += this.btn('sendspy', { glyph: GLYPH.spy, art: 'spy', name: 'Send spy', off: !spies, sub: spies ? `${spies} ready` : 'need a spy', tip: `<b>Send a spy</b><br>Sways loyalty without a fight. Spies can be caught.${spies ? '' : `<br><span class="need">Hire a recruit at a tavern, select it, press Become spy (${SPY_FEE} coin).</span>`}` });
       html += this.btn('sendarmy', { glyph: '⚔', name: 'Send army', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Sack</b><br>Sends every soldier to attack. Protection must reach zero.' });
     }
-    if (v.owner === -1 || v.owner === PLAYER || g.rel[PLAYER][v.owner] === 'trade') html += this.btn('sendcamel', { glyph: '🐪', art: 'camel', name: 'Send camel', off: !camels, sub: camels ? `${camels} ready` : 'train at market', tip: `<b>Send a camel</b><br>Trades what it carries for ${this.want ? GOOD_LABEL[this.want].toLowerCase() : 'nothing (pick a good on the camel panel)'}.` });
     return html + `</div>`;
   }
 
@@ -757,6 +795,7 @@ export class UI {
         if (ent.kind === 'keep') html += this.keepPanel(ent);
         else if (GARRISON[ent.kind] && ent.garrison.length) html += `<div class="cgrid" style="margin-top:6px">${this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' })}</div>`;
         if (ent.kind === 'mine') html += `<div class="ctitle">Diggers</div><div class="cgrid">${this.btn('mineidle', { glyph: '⛏', name: 'Send serfs', tip: '<b>Assign serfs</b><br>Sends the nearest idle or gathering serfs to dig here (max 4).' })}${this.btn('unmine', { glyph: '■', name: 'Release', tip: '<b>Release diggers</b><br>They stand down.' })}</div><div class="hint">Or select serfs and right-click the mine or the deposit. Ore goes straight into your stockpile.</div>`;
+        if (ent.kind === 'mine' || ent.kind === 'foundry') html += this.chainLine(ent);
         if (ent.kind === 'foundry') html += `<div class="hint">Smelts on its own from your stockpile: <b>iron + coal → steel</b> (forges turn it into arms), <b>copper + coal → fine ware</b> (content villages). Sell the surplus through a market's camels.</div>`;
         if (ent.kind === 'keep') html += this.buildGrid();
         if (!html) html = `<div class="hint">${esc(BUILDINGS[ent.kind].info)}</div>`;

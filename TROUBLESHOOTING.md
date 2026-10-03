@@ -95,3 +95,10 @@ Bot matrix (4 houses, 6 seeds each; W = wins): Easy econ 6/6, trader 6/6, rush 5
 
 ## T-036 - Rebrand to Auld World
 The game is now **Auld World** (was Seven Holds). Title, header, README, package name, source headers and the console tag changed; the splash and main menu use the new `assets/menu/auld-world-splash.jpg` and `auld-world-menu.jpg`. The menu picture carries its own labels (Continue, New Game, Campaign, Skirmish, Options, Quit), so the six hotspots in `index.html` sit at tops 27.9 / 36.5 / 45.1 / 53.7 / 62.4 / 71.0 %; if the picture is swapped again, re-measure the label centres and subtract 4.6. The Python prototype under `legacy/` keeps its old name. The debugging hook `window.__seven` is unchanged.
+
+## T-037 - Big board, conquest-only wins, simple camels, communities, diplomacy
+- Board is 320x320 (~8x the area); ore totals unchanged so it is scarcer, village frequency unchanged, vision radius x sqrt(8) so about 8x the ground clears per trek. `AULD_MAP=112` gives a small board for fast tests (`npm test`); `npm run test:big` is the full size.
+- Victory is conquest only: every rival fallen, or forfeited (no home village and no soldiers for 45 s). Wealth/land wins were removed (trading alone won the game).
+- Camels: select, click up to 3 markets, it loops until stopped. Markets only (own, or a treaty partner's); villages are refused.
+- Districts: a market with supply, works, homes and service buildings within 20 tiles earns up to +125%; mines, foundries and village tribute also gain per link.
+- Diplomacy: the house chip opens a panel with plain reasons for any refusal (war must last 60 s before peace talks).

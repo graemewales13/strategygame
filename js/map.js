@@ -1,7 +1,7 @@
 // Auld World - valley generation. Pure data, seeded, no DOM.
 // Guarantees: every start, village and resource node lies in ONE connected walkable region (the river has fords).
 
-import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW, BIOMES, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, MATS } from './config.js';
+import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW, BIOMES, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, MATS, AREA_MUL } from './config.js';
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -85,7 +85,7 @@ export function createMap(seed, houses = 4) {
 
   // Rivers: none, one or two, running from edge to edge at a random angle, with fords
   const riverTiles = [];
-  const nRivers = (() => { const q = r(); return q < biome.rivers[0] ? 0 : q < biome.rivers[0] + biome.rivers[1] ? 1 : 2; })();
+  const nRivers = (() => { const q = r(); return (q < biome.rivers[0] ? 0 : q < biome.rivers[0] + biome.rivers[1] ? 1 : 2) * 2; })();   // twice as many on a board this size
   const fords = [];
   for (let k = 0; k < nRivers; k++) {
     const orient = r.int(0, 3);
@@ -94,7 +94,7 @@ export function createMap(seed, houses = 4) {
     let heading = [Math.PI / 2, 0, Math.PI / 4, (3 * Math.PI) / 4][orient];
     let px = sx, py = sy, wob = 0;
     const path = [];
-    for (let s = 0; s < 400 && px > -3 && py > -3 && px < W + 3 && py < H + 3; s++) {
+    for (let s = 0; s < 1200 && px > -3 && py > -3 && px < W + 3 && py < H + 3; s++) {
       wob = Math.max(-0.45, Math.min(0.45, wob + (r() - 0.5) * 0.35));
       const hd = heading + wob;
       px += Math.cos(hd); py += Math.sin(hd);
@@ -143,14 +143,15 @@ export function createMap(seed, houses = 4) {
   };
 
   // Start positions: shuffled anchors (corners, with the middle kept for the fifth house), jittered; each gets a livable 9x9 patch.
-  const anchors = r.shuffle([[13, 13], [W - 22, H - 22], [W - 22, 13], [13, H - 22]]);
+  const fx = (f) => Math.round(W * f), fy = (f) => Math.round(H * f);
+  const anchors = r.shuffle([[fx(0.14), fy(0.14)], [fx(0.84), fy(0.84)], [fx(0.84), fy(0.14)], [fx(0.14), fy(0.84)]]);
   anchors.push([Math.floor(W / 2) - 4, Math.floor(H / 2) - 4]);
   if (r() < 0.4) { const j = r.int(0, 3); [anchors[j], anchors[4]] = [anchors[4], anchors[j]]; }
   const starts = [];
   for (const [ax, ay] of anchors.slice(0, Math.max(3, houses))) {
     const cx = ax + r.int(-6, 6), cy = ay + r.int(-6, 6);
     let found = null;
-    for (let rad = 0; rad < 24 && !found; rad++) {
+    for (let rad = 0; rad < 40 && !found; rad++) {
       for (let dy = -rad; dy <= rad && !found; dy++) for (let dx = -rad; dx <= rad && !found; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
         const x = cx + dx, y = cy + dy;
@@ -229,15 +230,15 @@ export function createMap(seed, houses = 4) {
   });
 
   // Wilderness: stands of timber, bush patches, seams of gold
-  for (let i = 0; i < Math.round(46 * biome.trees); i++) cluster('tree', r.int(4, W - 5), r.int(4, H - 5), r.int(6, 14), 3.4, treeAmt);
-  for (let i = 0; i < 12; i++) cluster('berry', r.int(4, W - 5), r.int(4, H - 5), r.int(3, 5), 1.8, berryAmt);
+  for (let i = 0; i < Math.round(46 * biome.trees * AREA_MUL); i++) cluster('tree', r.int(4, W - 5), r.int(4, H - 5), r.int(6, 14), 3.4, treeAmt);
+  for (let i = 0; i < Math.round(12 * AREA_MUL); i++) cluster('berry', r.int(4, W - 5), r.int(4, H - 5), r.int(3, 5), 1.8, berryAmt);
   for (let i = 0; i < 16; i++) cluster('gold', r.int(4, W - 5), r.int(4, H - 5), r.int(1, 3), 1.6, goldAmt);
 
   // Villages in the gaps
   const spots = [];
   const kinds = r.shuffle(Object.keys(VILLAGE_KINDS).concat(Object.keys(VILLAGE_KINDS)).concat(['hamlet', 'mine']));
-  const want = 26;
-  for (let tries = 0; tries < 2600 && spots.length < want; tries++) {
+  const want = Math.round(26 * AREA_MUL);   // same frequency per tile as before
+  for (let tries = 0; tries < 2600 * AREA_MUL * 2 && spots.length < want; tries++) {
     const x = r.int(8, W - 12), y = r.int(8, H - 12);
     if (!open(x - 1, y - 1, VILLAGE_SIZE + 2)) continue;
     let blocked = false;
@@ -248,13 +249,14 @@ export function createMap(seed, houses = 4) {
     spots.push([x, y]);
   }
   const used = {};
+  let mineCamps = 0, campOre = 0;
   const villages = spots.map(([x, y], i) => {
     const kind = kinds[i % kinds.length];
     const list = VILLAGE_NAMES[kind];
     used[kind] = (used[kind] || 0);
     const name = list[used[kind]++ % list.length];
     // a village keeps a few fields/seams close to its walls
-    if (kind === 'mine') cluster('gold', x + 1, y + 1, 3, 3.2, goldAmt);
+    if (kind === 'mine' && (mineCamps++ % Math.round(AREA_MUL)) === 0) cluster('gold', x + 1, y + 1, 3, 3.2, goldAmt);   // ore stays as scarce as on the small board
     if (kind === 'hamlet') cluster('berry', x + 1, y + 1, 3, 3.5, berryAmt);
     return { kind, name, tx: x, ty: y };
   });
@@ -287,7 +289,7 @@ export function createMap(seed, houses = 4) {
     near(metals[(i + 1) % 4], sx, sy, 16, 3, base + 4.2);
   });
   for (const kind of MATS) for (let i = 0; i < (kind === 'stone' ? 5 : 4); i++) deposit(kind, rm.int(6, W - 7), rm.int(6, H - 7), 3, 2);
-  villages.forEach((v) => { if (v.kind === 'mine') { deposit(rm.pick(['iron', 'coal', 'copper', 'silver']), v.tx + 1, v.ty + 1, 3, 4.5); deposit('stone', v.tx + 1, v.ty + 1, 2, 4.5); } });
+  villages.forEach((v) => { if (v.kind === 'mine' && (campOre++ % Math.round(AREA_MUL)) === 0) { deposit(rm.pick(['iron', 'coal', 'copper', 'silver']), v.tx + 1, v.ty + 1, 3, 4.5); deposit('stone', v.tx + 1, v.ty + 1, 2, 4.5); } });
 
   // Dirt trails between halls and nearby villages (cosmetic, slightly faster to walk)
   const line = (x0, y0, x1, y1) => {

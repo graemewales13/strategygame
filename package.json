@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 8000",
-    "test": "node test/sim.test.js"
+    "test": "AULD_MAP=112 node test/sim.test.js",
+    "test:big": "node test/big.test.js"
   },
   "license": "MIT"
 }
