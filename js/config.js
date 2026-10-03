@@ -176,8 +176,7 @@ export const DIFFICULTY = {
   hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.1, armyCap: 32, warAfter: 600,  think: 1.0, wealth: 10000 },
 };
 export const FORFEIT_AFTER = 45;   // seconds a house with no home village and no soldiers holds out before it forfeits
-export const WEALTH_WIN = false; // fortune race is off until the village loop is obvious. Set true to race for coin.
-export const WEALTH_HOLD = 90;   // seconds a house must keep its fortune to win by wealth, if WEALTH_WIN
+export const WEALTH_HOLD = 90;   // legacy, unused: wealth no longer wins
 export const VILLAGE_WIN_SHARE = 0.7; // hold this share of villages ...
 export const LAND_LOYALTY = 55;     // only villages at least this loyal count toward the land win: a sacked village must be won over
 export const VILLAGE_WIN_HOLD = 120;   // ... for this many seconds to win

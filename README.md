@@ -152,10 +152,8 @@ Build **Village** (needs a keep, 100 grain, 150 timber, 30 coin, 30 s). When ser
 `node tools/play.js [minutes] [seeds] [houses] [econ|rush|turtle]` plays house 0 like a person (only the intents the buttons send) against the AI and lists refused orders, stalls and outcomes. `tools/soak.js` runs all-AI matches; `tools/econ.js` prints a house's economy per minute.
 
 ### Ways to win and lose
-- **Conquest:** be the last house with a seat. A rival with no home village and no soldiers forfeits after 45 s.
-- **Land:** hold 70% of the independent villages for 120 s. Only villages at 55+ loyalty count. Villages you founded do not count.
-- **Wealth** is off (`WEALTH_WIN` in config). Turn it on to race for the tier fortune.
-- You lose when a rival gets there first, or your last village and keep fall.
+- **Conquest is the only win:** every rival house must fall or forfeit (no home village and no soldiers for 45 s). Wealth and village share never win.
+- You lose when your last village and keep fall.
 The first five buildings are the game: mine, market, keep, barracks, tavern. The rest unlock after them.
 
 | Tier | Your purse | Rival income | Rival army cap | First war | Fortune to win |
