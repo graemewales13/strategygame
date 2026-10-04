@@ -11,18 +11,18 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mutsgs6d",
-    "./js/art.js": "./js/art.js?v=mutsgs6d",
-    "./js/config.js": "./js/config.js?v=mutsgs6d",
-    "./js/entities.js": "./js/entities.js?v=mutsgs6d",
-    "./js/game.js": "./js/game.js?v=mutsgs6d",
-    "./js/main.js": "./js/main.js?v=mutsgs6d",
-    "./js/map.js": "./js/map.js?v=mutsgs6d",
-    "./js/names.js": "./js/names.js?v=mutsgs6d",
-    "./js/net.js": "./js/net.js?v=mutsgs6d",
-    "./js/render.js": "./js/render.js?v=mutsgs6d",
-    "./js/terrain.js": "./js/terrain.js?v=mutsgs6d",
-    "./js/ui.js": "./js/ui.js?v=mutsgs6d"
+    "./js/ai.js": "./js/ai.js?v=mutqlhy7",
+    "./js/art.js": "./js/art.js?v=mutqlhy7",
+    "./js/config.js": "./js/config.js?v=mutqlhy7",
+    "./js/entities.js": "./js/entities.js?v=mutqlhy7",
+    "./js/game.js": "./js/game.js?v=mutqlhy7",
+    "./js/main.js": "./js/main.js?v=mutqlhy7",
+    "./js/map.js": "./js/map.js?v=mutqlhy7",
+    "./js/names.js": "./js/names.js?v=mutqlhy7",
+    "./js/net.js": "./js/net.js?v=mutqlhy7",
+    "./js/render.js": "./js/render.js?v=mutqlhy7",
+    "./js/terrain.js": "./js/terrain.js?v=mutqlhy7",
+    "./js/ui.js": "./js/ui.js?v=mutqlhy7"
   }
 }
 </script>
@@ -30,7 +30,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mutsgs6d';
+window.__BUILD = 'mutqlhy7';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -46,7 +46,7 @@ window.__BUILD = 'mutsgs6d';
   setTimeout(function () {
     if (window.__boot.ready) return;
     var bad = (performance.getEntriesByType('resource') || []).filter(function (r) { return /\/js\//.test(r.name) && (r.responseStatus >= 400 || (r.decodedBodySize === 0 && r.transferSize === 0)); }).map(function (r) { return r.name.split('/').pop(); });
-    show('Still not ready after 20 s (build ' + window.__BUILD + ', stuck at: ' + (window.__boot.phase || 'loading scripts') + ')' + (bad.length ? '. Failed to load: ' + bad.join(', ') : '') + '. Press Ctrl+Shift+R. If it repeats, press F12 and send me the red text.');
+    show('Still not ready after 20 s (build ' + window.__BUILD + ')' + (bad.length ? '. Failed to load: ' + bad.join(', ') : '') + '. Press Ctrl+Shift+R. If it repeats, press F12 and send me the red text.');
   }, 20000);
 })();
 document.addEventListener('pointerdown', function (e) {
