@@ -8,13 +8,50 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "./js/ai.js": "./js/ai.js?v=mutqhbge",
+    "./js/art.js": "./js/art.js?v=mutqhbge",
+    "./js/config.js": "./js/config.js?v=mutqhbge",
+    "./js/entities.js": "./js/entities.js?v=mutqhbge",
+    "./js/game.js": "./js/game.js?v=mutqhbge",
+    "./js/main.js": "./js/main.js?v=mutqhbge",
+    "./js/map.js": "./js/map.js?v=mutqhbge",
+    "./js/names.js": "./js/names.js?v=mutqhbge",
+    "./js/net.js": "./js/net.js?v=mutqhbge",
+    "./js/render.js": "./js/render.js?v=mutqhbge",
+    "./js/terrain.js": "./js/terrain.js?v=mutqhbge",
+    "./js/ui.js": "./js/ui.js?v=mutqhbge"
+  }
+}
+</script>
 <script>
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
+window.__BUILD = 'mutqhbge';
+// If the game cannot start, say exactly why on the splash instead of waiting for ever.
+(function () {
+  function show(msg) {
+    if (window.__boot.ready) return;
+    window.__boot.failed = true;
+    var h = document.querySelector('.splashhint'); if (!h) return;
+    h.style.cssText += ';white-space:normal;max-width:80%;margin:0 auto;font-size:14px;letter-spacing:.04em;text-transform:none;color:#ffb4a0;animation:none';
+    h.textContent = msg;
+  }
+  window.__bootFail = function (e) { window.__boot.failed = true; show('Could not start (build ' + window.__BUILD + '): ' + ((e && e.message) || e) + '. Press Ctrl+Shift+R. If it repeats, send me this line.'); };
+  window.addEventListener('error', function (e) { show('Could not start (build ' + window.__BUILD + '): ' + (e.message || 'script error') + '. Press Ctrl+Shift+R. If it repeats, send me this line.'); });
+  window.addEventListener('unhandledrejection', function (e) { show('Could not start (build ' + window.__BUILD + '): ' + ((e.reason && e.reason.message) || e.reason) + '. Press Ctrl+Shift+R. If it repeats, send me this line.'); });
+  setTimeout(function () {
+    if (window.__boot.ready) return;
+    var bad = (performance.getEntriesByType('resource') || []).filter(function (r) { return /\/js\//.test(r.name) && (r.responseStatus >= 400 || (r.decodedBodySize === 0 && r.transferSize === 0)); }).map(function (r) { return r.name.split('/').pop(); });
+    show('Still not ready after 20 s (build ' + window.__BUILD + ')' + (bad.length ? '. Failed to load: ' + bad.join(', ') : '') + '. Press Ctrl+Shift+R. If it repeats, press F12 and send me the red text.');
+  }, 20000);
+})();
 document.addEventListener('pointerdown', function (e) {
   var sp = document.getElementById('splash');
-  if (window.__boot.ready || !sp || sp.classList.contains('hidden') || !sp.contains(e.target)) return;
+  if (window.__boot.ready || window.__boot.failed || !sp || sp.classList.contains('hidden') || !sp.contains(e.target)) return;
   window.__boot.pending = true;
   var h = document.querySelector('.splashhint'); if (h) h.textContent = 'Loading the valley...';
 }, true);
@@ -119,6 +156,9 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
   <div id="quit" class="screen hidden"><div class="endbox"><h2>The gates are shut.</h2><p>You may close this tab. Reload to ride out again.</p></div></div>
 </div>
 
-<script type="module" src="js/main.js"></script>
+<script type="module">
+// A dynamic import reports a broken module graph (stale cache, missing file, syntax error); a plain module tag stays silent.
+import('./js/main.js').catch(function (e) { window.__bootFail && window.__bootFail(e); console.error('[auld-world] start failed', e); });
+</script>
 </body>
 </html>

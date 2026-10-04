@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 8000",
+    "stamp": "node tools/stamp.js",
     "test": "AULD_MAP=112 node test/sim.test.js",
     "test:big": "node test/big.test.js"
   },
