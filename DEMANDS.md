@@ -35,6 +35,7 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - The black-screen failure must never come back: failures are caught and reported, not left as a blank canvas.
 
 ## Process
+- Run `node tools/stamp.js` before pushing anything under `js/`: it versions the module URLs so a browser can never mix a cached old file with a new one (that mismatch leaves the game stuck on the splash).
 - Keep tests green (`npm test`; `npm run test:big` for the full board) and record fixes in `TROUBLESHOOTING.md`.
 - Update this file whenever the owner gives a new standing demand.
 
