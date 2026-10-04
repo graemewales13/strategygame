@@ -106,6 +106,21 @@
   <div id="end" class="screen hidden"><div class="endbox"><h2 id="endTitle"></h2><p id="endText"></p><div><button class="big" id="eNew">New Valley</button><button class="big alt" id="eStay">Keep looking</button></div></div></div>
   <div id="quit" class="screen hidden"><div class="endbox"><h2>The gates are shut.</h2><p>You may close this tab. Reload to ride out again.</p></div></div>
 </div>
+<script>
+// The splash must answer at once, even while the painted art and the valley are still loading.
+(function () {
+  var sp = document.getElementById('splash'), done = false;
+  function leave() {
+    if (done) return; done = true;
+    document.documentElement.classList.add('loading');
+    sp.classList.add('gone'); setTimeout(function () { sp.classList.add('hidden'); }, 650);
+    document.getElementById('mainmenu').classList.remove('hidden');
+  }
+  window.__splashLeave = leave;
+  sp.addEventListener('pointerdown', leave); sp.addEventListener('click', leave);
+  window.addEventListener('keydown', function () { if (!done && !sp.classList.contains('hidden')) leave(); }, true);
+})();
+</script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
