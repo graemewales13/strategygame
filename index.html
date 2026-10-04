@@ -112,7 +112,7 @@
   var sp = document.getElementById('splash'), done = false;
   function leave() {
     if (done) return; done = true;
-    document.documentElement.classList.add('loading');
+    if (!window.__ready) document.documentElement.classList.add('loading');
     sp.classList.add('gone'); setTimeout(function () { sp.classList.add('hidden'); }, 650);
     document.getElementById('mainmenu').classList.remove('hidden');
   }
