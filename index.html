@@ -8,6 +8,18 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
+<script>
+// Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
+// Registered on the document from <head> so not even an instant click is lost.
+window.__boot = { ready: false, pending: false };
+document.addEventListener('pointerdown', function (e) {
+  var sp = document.getElementById('splash');
+  if (window.__boot.ready || !sp || sp.classList.contains('hidden') || !sp.contains(e.target)) return;
+  window.__boot.pending = true;
+  var h = document.querySelector('.splashhint'); if (h) h.textContent = 'Loading the valley...';
+}, true);
+document.addEventListener('keydown', function () { if (!window.__boot.ready) { window.__boot.pending = true; var h = document.querySelector('.splashhint'); if (h) h.textContent = 'Loading the valley...'; } }, true);
+</script>
 </head>
 <body>
 <div id="app">
@@ -106,6 +118,7 @@
   <div id="end" class="screen hidden"><div class="endbox"><h2 id="endTitle"></h2><p id="endText"></p><div><button class="big" id="eNew">New Valley</button><button class="big alt" id="eStay">Keep looking</button></div></div></div>
   <div id="quit" class="screen hidden"><div class="endbox"><h2>The gates are shut.</h2><p>You may close this tab. Reload to ride out again.</p></div></div>
 </div>
+
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

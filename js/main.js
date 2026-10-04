@@ -12,7 +12,8 @@ if (params.get('houses')) cfg.houses = Math.max(3, Math.min(5, +params.get('hous
 if (params.get('fog') === '0') cfg.fog = false;
 if (['easy', 'mid', 'hard'].includes(params.get('diff'))) cfg.diff = params.get('diff');
 
-await loadArt();
+const pendingClick = () => window.__boot && window.__boot.pending;
+await Promise.race([loadArt(), new Promise((r) => setTimeout(r, 10000))]);   // a slow image must not hold the game hostage
 const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff });
 const host = new LocalHost(game);
 const renderer = new Renderer(document.getElementById('game'), game);
@@ -33,7 +34,10 @@ function centerOnHall() {
 centerOnHall();
 ui.refreshMenu();
 drawCrest(document.getElementById('brandCrest').getContext('2d'), 18, 20, 34, 0);
+const wasPending = pendingClick();
+window.__boot = { ready: true, pending: false };
 if (params.get('start') === '1') ui.closeMenu();
+else if (wasPending) document.getElementById('splash').click();   // they clicked while it loaded: open the menu now
 
 const seenErr = new Set();
 function reportError(where, e) {
