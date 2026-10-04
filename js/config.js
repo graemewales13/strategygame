@@ -97,7 +97,7 @@ export const UNITS = {
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
-  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click up to three markets (yours or a treaty partner's) and it loops between them for ever.' },
+  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click up to three markets (yours or a treaty partner) and it loops between them for ever.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
 };
 
