@@ -106,32 +106,6 @@
   <div id="end" class="screen hidden"><div class="endbox"><h2 id="endTitle"></h2><p id="endText"></p><div><button class="big" id="eNew">New Valley</button><button class="big alt" id="eStay">Keep looking</button></div></div></div>
   <div id="quit" class="screen hidden"><div class="endbox"><h2>The gates are shut.</h2><p>You may close this tab. Reload to ride out again.</p></div></div>
 </div>
-<script>
-// The splash must answer at once, even while the painted art and the valley are still loading.
-(function () {
-  var sp = document.getElementById('splash'), done = false;
-  function leave() {
-    if (done) return; done = true;
-    if (!window.__ready) document.documentElement.classList.add('loading');
-    sp.classList.add('gone'); setTimeout(function () { sp.classList.add('hidden'); }, 650);
-    document.getElementById('mainmenu').classList.remove('hidden');
-  }
-  window.__splashLeave = leave;
-  // If the game code has not started, say why instead of leaving dead buttons.
-  function problem(msg) {
-    if (window.__ready || document.getElementById('bootmsg')) return;
-    var d = document.createElement('div'); d.id = 'bootmsg';
-    d.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:99999;max-width:560px;padding:22px 26px;background:#1b1409;border:2px solid #c9a24a;color:#f0e2b8;font:16px/1.5 Georgia,serif;text-align:left;box-shadow:0 10px 40px #000';
-    d.innerHTML = msg; document.body.appendChild(d);
-  }
-  window.__bootProblem = problem;
-  var fileHelp = '<b>Auld World cannot start from a file.</b><br>Browsers block the game scripts when the page is opened by double-clicking it. Start the small local server instead:<br><br>&bull; Windows: double-click <b>start.bat</b><br>&bull; Mac: double-click <b>start.command</b><br>&bull; or run <b>node serve.js</b> (or <b>python3 -m http.server 8000</b>) in this folder, then open <b>http://localhost:8000</b>';
-  if (location.protocol === 'file:') problem(fileHelp);
-  setTimeout(function () { problem(location.protocol === 'file:' ? fileHelp : '<b>The game is still not ready.</b><br>A script failed to load. Hard-refresh (Ctrl+Shift+R). If it persists, press F12, open Console and send me the red error.'); }, 6000);
-  sp.addEventListener('pointerdown', leave); sp.addEventListener('click', leave);
-  window.addEventListener('keydown', function () { if (!done && !sp.classList.contains('hidden')) leave(); }, true);
-})();
-</script>
-<script type="module" src="js/main.js" onerror="window.__bootProblem(location.protocol==='file:'?'<b>Auld World cannot start from a file.</b> Run node serve.js (or start.bat / start.command) and open http://localhost:8000':'<b>js/main.js failed to load.</b> Hard-refresh (Ctrl+Shift+R).')"></script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
