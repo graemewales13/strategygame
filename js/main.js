@@ -33,7 +33,7 @@ function centerOnHall() {
 centerOnHall();
 ui.refreshMenu();
 drawCrest(document.getElementById('brandCrest').getContext('2d'), 18, 20, 34, 0);
-document.documentElement.classList.remove('loading');
+window.__ready = true; document.documentElement.classList.remove('loading');
 if (params.get('start') === '1') ui.closeMenu();
 
 const seenErr = new Set();
