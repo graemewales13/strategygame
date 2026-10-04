@@ -39,4 +39,4 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - Update this file whenever the owner gives a new standing demand.
 
 ## Basics must always work
-- Splash click, every main-menu button, Skirmish/Begin, Continue, Options, Campaign, and the HUD Menu/Map/speed/house buttons must respond to real mouse clicks. Run `node tools/ui-smoke.js` (serve the repo on :8123 first) before pushing any UI or startup change.
+- Splash click, every main-menu button, Skirmish/Begin, Continue, Options, Campaign, and the HUD Menu/Map/speed/house buttons must respond to real mouse clicks. Run `node tools/ui-smoke.cjs` (serve the repo on :8123 first) before pushing any UI or startup change.

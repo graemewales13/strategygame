@@ -1,4 +1,4 @@
-// UI smoke test: serve the repo (python3 -m http.server 8123) then `node tools/ui-smoke.js` (needs playwright). Clicks every menu path with real mouse events; must print no errors.
+// UI smoke test: serve the repo (python3 -m http.server 8123) then `node tools/ui-smoke.cjs` (needs playwright). Clicks every menu path with real mouse events; must print no errors.
 const { chromium } = require('playwright');
 (async()=>{ const b = await chromium.launch(); const p = await b.newPage({viewport:{width:1400,height:850}});
  const errs=[]; p.on('pageerror',e=>errs.push('PAGE '+e)); p.on('console',m=>{if(/auld-world/.test(m.text()))errs.push(m.text())});

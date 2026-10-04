@@ -6,7 +6,7 @@ You are yellow **House Calder**. Rivals: red **Varr**, blue **Cael**, green **Th
 
 ## Run it
 
-ES modules do not load from `file://`, so serve the folder:
+ES modules do not load from `file://` (double-clicking index.html leaves the menu dead). Easiest: double-click `start.bat` (Windows) or `start.command` (Mac), or run `node serve.js`. Or serve the folder:
 
 ```bash
 python3 -m http.server 8000
