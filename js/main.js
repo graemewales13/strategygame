@@ -12,17 +12,12 @@ if (params.get('houses')) cfg.houses = Math.max(3, Math.min(5, +params.get('hous
 if (params.get('fog') === '0') cfg.fog = false;
 if (['easy', 'mid', 'hard'].includes(params.get('diff'))) cfg.diff = params.get('diff');
 
-const phase = (p) => { if (window.__boot) window.__boot.phase = p; };
-phase('art');
 const pendingClick = () => window.__boot && window.__boot.pending;
 await Promise.race([loadArt(), new Promise((r) => setTimeout(r, 10000))]);   // a slow image must not hold the game hostage
-phase('valley');
 const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff });
 const host = new LocalHost(game);
-phase('renderer');
 const renderer = new Renderer(document.getElementById('game'), game);
 const minimap = new Minimap(document.getElementById('minimap'), game, renderer);
-phase('interface');
 const ui = new UI({ game, host, renderer, minimap, cfg });
 
 ui.onReroll = (opts) => {
