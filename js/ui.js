@@ -843,7 +843,7 @@ export class UI {
     $('hSkirmish').onclick = () => this.showSetup();
     $('hOptions').onclick = () => this.showSetup();
     $('hQuit').onclick = () => { $('quit').classList.remove('hidden'); };
-    const splash = $('splash'), leave = () => { if (splash.classList.contains('gone')) return; splash.classList.add('gone'); setTimeout(() => splash.classList.add('hidden'), 650); $('mainmenu').classList.remove('hidden'); };
+    const splash = $('splash'), leave = () => { if (splash.classList.contains('gone')) { if (!splash.classList.contains('hidden')) splash.classList.add('hidden'); return; } splash.classList.add('gone'); setTimeout(() => splash.classList.add('hidden'), 650); $('mainmenu').classList.remove('hidden'); };
     splash.addEventListener('click', leave);
     window.addEventListener('keydown', () => { if (!splash.classList.contains('hidden')) leave(); }, true);
     if (new URLSearchParams(location.search).get('start') === '1') { splash.classList.add('hidden'); }

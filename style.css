@@ -243,3 +243,7 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .stoprow.cur { background: #3d2c1488; }
 .stoprow .sn { width: 190px; color: #f0e2b6; }
 .stoprow .st { flex: 1; color: #cdbb8a; }
+
+/* while the art and valley load, the menu says so instead of silently ignoring clicks */
+html.loading #mainmenu::after { content: 'Loading the valley...'; position: absolute; left: 0; right: 0; bottom: 4%; text-align: center; color: #e8d9ae; font: 600 14px/1 Georgia, serif; letter-spacing: .2em; text-transform: uppercase; text-shadow: 0 1px 6px #000; pointer-events: none; }
+html.loading #mainmenu button { opacity: .55; pointer-events: none; }

@@ -12,7 +12,7 @@ if (params.get('houses')) cfg.houses = Math.max(3, Math.min(5, +params.get('hous
 if (params.get('fog') === '0') cfg.fog = false;
 if (['easy', 'mid', 'hard'].includes(params.get('diff'))) cfg.diff = params.get('diff');
 
-await loadArt();
+await Promise.race([loadArt(), new Promise((r) => setTimeout(r, 8000))]);   // never let a slow image hold the menu hostage
 const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff });
 const host = new LocalHost(game);
 const renderer = new Renderer(document.getElementById('game'), game);
@@ -33,6 +33,7 @@ function centerOnHall() {
 centerOnHall();
 ui.refreshMenu();
 drawCrest(document.getElementById('brandCrest').getContext('2d'), 18, 20, 34, 0);
+document.documentElement.classList.remove('loading');
 if (params.get('start') === '1') ui.closeMenu();
 
 const seenErr = new Set();
