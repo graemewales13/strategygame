@@ -166,12 +166,14 @@ export class TerrainCache {
 }
 
 // Fog as a soft alpha layer: one pixel per tile, eased over time, blurred up.
-const FOG_S = 8; // px per tile in the blurred layer
+// px per tile in the blurred layer: 8 on a small board, fewer on the big one so the blurred canvas stays near 1000 px (2560 px blurred every 0.1 s froze the page)
+const FOG_S_MAX = 8;
 export class FogLayer {
   constructor(game) {
     this.g = game;
+    this.S = Math.max(2, Math.min(FOG_S_MAX, Math.floor(1024 / Math.max(game.W, game.H))));
     this.small = mk(game.W, game.H); this.sctx = this.small.getContext('2d');
-    this.big = mk(game.W * FOG_S, game.H * FOG_S); this.bctx = this.big.getContext('2d');
+    this.big = mk(game.W * this.S, game.H * this.S); this.bctx = this.big.getContext('2d');
     this.img = this.sctx.createImageData(game.W, game.H);
     this.cur = new Float32Array(game.W * game.H).fill(1);
     this.acc = 1; this.canBlur = 'filter' in this.bctx;
@@ -197,7 +199,7 @@ export class FogLayer {
     const b = this.bctx;
     b.clearRect(0, 0, this.big.width, this.big.height);
     b.imageSmoothingEnabled = true; b.imageSmoothingQuality = 'high';
-    if (this.canBlur) b.filter = `blur(${FOG_S * 0.9}px)`;
+    if (this.canBlur) b.filter = `blur(${this.S * 0.9}px)`;
     // draw with a margin of repeated edge so the blur doesn't lighten the map border
     b.drawImage(this.small, 0, 0, this.big.width, this.big.height);
     b.filter = 'none';
@@ -205,7 +207,7 @@ export class FogLayer {
   }
   draw(ctx, r) {
     if (!this.drawn) return;
-    const m = r.isoMatrix(0, 0, FOG_S), dpr = r.dpr;
+    const m = r.isoMatrix(0, 0, this.S), dpr = r.dpr;
     ctx.imageSmoothingEnabled = true;
     ctx.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr);
     ctx.drawImage(this.big, 0, 0);
