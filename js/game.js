@@ -1073,6 +1073,19 @@ export class Game {
     m._dT = this.time;
     return (m._d = { links, names, score, thriving, mult: 1 + DISTRICT.perLink * score + (thriving ? DISTRICT.thrive : 0) });
   }
+  // every link a market has right now, with where it stands: used to draw the community on the map
+  districtLinks(m) {
+    const out = [], r = DISTRICT.r;
+    for (const o of this.buildings) {
+      if (o.team !== m.team || o.built < 1 || o.hp <= 0 || o === m || Math.hypot(o.x - m.x, o.y - m.y) > r) continue;
+      const k = this.linkOfBuilding(o.kind); if (k) out.push({ x: o.x, y: o.y, link: k });
+    }
+    for (const v of this.villages) {
+      if (v.owner !== m.team || Math.hypot(v.x - m.x, v.y - m.y) > r) continue;
+      const k = this.linkOfVillage(v); if (k) out.push({ x: v.x, y: v.y, link: k });
+    }
+    return out;
+  }
   // the district a building or village of this team works within: its nearest own market inside DISTRICT.r, or null if it stands alone
   districtAt(team, x, y) {
     const m = this.nearestMarket(team, x, y, DISTRICT.r);

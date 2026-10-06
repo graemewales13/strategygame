@@ -254,7 +254,8 @@ export class UI {
     if (this.campaignOpen) return;
     this.keys.add(k);
     if (e.repeat) return;
-    if (k === 'h') this.focusHall();
+    if (k === 'e') this.showEcon = !this.showEcon;
+    else if (k === 'h') this.focusHall();
     else if (k === 'p') this.setPaused(!this.paused);
     else if (k === '.') this.selectIdleSerf();
     else if (k === ',') this.selectArmy();

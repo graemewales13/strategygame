@@ -1,7 +1,7 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, factionSprite } from './art.js';
@@ -151,6 +151,7 @@ export class Renderer {
     this.fog.update();
     this.fog.draw(ctx, this);
 
+    this.econOverlay(ctx, ui, t, z);
     if (ui?.placing) this.ghost(ctx, g, ui);
     if (ui?.dragBox) {
       const b = ui.dragBox;
@@ -262,6 +263,37 @@ export class Renderer {
     for (let i = 1; i <= n; i++) ctx.lineTo(px + (w * i) / n, py + Math.sin(t * 4 + phase + i) * h * 0.12 * (i / n));
     for (let i = n; i >= 0; i--) ctx.lineTo(px + (w * i) / n, py + h + Math.sin(t * 4 + phase + i) * h * 0.12 * (i / n));
     ctx.closePath(); ctx.fill(); ctx.strokeStyle = acc; ctx.lineWidth = 1; ctx.stroke();
+  }
+  // The economy made visible: each own market wears four pips (supply, works, homes, service: lit when linked). Select a market, or press E,
+  // to see its district ring and the lines along which goods and folk flow to it.
+  econOverlay(ctx, ui, t, z) {
+    const g = this.game, COL = { supply: '#e0a43c', works: '#8fb6d8', homes: '#7fc46a', service: '#c08ae0' }, ORDER = ['supply', 'works', 'homes', 'service'];
+    const sel = ui?.selEntity?.(), all = !!ui?.showEcon;
+    for (const m of g.buildings) {
+      if (m.team !== PLAYER || m.kind !== 'market' || m.built < 1 || m.hp <= 0) continue;
+      const [x0, y0, x1, y1] = this.viewBounds(DISTRICT.r);
+      if (m.x < x0 || m.x > x1 || m.y < y0 || m.y > y1) continue;
+      const d = g.district(m), [sx, sy] = this.toScreen(m.x, m.y);
+      if (z > 0.45) {   // pips
+        ctx.save(); ctx.translate(sx, sy - 58 * z);
+        ctx.fillStyle = 'rgba(10,8,4,.7)'; ctx.beginPath(); ctx.roundRect(-26, -7, 52, 14, 6); ctx.fill();
+        ORDER.forEach((k, i) => { ctx.beginPath(); ctx.arc(-18 + i * 12, 0, 4, 0, 7); ctx.fillStyle = d.links[k] > 0 ? COL[k] : '#4a4538'; ctx.fill(); });
+        ctx.restore();
+      }
+      if (!(all || sel === m)) continue;
+      ctx.save();
+      ctx.beginPath(); for (let a = 0; a <= 48; a++) { const an = (a / 48) * 6.2832, [px, py] = this.toScreen(m.x + Math.cos(an) * DISTRICT.r, m.y + Math.sin(an) * DISTRICT.r); a ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+      ctx.fillStyle = d.thriving ? 'rgba(255,220,120,.07)' : 'rgba(255,255,255,.04)'; ctx.fill();
+      ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = d.thriving ? 'rgba(255,214,110,.8)' : 'rgba(240,226,160,.45)'; ctx.stroke();
+      ctx.lineWidth = 2.5 * Math.max(0.7, z);
+      for (const l of g.districtLinks(m)) {
+        const [lx, ly] = this.toScreen(l.x, l.y);
+        ctx.strokeStyle = COL[l.link]; ctx.globalAlpha = 0.85; ctx.setLineDash([7, 7]); ctx.lineDashOffset = -t * 22;
+        ctx.beginPath(); ctx.moveTo(lx, ly - 10 * z); ctx.lineTo(sx, sy - 10 * z); ctx.stroke();
+        ctx.setLineDash([]); ctx.beginPath(); ctx.arc(lx, ly - 10 * z, 4 * z + 1, 0, 7); ctx.fillStyle = COL[l.link]; ctx.fill();
+      }
+      ctx.restore();
+    }
   }
   smoke(ctx, x, y, z, t, seed) {
     for (let i = 0; i < 2; i++) {
