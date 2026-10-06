@@ -249,3 +249,4 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 #savebar button { background: #3a2b12; color: #f3e3b0; border: 1px solid #a78437; border-radius: 4px; padding: 6px 12px; font: 600 13px Georgia, serif; cursor: pointer; }
 #savebar button:hover:not(:disabled) { background: #5a4220; }
 #savebar button:disabled { opacity: .4; cursor: default; }
+#errbox button { margin-left: 6px; background: #3a1a12; color: #ffe3d8; border: 1px solid #c4533a; border-radius: 3px; padding: 2px 8px; font: 12px Georgia, serif; cursor: pointer; }

@@ -53,9 +53,16 @@ function reportError(where, e) {
   console.error('[auld-world]', where, e, e && e.stack);
   let box = document.getElementById('errbox');
   if (!box) { box = document.createElement('div'); box.id = 'errbox'; document.body.appendChild(box); }
-  box.textContent = `Display problem (${where}): ${e && e.message}. Press F12 for details; the game keeps running.`;
+  lastReport = [`Auld World problem report`, `where: ${where}`, `message: ${e && e.message}`, `build: ${window.__BUILD || '?'}`, `seed: ${game.seed} houses: ${game.houses} time: ${Math.round(game.time)}s`, `browser: ${navigator.userAgent}`, `screen: ${innerWidth}x${innerHeight} @${devicePixelRatio}`, `stack: ${e && e.stack}`].join('\n');
+  box.textContent = '';
+  const msg = document.createElement('span'); msg.textContent = `Problem (${where}): ${e && e.message}. The game keeps running. `; box.appendChild(msg);
+  const btn = document.createElement('button'); btn.textContent = 'Copy report';
+  btn.onclick = async () => { try { await navigator.clipboard.writeText(lastReport); btn.textContent = 'Copied - send it to the developer'; } catch { prompt('Copy this report:', lastReport); } };
+  box.appendChild(btn);
 }
+let lastReport = '';
 window.addEventListener('error', (ev) => reportError('script', ev.error || new Error(ev.message)));
+window.addEventListener('unhandledrejection', (ev) => reportError('promise', ev.reason instanceof Error ? ev.reason : new Error(String(ev.reason))));
 
 let last = performance.now();
 function frame(now) {
@@ -63,7 +70,7 @@ function frame(now) {
   last = now;
   if (!ui.menuOpen && !ui.paused) {
     let sim = dt * ui.speed;
-    while (sim > 1e-6) { const s = Math.min(0.05, sim); game.tick(s); sim -= s; }
+    try { while (sim > 1e-6) { const s = Math.min(0.05, sim); game.tick(s); sim -= s; } } catch (e) { reportError('simulation', e); }
   }
   // one bad frame must not freeze the whole game: report it and keep going
   try { ui.update(dt); } catch (e) { reportError('update', e); }
