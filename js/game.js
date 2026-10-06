@@ -370,11 +370,13 @@ export class Game {
     for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
       if (x < 0 || y < 0 || x >= W || y >= H || !walk[y * W + x]) continue;
       const edge = Math.max(Math.abs(x + 0.5 - t.x) - t.size / 2, Math.abs(y + 0.5 - t.y) - t.size / 2);
-      cands.push([x, y, (distTo(x + 0.5, y + 0.5, t) > 1.2 ? 1e8 : 0) + Math.max(0, Math.ceil(edge - 0.01)) * 1e6 + (x - ux) ** 2 + (y - uy) ** 2]);   // tiles within working reach (1.35) come first
+      // a trade animal waits where the buyer can see it: the near (south-east) face of the building, never behind it where the roof would hide it
+      const hidden = u.kind === 'camel' && (x + 0.5) + (y + 0.5) < t.x + t.y + t.size - 0.4 ? 3e6 : 0;
+      cands.push([x, y, (distTo(x + 0.5, y + 0.5, t) > 1.2 ? 1e8 : 0) + hidden + Math.max(0, Math.ceil(edge - 0.01)) * 1e6 + (x - ux) ** 2 + (y - uy) ** 2]);   // tiles within working reach (1.35) come first
     }
     if (!cands.length) { const n = this.nearestWalkable(cx, cy, R, ux, uy); cands.push(n ? [n[0], n[1], 0] : null); if (!n) { u.path = []; return false; } }
     cands.sort((a, b) => a[2] - b[2]);
-    for (let i = 0; i < Math.min(8, cands.length); i++) if (this.setPath(u, cands[i][0] + 0.5, cands[i][1] + 0.5)) return true;
+    for (let i = 0; i < Math.min(8, cands.length); i++) if (this.setPath(u, cands[i][0] + 0.5, cands[i][1] + 0.5)) { if (u.kind === 'camel') u._front = { id: t.id, x: cands[i][0] + 0.5, y: cands[i][1] + 0.5 }; return true; }
     u.path = []; return false;
   }
 
@@ -1296,7 +1298,8 @@ export class Game {
     if (!r.stops.length) return cancel('A route ends: no market is left to visit.');
     if (r.i >= r.stops.length) r.i = 0;
     const t = this.byId.get(r.stops[r.i]);
-    const go = (dest) => { if (distTo(u.x, u.y, dest) > 1.6) { if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, dest); this.follow(u, dt); return false; } u.path = []; return true; };
+    // arrive at the chosen front tile (not merely within reach of whichever side we met first)
+    const go = (dest) => { const f = u._front && u._front.id === dest.id && u.path.length ? u._front : null; if (f ? Math.hypot(u.x - f.x, u.y - f.y) > 0.8 : distTo(u.x, u.y, dest) > 1.6) { if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, dest); this.follow(u, dt); return false; } u.path = []; return true; };
     if (k.stage === 'prep' || k.stage === 'wait') {
       if (k.stage === 'prep' && !go(home)) return;
       u.home = home.id;

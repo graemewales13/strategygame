@@ -800,3 +800,27 @@ test('objectives: steps advance from what the player has, in order, and never pa
   assert.ok(progress(g).index <= OBJECTIVES.length - 1);
   assert.equal(progress(g).total, OBJECTIVES.length);
 });
+
+test('camels: a trade camel stops on the near face of a market, never behind it where the roof hides it', () => {
+  const g = new Game({ seed: 6, houses: 3, ai: false }); g.fogOn = false;
+  const mk = placeNear(g, 0, 'market', 6);
+  for (const [dx, dy] of [[-8, -8], [-8, 0], [0, -8], [8, -8]]) {   // approach from behind and from the sides
+    const u = g.addUnit('camel', 0, mk.x + dx, mk.y + dy);
+    if (!g.walk[Math.floor(u.y) * g.W + Math.floor(u.x)]) continue;
+    assert.ok(g.setPathToEntity(u, mk), 'a path exists'); u.task = { type: 'move' };
+    run(g, 40);
+    assert.ok(u.x + u.y >= mk.x + mk.y + mk.size - 1.2, `camel from ${dx},${dy} stopped behind the market (${(u.x + u.y).toFixed(1)} vs ${(mk.x + mk.y + mk.size).toFixed(1)})`);
+  }
+});
+
+test('ai: rival houses leave room between buildings (varied lanes, not a packed one-tile grid)', () => {
+  const gapOf = (a, b) => Math.max(0, Math.max(a.tx - (b.tx + b.size), b.tx - (a.tx + a.size), a.ty - (b.ty + b.size), b.ty - (a.ty + a.size)));
+  const g = new Game({ seed: 11, houses: 4 }); run(g, 600);
+  let tight = 0, n = 0;
+  for (let t = 1; t < 4; t++) {
+    const bs = g.buildings.filter((b) => b.team === t && b.built >= 1 && b.hp > 0 && b.kind !== 'mine');
+    for (const b of bs) { const gap = Math.min(...bs.filter((o) => o !== b).map((o) => gapOf(b, o))); n++; if (gap < 2) tight++; }
+  }
+  assert.ok(n >= 12, 'the rivals built ' + n);
+  assert.ok(tight / n < 0.45, `${tight} of ${n} AI buildings have under two tiles of room`);
+});

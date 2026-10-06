@@ -219,7 +219,12 @@ function nearestVillage(game, seat, pred, maxD) {
   return best;
 }
 
-// Find a legal footprint with a one-tile lane around it. Keeps lean toward the nearest free village.
+// Where to build. A real player does not stamp buildings on a ring with identical one-tile lanes: homes sit in loose neighbourhoods, farms
+// beside the mill, barracks and towers toward the enemy with room to muster, a market or temple with space around it. So: gather every legal
+// spot, drop those too tight for the kind (relaxing only if nothing fits), and pick the best by taste plus a little chance.
+const MIN_GAP = { keep: 3, barracks: 3, archery: 3, stable: 3, market: 3, temple: 3, academy: 3, tower: 2, workshop: 2, forge: 2, foundry: 2, tavern: 2, mill: 2, warehouse: 2, cottage: 2, farm: 1, mine: 1 };
+const MIL = ['barracks', 'archery', 'stable', 'tower', 'workshop'];
+const rectGap = (tx, ty, s, o) => Math.max(0, Math.max(tx - (o.tx + o.size), o.tx - (tx + s), ty - (o.ty + o.size), o.ty - (ty + s)));
 export function findSpot(game, team, seat, kind) {
   const s = BUILDINGS[kind].size;
   let ax = seat.x, ay = seat.y, rmin = 4, rmax = 13;
@@ -233,26 +238,50 @@ export function findSpot(game, team, seat, kind) {
   } else if (kind === 'warehouse') {   // beside the timber stand the serfs walk furthest to
     const trees = game.resources.filter((n) => NODE_RES[n.kind] === 'wood' && n.amount > 0 && Math.hypot(n.x - seat.x, n.y - seat.y) > 7 && Math.hypot(n.x - seat.x, n.y - seat.y) < 24).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
     if (trees[0]) { ax = trees[0].x; ay = trees[0].y; rmin = 2; rmax = 5; }
-  } else if (['barracks', 'archery', 'stable', 'tower', 'workshop'].includes(kind)) { rmin = 5; rmax = 12; }
-  const tried = [];
+  } else if (MIL.includes(kind)) { rmin = 5; rmax = 12; }
   if (kind === 'cottage' || kind === 'farm' || kind === 'warehouse') rmax += 8;   // a crowded hall pushes homes outward rather than stalling
+  // the nearest rival seat: soldiers' buildings face it
+  let foe = null, fd = 1e9;
+  for (const o of game.buildings) if (o.team !== team && o.kind === 'hall' && o.hp > 0) { const d = Math.hypot(o.x - seat.x, o.y - seat.y); if (d < fd) { fd = d; foe = o; } }
+  const fa = foe ? Math.atan2(foe.y - seat.y, foe.x - seat.x) : 0;
+  const near = [];   // everything a new footprint could crowd
+  for (const b of game.buildings) if (b.hp > 0 && Math.abs(b.x - ax) < rmax + 14 && Math.abs(b.y - ay) < rmax + 14) near.push(b);
+  for (const v of game.villages) if (Math.abs(v.x - ax) < rmax + 14 && Math.abs(v.y - ay) < rmax + 14) near.push(v);
+  const own = near.filter((b) => b.team === team);
+  const cands = [];
   for (let r = rmin; r <= rmax; r += 1) {
-    const steps = Math.max(8, Math.floor(r * 4));
-    const off = Math.random() * Math.PI * 2;
+    const steps = Math.max(10, Math.floor(r * 3.5)), off = Math.random() * Math.PI * 2;
     for (let a = 0; a < steps; a++) {
-      const ang = off + (a / steps) * Math.PI * 2;
-      const tx = Math.round(ax + Math.cos(ang) * r - s / 2), ty = Math.round(ay + Math.sin(ang) * r - s / 2);
+      const ang = off + (a / steps) * Math.PI * 2, rr = r + (Math.random() - 0.5) * 1.4;
+      const tx = Math.round(ax + Math.cos(ang) * rr - s / 2), ty = Math.round(ay + Math.sin(ang) * rr - s / 2);
       if (!game.canPlace(team, kind, tx, ty).ok) continue;
-      let lane = true;
-      for (let y = ty - 1; y <= ty + s && lane; y++) for (let x = tx - 1; x <= tx + s; x++) {
-        if (x < 0 || y < 0 || x >= game.W || y >= game.H) continue;
-        if (game.block[y * game.W + x]) { lane = false; break; }
+      let gap = 99;
+      for (const o of near) { const g = rectGap(tx, ty, s, o); if (g < gap) gap = g; }
+      let ring = 0, blocked = 0;   // terrain hemming the footprint in (trees, water, rock)
+      for (let y = ty - 1; y <= ty + s; y++) for (let x = tx - 1; x <= tx + s; x++) {
+        if (x >= tx && x < tx + s && y >= ty && y < ty + s) continue;
+        ring++; if (x < 0 || y < 0 || x >= game.W || y >= game.H || game.block[y * game.W + x]) blocked++;
       }
-      if (lane) return [tx, ty];
-      tried.push([tx, ty]);
+      cands.push({ tx, ty, gap, hem: blocked / ring, r: Math.hypot(tx + s / 2 - seat.x, ty + s / 2 - seat.y), ang: Math.atan2(ty + s / 2 - seat.y, tx + s / 2 - seat.x) });
     }
   }
-  return tried[0] || null;
+  if (!cands.length) return null;
+  const want = MIN_GAP[kind] ?? 2;
+  let pool = [];
+  for (const g of [want, want - 1, 1, 0]) { if (g < 0) continue; pool = cands.filter((c) => c.gap >= g); if (pool.length) break; }
+  const pref = MIL.includes(kind) ? 8.5 : kind === 'cottage' || kind === 'farm' ? 8 : 6;
+  let best = null, bs = -1e9;
+  for (const c of pool) {
+    let sc = Math.random() * 1.8;
+    if (c.gap > want + 3 && c.gap < 90) sc -= (c.gap - want - 3) * 0.4;   // not stranded in the open
+    sc -= Math.abs(c.r - pref) * 0.1;
+    if (c.hem > 0.55) sc -= 1.5;   // hemmed in by trees or water
+    if (MIL.includes(kind) && foe) sc += 1.4 * Math.cos(c.ang - fa);   // face the enemy, leave the back door free
+    if (kind === 'farm' || kind === 'mill') { for (const o of own) if ((o.kind === 'farm' || o.kind === 'mill') && Math.hypot(o.x - (c.tx + s / 2), o.y - (c.ty + s / 2)) < 6) { sc += 0.9; break; } }
+    if (kind === 'cottage') { for (const o of own) if ((o.kind === 'cottage' || o.kind === 'tavern' || o.kind === 'market') && Math.hypot(o.x - (c.tx + s / 2), o.y - (c.ty + s / 2)) < 7) { sc += 0.8; break; } }
+    if (sc > bs) { bs = sc; best = c; }
+  }
+  return best ? [best.tx, best.ty] : null;
 }
 
 // ---- the treasurer: dig gold, sell what the stockpile does not need, run camels to the best buyer, draft villagers, found villages
