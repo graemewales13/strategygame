@@ -789,3 +789,14 @@ test('sound: the headless sim never queues sound effects; with sfxOn it queues a
   g.damage(u, 1, 1); assert.equal(g.sfxQ.length, 0);
   g.sfxOn = true; for (let i = 0; i < 100; i++) g.damage(u, 0.01, 1); assert.ok(g.sfxQ.length > 0 && g.sfxQ.length <= 40);
 });
+
+test('objectives: steps advance from what the player has, in order, and never past the last', async () => {
+  const { progress, OBJECTIVES } = await import('../js/objectives.js');
+  const g = new Game({ seed: 4, houses: 3, ai: false }); g.fogOn = false;
+  assert.equal(progress(g).index, 0, 'starts at cutting timber');
+  const m = placeNear(g, 0, 'mine', 5); const mk = placeNear(g, 0, 'market');
+  assert.ok(progress(g).index >= 3, 'building early skips the opening steps: ' + progress(g).step.id);
+  g.addBuilding('keep', 0, g.seatOf(0).tx + 8, g.seatOf(0).ty, true); g.addBuilding('barracks', 0, g.seatOf(0).tx - 8, g.seatOf(0).ty, true);
+  assert.ok(progress(g).index <= OBJECTIVES.length - 1);
+  assert.equal(progress(g).total, OBJECTIVES.length);
+});

@@ -255,3 +255,13 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .slid { display: flex; align-items: center; gap: 6px; font: 13px Georgia, serif; color: #e8d9ae; }
 .slid input { width: 90px; accent-color: #c9a24a; }
 #btnSound { min-width: 74px; }
+
+/* guided objectives */
+#objectives { position: absolute; left: 10px; top: 10px; width: 270px; z-index: 4; padding: 8px 10px 9px; background: rgba(14,10,5,.84); border: 1px solid #8a6a2c; border-radius: 6px; color: #efe0b4; font: 13px/1.35 Georgia, serif; box-shadow: 0 4px 16px rgba(0,0,0,.45); }
+#objectives .ohead { display: flex; justify-content: space-between; align-items: center; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #c9a24a; }
+#objectives .ohead button { background: none; border: 0; color: #c9a24a; font: 700 14px Georgia, serif; cursor: pointer; padding: 0 4px; }
+#objectives .otitle { font-weight: 700; font-size: 15px; margin: 3px 0 2px; color: #fff3c8; }
+#objectives .ohint { color: #dccd9e; }
+#objectives .osteps { display: flex; gap: 4px; margin-top: 7px; }
+#objectives .osteps i { flex: 1; height: 4px; border-radius: 2px; background: #4a3a1a; }
+#objectives .osteps i.on { background: #d6aa44; }

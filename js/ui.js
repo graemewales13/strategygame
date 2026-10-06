@@ -1,5 +1,6 @@
 // Auld World - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
 import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js';
+import { progress } from './objectives.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
@@ -449,6 +450,7 @@ export class UI {
     this.pruneSel();
     // events -> toasts
     for (const ev of g.events.splice(0)) if (ev.team === PLAYER || ev.team === -1) this.toast(ev.text, ev.kind);
+    this.renderObjectives();
     g.sfxOn = true; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     if (this.hudT <= 0) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
@@ -853,6 +855,15 @@ export class UI {
     $('btnSound').onclick = () => { unlock(); setMuted(!settings.muted); syncMute(); };
     if ($('sMute')) $('sMute').onchange = () => { setMuted($('sMute').checked); syncMute(); };
     syncMute();
+    // objectives: on for new players, off once hidden (remembered)
+    try { this.objHidden = localStorage.getItem('auld-world.objectives') === 'off'; } catch { this.objHidden = false; }
+    this.objCollapsed = false;
+    if ($('sObj')) { $('sObj').checked = !this.objHidden; $('sObj').onchange = () => { this.objHidden = !$('sObj').checked; this.objKey = ''; try { localStorage.setItem('auld-world.objectives', this.objHidden ? 'off' : 'on'); } catch { /* private window */ } }; }
+    $('objectives').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-act]'); if (!b) return;
+      if (b.dataset.act === 'objcollapse') { this.objCollapsed = !this.objCollapsed; this.objKey = ''; this.objT = 0; }
+      if (b.dataset.act === 'objhide') { this.objHidden = true; if ($('sObj')) $('sObj').checked = false; try { localStorage.setItem('auld-world.objectives', 'off'); } catch { /* ignore */ } this.toast('Objectives hidden. Turn them back on under Options.', 'info'); $('objectives').classList.add('hidden'); }
+    });
     $('sbSave').onclick = () => this.saveGame('manual');
     $('sbLoad').onclick = () => this.loadGame('manual');
     $('sbAuto').onclick = () => this.loadGame('auto');
@@ -891,6 +902,22 @@ export class UI {
     }
   }
   openMenu() { this.menuOpen = true; this.setPaused(false); this.refreshMenu(); this.showMain(); $('campaign').classList.add('hidden'); this.campaignOpen = false; }
+  // ------------------------------------------------------------ guided objectives
+  renderObjectives() {
+    const el = $('objectives'); if (!el) return;
+    const show = this.started && !this.menuOpen && !this.game.outcome && this.cfg.objectives !== false && !this.objHidden;
+    if (!show) { el.classList.add('hidden'); return; }
+    this.objT = (this.objT || 0) - 1; if (this.objT > 0) return; this.objT = 20;   // re-evaluate a few times a second
+    const p = progress(this.game), key = p.index + ':' + this.objCollapsed;
+    if (key === this.objKey) { el.classList.remove('hidden'); return; }
+    this.objKey = key;
+    if (this.objPrev != null && p.index > this.objPrev) { this.toast(`Done: ${p.steps[this.objPrev]?.title}. Next: ${p.step.title}.`, 'good'); play('ready'); }
+    this.objPrev = p.index;
+    el.classList.remove('hidden');
+    el.innerHTML = `<div class="ohead"><b>Objective ${p.index + 1}/${p.total}</b><span><button data-act="objcollapse" title="Fold">${this.objCollapsed ? '+' : '-'}</button><button data-act="objhide" title="Hide objectives (turn back on in Options)">x</button></span></div>`
+      + `<div class="otitle">${esc(p.step.title)}</div>` + (this.objCollapsed ? '' : `<div class="ohint">${esc(p.step.hint)}</div><div class="osteps">${p.steps.map((s) => `<i class="${s.done ? 'on' : ''}" title="${esc(s.title)}"></i>`).join('')}</div>`);
+  }
+
   // ------------------------------------------------------------ save / load
   saveGame(slot = 'manual', quiet = false) {
     const g = this.game;

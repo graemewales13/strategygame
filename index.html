@@ -11,20 +11,21 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muwkozhl",
-    "./js/art.js": "./js/art.js?v=muwkozhl",
-    "./js/audio.js": "./js/audio.js?v=muwkozhl",
-    "./js/config.js": "./js/config.js?v=muwkozhl",
-    "./js/entities.js": "./js/entities.js?v=muwkozhl",
-    "./js/game.js": "./js/game.js?v=muwkozhl",
-    "./js/main.js": "./js/main.js?v=muwkozhl",
-    "./js/map.js": "./js/map.js?v=muwkozhl",
-    "./js/names.js": "./js/names.js?v=muwkozhl",
-    "./js/net.js": "./js/net.js?v=muwkozhl",
-    "./js/render.js": "./js/render.js?v=muwkozhl",
-    "./js/save.js": "./js/save.js?v=muwkozhl",
-    "./js/terrain.js": "./js/terrain.js?v=muwkozhl",
-    "./js/ui.js": "./js/ui.js?v=muwkozhl"
+    "./js/ai.js": "./js/ai.js?v=muwkueik",
+    "./js/art.js": "./js/art.js?v=muwkueik",
+    "./js/audio.js": "./js/audio.js?v=muwkueik",
+    "./js/config.js": "./js/config.js?v=muwkueik",
+    "./js/entities.js": "./js/entities.js?v=muwkueik",
+    "./js/game.js": "./js/game.js?v=muwkueik",
+    "./js/main.js": "./js/main.js?v=muwkueik",
+    "./js/map.js": "./js/map.js?v=muwkueik",
+    "./js/names.js": "./js/names.js?v=muwkueik",
+    "./js/net.js": "./js/net.js?v=muwkueik",
+    "./js/objectives.js": "./js/objectives.js?v=muwkueik",
+    "./js/render.js": "./js/render.js?v=muwkueik",
+    "./js/save.js": "./js/save.js?v=muwkueik",
+    "./js/terrain.js": "./js/terrain.js?v=muwkueik",
+    "./js/ui.js": "./js/ui.js?v=muwkueik"
   }
 }
 </script>
@@ -32,7 +33,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muwkozhl';
+window.__BUILD = 'muwkueik';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -86,6 +87,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
   <main id="field">
     <canvas id="game"></canvas>
     <div id="toasts"></div>
+    <div id="objectives" class="hidden"></div>
     <div id="diplo" class="hidden"></div>
     <div id="tip" class="hidden"></div>
     <div id="pausedBanner" class="hidden">Paused</div>
@@ -133,6 +135,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
         <div class="optrow">
           <label class="chk"><input type="checkbox" id="mFog" checked> Fog of war</label>
           <label class="chk"><input type="checkbox" id="mSeedLock"> Keep seed on New Valley</label>
+          <label class="chk"><input type="checkbox" id="sObj" checked> Show objectives</label>
         </div>
         <div class="optrow"><span class="seedlabel">Seed</span><input id="mSeed" type="text" inputmode="numeric" spellcheck="false"><button id="mSeedGo" class="small">Roll this seed</button></div>
         <div class="optrow sound"><span class="seedlabel">Sound</span>
