@@ -1,7 +1,7 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, MINE_JOBS,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
@@ -475,6 +475,13 @@ export class Renderer {
     } else if (!dim) {
       const sm = SMOKE[b.kind];
       if (sm) sm.forEach(([fx, fy], i) => this.smoke(ctx, bx - w / 2 + fx * w, dy + fy * h, z, t, b.id + i));
+      if (b.kind === 'mine' && this.game.minersOf(b) > 0) for (let i = 0, n = this.game.minersOf(b); i < n; i++) {
+        const a = i * 1.7 + b.id, wx = bx + (Math.cos(a) * 20 - 6) * z, wy = by + (Math.sin(a) * 6 + 4) * z, sw = Math.sin(t * 5 + i * 1.3) * 3 * z;
+        ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(wx, wy, 4 * z, 1.8 * z, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = '#8a6a44'; ctx.fillRect(wx - 1.8 * z, wy - 8 * z, 3.6 * z, 7 * z);
+        ctx.fillStyle = '#d9b48c'; ctx.beginPath(); ctx.arc(wx, wy - 10 * z, 2.2 * z, 0, 7); ctx.fill();
+        ctx.strokeStyle = '#5a4630'; ctx.lineWidth = 1.2 * z; ctx.beginPath(); ctx.moveTo(wx + 1 * z, wy - 6 * z); ctx.lineTo(wx + 6 * z + sw, wy - 11 * z - sw); ctx.stroke();
+      }
       if (b.kind === 'mine' && this.game.minersOf(b) > 0) for (let i = 0; i < 3; i++) { const ph = (t * 1.3 + i / 3 + b.id * 0.17) % 1; ctx.fillStyle = `rgba(190,175,140,${0.35 * (1 - ph)})`; ctx.beginPath(); ctx.arc(bx + (ph - 0.4) * 22 * z, by - 26 * z - ph * 18 * z, (2 + ph * 5) * z, 0, 7); ctx.fill(); }
       if (b.kind === 'foundry' && b.working) { const gx = bx - w * 0.3, gy = dy + h * 0.72, gr = 30 * z, a = 0.5 + Math.sin(t * 8 + b.id) * 0.12; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,160,50,${a})`); g2.addColorStop(1, 'rgba(255,100,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
       if (b.kind === 'forge') { const gx = bx - w * 0.3, gy = dy + h * 0.72, gr = 26 * z, a = 0.42 + Math.sin(t * 9 + b.id) * 0.1 + Math.sin(t * 23) * 0.05; const g2 = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr); g2.addColorStop(0, `rgba(255,170,60,${a})`); g2.addColorStop(1, 'rgba(255,110,30,0)'); ctx.fillStyle = g2; ctx.fillRect(gx - gr, gy - gr, gr * 2, gr * 2); }
@@ -632,14 +639,22 @@ export class Renderer {
     ctx.strokeStyle = chk.ok ? '#8fe08f' : '#e07070'; ctx.lineWidth = 2; ctx.stroke();
     const [name, mul] = BSPR[ui.placing] || ['cottage', 1], own = factionSprite(HOUSES[PLAYER].faction, ui.placing), c = own || (ui.placing === 'village' && VIMG['1tile'].hamlet) || tinted(name, PLAYER, 'banner');
     if (c) { const [bx, by] = this.toScreen(tx + s, ty + s), w = s * 2 * HW * this.cam.zoom * (own ? (FMUL[ui.placing] || 1) : mul), h = (c.height / c.width) * w; ctx.globalAlpha = 0.55; ctx.drawImage(c, bx - w / 2, by - h + s * HH * this.cam.zoom * 0.34, w, h); ctx.globalAlpha = 1; }
+    if (ui.placing === 'mine') {
+      const cx = tx + s / 2, cy = ty + s / 2, R = MINE_JOBS.r;
+      ctx.save(); ctx.beginPath();
+      for (let i = 0; i <= 48; i++) { const a = (i / 48) * Math.PI * 2, [px, py] = this.toScreen(cx + Math.cos(a) * R, cy + Math.sin(a) * R); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+      ctx.closePath(); ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(240,215,140,.75)'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+      for (const e of g.mineVillages(PLAYER, cx, cy)) { const [vx, vy] = this.toScreen(e.v.x, e.v.y); ctx.beginPath(); ctx.arc(vx, vy, 16 * this.cam.zoom + 4, 0, 7); ctx.strokeStyle = e.own ? '#8fe08f' : '#f0d78c'; ctx.lineWidth = 3; ctx.stroke(); }
+    }
     const [lx, ly] = this.toScreen(tx + s / 2, ty);
     ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center';
     let note = '';
     if (chk.ok) {
       const cx = tx + s / 2, cy = ty + s / 2; let ds = 1e9, db = 1e9;
       for (const b of g.buildings) if (b.team === PLAYER && b.hp > 0 && b.built >= 1) { const d = Math.hypot(b.x - cx, b.y - cy); db = Math.min(db, d); if (STORES.includes(b.kind)) ds = Math.min(ds, d); }
-      if (ui.placing === 'mine' && ds > HAUL.free) note = ` · yield ${Math.round(100 * (ds >= HAUL.far ? HAUL.min : 1 - (1 - HAUL.min) * (ds - HAUL.free) / (HAUL.far - HAUL.free)))}% (far from a store)`;
-      else if (db > 30) note = ' · remote: no villagers near, no guard';
+      if (ui.placing === 'mine') { const pw = g.minePower(PLAYER, cx, cy); note = pw <= 0 ? ' · NO villagers within ' + MINE_JOBS.r + ' tiles: no workers' : pw > 1.05 ? ' · your village digs here: yield x' + pw.toFixed(2) : ' · independent villagers dig here'; }
+      if (ui.placing === 'mine' && ds > HAUL.free) note += ` · yield ${Math.round(100 * (ds >= HAUL.far ? HAUL.min : 1 - (1 - HAUL.min) * (ds - HAUL.free) / (HAUL.far - HAUL.free)))}% (far from a store)`;
+      else if (db > 30) note += ' · remote: no villagers near, no guard';
     }
     const label = chk.ok ? BUILDINGS[ui.placing].label + note : `${BUILDINGS[ui.placing].label}: ${chk.reason}`;
     ctx.fillStyle = '#000'; ctx.fillText(label, lx + 1, ly - 3); ctx.fillStyle = chk.ok ? '#d9f5d0' : '#ffc4c0'; ctx.fillText(label, lx, ly - 4);

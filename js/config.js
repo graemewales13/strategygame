@@ -77,6 +77,10 @@ export const GOOD_INFO = {
 export const MINEABLE = ['gold', ...MATS]; // every ore, coin included, can be dug from a deposit with a Mine
 export const MINE_RATE = { gold: 0.6, stone: 0.6, copper: 0.5, iron: 0.45, coal: 0.5, silver: 0.3 }; // per worker per second
 export const MINE_MAX_WORKERS = 4;
+// Mines are worked by the folk of villages nearby, not by serfs you send. A village within `r` tiles that is yours or still independent
+// lends up to `share` of the people above `keep` (mining camps lend more); with no village in range a mine has no workers at all.
+// The mine's lord gains `pull` of influence over the village per worker employed, and a village of your own digs `ownBonus` times as fast.
+export const MINE_JOBS = { r: 16, share: 0.3, campShare: 0.6, keep: 6, campKeep: 4, pull: 0.12, ownBonus: 1.5, freeBonus: 1.0, refresh: 2 };
 export const SMELT = { steel: { in: { iron: 2, coal: 1 }, time: 7 }, ware: { in: { copper: 2, coal: 1 }, time: 8 } };
 export const ARMS_STEEL = 6;   // steel per forge arms level (max 3)
 export const SCI_SILVER = 6;   // silver per science level (max 3)
@@ -119,9 +123,9 @@ export const BUILDINGS = {
   barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 40 }, time: 22, requires: [],          info: 'Trains footmen.' },
   archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
   stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
-  mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: [], onDeposit: true, info: 'Raised on a mineral deposit. Assign serfs to dig; ore flows into your stockpile.' },
+  mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: [], onDeposit: true, info: 'Raised on a mineral deposit. Villagers from villages within 16 tiles dig for it (no village, no workers); your own villages dig harder and warm to you. Ore flows into your stockpile.' },
   foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: ['mine'], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Needs a mine first.' },
-  village:   { label: 'Village',       size: 3, hp: 400,  sight: 7,  pop: 0, cost: { food: 100, wood: 150, gold: 30 }, time: 30, requires: ['keep'], info: 'Found a village of your own: it starts with a few settlers and grows to 50 folk. Its people pay tax, till fields, house your population, and can be drafted as serfs, miners or soldiers.' },
+  village:   { label: 'Village',       size: 3, hp: 400,  sight: 7,  pop: 0, cost: { food: 100, wood: 150, gold: 30 }, time: 30, requires: ['keep'], info: 'Found a village of your own: it starts with a few settlers and grows to 50 folk. Its people pay tax, till fields, house your population, and can be drafted as serfs or soldiers.' },
   tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['barracks'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
 // basic buildings first; the rest unlock as their requirements are built (market -> cottage -> farm -> mill, mine -> warehouse, barracks -> archery ...)

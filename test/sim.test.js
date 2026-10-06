@@ -218,7 +218,7 @@ test('deposits: every hall has stone near and metals exist; mines need a deposit
   assert.equal(g.canPlace(PLAYER, 'mine', hall.tx + 6, hall.ty).ok, false);
 });
 
-test('mining: a mine on a deposit, serfs assigned, ore reaches the stockpile; max 4 diggers', () => {
+test('mining: a mine near your own village is worked by its folk; ore reaches the stockpile; at most 4 diggers', () => {
   const g = new Game({ seed: 5, houses: 4, ai: false }); g.tick(0.1); g.seen[PLAYER].fill(1);
   const hall = g.seatOf(PLAYER), p = g.players[PLAYER];
   p.wood = 500; p.gold = 200;
@@ -226,17 +226,12 @@ test('mining: a mine on a deposit, serfs assigned, ore reaches the stockpile; ma
   assert.ok(node);
   const mine = g.applyIntent({ type: 'place', team: PLAYER, kind: 'mine', tx: 0, ty: 0, nodeId: node.id });
   assert.ok(mine && mine.kind === 'mine' && mine.nodeIds.includes(node.id));
-  for (let i = 0; i < 3; i++) g.addUnit('serf', PLAYER, hall.x + i, hall.y + 3);
-  const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf');
-  g.applyIntent({ type: 'mine', team: PLAYER, ids: serfs.map((u) => u.id), buildingId: mine.id });
   for (let i = 0; i < 60 * 10; i++) g.tick(0.1);
   assert.ok(mine.built >= 1, 'mine unfinished');
   assert.ok(p.stone > 20, `stone ${p.stone}`);
-  assert.ok(g.minersOf(mine) >= 3 - 0, 'miners ' + g.minersOf(mine));
-  for (let i = 0; i < 4; i++) g.addUnit('serf', PLAYER, hall.x + i, hall.y + 4);
-  const more = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf');
-  g.cmdMine(more, mine);
-  assert.ok(g.minersOf(mine) <= 4);
+  assert.ok(g.minersOf(mine) >= 1 && g.minersOf(mine) <= 4, 'villagers dig: ' + g.minersOf(mine));
+  assert.equal(g.cmdMine([g.units.find((u) => u.kind === 'serf')], mine), false, 'serfs are not sent to mines any more');
+  assert.equal(g.draft(PLAYER, hall.id, 2, 'mine'), 0, 'nor are miners drafted');
 });
 
 test('treaty: unmet houses cannot treaty; AI grants at once; human target gets an offer; peace cancels', () => {
@@ -397,8 +392,6 @@ test('mines: gold deposits can be mined too', () => {
   assert.ok(sp, 'a mine fits on gold');
   const mine = g.place(PLAYER, 'mine', sp[0], sp[1], null, node.id);
   assert.ok(mine && mine.ore === 'gold');
-  const serf = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
-  g.cmdMine([serf], mine);
   const g0 = p.gold; run(g, 120);
   assert.ok(p.gold > g0 + 5, 'gold mined: ' + (p.gold - g0));
 });
@@ -678,9 +671,7 @@ test('village: a founded village grows to 50, drafts serfs, miners and soldiers;
   assert.ok(!g.buildings.includes(b), 'the site becomes the village');
   v.pop = 30; v.stores.food = 90;
   assert.equal(g.draft(0, v.id, 3, 'serf'), 3); assert.equal(Math.round(v.pop), 27);
-  const m = g.addBuilding('mine', 0, h.tx + 5, h.ty + 6, true); m.nodeIds = []; m.ore = 'stone';
-  assert.equal(g.draft(0, v.id, 2, 'mine') > 0, true);
-  assert.ok(g.units.some((u) => u.team === 0 && u.task.type === 'mine'), 'miners dig');
+  assert.equal(g.draft(0, v.id, 2, 'mine'), 0, 'miners are not drafted: the village works nearby mines itself');
   g.addBuilding('barracks', 0, h.tx + 6, h.ty - 6, true);
   assert.equal(g.draft(0, v.id, 4, 'soldier'), 4);
   assert.ok(g.units.filter((u) => u.kind === 'footman' && u.origin === v.name).length === 4, 'footmen from the village');
@@ -823,4 +814,46 @@ test('ai: rival houses leave room between buildings (varied lanes, not a packed 
   }
   assert.ok(n >= 12, 'the rivals built ' + n);
   assert.ok(tight / n < 0.45, `${tight} of ${n} AI buildings have under two tiles of room`);
+});
+
+// ---- mines are worked by the folk of villages in reach -------------------------------------------------------
+const freshMine = (g, team, x, y, ore = 'stone') => {
+  const b = g.addBuilding('mine', team, Math.round(x), Math.round(y), true); b.ore = ore; b.nodeIds = [];
+  const n = { id: g.resources.length, kind: ore, x: b.tx, y: b.ty, amount: 5000, covered: false }; g.resources.push(n); b.nodeIds.push(n.id); return b;
+};
+// the spot with the most room around it; any village still in reach is handed to a rival (rival villagers never work your mines)
+const isolate = (g, x, y, except = null) => { for (const v of g.villages) if (v !== except && Math.hypot(v.x - x, v.y - y) <= 17) { v.owner = 1; v.lean = 1; } };
+const farFromVillages = (g) => { let best = null, bd = -1; for (let y = 8; y < g.H - 8; y += 3) for (let x = 8; x < g.W - 8; x += 3) { if (!g.walk[y * g.W + x]) continue; const d = Math.min(...g.villages.map((v) => Math.hypot(v.x - x, v.y - y))); if (d > bd) { bd = d; best = [x, y]; } } if (best) isolate(g, best[0], best[1]); return best; };
+
+test('mines: a mine with no village in reach has no workers and yields nothing', () => {
+  const g = new Game({ seed: 8, houses: 3, ai: false }); const sp = farFromVillages(g); assert.ok(sp, 'an empty spot exists');
+  const m = freshMine(g, PLAYER, sp[0], sp[1]); const p = g.players[PLAYER], s0 = p.stone;
+  run(g, 60);
+  assert.equal(g.minersOf(m), 0); assert.equal(Math.round(p.stone - s0), 0, 'nothing is dug');
+});
+
+test('mines: independent villagers staff a mine and the mine wins their goodwill; your own village digs faster', () => {
+  const g = new Game({ seed: 8, houses: 3, ai: false });
+  const v = g.villages.find((x) => x.owner < 0 && x.kind !== 'mine'); assert.ok(v, 'a free village');
+  v.pop = 30; v.loyalty = 20; v.lean = -1;
+  const m = freshMine(g, PLAYER, v.x + 4, v.y + 2); const p = g.players[PLAYER], s0 = p.stone;
+  run(g, 90);
+  assert.ok(g.minersOf(m) >= 1, 'free villagers work the mine'); assert.ok(m._crew.power === 1, 'independent folk dig at normal speed');
+  const freeRate = (p.stone - s0) / 90 / g.minersOf(m);
+  assert.ok(v.lean === PLAYER && v.loyalty > 20, `the village leans toward the mine's lord (lean ${v.lean}, loyalty ${v.loyalty.toFixed(1)})`);
+  // the same mine beside a village of our own pays more per digger
+  const h = g.seatOf(PLAYER), own = g.villages.find((x) => x.owner === PLAYER); own.pop = 30;
+  const m2 = freshMine(g, PLAYER, own.x + 3, own.y + 6); const s1 = p.stone; run(g, 90);
+  assert.ok(m2._crew.power > 1.4, 'own folk dig faster: ' + m2._crew.power);
+  assert.ok((p.stone - s1) / 90 / Math.max(1, g.minersOf(m2)) > freeRate * 1.2, 'yield per digger is higher near your own village');
+});
+
+test('mines: rival villagers never work your mine, and a village cannot lend the same folk to every mine', () => {
+  const g = new Game({ seed: 8, houses: 3, ai: false });
+  const v = g.villages.find((x) => x.owner < 0 && x.kind !== 'mine'); isolate(g, v.x + 3, v.y + 3, v); v.owner = 1; v.pop = 40;
+  const m = freshMine(g, PLAYER, v.x + 3, v.y + 3); g.refreshCrews();
+  assert.equal(g.minersOf(m), 0, 'a rival-held village sends no one');
+  v.owner = -1; v.lean = -1; v.pop = 10;   // spare = floor((10 - 6) * 0.3) = 1
+  const m2 = freshMine(g, PLAYER, v.x - 4, v.y - 3), m3 = freshMine(g, PLAYER, v.x + 5, v.y - 4); g.refreshCrews();
+  assert.equal(g.minersOf(m) + g.minersOf(m2) + g.minersOf(m3), 1, 'one spare pair of hands, shared out once');
 });

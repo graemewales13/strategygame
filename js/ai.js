@@ -63,19 +63,7 @@ function think(game, team, p) {
       if (spot) game.place(team, next, spot[0], spot[1]);
     }
 
-    // 2b. diggers for every finished mine
-    for (const m of game.buildings) {
-      if (m.team !== team || m.kind !== 'mine' || m.built < 1 || m.hp <= 0) continue;
-      const hi = m.ore === 'stone' ? 160 : 260, lo = m.ore === 'stone' ? 100 : 180;   // hysteresis: stand down above hi, resume below lo (no flapping)
-      p.glut = p.glut || {};
-      if (p[m.ore] > hi) p.glut[m.ore] = true; else if (p[m.ore] < lo) p.glut[m.ore] = false;
-      const glut = !!p.glut[m.ore] && m.ore !== 'gold';
-      if (glut) { for (const u of serfs) if (u.task.type === 'mine' && u.task.buildingId === m.id) { u.task = { type: 'idle' }; u.path = []; } continue; }
-      const want = m.ore === 'gold' ? MINE_MAX_WORKERS : Math.min(MINE_MAX_WORKERS, t > 240 ? 3 : 2);
-      if (game.minersOf(m) >= want || serfs.length < 6) continue;
-      const free = serfs.filter((u) => u.task.type === 'gather' || u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(c.x - m.x, c.y - m.y))[0];
-      if (free) game.cmdMine([free], m);
-    }
+    // (mines are worked by the folk of nearby villages: nothing to assign)
   }
 
   // 2c. treaties and caravans: offer a trade treaty to houses we know; ship surplus ore to other rival houses' markets by camel
@@ -197,7 +185,7 @@ export function pickDeposit(game, team, seat) {
   const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine').map((b) => b.ore));
   for (const ore of order) {
     if (have.has(ore)) continue;
-    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < (ore === 'stone' ? 16 : ore === 'gold' ? 36 : 30)).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
+    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < (ore === 'stone' ? 16 : ore === 'gold' ? 36 : 30) && game.minePower(team, n.x, n.y) > 0).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
     for (const n of cands) if (game.mineSpot(team, n)) return n;
   }
   return null;

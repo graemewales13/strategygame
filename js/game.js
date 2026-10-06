@@ -7,7 +7,7 @@ import {
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
@@ -56,6 +56,7 @@ export class Game {
     this.villages = [];
     this.wanderers = [];
     this.projectiles = [];
+    this._crewT = 0;
     this.floaters = []; this.fx = [];   // fx: collapse/poof effects for the renderer (only queued when a UI is attached)
     this.byId = new Map();
     this.alertT = new Array(this.houses).fill(-99);
@@ -656,13 +657,7 @@ export class Game {
     if (!v || v.type !== 'village' || v.owner !== team) return say('Only a village you hold can send its folk out.');
     n = Math.max(1, Math.min(n | 0 || 1, Math.floor(v.pop) - DRAFT.minLeft));
     if (Math.floor(v.pop) - DRAFT.minLeft < 1) return say(`${v.name} is too small to spare anyone.`);
-    let mine = null;
-    if (role === 'mine') {
-      mine = this.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && this.minersOf(b) < MINE_MAX_WORKERS)
-        .sort((a, c) => Math.hypot(a.x - v.x, a.y - v.y) - Math.hypot(c.x - v.x, c.y - v.y))[0];
-      if (!mine) return say('No mine of yours has a free place to dig.');
-      n = Math.min(n, MINE_MAX_WORKERS - this.minersOf(mine));
-    }
+    if (role === 'mine') return say('Mines are worked by the folk of nearby villages. Raise a mine within reach of a village.');
     const soldier = role === 'soldier', foodEach = soldier ? DRAFT.soldierFood : role === 'mine' ? DRAFT.mineFood : SETTLE_FOOD, goldEach = soldier && this.hasBuilding(team, 'barracks') ? UNITS.footman.cost.gold : 0;
     let made = 0;
     for (let i = 0; i < n; i++) {
@@ -673,7 +668,6 @@ export class Game {
       const x = v.x - 1.2 + i * 0.7, y = v.ty + v.size + 0.7;
       const u = this.addUnit(soldier ? (goldEach ? 'footman' : 'recruit') : 'serf', team, x, y);
       u.origin = v.name; made++;
-      if (mine) this.cmdMine([u], mine);
     }
     if (made && team === PLAYER) this.log(team, `${made} ${soldier ? 'men take up spears' : role === 'mine' ? 'miners leave' : 'settlers leave'} ${v.name} (${Math.floor(v.pop)} folk remain).`, 'info');
     return made;
@@ -809,61 +803,66 @@ export class Game {
     }
     return true;
   }
-  minersOf(b) {
-    let n = 0;
-    for (const u of this.units) if (u.hp > 0 && u.task.type === 'mine' && u.task.buildingId === b.id) n++;
-    return n;
-  }
-  cmdMine(units, b) {
-    if (!b || b.type !== 'building' || b.kind !== 'mine' || b.hp <= 0) return false;
-    let free = MINE_MAX_WORKERS - this.minersOf(b), sent = 0;
-    for (const u of units) {
-      if (u.kind !== 'serf') continue;
-      if (u.task.type === 'mine' && u.task.buildingId === b.id) continue;
-      if (free <= 0) break;
-      if (b.built < 1) { this.cmdBuild([u], b); u.afterBuild = { mineId: b.id }; free--; sent++; continue; }
-      u.carry = null;
-      u.task = { type: 'mine', buildingId: b.id };
-      this.setPathToEntity(u, b);
-      free--; sent++;
+  // ---- mines are worked by the folk of nearby villages --------------------------------------------------------
+  // Every couple of seconds each finished mine takes on a crew: villagers from the villages within MINE_JOBS.r tiles that are the mine's own or
+  // still independent (own villages first, then the nearest), up to MINE_MAX_WORKERS, never more than a village can spare. A mine with no
+  // village in range has no workers and yields nothing.
+  refreshCrews() {
+    this._crewT = MINE_JOBS.refresh;
+    const used = new Map(), mines = this.buildings.filter((b) => b.kind === 'mine' && b.built >= 1 && b.hp > 0).sort((a, c) => a.id - c.id);
+    for (const b of this.buildings) if (b.kind === 'mine' && !(b.built >= 1 && b.hp > 0)) b._crew = null;
+    for (const b of mines) {
+      const near = [];
+      for (const v of this.villages) {
+        if (v.owner >= 0 && v.owner !== b.team) continue;   // a rival's villagers work for their own lord
+        const d = Math.hypot(v.x - b.x, v.y - b.y);
+        if (d <= MINE_JOBS.r) near.push({ v, d, own: v.owner === b.team });
+      }
+      near.sort((a, c) => (c.own - a.own) || a.d - c.d);
+      let need = MINE_MAX_WORKERS; const list = [];
+      for (const e of near) {
+        if (!need) break;
+        const camp = e.v.kind === 'mine', spare = Math.floor(Math.max(0, e.v.pop - (camp ? MINE_JOBS.campKeep : MINE_JOBS.keep)) * (camp ? MINE_JOBS.campShare : MINE_JOBS.share)) - (used.get(e.v.id) || 0);
+        const n = Math.min(spare, need); if (n <= 0) continue;
+        used.set(e.v.id, (used.get(e.v.id) || 0) + n); need -= n; list.push({ v: e.v, n, own: e.own });
+      }
+      const n = MINE_MAX_WORKERS - need, power = n ? list.reduce((s, c) => s + c.n * (c.own ? MINE_JOBS.ownBonus : MINE_JOBS.freeBonus), 0) / n : 0;
+      b._crew = { n, list, power, villages: near.length };
     }
-    if (!sent && units[0]?.team === PLAYER) this.log(PLAYER, `That mine already has ${MINE_MAX_WORKERS} diggers.`, 'warn');
-    return sent > 0;
+    this._crewV = this.villages.length;
   }
-  unassignMine(team, buildingId) {
-    const b = this.byId.get(buildingId);
-    if (!b || b.team !== team) return false;
-    for (const u of this.units) if (u.task.type === 'mine' && u.task.buildingId === b.id) { u.task = { type: 'idle' }; u.path = []; }
-    return true;
+  crewOf(b) { return b._crew || null; }
+  // what a mine raised at (x, y) would have to work with: the villages (yours or independent) within reach and how many hands they could spare
+  mineVillages(team, x, y) {
+    const out = [];
+    for (const v of this.villages) {
+      if (v.owner >= 0 && v.owner !== team) continue;
+      const d = Math.hypot(v.x - x, v.y - y); if (d > MINE_JOBS.r) continue;
+      const camp = v.kind === 'mine', spare = Math.floor(Math.max(0, v.pop - (camp ? MINE_JOBS.campKeep : MINE_JOBS.keep)) * (camp ? MINE_JOBS.campShare : MINE_JOBS.share));
+      out.push({ v, d, own: v.owner === team, spare });
+    }
+    return out.sort((a, c) => (c.own - a.own) || a.d - c.d);
   }
-  doMine(u, dt) {
-    const b = this.byId.get(u.task.buildingId);
-    if (!b || b.hp <= 0 || b.built < 1) { u.task = { type: 'idle' }; return; }
+  // 0 with no village in reach; otherwise the digging power a fresh mine would have (1 = independent folk, up to ownBonus for your own village)
+  minePower(team, x, y) {
+    let need = MINE_MAX_WORKERS, sum = 0;
+    for (const e of this.mineVillages(team, x, y)) { const n = Math.min(need, e.spare); sum += n * (e.own ? MINE_JOBS.ownBonus : MINE_JOBS.freeBonus); need -= n; if (!need) break; }
+    const n = MINE_MAX_WORKERS - need; return n ? sum / n : 0;
+  }
+  minersOf(b) { return b._crew ? b._crew.n : 0; }
+  cmdMine() { return false; }   // retired: folk of nearby villages work the mines on their own
+  unassignMine() { return false; }
+  tickMine(b, dt) {
+    const c = b._crew; if (!c || !c.n) return;
     const node = b.nodeIds.map((id) => this.resources[id]).find((n) => n.amount > 0);
-    if (!node) {
-      u.path = [];
-      // the seam is dry: walk on to another of the house's mines that still has ore and room, else stand idle
-      const next = this.buildings.filter((m) => m !== b && m.team === u.team && m.kind === 'mine' && m.built >= 1 && m.hp > 0 && this.minersOf(m) < MINE_MAX_WORKERS && m.nodeIds.some((id) => this.resources[id].amount > 0))
-        .sort((p, q) => Math.hypot(p.x - u.x, p.y - u.y) - Math.hypot(q.x - u.x, q.y - u.y))[0];
-      if (next) { this.cmdMine([u], next); if (u.team === PLAYER) this.log(PLAYER, 'A seam is spent: its diggers move to another mine.', 'info'); return; }
-      u.task = { type: 'idle' };
-      if (u.team === PLAYER) this.log(PLAYER, 'The seam is spent. The diggers stand idle: raise a mine on a new deposit.', 'warn');
-      return;
-    }
-    if (distTo(u.x, u.y, b) > 1.3) {
-      if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, b);
-      this.follow(u, dt);
-      return;
-    }
-    u.path = [];
-    const p = this.players[u.team];
-    const take = Math.min(node.amount, MINE_RATE[node.kind] * dt * (p.sci >= 1 ? 1.1 : 1));
+    if (!node) return;
+    const p = this.players[b.team];
+    const take = Math.min(node.amount, MINE_RATE[node.kind] * c.n * c.power * dt * (p.sci >= 1 ? 1.1 : 1));
     node.amount -= take;
-    if (node.kind === 'gold') this.earn(u.team, 'mining', take * this.haulOf(b)); else p[node.kind] += take * this.haulOf(b);
-    u.dig = (u.dig || 0) + take;
-    if (u.dig >= 5 && u.team === PLAYER) { u.dig = 0; this.floaters.push({ x: b.x, y: b.y - 0.8, text: '+5', res: node.kind, age: 0 }); } else if (u.dig >= 5) u.dig = 0;
+    if (node.kind === 'gold') this.earn(b.team, 'mining', take * this.haulOf(b)); else p[node.kind] += take * this.haulOf(b);
+    b._dig = (b._dig || 0) + take;
+    if (b._dig >= 5) { b._dig = 0; if (b.team === PLAYER) this.floaters.push({ x: b.x, y: b.y - 0.8, text: '+5', res: node.kind, age: 0 }); }
     if (node.amount <= 0) this.resAt[node.y * this.W + node.x] = -1;
-    u.face = b.x >= u.x ? 1 : -1;
   }
   // share of a mine's yield that reaches the stockpile: full near your stores, thinning with distance to the nearest one
   haulOf(b) {
@@ -1562,6 +1561,7 @@ export class Game {
   }
 
   updateBuildings(dt) {
+    if (this._crewT === undefined || (this._crewT -= dt) <= 0) this.refreshCrews();
     for (const b of this.buildings) {
       if (b.hp <= 0) continue;
       b.flash = Math.max(0, b.flash - dt);
@@ -1570,6 +1570,7 @@ export class Game {
       switch (b.kind) {
         case 'farm': p.food += 0.8 * dt * (FARM_SOIL[this.terrain[Math.floor(b.y) * this.W + Math.floor(b.x)]] || 0.9) * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (p.sci >= 1 ? 1.15 : 1); break;
         case 'foundry': this.smelt(b, p, dt); break;
+        case 'mine': this.tickMine(b, dt); break;
         case 'keep': this.tickKeep(b, dt); break;
         case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; }
           this.earn(b.team, 'tavern', 0.35 * dt); break;
@@ -1645,6 +1646,7 @@ export class Game {
       if (b.kind === 'academy') p *= 1 + 0.3 * (b.scholars || 0);
       pulls[b.team] += p;
     }
+    for (const b of this.buildings) if (b._crew && b.kind === 'mine') for (const c of b._crew.list) if (c.v === v) pulls[b.team] += c.n * MINE_JOBS.pull;   // jobs at the mine win the village's goodwill
     for (const o of this.villages) {   // villages you hold lean on the ones around them, steadier with soldiers inside
       if (o === v || o.owner < 0) continue;
       const d = Math.hypot(v.x - o.x, v.y - o.y), inf = INFLUENCE_HOME;
@@ -1766,7 +1768,7 @@ export class Game {
         case 'move': if (!this.follow(u, dt)) u.task = { type: 'idle' }; break;
         case 'attack': this.doAttack(u, s, dt); break;
         case 'gather': this.doGather(u, dt); break;
-        case 'mine': this.doMine(u, dt); break;
+        case 'mine': u.task = { type: 'idle' }; u.path = []; break;   // old saves: serfs no longer dig, the villagers do
         case 'return': this.doReturn(u, dt); break;
         case 'build': this.doBuild(u, dt); break;
         case 'infiltrate': this.doInfiltrate(u, dt); break;

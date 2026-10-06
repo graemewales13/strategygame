@@ -14,7 +14,7 @@ export const OBJECTIVES = [
     done: (g) => g.players[PLAYER].wood > 500 * g.diff.playerMul || anyBuilt(g) },
   { id: 'serfs', title: 'Draft more serfs', hint: 'Press H to open your home village and draft serfs. More hands, faster work.',
     done: (g) => serfs(g) >= 6 || anyBuilt(g) },
-  { id: 'mine', title: 'Raise a mine', hint: 'Open the build menu, choose Mine and place it on a deposit (the glints in the rock). Right-click it with serfs to dig.',
+  { id: 'mine', title: 'Raise a mine', hint: 'Open the build menu, choose Mine and place it on a deposit (the glints in the rock). Villagers from villages within 16 tiles dig for it; with no village near it has no workers.',
     done: (g) => mine(g, 'mine') },
   { id: 'market', title: 'Raise a market', hint: 'Mines feed a market. It sells their ore and earns coin from the homes and villages around it.',
     done: (g) => mine(g, 'market') },

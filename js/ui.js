@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 
@@ -373,14 +373,6 @@ export class UI {
       case 'treaty': this.treaty(+d.team, d.state); break;
       case 'diploclose': this.diploOpen = null; this.renderDiplo(); break;
       case 'respond': this.host.send({ type: 'respond', from: +d.team, accept: d.accept === '1' }); break;
-      case 'mineidle': {
-        const b = this.selEntity(); if (!b) break;
-        const free = MINE_MAX_WORKERS - g.minersOf(b);
-        const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && u.task.type !== 'mine' && u.task.type !== 'build').sort((a, c) => (a.task.type === 'idle' ? 0 : 1) - (c.task.type === 'idle' ? 0 : 1) || Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y)).slice(0, free);
-        if (!serfs.length) { this.toast(free ? 'No serfs free to send.' : 'The mine is fully staffed.', 'warn'); break; }
-        this.host.send({ type: 'mine', ids: serfs.map((u) => u.id), buildingId: b.id });
-        break;
-      }
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'gsel': this.gsel = +d.id; break;
@@ -392,7 +384,6 @@ export class UI {
         this.host.send({ type: 'drill', buildingId: b.id, unitId: u.id, kind: d.kind });
         break;
       }
-      case 'unmine': { const b = this.selEntity(); if (b) this.host.send({ type: 'unmine', buildingId: b.id }); break; }
       case 'select': { const e = g.byId.get(+d.id); if (e) this.sel = e.type === 'unit' ? { type: 'units', ids: [e.id], id: null } : { type: e.type, ids: [], id: e.id }; break; }
       default: break;
     }
@@ -575,7 +566,7 @@ export class UI {
       if (mine && b.kind === 'keep' && b.built >= 1) { const lv = b.levy != null ? g.byId.get(b.levy) : null; html += `<div class="stat"><label>Levy</label><span>${lv ? `${esc(lv.name)} (${Math.floor(lv.pop)} villagers left)` : 'none: right-click a village you hold'}</span></div>`; }
       if (b.kind === 'mine' && b.built >= 1) {
         const left = b.nodeIds.reduce((a, id) => a + Math.max(0, g.resources[id].amount), 0), max = b.nodeIds.reduce((a, id) => a + g.resources[id].max, 0);
-        html += `<div class="stat"><label>${GOOD_LABEL[b.ore]}</label><div class="meter"><i class="ore" style="width:${(left / max) * 100}%"></i></div><span class="v">${Math.ceil(left)}</span></div><div class="stat"><label>Diggers</label><span>${g.minersOf(b)}/${MINE_MAX_WORKERS}</span></div>`;
+        html += `<div class="stat"><label>${GOOD_LABEL[b.ore]}</label><div class="meter"><i class="ore" style="width:${(left / max) * 100}%"></i></div><span class="v">${Math.ceil(left)}</span></div>${this.crewHtml(b)}`;
       }
       if (mine && b.kind === 'foundry' && b.built >= 1) html += `<div class="stat"><label>Furnace</label><span>${b.job ? `smelting ${GOOD_LABEL[b.job.kind].toLowerCase()} ${Math.floor((b.job.t / SMELT[b.job.kind].time) * 100)}%` : 'cold: needs iron + coal, or copper + coal'}</span></div>`;
       if (mine && b.kind === 'forge' && b.built >= 1) html += `<div class="stat"><label>Arms</label><span>level ${p.arms}/3 · ${Math.floor(p.steel)}/${ARMS_STEEL} steel for the next</span></div>`;
@@ -680,6 +671,13 @@ export class UI {
       + `<div class="hint">${miss.length ? `Add ${miss.map((k) => LINKS[k].label.toLowerCase()).join(' and ')} within ${DISTRICT.r} tiles: each link adds +${Math.round(DISTRICT.perLink * 100)}% market coin, faster foundries, richer villages.` : 'Supply feeds works, works feed the market, homes and service keep it paid. Foundries here run fast; villages here pay more.'}</div>`;
   }
   // where a mine or foundry stands in the chain
+  crewHtml(b) {
+    const g = this.game, c = g.crewOf(b);
+    if (!c) return '';
+    if (!c.n) return `<div class="stat"><label>Diggers</label><span class="need">none: ${c.villages ? 'the villages in reach have no hands to spare' : `no village within ${MINE_JOBS.r} tiles`}</span></div>`;
+    const rows = c.list.map((e) => `${e.n} from ${esc(e.v.name)}${e.own ? ' (yours, +' + Math.round((MINE_JOBS.ownBonus - 1) * 100) + '%)' : ''}`).join(', ');
+    return `<div class="stat"><label>Diggers</label><span>${c.n}/${MINE_MAX_WORKERS} · yield ×${c.power.toFixed(2)}</span></div><div class="hint">${rows}. Their goodwill drifts to you.</div>`;
+  }
   chainLine(b) {
     const g = this.game, d = g.districtAt(PLAYER, b.x, b.y), m = g.nearestMarket(PLAYER, b.x, b.y, DISTRICT.r);
     if (b.kind === 'mine') return d ? `<div class="hint">Ore flows to your market ${Math.round(Math.hypot(b.x - m.x, b.y - m.y))} tiles away. Its community of ${d.score}/4 speeds the haul by <b>+${8 * d.score}%</b>. A foundry beside it turns ore into steel and ware.</div>` : `<div class="hint">No market of yours within ${DISTRICT.r} tiles: ore reaches your stores slowly. Raise a market and a foundry beside it.</div>`;
@@ -757,10 +755,8 @@ export class UI {
     if (mine) {
       html += this.btn('entervillage', { glyph: '⇥', name: 'Garrison', off: !army, tip: '<b>Garrison</b><br>Sends idle soldiers inside (max 8).' });
       const free = Math.floor(v.pop) - DRAFT.minLeft, room = g.popCap(PLAYER) + 1 - g.popUsed(PLAYER), food = g.players[PLAYER].food;
-      const minesOpen = g.buildings.some((b) => b.team === PLAYER && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && g.minersOf(b) < MINE_MAX_WORKERS);
-      html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serf', sub: SETTLE_FOOD + 'g', data: { role: 'serf', n: 1 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft a serf</b><br>One villager becomes a serf of yours (${SETTLE_FOOD} grain). Serfs gather, build and dig.` });
+      html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serf', sub: SETTLE_FOOD + 'g', data: { role: 'serf', n: 1 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft a serf</b><br>One villager becomes a serf of yours (${SETTLE_FOOD} grain). Serfs gather and build.` });
       html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serfs ×5', sub: SETTLE_FOOD * 5 + 'g', data: { role: 'serf', n: 5 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft serfs</b><br>Up to five villagers leave as serfs (${SETTLE_FOOD} grain each). They regrow while the village has grain.` });
-      html += this.btn('draft', { glyph: '⛏', art: 'mine', name: 'Miners ×4', sub: DRAFT.mineFood * 4 + 'g', data: { role: 'mine', n: 4 }, off: free < 1 || room < 1 || !minesOpen || food < DRAFT.mineFood, tip: '<b>Send miners</b><br>Villagers walk to your nearest mine with free places and start digging.' });
       html += this.btn('draft', { glyph: '⚔', art: 'footman', name: 'Soldiers ×5', sub: `${DRAFT.soldierFood}g${g.hasBuilding(PLAYER, 'barracks') ? ' +15c' : ''}`, data: { role: 'soldier', n: 5 }, off: free < 1 || room < 1 || food < DRAFT.soldierFood, tip: `<b>Raise soldiers</b><br>Villagers take up spears: footmen if you have a barracks (needs coin for arms), otherwise recruits to drill in a keep. Soldiers beyond the first ${WAGE_FREE} draw pay.` });
     } else {
       html += this.btn('sendspy', { glyph: GLYPH.spy, art: 'spy', name: 'Send spy', off: !spies, sub: spies ? `${spies} ready` : 'need a spy', tip: `<b>Send a spy</b><br>Sways loyalty without a fight. Spies can be caught.${spies ? '' : `<br><span class="need">Hire a recruit at a tavern, select it, press Become spy (${SPY_FEE} coin).</span>`}` });
@@ -803,7 +799,7 @@ export class UI {
         if (ent.kind === 'tavern' && ent.roster) html += this.rosterPanel(ent);
         if (ent.kind === 'keep') html += this.keepPanel(ent);
         else if (GARRISON[ent.kind] && ent.garrison.length) html += `<div class="cgrid" style="margin-top:6px">${this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' })}</div>`;
-        if (ent.kind === 'mine') html += `<div class="ctitle">Diggers</div><div class="cgrid">${this.btn('mineidle', { glyph: '⛏', name: 'Send serfs', tip: '<b>Assign serfs</b><br>Sends the nearest idle or gathering serfs to dig here (max 4).' })}${this.btn('unmine', { glyph: '■', name: 'Release', tip: '<b>Release diggers</b><br>They stand down.' })}</div><div class="hint">Or select serfs and right-click the mine or the deposit. Ore goes straight into your stockpile.</div>`;
+        if (ent.kind === 'mine') html += `<div class="hint">Local villagers dig for you: no villages in reach means no workers. Your own villages work harder. Ore goes straight into your stockpile.</div>`;
         if (ent.kind === 'mine' || ent.kind === 'foundry') html += this.chainLine(ent);
         if (ent.kind === 'foundry') html += `<div class="hint">Smelts on its own from your stockpile: <b>iron + coal → steel</b> (forges turn it into arms), <b>copper + coal → fine ware</b> (content villages). Sell the surplus through a market's camels.</div>`;
         if (ent.kind === 'keep') html += this.buildGrid();
