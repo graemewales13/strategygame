@@ -163,3 +163,13 @@ The first five buildings are the game: mine, market, keep, barracks, tavern. The
 | Hard | x0.9 | x1.1 | 32 | 10 min | 10000 |
 
 Set it in the Skirmish panel or with `?diff=easy|mid|hard`. `tools/play.js [min] [seeds] [houses] [style] [tier]` (styles econ, trader, conquer, rush, turtle; `QUIET=1` for one line per run) is how the tiers were compared.
+
+
+## Features added on grok
+- **Save / load**: the game autosaves; use the Save and Load buttons or F5 / F9. Saves stay in this browser.
+- **Sound**: effects and music with volume and mute in Options (button in the top bar).
+- **Objectives**: a ten-step guide in the top left; hide it in Options.
+- **Economy view**: markets show four pips (supply, works, homes, service). Select a market, or press E, to see its district ring and links.
+- **Board size**: Options, Board size: Small, Standard or Huge. Changing it reloads the page. A save only loads on the board size it was made at.
+
+See ROADMAP.md for what is still to do.

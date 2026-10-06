@@ -11,21 +11,21 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muwkzr59",
-    "./js/art.js": "./js/art.js?v=muwkzr59",
-    "./js/audio.js": "./js/audio.js?v=muwkzr59",
-    "./js/config.js": "./js/config.js?v=muwkzr59",
-    "./js/entities.js": "./js/entities.js?v=muwkzr59",
-    "./js/game.js": "./js/game.js?v=muwkzr59",
-    "./js/main.js": "./js/main.js?v=muwkzr59",
-    "./js/map.js": "./js/map.js?v=muwkzr59",
-    "./js/names.js": "./js/names.js?v=muwkzr59",
-    "./js/net.js": "./js/net.js?v=muwkzr59",
-    "./js/objectives.js": "./js/objectives.js?v=muwkzr59",
-    "./js/render.js": "./js/render.js?v=muwkzr59",
-    "./js/save.js": "./js/save.js?v=muwkzr59",
-    "./js/terrain.js": "./js/terrain.js?v=muwkzr59",
-    "./js/ui.js": "./js/ui.js?v=muwkzr59"
+    "./js/ai.js": "./js/ai.js?v=muwlgfew",
+    "./js/art.js": "./js/art.js?v=muwlgfew",
+    "./js/audio.js": "./js/audio.js?v=muwlgfew",
+    "./js/config.js": "./js/config.js?v=muwlgfew",
+    "./js/entities.js": "./js/entities.js?v=muwlgfew",
+    "./js/game.js": "./js/game.js?v=muwlgfew",
+    "./js/main.js": "./js/main.js?v=muwlgfew",
+    "./js/map.js": "./js/map.js?v=muwlgfew",
+    "./js/names.js": "./js/names.js?v=muwlgfew",
+    "./js/net.js": "./js/net.js?v=muwlgfew",
+    "./js/objectives.js": "./js/objectives.js?v=muwlgfew",
+    "./js/render.js": "./js/render.js?v=muwlgfew",
+    "./js/save.js": "./js/save.js?v=muwlgfew",
+    "./js/terrain.js": "./js/terrain.js?v=muwlgfew",
+    "./js/ui.js": "./js/ui.js?v=muwlgfew"
   }
 }
 </script>
@@ -33,7 +33,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muwkzr59';
+window.__BUILD = 'muwlgfew';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -129,6 +129,9 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
         </div>
         <div class="opt"><span>Difficulty</span>
           <div class="seg" id="mDiff"><button data-d="easy">Easy</button><button data-d="mid">Mid</button><button data-d="hard">Hard</button></div>
+        </div>
+        <div class="opt"><span>Board size</span>
+          <div class="seg" id="mSize"><button data-s="small">Small</button><button data-s="standard">Standard</button><button data-s="huge">Huge</button></div>
         </div>
         <button class="big alt" id="mNew">New Valley</button>
         <button class="big alt" id="mMap">Campaign Map</button>

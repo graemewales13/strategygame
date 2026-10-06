@@ -3,7 +3,10 @@
 export const TILE = 32;
 // The board is 320 x 320, about 8x the area of the old 112 x 112 valley. Headless tests set AULD_MAP=112 to run the old small board quickly.
 const ENV_MAP = typeof process !== 'undefined' && process.env && +process.env.AULD_MAP;
-export const MAP_W = ENV_MAP || 320;
+export const MAP_SIZES = { small: 160, standard: 320, huge: 400 };
+// In the browser the chosen size is remembered between visits (Options > Board size) and read here at load, so the whole game runs at one size.
+let SAVED_SIZE = 0; try { if (typeof localStorage !== 'undefined') SAVED_SIZE = MAP_SIZES[localStorage.getItem('auld-world.mapsize')] || 0; } catch (e) { /* storage blocked */ }
+export const MAP_W = ENV_MAP || SAVED_SIZE || 320;
 export const MAP_H = MAP_W;
 export const AREA_MUL = (MAP_W * MAP_H) / (112 * 112);   // the board is this many times the old 112x112 valley (about 8x)
 export const VISION_MUL = Math.sqrt(8);               // sight radii grow by this, so the ground revealed as you travel is 8x larger

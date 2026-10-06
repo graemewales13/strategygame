@@ -42,3 +42,5 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 ## Basics must always work
 - A click on the splash is never lost: it shows "Loading the valley..." and opens the menu when ready (`node tools/boot-test.cjs`, also with a CPU throttle argument).
 - Splash click, every main-menu button, Skirmish/Begin, Continue, Options, Campaign, and the HUD Menu/Map/speed/house buttons must respond to real mouse clicks. Run `node tools/ui-smoke.cjs` (serve the repo on :8123 first) before pushing any UI or startup change.
+
+- Board size is chosen before the match and stored in the browser; do not make the land or wealth victory rules depend on it.

@@ -4,7 +4,7 @@ import { progress } from './objectives.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
-  TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
+  TILE, MAP_SIZES, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
@@ -843,6 +843,15 @@ export class UI {
       if (!this.started) this.onReroll?.({ seed: this.game.seed, houses: cfg.houses }); else this.toast(`${b.textContent} from the next New Valley.`, 'info');
     });
     refreshDiff();
+    const sseg = $('mSize');
+    const curSize = Object.keys(MAP_SIZES).find((k) => MAP_SIZES[k] === this.game.W) || 'standard';
+    sseg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.s === curSize));
+    sseg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b || b.dataset.s === curSize) return;
+      if (this.started && !confirm('Changing the board size restarts the game (save first with F5 if you want to keep it). Continue?')) return;
+      try { localStorage.setItem('auld-world.mapsize', b.dataset.s); } catch (err) { this.toast('Could not remember the size here.', 'warn'); return; }
+      location.reload();
+    });
     $('mBegin').onclick = () => this.closeMenu();
     $('mBack').onclick = () => this.showMain();
     $('hContinue').onclick = () => this.closeMenu();
