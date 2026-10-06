@@ -8,6 +8,7 @@ What exists on `grok` today, and what still stands between it and a commercial r
 - Sound: synthesised effects and a quiet score, volume sliders, mute.
 - Guided first-match objectives (ten steps, foldable, can be hidden).
 - Economy visibility: market community pips, district ring and link lines (select a market, or press **E**).
+- Graphics pass (Options > Graphics: Low / Medium / High): terrain variation and ragged biome edges, animated water with bank foam, cast shadows from sprite silhouettes, cloud shadows, haze, vignette, slow day tint, camel gait and cargo sacks, wounded-building cracks/smoke/flames, collapse and death dust, flags on military buildings, builder dust.
 - Board size: Small 160, Standard 320, Huge 400 (Options in the skirmish menu; reloads the page; saves record their size).
 
 ## Not built yet (needs more than a code session)
@@ -17,7 +18,7 @@ What exists on `grok` today, and what still stands between it and a commercial r
 | Multiplayer | The biggest retention driver for RTS | `Game` is already host-authoritative with intents; needs a transport (WebSocket relay), lockstep or snapshot sync, lobby |
 | Faction mechanics | Peoples differ mostly by name/colour | Unique units, buildings, one economy twist each |
 | AI personalities | Rivals feel alike | Aggressive, trader, turtle; difficulty beyond purse scaling |
-| Art and animation | Placeholder and generated art limits first impressions | Commissioned unit/building sets, UI polish, trailer-ready screenshots |
+| Art and animation | The code-side effects above sit on still sprites; real walk/attack frames and repainted terrain need an artist | Commissioned unit/building sets and tiles, UI polish, trailer-ready screenshots |
 | Real audio | Synth sound is serviceable only | Recorded effects and composed score |
 | Distribution | Players need a download or store page | Package with Electron or Tauri; Steam page, achievements, cloud saves |
 | Accessibility and localisation | Wider audience | Colour-blind palettes, key rebinding, string table |

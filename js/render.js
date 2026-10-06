@@ -10,6 +10,7 @@ import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
 const GOLD = '#e2c15e';
+const FLAGGED = new Set(['keep', 'barracks', 'tower', 'academy', 'stable', 'archery']);
 const SIL = new WeakMap();   // sprite -> black silhouette, for cast shadows
 const GROUND_RGB = [[74, 118, 58], [128, 98, 54], [38, 92, 118], [140, 100, 56], [146, 132, 68], [194, 172, 112], [98, 94, 90], [224, 230, 236]];
 
@@ -131,6 +132,7 @@ export class Renderer {
       else this.prop(ctx, e, z);
     }
     for (const u of g.units) u.hidden = false; // re-set each tick by infiltrators
+    this.effects(ctx, g, t, z, isVis);
 
     // projectiles
     ctx.strokeStyle = '#f3e2a0'; ctx.lineWidth = 2;
@@ -364,11 +366,11 @@ export class Renderer {
       ctx.restore();
     }
   }
-  smoke(ctx, x, y, z, t, seed) {
-    for (let i = 0; i < 2; i++) {
-      const ph = (t * 0.3 + i / 2 + seed * 0.37) % 1;
-      ctx.fillStyle = `rgba(205,203,196,${0.16 * (1 - ph)})`;
-      ctx.beginPath(); ctx.arc(x + Math.sin(ph * 5 + seed) * 3 * z + ph * 6 * z, y - ph * 30 * z, (2 + ph * 5) * z, 0, 7); ctx.fill();
+  smoke(ctx, x, y, z, t, seed, dark = 0) {
+    for (let i = 0; i < (dark ? 4 : 2); i++) {
+      const ph = (t * (dark ? 0.45 : 0.3) + i / (dark ? 4 : 2) + seed * 0.37) % 1, s = dark ? 1.9 : 1;
+      ctx.fillStyle = dark ? `rgba(48,44,40,${0.34 * (1 - ph)})` : `rgba(205,203,196,${0.16 * (1 - ph)})`;
+      ctx.beginPath(); ctx.arc(x + Math.sin(ph * 5 + seed) * 3 * z + ph * 8 * z, y - ph * 44 * z * s * 0.7, (2 + ph * 5) * z * s, 0, 7); ctx.fill();
     }
   }
 
@@ -457,6 +459,12 @@ export class Renderer {
     }
     ctx.restore();
     this.hit(b, 'building', bx - w * 0.45, dy + h * 0.1, bx + w * 0.45, by);
+    if (prog >= 1 && !dim && gfx.q >= 1) {
+      this.damageFx(ctx, b, bx, dy, w, h, t, z);
+      if (FLAGGED.has(b.kind) && b.hp > 0) { const px = bx + w * 0.08, py = dy + h * 0.02; ctx.strokeStyle = '#2a1c0e'; ctx.lineWidth = Math.max(1.5, 1.8 * z); ctx.beginPath(); ctx.moveTo(px, py + 20 * z); ctx.lineTo(px, py - 4 * z); ctx.stroke(); this.pennant(ctx, px, py - 3 * z, z, t, f.primary, f.accent, b.id); }
+    } else if (prog < 1 && gfx.q >= 1) {   // builders raise dust at the foot of the works
+      for (let i = 0; i < 3; i++) { const ph = (t * 1.2 + i / 3 + b.id * 0.2) % 1; ctx.fillStyle = `rgba(200,180,140,${0.35 * (1 - ph)})`; ctx.beginPath(); ctx.ellipse(bx + (i - 1) * w * 0.22, by - 4 * z - ph * 10 * z, (3 + ph * 5) * z, (2 + ph * 2.5) * z, 0, 0, 7); ctx.fill(); }
+    }
     if (prog < 1) {
       const top = dy + h * (1 - (0.2 + 0.8 * prog)) + 2, bot = by - 2 * z;
       ctx.strokeStyle = '#7a5c30'; ctx.lineWidth = Math.max(2, 3 * z);
@@ -479,6 +487,47 @@ export class Renderer {
     if (ui?.isSelected(b) && b.rally) { const [sx, sy] = this.toScreen(b.x, b.y), [rx, ry] = this.toScreen(b.rally.x, b.rally.y); ctx.strokeStyle = f.accent; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(rx, ry); ctx.stroke(); ctx.fillStyle = f.accent; ctx.fillRect(rx - 1, ry - 14, 2, 14); ctx.fillRect(rx + 1, ry - 14, 9, 5); }
   }
 
+  // short-lived effects: a collapsing building throws up a dust cloud and rubble, a fallen unit a small puff
+  effects(ctx, g, t, z, isVis) {
+    const fx = g.fx; if (!fx || !fx.length) return;
+    for (let i = fx.length - 1; i >= 0; i--) {
+      const f = fx[i], age = g.time - f.born, life = f.kind === 'collapse' ? 3 : 1.1;
+      if (age > life) { fx.splice(i, 1); continue; }
+      if (age < 0 || !isVis(f.x, f.y)) continue;
+      const [sx, sy] = this.toScreen(f.x, f.y), k = age / life, n = f.kind === 'collapse' ? 9 : 4, R = (f.kind === 'collapse' ? 16 + f.size * 8 : 8) * z;
+      for (let j = 0; j < n; j++) {
+        const a = (j / n) * 6.283 + j, d = R * (0.3 + k) * (0.6 + hash(j, i) * 0.6);
+        ctx.fillStyle = `rgba(${f.kind === 'collapse' ? '168,148,112' : '190,170,130'},${0.78 * (1 - k)})`;
+        ctx.beginPath(); ctx.ellipse(sx + Math.cos(a) * d, sy - k * R * 0.9 + Math.sin(a) * d * 0.4, R * (0.28 + k * 0.4), R * (0.2 + k * 0.28), 0, 0, 7); ctx.fill();
+      }
+      if (f.kind === 'collapse' && k < 0.7) {   // rubble settling
+        ctx.fillStyle = `rgba(60,50,38,${0.8 * (1 - k / 0.7)})`;
+        for (let j = 0; j < 7; j++) { const a = j * 0.9, d = R * 0.5 * (1 + hash(j, 3)); ctx.fillRect(sx + Math.cos(a) * d * 1.6 - 3 * z, sy + Math.sin(a) * d * 0.6 - 2 * z + k * 6 * z, (4 + hash(j, 5) * 5) * z, (3 + hash(j, 7) * 3) * z); }
+      }
+    }
+  }
+  // a wounded building: cracks first, then smoke, then flames licking the roof
+  damageFx(ctx, b, bx, dy, w, h, t, z) {
+    const r = b.hp / b.maxHp; if (r > 0.78 || b.hp <= 0) return;
+    const seed = b.id * 7;
+    ctx.strokeStyle = 'rgba(30,22,14,.7)'; ctx.lineWidth = Math.max(1, 1.4 * z);
+    const nc = r > 0.5 ? 2 : r > 0.3 ? 4 : 6;
+    for (let i = 0; i < nc; i++) {
+      let x = bx - w * 0.32 + hash(seed + i, 1) * w * 0.64, y = dy + h * (0.35 + hash(seed + i, 2) * 0.4);
+      ctx.beginPath(); ctx.moveTo(x, y); for (let k = 0; k < 3; k++) { x += (hash(seed + i, 10 + k) - 0.5) * 10 * z; y += (4 + hash(seed + i, 20 + k) * 6) * z; ctx.lineTo(x, y); } ctx.stroke();
+    }
+    if (r < 0.6) for (let i = 0; i < (r < 0.35 ? 3 : 1); i++) this.smoke(ctx, bx + (i - 1) * w * 0.22, dy + h * 0.2 + i * 4, z, t, seed + i, 1.6);
+    if (r < 0.35) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) {
+        const fx = bx + (i - 1) * w * 0.22, fy = dy + h * (0.3 + (i & 1) * 0.1), a = 0.75 + Math.sin(t * 11 + seed + i * 2) * 0.2, rad = (26 + Math.sin(t * 7 + i) * 4) * z;
+        const gr = ctx.createRadialGradient(fx, fy, 0, fx, fy, rad); gr.addColorStop(0, `rgba(255,190,70,${a})`); gr.addColorStop(0.5, `rgba(255,100,20,${a * 0.6})`); gr.addColorStop(1, 'rgba(255,60,0,0)');
+        ctx.fillStyle = gr; ctx.fillRect(fx - rad, fy - rad * 1.4, rad * 2, rad * 2.2);
+        ctx.fillStyle = `rgba(255,220,120,${a * 0.8})`; ctx.beginPath(); ctx.moveTo(fx - 5 * z, fy + 4 * z); ctx.quadraticCurveTo(fx + Math.sin(t * 9 + i) * 4 * z, fy - (14 + Math.sin(t * 13 + i * 3) * 5) * z, fx + 5 * z, fy + 4 * z); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
   // a camel's gait from a still painted sprite: the body rocks, the hind and fore legs swing in opposite phase from the hip line,
   // the neck nods, and a laden camel shows its goods as coloured bundles on the saddle
   camelBody(ctx, c, w, h, top, moving, u, t, z) {
@@ -549,6 +598,7 @@ export class Renderer {
     const lunge = striking ? 5 * z * (u.cooldown > st.cd - 0.12 ? 1 : 0.5) : 0;
     this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
     if (moving && gfx.q >= 1 && (u.kind === 'camel' || u.kind === 'ram')) this.dust(ctx, sx, sy, u._sg || 1, t, z, u.id);
+    if (gfx.q >= 1 && !ui?.isSelected(u) && u.kind !== 'camel') { ctx.strokeStyle = HOUSES[u.team]?.primary || '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 9 * z, 4.2 * z, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
     this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);

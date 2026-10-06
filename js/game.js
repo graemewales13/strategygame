@@ -56,7 +56,7 @@ export class Game {
     this.villages = [];
     this.wanderers = [];
     this.projectiles = [];
-    this.floaters = [];
+    this.floaters = []; this.fx = [];   // fx: collapse/poof effects for the renderer (only queued when a UI is attached)
     this.byId = new Map();
     this.alertT = new Array(this.houses).fill(-99);
     this.winHold = { team: -1, t: 0 }; this.richHold = { team: -1, t: 0 };
@@ -1833,6 +1833,7 @@ export class Game {
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
     if (t.hp <= 0) {
       t.hp = 0; this.sfx(t.type === 'building' ? 'crumble' : 'death', t.x, t.y);
+      if (this.sfxOn && this.fx.length < 30) this.fx.push({ x: t.x, y: t.y, kind: t.type === 'building' ? 'collapse' : 'poof', size: t.size || 1, born: this.time });
       if (t.type === 'building') {
         if (t.team === PLAYER) this.log(PLAYER, `Your ${BUILDINGS[t.kind].label} is destroyed!`, 'bad');
         else if (byTeam === PLAYER) this.log(PLAYER, `${HOUSES[t.team].short} ${BUILDINGS[t.kind].label} destroyed.`, 'good');
@@ -2110,7 +2111,7 @@ export class Game {
     d.resAmt.forEach((a, i) => { if (this.resources[i]) this.resources[i].amount = a; });
     this.seen = d.seen.map((r) => { const a = new Uint8Array(this.W * this.H); let p = 0; for (let i = 0; i < r.length; i += 2) { a.fill(r[i], p, p + r[i + 1]); p += r[i + 1]; } return a; });
     this.byId = new Map(); for (const e of [...this.units, ...this.buildings, ...this.villages]) this.byId.set(e.id, e);
-    this.floaters = []; this.events.length = 0;
+    this.floaters = []; this.fx = []; this.events.length = 0;
     this.recomputeWalk(); this.visT = 0; this.updateVisibility(true);
     return this;
   }
