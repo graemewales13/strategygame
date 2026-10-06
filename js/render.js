@@ -10,6 +10,7 @@ import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
 const GOLD = '#e2c15e';
+const SIL = new WeakMap();   // sprite -> black silhouette, for cast shadows
 const GROUND_RGB = [[74, 118, 58], [128, 98, 54], [38, 92, 118], [140, 100, 56], [146, 132, 68], [194, 172, 112], [98, 94, 90], [224, 230, 236]];
 
 // image per building kind and how wide it draws, in footprints (1 = same width as its diamond)
@@ -101,6 +102,7 @@ export class Renderer {
 
     this.terrain.draw(ctx, this);
     this.shimmer(ctx, g, x0, y0, x1, y1, t, isSeen, z);
+    this.clouds(ctx, t, z);
     if (ui?.placing) this.territory(ctx, g);
 
     // everything that stands on the ground, back to front
@@ -153,6 +155,7 @@ export class Renderer {
     this.fog.update();
     this.fog.draw(ctx, this);
 
+    this.atmosphere(ctx, g);
     this.econOverlay(ctx, ui, t, z);
     if (ui?.placing) this.ghost(ctx, g, ui);
     if (ui?.dragBox) {
@@ -205,6 +208,39 @@ export class Renderer {
     const a = this.toScreen(tx, ty), b = this.toScreen(tx + w, ty), c = this.toScreen(tx + w, ty + h), d = this.toScreen(tx, ty + h);
     ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.closePath();
   }
+  // drifting cloud shadows on the ground (high quality): big soft dark blobs that slide across the world
+  clouds(ctx, t, z) {
+    if (gfx.q < 2) return;
+    const g = this.game, span = 90;
+    for (let i = 0; i < 9; i++) {
+      const sp = 0.35 + (i % 3) * 0.12, wx = ((i * 37.3 + t * sp) % (g.W + span)) - span / 2, wy = (i * 61.7 + Math.sin(t * 0.03 + i) * 8) % g.H;
+      const [sx, sy] = this.toScreen(wx, wy), rx = (13 + (i % 4) * 4) * HW * z, ry = rx * 0.5;
+      if (sx < -rx || sx > this.w + rx || sy < -ry || sy > this.h + ry) continue;
+      const gr = ctx.createRadialGradient(sx, sy, 0, sx, sy, rx);
+      gr.addColorStop(0, 'rgba(14,18,30,.16)'); gr.addColorStop(0.6, 'rgba(14,18,30,.08)'); gr.addColorStop(1, 'rgba(14,18,30,0)');
+      ctx.save(); ctx.translate(sx, sy); ctx.scale(1, 0.5); ctx.translate(-sx, -sy); ctx.fillStyle = gr; ctx.fillRect(sx - rx, sy - rx, rx * 2, rx * 2); ctx.restore();
+    }
+  }
+  // light haze toward the horizon, a gentle vignette and a very slow warm/cool colour-grade over the whole scene
+  atmosphere(ctx, g) {
+    if (gfx.q < 1) return;
+    const w = this.w, h = this.h;
+    let gr = ctx.createLinearGradient(0, 0, 0, h * 0.35); gr.addColorStop(0, 'rgba(196,208,224,.16)'); gr.addColorStop(1, 'rgba(196,208,224,0)');
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h * 0.35);
+    if (!this._vig || this._vig.w !== w || this._vig.h !== h) {
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
+      const r = x.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.hypot(w, h) * 0.58);
+      r.addColorStop(0, 'rgba(8,6,2,0)'); r.addColorStop(1, 'rgba(8,6,2,.42)'); x.fillStyle = r; x.fillRect(0, 0, w, h);
+      this._vig = c; c.w = w; c.h = h;
+    }
+    ctx.drawImage(this._vig, 0, 0, w, h);
+    if (gfx.q >= 2) {   // a 16-minute day: warm dawn, clear noon, amber dusk, cool dusk. Kept very light so colours stay true.
+      const ph = ((g.time || 0) / 960 + 0.28) % 1, k = Math.sin(ph * Math.PI * 2);
+      const warm = Math.max(0, -k) * 0.5 + Math.max(0, Math.sin(ph * Math.PI * 4)) * 0.0;
+      ctx.fillStyle = k < -0.2 ? `rgba(40,56,110,${Math.min(0.2, (-k - 0.2) * 0.25)})` : `rgba(255,170,70,${Math.max(0, 0.1 - Math.abs(k) * 0.1 + (Math.abs(k) < 0.35 ? 0.06 : 0))})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
   // while placing: where your castles, temples and taverns sway villages (no limit on where you may build), and your stores (haul)
   territory(ctx, g) {
     ctx.save();
@@ -238,6 +274,22 @@ export class Renderer {
       if (c) this.sprite(ctx, c, sx, sy - bob, (c.width / c.height) * (i ? 32 : 38) * z, false, 1);
     }
   }
+  // a real cast shadow: the sprite's own silhouette, flattened and sheared away from the sun (upper left), drawn under the sprite
+  castShadow(ctx, img, sx, sy, w, h, flip = false, a = 0.3, len = 1) {
+    if (gfx.q < 1 || !img || !(w > 4)) return;
+    let sil = SIL.get(img);
+    if (!sil) {
+      const iw = img.width, ih = img.height; if (!iw || !ih) return;
+      sil = document.createElement('canvas'); sil.width = iw; sil.height = ih;
+      const c2 = sil.getContext('2d'); c2.drawImage(img, 0, 0); c2.globalCompositeOperation = 'source-in'; c2.fillStyle = '#0b0d05'; c2.fillRect(0, 0, iw, ih);
+      SIL.set(img, sil);
+    }
+    ctx.save(); ctx.globalAlpha = a;
+    ctx.transform(1, 0, -0.62 * len, -0.26 * len, sx, sy);
+    if (flip) ctx.scale(-1, 1);
+    ctx.drawImage(sil, -w / 2, -h, w, h);
+    ctx.restore();
+  }
   shadowAt(ctx, sx, sy, rx, ry, a = 0.3) { ctx.fillStyle = `rgba(10,12,4,${a})`; ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, 7); ctx.fill(); }
   prop(ctx, p, z) {
     const [sx, sy] = this.toScreen(p.x, p.y);
@@ -250,7 +302,8 @@ export class Renderer {
       const v = (h * 6) | 0, sp = n.v === 'pine' ? 'pine' : n.v === 'palm' ? 'palm' : 'oak';
       const c = tinted(sp, 0, null, v & 1, sp === 'oak' ? [0.98, 1.1, 1.22][v % 3] : [0.95, 1, 1.08][v % 3]);
       const w = (sp === 'oak' ? 50 + h * 22 : sp === 'pine' ? 40 + h * 16 : 44 + h * 14) * z;
-      this.shadowAt(ctx, sx + 6 * z, sy - 1 * z, w * 0.34, 6 * z, 0.28 * a);
+      this.shadowAt(ctx, sx + 4 * z, sy - 1 * z, w * 0.2, 4 * z, 0.22 * a);
+      if (c) this.castShadow(ctx, c, sx, sy + 2 * z, w, (c.height / c.width) * w, false, 0.34 * a, 1.1);
       this.sprite(ctx, c, sx, sy + 2 * z, w, false, a);
       this.hit(n, 'node', sx - w * 0.22, sy - w * 0.9, sx + w * 0.22, sy + 2 * z);
     } else if (n.kind === 'gold') {
@@ -340,6 +393,7 @@ export class Renderer {
       const [sx, sy] = this.toScreen(cx + p.dx + 0.7, cy + p.dy + 0.7);
       const c = p.img || (p.name === 'village_cluster' && SIMG.hamlet ? SIMG.hamlet : tinted(p.name, team, 'banner', false));
       if (p.name === 'gold') this.shadowAt(ctx, sx, sy, p.w * HW * z * 0.5, 7 * z, 0.3);
+      if (c && p.name !== 'gold' && !dim) this.castShadow(ctx, c, sx, sy, p.w * 2 * HW * z, (c.height / c.width) * p.w * 2 * HW * z * 0.9, false, 0.28, 0.8);
       const h = this.sprite(ctx, c, sx, sy, p.w * 2 * HW * z, false, 1);
       if (h != null) { const ww = p.w * 2 * HW * z; top = Math.min(top, sy - h); left = Math.min(left, sx - ww / 2); right = Math.max(right, sx + ww / 2); bottom = Math.max(bottom, sy); }
     }
@@ -390,6 +444,7 @@ export class Renderer {
     // house-colour footing
     this.diamond(ctx, b.tx, b.ty, b.size, b.size); ctx.fillStyle = f.primary; ctx.globalAlpha = 0.24; ctx.fill(); ctx.globalAlpha = 1;
     this.shadowAt(ctx, bx + 4 * z, by - b.size * HH * z * 0.5, w * 0.42, b.size * HH * z * 0.5, 0.22);
+    if (c && prog >= 1) this.castShadow(ctx, c, bx, by - b.size * HH * z * 0.3, w, h * 0.92, false, dim ? 0.14 : 0.3, 0.9);
     ctx.save();
     if (dim) ctx.globalAlpha = 0.8;
     if (c) {
@@ -459,6 +514,7 @@ export class Renderer {
     const bob = moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
     const lunge = striking ? 5 * z * (u.cooldown > st.cd - 0.12 ? 1 : 0.5) : 0;
     this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
+    this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
     ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
