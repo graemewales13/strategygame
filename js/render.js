@@ -479,6 +479,40 @@ export class Renderer {
     if (ui?.isSelected(b) && b.rally) { const [sx, sy] = this.toScreen(b.x, b.y), [rx, ry] = this.toScreen(b.rally.x, b.rally.y); ctx.strokeStyle = f.accent; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(rx, ry); ctx.stroke(); ctx.fillStyle = f.accent; ctx.fillRect(rx - 1, ry - 14, 2, 14); ctx.fillRect(rx + 1, ry - 14, 9, 5); }
   }
 
+  // a camel's gait from a still painted sprite: the body rocks, the hind and fore legs swing in opposite phase from the hip line,
+  // the neck nods, and a laden camel shows its goods as coloured bundles on the saddle
+  camelBody(ctx, c, w, h, top, moving, u, t, z) {
+    const iw = c.width, ih = c.height, hipS = 0.56, split = 0.42, ph = u.anim * 0.55, hipY = top + h * hipS;
+    const sw = moving ? Math.sin(ph) : Math.sin(t * 1.3 + u.id) * 0.015, k = sw * 0.3;
+    // legs first (behind the belly): hind pair and fore pair in opposite phase
+    for (const [sx0, sx1, kk] of [[0, split, k], [split, 1, -k]]) {
+      ctx.save(); ctx.transform(1, 0, kk, 1, -kk * hipY, 0);
+      ctx.drawImage(c, sx0 * iw, hipS * ih, (sx1 - sx0) * iw, (1 - hipS) * ih, -w / 2 + sx0 * w, hipY, (sx1 - sx0) * w, h * (1 - hipS));
+      ctx.restore();
+    }
+    // body and head: a slow roll and the neck nodding with each stride
+    ctx.save(); ctx.translate(0, hipY); ctx.rotate(moving ? Math.sin(ph * 2) * 0.018 : 0); ctx.translate(0, -hipY);
+    ctx.drawImage(c, 0, 0, iw, hipS * ih, -w / 2, top, w, h * hipS);
+    ctx.restore();
+    // cargo: up to six sacks in the colours of the goods it carries
+    const cargo = u.cargo, n = cargo ? Math.min(6, Math.ceil(this.game.cargoTotal(u) / 4)) : 0;
+    if (n > 0) {
+      const cols = []; for (const g in cargo) for (let i = 0; i < Math.ceil(cargo[g] / 4); i++) cols.push(GOOD_COLOR[g] || '#c9b27a');
+      for (let i = 0; i < n; i++) {
+        const bx = -w / 2 + w * (0.17 + (i % 3) * 0.085), by = top + h * (0.2 - Math.floor(i / 3) * 0.075);
+        ctx.fillStyle = cols[i % cols.length]; ctx.strokeStyle = 'rgba(20,12,4,.8)'; ctx.lineWidth = Math.max(1, z);
+        ctx.beginPath(); ctx.roundRect(bx, by, w * 0.075, h * 0.085, 3 * z); ctx.fill(); ctx.stroke();
+      }
+    }
+  }
+  // dust kicked up behind a camel on the move
+  dust(ctx, sx, sy, sgn, t, z, id) {
+    for (let i = 0; i < 4; i++) {
+      const ph = (t * 1.6 + i / 4 + id * 0.13) % 1;
+      ctx.fillStyle = `rgba(206,184,138,${0.34 * (1 - ph)})`;
+      ctx.beginPath(); ctx.ellipse(sx - sgn * (10 + ph * 22) * z, sy - ph * 9 * z, (2.5 + ph * 6) * z, (1.5 + ph * 3) * z, 0, 0, 7); ctx.fill();
+    }
+  }
   // ---------------------------------------------------------------- units
   unit(ctx, u, ui, t, z) {
     const st = UNITS[u.kind], [sx, sy] = this.toScreen(u.x, u.y);
@@ -514,13 +548,16 @@ export class Renderer {
     const bob = moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
     const lunge = striking ? 5 * z * (u.cooldown > st.cd - 0.12 ? 1 : 0.5) : 0;
     this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
+    if (moving && gfx.q >= 1 && (u.kind === 'camel' || u.kind === 'ram')) this.dust(ctx, sx, sy, u._sg || 1, t, z, u.id);
     this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
     ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
     ctx.scale((flip !== rightArt) ? -sxScale : sxScale, 1);
     const foot = u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
-    ctx.drawImage(c, -w / 2, -h * foot - bob, w, h);
+    const top = -h * foot - bob;
+    if (u.kind === 'camel' && rightArt && gfx.q >= 1) this.camelBody(ctx, c, w, h, top, moving, u, t, z);
+    else ctx.drawImage(c, -w / 2, top, w, h);
     if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
     ctx.restore();
     this.hit(u, 'unit', sx - w * 0.4, sy - h * foot - bob, sx + w * 0.4, sy + 3 * z);
