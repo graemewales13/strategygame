@@ -21,7 +21,7 @@ const FMUL = { mine: 1.15, keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, wareh
 const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fortified', abbey: 'farm', inn: 'fishing', farm: 'farm' };
 const VWIDE = { '1tile': 3.4 };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
-const USCALE = { recruit: 44, serf: 40, scout: 46, footman: 45, bowman: 45, knight: 58, spy: 46, scholar: 48 }; // drawn height at zoom 1
+const USCALE = { recruit: 44, serf: 40, scout: 46, footman: 45, bowman: 45, knight: 58, king: 62, spy: 46, scholar: 48 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
   hamlet: [['village_cluster', 0, 0.35, 3.9]],
@@ -498,9 +498,14 @@ export class Renderer {
   effects(ctx, g, t, z, isVis) {
     const fx = g.fx; if (!fx || !fx.length) return;
     for (let i = fx.length - 1; i >= 0; i--) {
-      const f = fx[i], age = g.time - f.born, life = f.kind === 'collapse' ? 3 : 1.1;
+      const f = fx[i], age = g.time - f.born, life = f.kind === 'collapse' ? 3 : f.kind === 'rank' ? 1.4 : 1.1;
       if (age > life) { fx.splice(i, 1); continue; }
       if (age < 0 || !isVis(f.x, f.y)) continue;
+      if (f.kind === 'rank') {   // a gold ring rising off a promoted soldier
+        const [rx, ry] = this.toScreen(f.x, f.y), kk = age / life;
+        ctx.strokeStyle = `rgba(255,226,122,${0.9 * (1 - kk)})`; ctx.lineWidth = 2.5 * z; ctx.beginPath(); ctx.ellipse(rx, ry - kk * 26 * z, (8 + kk * 14) * z, (4 + kk * 7) * z, 0, 0, 7); ctx.stroke();
+        continue;
+      }
       const [sx, sy] = this.toScreen(f.x, f.y), k = age / life, n = f.kind === 'collapse' ? 9 : 4, R = (f.kind === 'collapse' ? 16 + f.size * 8 : 8) * z;
       for (let j = 0; j < n; j++) {
         const a = (j / n) * 6.283 + j, d = R * (0.3 + k) * (0.6 + hash(j, i) * 0.6);
@@ -621,9 +626,31 @@ export class Renderer {
     if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }
     if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
     if (u.name && (ui?.isSelected(u) || z >= 1.15) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
+    if (u.kind === 'king') this.crownAt(ctx, sx, sy - h * foot - 2 - bob, z, HOUSES[u.team].accent);
+    if (u.rank > 0) this.chevrons(ctx, sx + (u.hp < u.maxHp || ui?.isSelected(u) ? Math.max(20, w * 0.7) / 2 + 6 * z : 0), sy - h * foot - 6 - bob, u.rank, z, u.kind === 'king');
     if (u.hp < u.maxHp || ui?.isSelected(u)) { const bw = Math.max(20, w * 0.7); this.bar(ctx, sx - bw / 2, sy - h * foot - 8 - bob, bw, 3, u.hp / u.maxHp, this.hpColor(u.hp / u.maxHp)); }
   }
 
+  // a small gold crown over a ruler's head, set with a stone in his house colour
+  crownAt(ctx, x, y, z, gem) {
+    const w = 7 * z, h = 5.5 * z;
+    ctx.save(); ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(x - w, y); ctx.lineTo(x - w, y - h * 0.6); ctx.lineTo(x - w * 0.5, y - h * 0.2); ctx.lineTo(x, y - h); ctx.lineTo(x + w * 0.5, y - h * 0.2); ctx.lineTo(x + w, y - h * 0.6); ctx.lineTo(x + w, y); ctx.closePath();
+    ctx.fillStyle = '#e8c547'; ctx.fill(); ctx.lineWidth = Math.max(1, 1.2 * z); ctx.strokeStyle = '#3a2a0c'; ctx.stroke();
+    ctx.fillStyle = gem; ctx.beginPath(); ctx.arc(x, y - h * 0.35, Math.max(1.1, 1.3 * z), 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  // rank pips: one gold chevron per rank above Rookie (a crown replaces them on a king)
+  chevrons(ctx, x, y, rank, z, king) {
+    const sz = Math.max(3, 3.4 * z);
+    ctx.save(); ctx.lineWidth = Math.max(1.2, 1.5 * z); ctx.lineJoin = 'round';
+    for (let i = 0; i < rank; i++) {
+      const cy = y - i * sz * 0.9; ctx.beginPath(); ctx.moveTo(x - sz, cy); ctx.lineTo(x, cy - sz * 0.7); ctx.lineTo(x + sz, cy);
+      ctx.strokeStyle = 'rgba(20,12,4,.9)'; ctx.lineWidth = Math.max(2.6, 3 * z); ctx.stroke();
+      ctx.strokeStyle = rank >= 4 ? '#ffe27a' : '#e2c15e'; ctx.lineWidth = Math.max(1.2, 1.5 * z); ctx.stroke();
+    }
+    ctx.restore();
+  }
   bar(ctx, x, y, w, h, r, color) {
     ctx.fillStyle = '#1b130b'; ctx.fillRect(x, y, w, h);
     ctx.fillStyle = color; ctx.fillRect(x, y, w * Math.max(0, Math.min(1, r)), h);

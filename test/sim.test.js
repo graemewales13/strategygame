@@ -42,7 +42,8 @@ test('start: a home village of 30, three serfs on walkable tiles, no buildings, 
     assert.equal(g.buildings.filter((b) => b.team === t).length, 0);
     const hv = g.villages.filter((v) => v.home === t && v.owner === t);
     assert.equal(hv.length, 1); assert.equal(Math.round(hv[0].pop), 30);
-    const us = g.units.filter((u) => u.team === t);
+    assert.equal(g.units.filter((u) => u.team === t && u.kind === 'king').length, 1, 'one ruler');
+    const us = g.units.filter((u) => u.team === t && u.kind !== 'king');
     assert.equal(us.length, 3);
     for (const u of us) { assert.equal(u.kind, 'serf'); assert.ok(g.walk[Math.floor(u.y) * g.W + Math.floor(u.x)], 'serf spawned on blocked tile'); }
   }

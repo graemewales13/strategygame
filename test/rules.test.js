@@ -1,0 +1,172 @@
+// Tests for ratings, kings and diplomacy. Fast: `node test/rules.test.js` (part of `npm test`).
+import assert from 'node:assert/strict';
+import { Game } from '../js/game.js';
+import { deliberate as dip_deliberate, intel } from '../js/diplomacy.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS } from '../js/config.js';
+
+let _s = 777;
+Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+let passed = 0;
+const test = (name, fn) => { try { fn(); passed++; console.log('  ok  ', name); } catch (e) { console.log('  FAIL', name, '\n      ', e.stack.split('\n').slice(0, 4).join('\n       ')); process.exitCode = 1; } };
+const run = (g, secs, dt = 0.1) => { for (let t = 0; t < secs; t += dt) g.tick(dt); };
+const mk = (opts = {}) => new Game({ seed: 8, houses: 3, ai: false, ...opts });
+
+test('ratings: a soldier earns experience from damage and kills, is promoted, and then hits harder and is tougher', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war';
+  const h = g.seatOf(PLAYER), e = g.seatOf(1);
+  const a = g.addUnit('footman', PLAYER, h.x, h.y + 6), hp0 = a.maxHp;
+  assert.equal(a.rank, 0);
+  g.award(a, RANKS[1].xp);
+  assert.equal(a.rank, 1); assert.ok(a.maxHp > hp0, 'promotion raises health');
+  const foe = g.addUnit('recruit', 1, h.x + 2, h.y + 6); foe.hp = 5;
+  g.damage(foe, 50, PLAYER, a);
+  assert.ok(a.xp > RANKS[1].xp, 'a kill earns experience');
+  // damage scales with rank
+  const dmgOf = (rank) => { const u = g.addUnit('footman', PLAYER, h.x, h.y + 9); u.rank = rank; const t = g.addUnit('knight', 1, h.x + 1, h.y + 9); t.hp = t.maxHp = 9999; u.task = { type: 'attack', targetId: t.id }; u.cooldown = 0; g.doAttack(u, UNITS.footman, 0.1); return 9999 - t.hp; };
+  assert.ok(dmgOf(3) > dmgOf(0) * (1 + RANK_BONUS.dmg * 2.5), 'a rank-3 footman hits clearly harder');
+  assert.ok(g.powerOf(Object.assign(g.addUnit('footman', PLAYER, 5, 5), { rank: 4 })) > g.powerOf(g.addUnit('footman', PLAYER, 5, 5)) * 1.4, 'power counts rank');
+});
+
+test('ratings: rated soldiers on guard sway a village more than rookies', () => {
+  const g = mk(); const v = g.villages.find((x) => x.owner < 0);
+  const k = g.addBuilding('keep', PLAYER, Math.round(v.x - 9), Math.round(v.y), true); g.recomputeWalk();
+  const us = [0, 1, 2, 3].map((i) => g.addUnit('footman', PLAYER, k.x + i * 0.3, k.y + 2));
+  const rookie = g.guardOf(k); us.forEach((u) => { u.rank = 4; });
+  const champ = g.guardOf(k);
+  assert.ok(champ > rookie * 1.8, `guard ${rookie} -> ${champ}`);
+});
+
+test('king: every house starts with a named ruler who is not counted as soldier or population', () => {
+  const g = mk();
+  for (const p of g.players) { const k = g.kingOf(p.team); assert.ok(k && k.name && k.title, 'a titled, named king'); assert.ok(p.persona.temper, 'a temper'); }
+  assert.equal(g.militaryOf(PLAYER).length, 0, 'the king is not in the army count');
+  assert.equal(g.popUsed(PLAYER), 3, 'only the three serfs use population');
+});
+
+test('king: soldiers near him hit harder; his fall leaves the house leaderless until an heir rises', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), k = g.kingOf(PLAYER);
+  const px = k.x, py = k.y, hit = () => { const u = g.addUnit('footman', PLAYER, px + 1, py); const t = g.addUnit('knight', 1, px + 2, py); g.rel[0][1] = g.rel[1][0] = 'war'; t.hp = t.maxHp = 9999; u.task = { type: 'attack', targetId: t.id }; u.cooldown = 0; g.updateKings(0); g.doAttack(u, UNITS.footman, 0.1); return 9999 - t.hp; };
+  const near = hit(); k.x += 30; const far = hit(); k.x -= 30;
+  assert.ok(near > far * 1.05, `aura ${far} -> ${near}`);
+  const killer = g.addUnit('footman', 1, k.x, k.y); g.damage(k, 99999, 1, killer);
+  assert.ok(g.players[PLAYER].leaderless === true); assert.ok(killer.xp >= 80, 'the slayer is famed');
+  g.updateKings(0); assert.equal(g.kingOf(PLAYER), null);
+  run(g, 95);
+  const heir = g.kingOf(PLAYER); assert.ok(heir && heir.id !== k.id && heir.rank === 0, 'an heir rises'); assert.equal(g.players[PLAYER].leaderless, false);
+});
+
+test('king: his presence sways a nearby free village', () => {
+  const g = mk(); const v = g.villages.find((x) => x.owner < 0), k = g.kingOf(PLAYER);
+  g.updateKings(0);
+  const far = g.pullsFor(v)[PLAYER]; k.x = v.x - 3; k.y = v.y; const near = g.pullsFor(v)[PLAYER];
+  assert.ok(near > far + 0.3, `pull ${far} -> ${near}`);
+});
+
+// ---- diplomacy ---------------------------------------------------------------------------------------
+const meet = (g) => { for (let i = 0; i < g.houses; i++) for (let j = 0; j < g.houses; j++) g.known[i][j] = 1; };
+const boost = (g, team, n) => { for (let i = 0; i < n; i++) { const u = g.addUnit('knight', team, 5 + i * 0.1, 5); u.hp = u.maxHp; } };
+const nice = (g, a, b, v = 50) => { g.opinion[a][b] = v; g.players[a].persona.temper = 'honourable'; };
+
+test('diplomacy: a gift warms a rival, and a cold house refuses an alliance until it warms', () => {
+  const g = mk(); meet(g); g.time = 200; g.players[PLAYER].gold = 500;
+  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance'), false, 'strangers do not ally'); assert.match(g.diploNote, /friend/);
+  const before = g.opinion[1][PLAYER];
+  assert.equal(g.giveGift(PLAYER, 1, 120), true);
+  assert.ok(g.opinion[1][PLAYER] > before + 8, 'the gift warms him');
+  g.opinion[1][PLAYER] = 40; g.players[1].persona.temper = 'honourable';
+  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance'), true); assert.equal(g.rel[PLAYER][1], 'alliance');
+  assert.equal(g.isEnemy(PLAYER, 1), false, 'allies are not enemies');
+  const m = g.addBuilding('market', 1, 30, 30, true); assert.equal(g.canDeal(PLAYER, m).ok, true, 'allies trade');
+});
+
+test('diplomacy: breaking an alliance is remembered; striking a house angers its friends', () => {
+  const g = mk(); meet(g); g.time = 200; g.opinion[1][PLAYER] = 50; g.opinion[2][PLAYER] = 0;
+  g.setRelation(PLAYER, 1, 'alliance'); g.setRelation(PLAYER, 1, 'peace');
+  assert.ok(g.opinion[1][PLAYER] < 50 - 30, 'the betrayed leader is furious: ' + g.opinion[1][PLAYER]);
+  assert.ok(g.opinion[2][PLAYER] < 0, 'others hear of it');
+  g.setRelation(1, 2, 'alliance'); const o = g.opinion[1][PLAYER]; g.setRelation(PLAYER, 2, 'war');
+  assert.ok(g.opinion[1][PLAYER] < o - 20, 'he was the ally of the one you struck');
+});
+
+test('diplomacy: a friendly leader writes to propose an alliance; accepting it makes allies', () => {
+  const g = mk(); meet(g); g.time = 300; nice(g, 1, PLAYER, 45);
+  g.setRelation(1, 2, 'war');   // a shared enemy makes it sensible
+  g.setRelation(PLAYER, 2, 'war');
+  dip_deliberate(g, 1);
+  const o = g.offers.find((x) => x.to === PLAYER && x.from === 1 && x.kind === 'treaty' && x.state === 'alliance');
+  assert.ok(o, 'a letter arrived'); assert.ok(o.text.length > 20 && /Calder|Varr|Cael|Thorn|Ash|[A-Z]/.test(o.text));
+  assert.equal(g.respondOffer(PLAYER, 1, true, o.id), true); assert.equal(g.rel[PLAYER][1], 'alliance');
+  assert.equal(g.letters.find((l) => l.id === o.id).state, 'accepted');
+});
+
+test('diplomacy: an ally asks you to join its war; accept and you are at war, decline and it remembers', () => {
+  const g = mk(); meet(g); g.time = 300; nice(g, 1, PLAYER, 40); g.setRelation(1, PLAYER, 'alliance'); g.setRelation(1, 2, 'war');
+  dip_deliberate(g, 1);
+  const o = g.offers.find((x) => x.kind === 'joinwar'); assert.ok(o && o.target === 2, 'a call to arms');
+  const op0 = g.opinion[1][PLAYER];
+  g.respondOffer(PLAYER, 1, false, o.id);
+  assert.ok(g.opinion[1][PLAYER] < op0 - 10, 'refusing an ally stings'); assert.equal(g.rel[PLAYER][2], 'peace');
+  g.cool = {}; g.players[1].lastLetter = -999; g.opinion[1][PLAYER] = 40;
+  dip_deliberate(g, 1); const o2 = g.offers.find((x) => x.kind === 'joinwar'); assert.ok(o2);
+  g.respondOffer(PLAYER, 1, true, o2.id); assert.equal(g.rel[PLAYER][2], 'war');
+});
+
+test('diplomacy: your ally fights your enemy without being asked', () => {
+  const g = mk(); meet(g); g.time = 300; nice(g, 1, PLAYER, 45); g.setRelation(1, PLAYER, 'alliance'); boost(g, 1, 3); boost(g, PLAYER, 3);
+  g.setRelation(PLAYER, 2, 'war');
+  dip_deliberate(g, 1);
+  assert.equal(g.rel[1][2], 'war', 'he stands with you');
+});
+
+test('diplomacy: a far stronger, greedy neighbour demands tribute; defying it costs goodwill, paying it costs coin', () => {
+  const g = mk(); meet(g); g.time = 600; const p1 = g.players[1]; p1.persona.aggr = 0.9; p1.persona.temper = 'warlike'; g.opinion[1][PLAYER] = 0;
+  boost(g, 1, 25); g.players[PLAYER].gold = 400;
+  dip_deliberate(g, 1);
+  const o = g.offers.find((x) => x.kind === 'tribute'); assert.ok(o && o.amount >= 40, 'a demand');
+  const gold = g.players[PLAYER].gold;
+  assert.equal(g.respondOffer(PLAYER, 1, true, o.id), true); assert.equal(g.players[PLAYER].gold, gold - o.amount);
+  // another time: defy it
+  g.cool = {}; p1.lastLetter = -999; dip_deliberate(g, 1); const o2 = g.offers.find((x) => x.kind === 'tribute'); assert.ok(o2);
+  const op0 = g.opinion[1][PLAYER]; g.respondOffer(PLAYER, 1, false, o2.id);
+  assert.ok(g.opinion[1][PLAYER] < op0 - 10); assert.ok(p1.defied[PLAYER] != null);
+});
+
+test('diplomacy: unanswered letters lapse (and a snubbed call to arms is remembered)', () => {
+  const g = mk(); meet(g); g.time = 300; nice(g, 1, PLAYER, 40); g.setRelation(1, PLAYER, 'alliance'); g.setRelation(1, 2, 'war');
+  dip_deliberate(g, 1); assert.ok(g.offers.some((x) => x.kind === 'joinwar'));
+  const op0 = g.opinion[1][PLAYER]; g.time += 200; g.tick(0.1);
+  assert.equal(g.offers.length, 0); assert.ok(g.opinion[1][PLAYER] < op0, 'ignoring it counts as refusing');
+  assert.ok(g.letters.some((l) => l.state === 'ignored'));
+});
+
+test('diplomacy: the player may demand, ask for a war, and ask for aid; houses answer by opinion and strength', () => {
+  const g = mk(); meet(g); g.time = 400; boost(g, PLAYER, 25); g.players[1].persona.wary = 0.2; g.players[1].persona.honor = 0.2;
+  const gold1 = g.players[1].gold;
+  assert.equal(g.askOf(PLAYER, 1, 'demand', { amount: 40 }), true, 'a weak house pays the strong');
+  assert.equal(g.players[1].gold, gold1 - 40);
+  g.opinion[2][PLAYER] = 40; g.players[2].gold = 900; g.players[2].persona.temper = 'honourable';
+  assert.equal(g.askOf(PLAYER, 2, 'askaid', { amount: 80 }), true);
+  g.opinion[2][PLAYER] = 40; g.setRelation(PLAYER, 1, 'war'); boost(g, 2, 8);
+  assert.equal(g.askOf(PLAYER, 2, 'askwar', { target: 1 }), true); assert.equal(g.rel[2][1], 'war');
+  assert.equal(g.askOf(PLAYER, 1, 'demand', { amount: 40 }), false, 'cooling off'); 
+});
+
+test('diplomacy: sacking a house\'s village costs its goodwill; a save keeps opinions and letters', () => {
+  const g = mk(); meet(g); g.time = 300;
+  const v = g.villages.find((x) => x.owner < 0); v.owner = 1; g.opinion[1][PLAYER] = 10;
+  g.submit(v, PLAYER, 'pillage'); assert.ok(g.opinion[1][PLAYER] <= -9);
+  g.opinion[2][PLAYER] = 33; g.players[2].persona.temper = 'honourable'; g.setRelation(2, PLAYER, 'alliance');
+  const d = JSON.parse(JSON.stringify(g.serialize())); const h = mk(); h.restore(d);
+  assert.equal(h.opinion[2][PLAYER], g.opinion[2][PLAYER]); assert.equal(h.rel[2][PLAYER], 'alliance'); assert.ok(h.letters.length >= 0);
+});
+
+test('council: intel for a house lists leader, size, power, influence, money (fuzzed unless a partner) and attitude', () => {
+  const g = mk(); meet(g); g.time = 100; g.players[1].gold = 437; boost(g, 1, 2);
+  const i = intel(g, 1);
+  assert.ok(i.leader.name && i.leader.title && i.leader.temper); assert.equal(i.land, 1); assert.ok(i.power > 8, 'power ' + i.power);
+  assert.ok(i.rank >= 1 && i.rank <= 3); assert.equal(i.moneyExact, false); assert.equal(i.moneyShown % 10, 0); assert.notEqual(i.moneyShown, 437);
+  g.setRelation(PLAYER, 1, 'trade'); assert.equal(intel(g, 1).moneyShown, g.standings()[1].money, 'a partner shows its books');
+  assert.ok(typeof i.influence === 'number' && Array.isArray(i.why));
+});
+
+console.log(`${passed} passed`);

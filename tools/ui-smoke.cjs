@@ -19,6 +19,9 @@ const { chromium } = require('playwright');
  const cont = await vis(); if(cont.includes('mainmenu')){ await clickHot('hContinue'); await step('Continue'); }
  await p.locator('#btnSpeed').click(); console.log('speed', await p.locator('#btnSpeed').innerText());
  await p.locator('#houses > *').nth(1).click(); await p.waitForTimeout(400); console.log('diplo open', await p.evaluate(()=>!document.getElementById('diplo').classList.contains('hidden')));
+ await p.click('#btnCouncil'); await p.waitForTimeout(400); console.log('council open', await p.evaluate(()=>!document.getElementById('council').classList.contains('hidden') && document.querySelectorAll('#council .hcard').length));
+ await p.keyboard.press('Escape'); await p.waitForTimeout(200); console.log('council closed by Esc', await p.evaluate(()=>document.getElementById('council').classList.contains('hidden')));
+ await p.keyboard.press('c'); await p.waitForTimeout(200); await p.keyboard.press('c'); await p.waitForTimeout(200); console.log('council toggles with C', await p.evaluate(()=>document.getElementById('council').classList.contains('hidden')));
  await p.locator('button:has-text("Map")').first().click(); await p.waitForTimeout(600); await step('HUD Map'); await p.keyboard.press('Escape'); await p.waitForTimeout(400);
  await p.screenshot({path:'/tmp/ui-smoke.png'});
  console.log('errors', errs); await b.close();})();

@@ -104,6 +104,7 @@ export const UNITS = {
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
   camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click up to three markets (yours or a treaty partner) and it loops between them for ever.' },
+  king:    { label: 'King',    hp: 240, speed: 3.0, dmg: 14, range: 1,   cd: 1.0,  sight: 9,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.5, vil: 1.2, art: 'knight', info: 'The ruler of a house. Rallies soldiers, sways villages by his presence, and must not fall.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
 };
 
@@ -219,7 +220,7 @@ export const VILLAGE_NAMES = {
   inn: ['The Drover', 'The Gallows Oak', 'Crossways', 'The Pilgrim', 'The Ford Arms'],
 };
 
-export const RELATIONS = ['peace', 'trade', 'war'];
+export const RELATIONS = ['peace', 'trade', 'alliance', 'war'];
 export const DEFAULT_RELATION = 'peace';
 export const WAR_MIN = 60;   // seconds after a declaration before either side will hear of peace
 
@@ -242,6 +243,7 @@ export const ABILITIES = {
   spy: 'Right-click a village to infiltrate it (gains influence)',
   scholar: 'Heals friends, boosts academy influence',
   ram: 'Siege: right-click walls',
+  king: 'Leads your soldiers (+damage near him), sways villages he visits, enters keeps to heal. If he falls your soldiers lose heart until an heir rises',
   camel: 'Carries up to 40 goods: select it, then click up to 3 markets to loop between (markets only)',
 };
 // Keep (castle) drills garrisoned recruits and serfs into soldiers.
@@ -254,6 +256,21 @@ export const LEVY = { every: 25, food: 10, villagePop: 8, regen: 60 }; // a levi
 // Tavern: three random wanderers for hire; the roster refreshes now and then.
 export const TAVERN_ROSTER = 3, TAVERN_REFRESH = 120;
 export const WANDERER_NAMES = ['Tomas', 'Wynn', 'Garrick', 'Bryn', 'Osric', 'Mara', 'Hale', 'Ivo', 'Sable', 'Rook', 'Perrin', 'Edda', 'Corwin', 'Lysa', 'Dunstan', 'Tamsin', 'Alric', 'Nell'];
+// ---- ratings: soldiers earn experience by hurting and killing foes and rise through the ranks. Each rank adds damage and health, and a rated
+// soldier standing guard counts for more when a keep or village is swaying its neighbours (see guardOf).
+export const RANKS = [{ label: 'Rookie', xp: 0 }, { label: 'Trained', xp: 40 }, { label: 'Veteran', xp: 110 }, { label: 'Elite', xp: 230 }, { label: 'Champion', xp: 420 }];
+export const RANK_BONUS = { dmg: 0.12, hp: 0.10, guard: 0.25 };   // per rank
+export const XP = { perDamage: 0.1, kill: 14, killBuilding: 8, killRankMul: 0.5 };
+// ---- the ruler. Every house is led by a named character; his presence rallies soldiers and sways villages, his fall shakes the house.
+export const KING = { aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 90, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
+  titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King' } };
+// Leaders have a temper that colours how they treat the other houses (see ai.js diplomacy): aggr, greed, honor and wary are 0..1.
+export const TEMPERS = [
+  { key: 'warlike', label: 'Warlike', tip: 'Quick to war, slow to forgive.' },
+  { key: 'mercantile', label: 'Mercantile', tip: 'Loves trade and tribute; hates a poor partner.' },
+  { key: 'honourable', label: 'Honourable', tip: 'Keeps oaths and expects the same.' },
+  { key: 'cunning', label: 'Cunning', tip: 'Allies with the strong, turns on the weak.' },
+];
 export const TRAITS = {
   green:   { label: 'Green',    hp: 1,   dmg: 0, spd: 0,   cost: 25 },
   brawny:  { label: 'Brawny',   hp: 1.3, dmg: 1, spd: 0,   cost: 45 },

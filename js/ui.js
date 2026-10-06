@@ -6,15 +6,16 @@ import { camelSprite, FIMG, SIMG } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
+import { intel, ranking, DIPLO } from './diplomacy.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ART_B = new Set(['keep','cottage','farm','mill','warehouse','market','forge','workshop','tavern','academy','temple','barracks','archery','stable','tower','mine','foundry']);
 const ART_U = new Set(['recruit','serf','scout','footman','bowman','knight','spy','scholar']);
-const artUrl = (kind, team = PLAYER) => kind === 'village' ? 'assets/shared/villages/1tile/hamlet.png' : FIMG[HOUSES[team].faction]?.[kind] ? FIMG[HOUSES[team].faction][kind].src : kind === 'camel' ? (SIMG.dromedary?.src || camelURL()) : ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
+const artUrl = (kind0, team = PLAYER, kind = kind0 === 'king' ? 'knight' : kind0) => kind === 'village' ? 'assets/shared/villages/1tile/hamlet.png' : FIMG[HOUSES[team].faction]?.[kind] ? FIMG[HOUSES[team].faction][kind].src : kind === 'camel' ? (SIMG.dromedary?.src || camelURL()) : ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
 let _camel = null;
 function camelURL() { try { return (_camel ||= camelSprite(0).toDataURL()); } catch { return null; } }
 const icon = (kind, fallback) => { const u = artUrl(kind); return u ? `<img src="${u}" alt="" draggable="false">` : fallback; };
@@ -22,7 +23,7 @@ const portrait = (kind, accent, team = PLAYER) => artUrl(kind, team) ? `<img cla
 const GLYPH = {
   cottage: '⌂', farm: '≋', mill: '✢', warehouse: '▣', market: '⚖', barracks: '⚔', archery: '➶', stable: '♞', tower: '♜',
   mine: '⛏', foundry: '♨', forge: '⚒', workshop: '⚙', tavern: '⚱', academy: '✎', temple: '✝', keep: '♚',
-  recruit: '☗', serf: '♙', scout: '➤', footman: '♖', bowman: '➶', knight: '♞', spy: '◒', camel: '🐪', scholar: '✎', ram: 'Ram',
+  recruit: '☗', serf: '♙', scout: '➤', footman: '♖', bowman: '➶', knight: '♞', king: '♔', spy: '◒', camel: '🐪', scholar: '✎', ram: 'Ram',
 };
 const costText = (cost, p) => ALL_GOODS.filter((r) => cost[r]).map((r) => `<span class="${p && (p[r] || 0) < cost[r] ? 'need' : ''}">${cost[r]} ${GOOD_LABEL[r].toLowerCase()}</span>`).join(' · ') || 'free';
 const SHORT = { food: 'g', wood: 't', gold: 'c', stone: 's' };
@@ -108,6 +109,8 @@ export class UI {
     cmd.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd(b.dataset); });
     $('selPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd(b.dataset); });
     $('houses').addEventListener('click', (e) => { const b = e.target.closest('[data-house]'); if (b) this.toggleDiplo(+b.dataset.house); });
+    $('council').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
+    $('btnCouncil').onclick = () => this.toggleCouncil();
     $('diplo').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
 
     // tooltips
@@ -250,6 +253,7 @@ export class UI {
     if (k === 'f5') { e.preventDefault(); return void this.saveGame('manual'); }
     if (k === 'f9') { e.preventDefault(); return void this.loadGame('manual'); }
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
+    if (k === 'c' && !e.ctrlKey && !e.metaKey) { this.toggleCouncil(); return; }
     if (k === 't') { this.showStand = !this.showStand; $('standings').classList.toggle('hidden', !this.showStand); return; }
     if (k === 'm' || k === 'tab') { e.preventDefault(); return this.toggleCampaign(); }
     if (this.campaignOpen) return;
@@ -257,6 +261,7 @@ export class UI {
     if (e.repeat) return;
     if (k === 'e') this.showEcon = !this.showEcon;
     else if (k === 'h') this.focusHall();
+    else if (k === 'k') this.selectKing();
     else if (k === 'p') this.setPaused(!this.paused);
     else if (k === '.') this.selectIdleSerf();
     else if (k === ',') this.selectArmy();
@@ -268,6 +273,7 @@ export class UI {
     } else if (k === 's' && this.selUnits().length && !e.ctrlKey) { /* WASD pans; stop is a button */ }
   }
   onEsc() {
+    if (this.councilOpen) { this.councilOpen = false; $('council').classList.add('hidden'); return; }
     if (this.placing) { this.placing = null; $('game').classList.remove('placing'); return; }
     if (this.campaignOpen) return this.closeCampaign();
     if (this.menuOpen) { if (this.started) this.closeMenu(); return; }
@@ -277,6 +283,13 @@ export class UI {
   setPaused(p) { this.paused = p; $('pausedBanner').classList.toggle('hidden', !p); }
 
   focusHall() { const s = this.game.seatOf(PLAYER); if (!s) return; this.r.centerOn(s.x, s.y); this.sel = { type: s.type === 'village' ? 'village' : 'building', ids: [], id: s.id }; }
+  selectKing() {
+    const k = this.game.kingOf(PLAYER);
+    if (!k) { const p = this.game.players[PLAYER]; return this.toast(p.heirAt != null ? `Your heir takes the crown in ${Math.max(0, Math.ceil(p.heirAt - this.game.time))}s.` : 'You have no king.', 'warn'); }
+    const b = k.inside != null ? this.game.byId.get(k.inside) : null;
+    if (b) { this.r.centerOn(b.x, b.y); this.sel = { type: b.type, ids: [], id: b.id }; return; }
+    this.setUnits([k]); this.r.centerOn(k.x, k.y);
+  }
   selectIdleSerf() {
     const idle = this.game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && !u.inside && u.task.type === 'idle');
     if (!idle.length) return this.toast('No idle serfs.', 'info');
@@ -372,7 +385,13 @@ export class UI {
       case 'gathernode': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (!n) break; const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - n.x, a.y - n.y) - Math.hypot(c.x - n.x, c.y - n.y)).slice(0, 4); if (!serfs.length) this.toast('No idle serfs.', 'warn'); else this.host.send({ type: 'gather', ids: serfs.map((u) => u.id), nodeId: n.id }); break; }
       case 'treaty': this.treaty(+d.team, d.state); break;
       case 'diploclose': this.diploOpen = null; this.renderDiplo(); break;
-      case 'respond': this.host.send({ type: 'respond', from: +d.team, accept: d.accept === '1' }); break;
+      case 'respond': { const r = this.host.send({ type: 'respond', from: +d.team, accept: d.accept === '1', id: d.id != null ? +d.id : null }); if (!r && d.accept === '1' && g.diploNote) this.toast(g.diploNote, 'warn'); this.sigOffers = ''; this.sigCouncil = ''; break; }
+      case 'gift': this.ask('gift', +d.team, { amount: +d.amount }); break;
+      case 'demand': this.ask('demand', +d.team, { amount: +d.amount }); break;
+      case 'askaid': this.ask('askaid', +d.team, { amount: +d.amount }); break;
+      case 'askwar': this.ask('askwar', +d.team, { target: +d.target }); break;
+      case 'council': this.toggleCouncil(d.team != null ? +d.team : null); break;
+      case 'councilclose': this.councilOpen = false; $('council').classList.add('hidden'); break;
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'gsel': this.gsel = +d.id; break;
@@ -394,25 +413,96 @@ export class UI {
     const g = this.game, name = HOUSES[team].name;
     const r = this.host.send({ type: 'relation', other: team, state });
     if (r === 'pending') this.toast(`Offer sent to ${name}.`, 'info');
-    else if (r) this.toast(state === 'war' ? `War on ${name}!` : state === 'trade' ? `Trade treaty with ${name}.` : `Peace with ${name}.`, state === 'war' ? 'war' : 'good');
+    else if (r) this.toast(state === 'war' ? `War on ${name}!` : state === 'trade' ? `Trade treaty with ${name}.` : state === 'alliance' ? `Alliance with ${name}.` : `Peace with ${name}.`, state === 'war' ? 'war' : 'good');
     else this.toast(g.diploNote || `${name} refuses.`, 'warn');
     this.sigDiplo = ''; this.renderDiplo();
+  }
+  // one house, as a card: leader, size, wealth, power, influence, attitude, and what you may do about it (compact = the small popover)
+  houseCard(t, compact = false) {
+    const g = this.game, i = intel(g, t), me = t === PLAYER, rel = i.rel;
+    if (!i.known && !me) return `<div class="dline">Not met. Scout toward them to open talks.</div>`;
+    const L = i.leader, lead = L.alive ? `${esc(L.title)} ${esc(L.name)}` : `Throne empty${L.heirIn != null ? ` · heir in ${L.heirIn}s` : ''}`;
+    const tempTip = { warlike: 'Quick to war, slow to forgive.', mercantile: 'Loves trade and tribute; despises a poor partner.', honourable: 'Keeps oaths and expects the same.', cunning: 'Allies with the strong, turns on the weak.' }[L.temper] || '';
+    const ranks = RANKS[L.rank]?.label || '';
+    const stat = (label, val, tip) => `<div class="hs" ${tip ? `data-tip="${encodeURIComponent(tip)}"` : ''}><label>${label}</label><b>${val}</b></div>`;
+    const mine = intel(g, PLAYER);
+    let html = `<div class="hleader" data-tip="${encodeURIComponent(`<b>${esc(L.temper || '')}</b><br>${tempTip}`)}">♔ <b>${lead}</b>${L.alive ? ` <span class="rk">${'▲'.repeat(L.rank)} ${ranks}</span>` : ''}${L.temper ? ` <span class="tmp ${L.temper}">${L.temper}</span>` : ''}</div>`;
+    html += `<div class="hstats">`
+      + stat('Rank', `#${i.rank}`, `Composite of wealth, villages, folk, power, learning and arms.<br>Score ${i.score}`)
+      + stat('Villages', `${i.land}${me ? '' : ` <small>(you ${mine.land})</small>`}`, `${i.landPop} folk live in them.`)
+      + stat('Folk', i.pop, 'Population used.')
+      + stat('Army', `${i.army}${me ? '' : ` <small>(you ${mine.army})</small>`}`, 'Soldiers in the field and garrisons.')
+      + stat('Power', `${i.power}${me ? '' : ` <small>(you ${mine.power})</small>`}`, 'Health × damage of every fighter, ranks and king included. A rookie footman is 1.0.')
+      + stat('Money', `${i.moneyExact ? '' : '≈ '}${i.moneyShown}`, i.moneyExact ? 'Their purse, shown because you trade or are allied.' : 'Their purse, guessed. Trade or ally to see it exactly.')
+      + stat('Influence', `${i.influence}${i.leaning ? ` <small>(${i.leaning} leaning)</small>` : ''}`, 'How hard their keeps, markets, temples and mines lean on villages they do not hold; villages leaning their way.')
+      + stat('Learning', `${i.sci} · arms ${i.arms}`, 'Science level and arms level.')
+      + `</div>`;
+    if (me) return html;
+    const rels = [];
+    if (i.allies.length) rels.push('Allied with ' + i.allies.map((c) => esc(HOUSES[c].short)).join(', '));
+    if (i.enemies.length) rels.push('At war with ' + i.enemies.map((c) => esc(HOUSES[c].short)).join(', '));
+    if (rels.length) html += `<div class="dline">${rels.join(' · ')}</div>`;
+    html += `<div class="dline"><span class="att ${i.opinion >= 10 ? 'good' : i.opinion <= -10 ? 'bad' : ''}">${i.attitude} toward you (${i.opinion >= 0 ? '+' : ''}${i.opinion})</span>${i.why.length ? ' · ' + i.why.map((w) => `${w.d > 0 ? '+' : ''}${w.d} ${esc(w.why)}`).join('; ') : ''}</div>`;
+    const known = true, wait = Math.ceil(g.parleyIn(PLAYER, t)), pend = g.offers.some((o) => o.from === PLAYER && o.to === t);
+    const btn = (state, label, why) => `<button class="dbtn ${rel === state ? 'cur' : ''} ${state === 'war' ? 'warbtn' : ''}" data-act="treaty" data-team="${t}" data-state="${state}" ${rel === state || why ? 'disabled' : ''} title="${esc(why || '')}">${label}</button>`;
+    const peaceWhy = rel === 'war' && wait > 0 ? `Parley in ${wait}s` : pend ? 'Offer sent' : '';
+    const tradeWhy = rel === 'war' ? 'Make peace first' : rel === 'alliance' ? 'Allies already trade' : pend ? 'Offer sent' : '';
+    const allyWhy = rel === 'war' ? 'End the war first' : pend ? 'Offer sent' : '';
+    html += `<div class="drow">${btn('peace', 'Peace', peaceWhy)}${btn('trade', 'Trade', tradeWhy)}${btn('alliance', 'Alliance', allyWhy)}${btn('war', 'War', '')}</div>`;
+    const gold = g.players[PLAYER].gold, ask = (act, label, tip, extra = '', off = false) => `<button class="dbtn sm" data-act="${act}" data-team="${t}" ${extra} ${off ? 'disabled' : ''} data-tip="${encodeURIComponent(tip)}">${label}</button>`;
+    html += `<div class="drow">${ask('gift', 'Gift 50c', 'Send 50 coin. Warms them (more if they are mercantile).', 'data-amount="50"', gold < 50)}${ask('gift', 'Gift 150c', 'Send 150 coin.', 'data-amount="150"', gold < 150)}`
+      + `${ask('demand', 'Demand tribute', 'Demand coin. Only the far weaker pay; the proud refuse and remember.', `data-amount="${Math.max(40, Math.min(300, Math.round((i.moneyShown * 0.15) / 10) * 10))}"`, rel === 'war')}`
+      + `${ask('askaid', 'Ask 80c aid', 'A friend with coin to spare may send it.', 'data-amount="80"', rel === 'war')}</div>`;
+    const others = g.players.filter((p) => p.alive && p.team !== PLAYER && p.team !== t && g.known[PLAYER][p.team]);
+    if (!compact && others.length && rel !== 'war') html += `<div class="drow wrap"><span class="dlabel">Ask them to declare war on</span>${others.map((p) => ask('askwar', `⚔ ${esc(HOUSES[p.team].short)}`, `Ask ${esc(HOUSES[t].short)} to take up arms against ${esc(HOUSES[p.team].short)}. Friends and allies listen, if the odds look fair.`, `data-target="${p.team}"`, false)).join('')}</div>`;
+    html += `<div class="dnote">${rel === 'war' ? (wait > 0 ? `They will not parley for ${wait}s.` : 'They may take peace if they are not winning.') : rel === 'alliance' ? 'Allies trade freely, never fight each other, and take up each other’s wars. Breaking the oath is remembered by everyone. Victory still needs every house to fall.' : rel === 'trade' ? 'Camels may use their markets. Peace cancels it; war breaks it.' : 'No fighting, no trade. A treaty lets your camels use their markets; an alliance binds you.'}</div>`;
+    if (compact) html += `<div class="drow"><button class="dbtn sm" data-act="council" data-team="${t}">Open the Council ›</button></div>`;
+    return html;
+  }
+  // an entry in the correspondence list
+  letterRow(l) {
+    const mine = l.to === PLAYER || l.from === PLAYER;
+    const s = { open: 'waiting', accepted: 'accepted', declined: 'declined', ignored: 'lapsed', lapsed: 'lapsed', note: '' }[l.state] || '';
+    return `<div class="lrow ${l.state}"><span class="lt">${Math.floor(l.t / 60)}:${String(Math.floor(l.t % 60)).padStart(2, '0')}</span><span class="lx">${esc(l.text)}</span>${s ? `<em>${s}</em>` : ''}</div>`;
+  }
+  councilHtml() {
+    const g = this.game;
+    const rows = ranking(g), dead = g.players.filter((p) => !p.alive);
+    const order = [...rows.map((r) => r.team), ...dead.map((p) => p.team)];
+    let html = `<div class="chead"><b>The Council of Houses</b><span>Ranked by wealth, villages, folk, power and learning · C or Esc to close</span><button class="dx" data-act="councilclose">×</button></div><div class="ccards">`;
+    for (const t of order) {
+      const pl = g.players[t], i = intel(g, t), me = t === PLAYER;
+      const known = i.known || me;
+      html += `<div class="hcard ${me ? 'me' : ''} ${pl.alive ? '' : 'fallen'} ${this.councilFocus === t ? 'focus' : ''}"><div class="hctop"><canvas width="30" height="34" data-ccrest="${t}"></canvas><div><b style="color:${HOUSES[t].accent}">${esc(HOUSES[t].name)}</b><div class="hmotto">${esc(HOUSES[t].motto)}</div></div>${me ? '<span class="rel me">you</span>' : `<span class="rel ${i.rel}">${known ? i.rel : 'unmet'}</span>`}${pl.alive && known ? `<span class="hrank">#${i.rank}</span>` : ''}</div>${pl.alive ? this.houseCard(t) : '<div class="dline">This house has fallen.</div>'}</div>`;
+    }
+    html += `</div><div class="ctitle">Correspondence</div><div class="letters">${g.letters.filter((l) => l.to === PLAYER || l.from === PLAYER).slice(0, 14).map((l) => this.letterRow(l)).join('') || '<div class="hint">No letters yet. Rival lords write once they have met you.</div>'}</div>`;
+    return html;
+  }
+  toggleCouncil(team = null) {
+    const el = $('council'); this.councilOpen = team != null ? true : !this.councilOpen; this.councilFocus = team;
+    if (team != null) { this.diploOpen = null; this.renderDiplo(); }
+    el.classList.toggle('hidden', !this.councilOpen); this.sigCouncil = ''; if (this.councilOpen) this.renderCouncil();
+  }
+  renderCouncil() {
+    if (!this.councilOpen) return;
+    const html = this.councilHtml();
+    if (html !== this.sigCouncil) {
+      this.sigCouncil = html; const el = $('council'), top = el.scrollTop; el.innerHTML = html; el.scrollTop = top;
+      el.querySelectorAll('canvas[data-ccrest]').forEach((c) => { const x = c.getContext('2d'); x.clearRect(0, 0, 30, 34); drawCrest(x, 15, 17, 28, +c.dataset.ccrest); });
+    }
+  }
+  // asks of another house: one call, with the answer toasted (or the reason it was refused)
+  ask(type, other, extra = {}) {
+    const g = this.game, r = this.host.send({ type, other, ...extra });
+    if (r) this.toast(g.events.filter((e) => e.team === PLAYER).slice(-1)[0]?.text || 'Done.', 'good'); else this.toast(g.diploNote || 'Refused.', 'warn');
+    this.sigDiplo = this.sigCouncil = ''; this.renderDiplo(); this.renderCouncil();
   }
   toggleDiplo(team) { if (team === PLAYER) return; this.diploOpen = this.diploOpen === team ? null : team; this.sigDiplo = ''; this.renderDiplo(); }
   // the diplomacy panel under a house's chip: where you stand, and the three explicit choices
   renderDiplo() {
     const el = $('diplo'), g = this.game, t = this.diploOpen;
     if (t == null || !g.alive(t)) { this.diploOpen = null; if (!el.classList.contains('hidden')) el.classList.add('hidden'); return; }
-    const rel = g.rel[PLAYER][t], known = g.known[PLAYER][t], wait = Math.ceil(g.parleyIn(PLAYER, t));
-    const pend = g.offers.some((o) => o.from === PLAYER && o.to === t);
-    const army = (x) => g.militaryOf(x).length, held = (x) => g.villages.filter((v) => v.owner === x).length;
-    const btn = (state, label, why) => `<button class="dbtn ${rel === state ? 'cur' : ''} ${state === 'war' ? 'warbtn' : ''}" data-act="treaty" data-team="${t}" data-state="${state}" ${rel === state || why ? 'disabled' : ''} title="${esc(why || '')}">${label}</button>`;
-    const peaceWhy = !known ? 'Not met' : rel === 'war' && wait > 0 ? `Parley in ${wait}s` : pend ? 'Offer sent' : '';
-    const tradeWhy = !known ? 'Not met' : rel === 'war' ? 'Make peace first' : pend ? 'Offer sent' : '';
-    const html = `<div class="dhead"><b style="color:${HOUSES[t].accent}">${esc(HOUSES[t].name)}</b><span class="rel ${rel}">${known ? rel : 'unmet'}</span><button class="dx" data-act="diploclose">×</button></div>`
-      + (known ? `<div class="dline">Army ${army(t)} (yours ${army(PLAYER)}) · Villages ${held(t)} (yours ${held(PLAYER)})</div>` : `<div class="dline">Not met. Scout toward them to open talks.</div>`)
-      + `<div class="drow">${btn('peace', 'Peace', peaceWhy)}${btn('trade', 'Trade treaty', tradeWhy)}${btn('war', 'Declare war', '')}</div>`
-      + `<div class="dnote">${rel === 'war' ? (wait > 0 ? `They will not parley for ${wait}s.` : 'They may take peace if they are not winning.') : rel === 'trade' ? 'Camels may use their markets. Peace cancels it; war breaks it.' : rel === 'peace' ? 'No fighting, no trade. A treaty lets your camels use their markets.' : ''}${pend ? ' Your offer is waiting.' : ''}</div>`;
+    const html = `<div class="dhead"><b style="color:${HOUSES[t].accent}">${esc(HOUSES[t].name)}</b><button class="dx" data-act="diploclose">×</button></div>` + this.houseCard(t, true);
     if (html !== this.sigDiplo) {
       this.sigDiplo = html; el.innerHTML = html;
     }
@@ -446,7 +536,7 @@ export class UI {
     this.renderObjectives();
     g.sfxOn = true; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
-    if (this.hudT <= 0) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
+    if (this.hudT <= 0) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
@@ -461,8 +551,15 @@ export class UI {
   }
 
   renderOffers() {
-    const g = this.game;
-    const html = g.offers.filter((o) => o.to === PLAYER).map((o) => `<div class="offer"><b>${esc(HOUSES[o.from].name)}</b> offers ${o.state === 'trade' ? 'a <b>trade treaty</b>' : 'peace'}.<div class="row"><button data-act="respond" data-team="${o.from}" data-accept="1">Accept</button><button data-act="respond" data-team="${o.from}" data-accept="0">Decline</button></div></div>`).join('');
+    const g = this.game, p = g.players[PLAYER];
+    const html = g.offers.filter((o) => o.to === PLAYER).map((o) => {
+      const kind = o.kind || 'treaty', N = esc(HOUSES[o.from].short), left = Math.max(0, Math.ceil((o.expires ?? g.time + 60) - g.time));
+      const poor = (kind === 'tribute' || kind === 'aid') && p.gold < o.amount;
+      const ok = { treaty: 'Accept', joinwar: `Join the war on ${o.target != null ? esc(HOUSES[o.target].short) : ''}`, tribute: `Pay ${o.amount}c`, aid: `Send ${o.amount}c` }[kind];
+      const no = { treaty: 'Decline', joinwar: 'Decline', tribute: 'Refuse', aid: 'Refuse' }[kind];
+      const text = o.text || `${esc(HOUSES[o.from].name)} offers ${o.state === 'trade' ? 'a trade treaty' : o.state === 'alliance' ? 'an alliance' : 'peace'}.`;
+      return `<div class="offer ${kind}" style="border-color:${HOUSES[o.from].accent}"><div class="oh"><b style="color:${HOUSES[o.from].accent}">${N}</b><span class="ok">${{ treaty: o.state === 'alliance' ? 'Alliance' : o.state === 'trade' ? 'Trade treaty' : 'Peace', joinwar: 'Call to arms', tribute: 'Demand', aid: 'Plea for aid' }[kind]}</span><small>${left}s</small></div><div class="otext">${esc(text)}</div><div class="row"><button data-act="respond" data-team="${o.from}" data-accept="1" data-id="${o.id}" ${poor ? 'disabled title="Not enough coin"' : ''}>${ok}</button><button data-act="respond" data-team="${o.from}" data-accept="0" data-id="${o.id}">${no}</button><button data-act="council" data-team="${o.from}" title="Open the council to see their strength">Intel</button></div></div>`;
+    }).join('');
     if (html !== this.sigOffers) { this.sigOffers = html; $('offers').innerHTML = html; }
   }
   renderTop() {
@@ -539,10 +636,11 @@ export class UI {
       const us = this.selUnits();
       if (us.length === 1) {
         const u = us[0], st = UNITS[u.kind], mine = u.team === PLAYER;
-        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${st.label} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : ''}${esc(st.info)}</div>
+        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${esc(u.title || st.label)} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : ''}${esc(st.info)}</div>
           <div class="stat"><label>Can</label><span>${esc(ABILITIES[u.kind] || '')}</span></div>
           <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(u.hp / u.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(u.hp)}/${u.maxHp}</span></div>
-          <div class="stat"><label>Damage</label><span>${st.dmg}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${st.speed}</span></div>
+          <div class="stat"><label>Damage</label><span>${(((st.dmg + (u.dmgAdd || 0)) * (1 + RANK_BONUS.dmg * (u.rank || 0)))).toFixed(0)}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${st.speed}</span></div>
+          ${g.ranked(u) ? this.rankRow(u) : ''}
           ${mine ? `<div class="stat"><label>Task</label><span>${this.taskText(u)}${u.carry && u.carry.amount > 0.5 ? ` · ${Math.floor(u.carry.amount)} ${u.carry.kind}` : ''}</span></div>` : ''}`;
       } else {
         const by = {}; us.forEach((u) => { by[u.kind] = (by[u.kind] || 0) + 1; });
@@ -671,6 +769,10 @@ export class UI {
       + `<div class="hint">${miss.length ? `Add ${miss.map((k) => LINKS[k].label.toLowerCase()).join(' and ')} within ${DISTRICT.r} tiles: each link adds +${Math.round(DISTRICT.perLink * 100)}% market coin, faster foundries, richer villages.` : 'Supply feeds works, works feed the market, homes and service keep it paid. Foundries here run fast; villages here pay more.'}</div>`;
   }
   // where a mine or foundry stands in the chain
+  rankRow(u) {
+    const r = u.rank || 0, nxt = RANKS[r + 1], lo = RANKS[r].xp, pct = nxt ? Math.min(100, (((u.xp || 0) - lo) / (nxt.xp - lo)) * 100) : 100;
+    return `<div class="stat" data-tip="${encodeURIComponent(`<b>${RANKS[r].label}</b><br>+${Math.round(RANK_BONUS.dmg * r * 100)}% damage, +${Math.round(RANK_BONUS.hp * r * 100)}% health. Experience comes from wounding and killing foes. A rated soldier on guard counts for ${(1 + RANK_BONUS.guard * r).toFixed(2)} when a keep or village is swaying its neighbours.`)}"><label>Rank</label><span style="color:#e2c15e">${'▲'.repeat(r) || '·'} ${RANKS[r].label}</span><div class="meter"><i class="ore" style="width:${pct}%"></i></div><span class="v">${nxt ? Math.floor(u.xp || 0) + '/' + nxt.xp : 'max'}</span></div>`;
+  }
   crewHtml(b) {
     const g = this.game, c = g.crewOf(b);
     if (!c) return '';

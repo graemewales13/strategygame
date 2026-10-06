@@ -54,6 +54,12 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Control groups | **Ctrl+1..9** set, **1..9** recall |
 | Cancel placement | Right-click or **Esc** |
 
+## Rulers, ratings and the Council
+- **Every house has a king** (Pharaoh, Imperator, King, Khan or High King by people), a named character with a temper: *warlike, mercantile, honourable or cunning*. Yours begins at your home village; **K** selects him. Soldiers within 8 tiles of him hit 10% harder and learn faster, and villages he stands among lean toward his house. He is not counted as population, army or a pay-roll soldier. If he falls, villages lose loyalty, soldiers fight at 85% until an **heir** rises after 90 s, and the slayer is famed. Keep him in a keep to heal.
+- **Ratings.** Soldiers (and recruits, scouts, kings) earn experience by wounding and killing, and rise Rookie, Trained, Veteran, Elite, Champion. Each rank adds +12% damage and +10% health, and a rated soldier standing guard counts for +25% per rank when a keep or village is swaying its neighbours (a king counts double). Ranks show as gold chevrons; the unit panel shows progress. A *power* score (health x damage, ranks included) is what leaders weigh.
+- **Council of Houses (C or the Council button).** Ranked cards for every house: leader and temper, villages, folk, army and power (against yours), money (exact for trade partners and allies, otherwise a guess), influence, learning, how they feel about you and why, who they are allied or at war with, and every action: peace, trade, **alliance**, war, gifts, demand tribute, ask for aid, ask them to declare war on a third house. Below, the correspondence.
+- **Opinions and letters.** Every house keeps an opinion of every other. Trade, common enemies and gifts warm it; envy of the strongest, broken oaths, sacked villages, slain kings and fighting a friend sour it. Leaders judge requests by opinion, strength and temper, and **write to you**: alliance offers, calls to arms against a third house, tribute demands (defy a stronger house and it may declare war), pleas for aid, offers of peace when losing, gifts, warnings. Letters appear as cards top right with Accept and Decline, and lapse if ignored (ignoring a demand or call to arms counts as refusing). Allies trade freely, never fight each other, and join each other's wars; breaking an oath is remembered by everyone. Victory is still conquest only: allies are for convenience.
+
 ## Tech tree (short)
 
 Start: mine, market, foundry, tavern, keep, barracks. Then: market → cottage → farm → mill; mine → warehouse; keep → village, academy, temple; barracks → archery, tower; and so on.
@@ -87,7 +93,7 @@ legacy/python/    the first pygame prototype, kept for reference (not the playab
 
 ## Multiplayer note (not shipped yet)
 
-The structure is host-authoritative. `Game` is the only thing that mutates state; it has no DOM access and runs under Node. Every player command is an *intent* (`move`, `attack`, `gather`, `place`, `train`, `pillage`, `infiltrate`, `trade`, `relation`, `respond`, `rally`, `context` ...), sent with `host.send(intent)`. Today `LocalHost` applies it to an in-process `Game`.
+The structure is host-authoritative. `Game` is the only thing that mutates state; it has no DOM access and runs under Node. Every player command is an *intent* (`move`, `attack`, `gather`, `place`, `train`, `pillage`, `infiltrate`, `trade`, `relation`, `respond`, `gift`, `demand`, `askwar`, `askaid`, `rally`, `context` ...), sent with `host.send(intent)`. Today `LocalHost` applies it to an in-process `Game`.
 
 To go online: run a `Game` on a server, let each client's `SocketClient.send` forward intents tagged with its team, apply them with `game.applyIntent`, tick on the server, and broadcast `game.snapshot()` (compact JSON of players, units, buildings, villages and relations) a few times a second. Clients render the latest snapshot instead of the local `Game`. There is no lockstep and no prediction yet; the AI would simply run on the host for empty seats.
 

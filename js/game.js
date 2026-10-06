@@ -7,13 +7,14 @@ import {
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
+import * as dip from './diplomacy.js';
 import { pickName, shortName, FOUNDED } from './names.js';
 
 const SPIRAL = (() => {
@@ -23,7 +24,7 @@ const SPIRAL = (() => {
   return a;
 })();
 
-const SOLDIER = new Set(['footman', 'bowman', 'knight']);
+const SOLDIER = new Set(['footman', 'bowman', 'knight', 'king']);
 export class Game {
   constructor(opts = {}) {
     this.events = [];
@@ -70,7 +71,8 @@ export class Game {
       acc: {}, inc: {}, spent: 0, wageRate: 0, wageDebt: 0, brokeT: 0, deserterT: 0, earnedTotal: 0,
     }));
     this.known = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
-    this.offers = []; // pending treaty offers { from, to, state, t }
+    this.offers = []; // letters waiting on an answer { id, from, to, kind: treaty|joinwar|tribute|aid, state, target, amount, text, t, expires }
+    this.opinion = Array.from({ length: n }, () => Array(n).fill(0)); this.whyOp = {}; this.letters = []; this.cool = {}; this.nextLetter = 1; this._opT = 0; this._inflT = -99;
     this.snub = Array.from({ length: n }, () => Array(n).fill(-999)); // when a house last turned another's offer down
     this.rel = Array.from({ length: n }, () => Array(n).fill(DEFAULT_RELATION));
     this.relSince = Array.from({ length: n }, () => Array(n).fill(0));
@@ -98,6 +100,7 @@ export class Game {
       this.addUnit('serf', team, sx + 1.2, sy + 3.6);
       this.addUnit('serf', team, sx + 2.0, sy + 3.6);
       this.addUnit('serf', team, sx + 2.8, sy + 3.6);
+      this.crown(team, sx + 0.4, sy + 4.6);
     });
     this.recomputeWalk();
     this.updateVisibility(true);
@@ -153,7 +156,7 @@ export class Game {
   hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
   popUsed(team) {
     let n = 0;
-    for (const u of this.units) if (u.team === team && u.hp > 0) n++;
+    for (const u of this.units) if (u.team === team && u.hp > 0 && u.kind !== 'king') n++;
     for (const b of this.buildings) if (b.team === team) n += b.queue.length;
     return n;
   }
@@ -179,7 +182,7 @@ export class Game {
       || this.villages.find((v) => v.owner === team);
   }
   villagesOf(team) { return this.villages.filter((v) => v.owner === team); }
-  militaryOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && !u.inside); }
+  militaryOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king' && !u.inside); }
   canSee(team, x, y) {
     if (!this.fogOn) return true;
     const tx = Math.floor(x), ty = Math.floor(y);
@@ -421,7 +424,7 @@ export class Game {
       case 'place': return this.place(team, it.kind, it.tx, it.ty, it.ids, it.nodeId ?? null);
       case 'mine': return this.cmdMine(mine(), this.byId.get(it.buildingId));
       case 'unmine': return this.unassignMine(team, it.buildingId);
-      case 'respond': return this.respondOffer(team, it.from, !!it.accept);
+      case 'respond': return this.respondOffer(team, it.from, !!it.accept, it.id ?? null);
       case 'train': return this.train(team, it.buildingId, it.kind);
       case 'cancel': return this.cancelTrain(team, it.buildingId, it.index);
       case 'rally': return this.setRally(team, it.buildingId, it.x, it.y, it.nodeId);
@@ -429,6 +432,10 @@ export class Game {
       case 'unload': return this.unloadShelf(team, it.unitId);
       case 'role': return this.assignRole(team, it.ids, it.role);
       case 'relation': return this.proposeRelation(team, it.other, it.state);
+      case 'gift': return this.giveGift(team, it.other, it.amount || 50);
+      case 'demand': return this.askOf(team, it.other, 'demand', { amount: it.amount || 60 });
+      case 'askwar': return this.askOf(team, it.other, 'askwar', { target: it.target });
+      case 'askaid': return this.askOf(team, it.other, 'askaid', { amount: it.amount || 80 });
       case 'context': return this.contextCommand(team, it.ids, it.x, it.y, !!it.queue, it.want);
       default: return null;
     }
@@ -570,6 +577,7 @@ export class Game {
   }
   applyTrait(u, trait) {
     const t = TRAITS[trait] || TRAITS.green, st = UNITS[u.kind];
+    if (trait === 'veteran' && !(u.rank > 0)) { u.rank = 1; u.xp = RANKS[1].xp; }
     u.trait = trait; u.hpMul = t.hp; u.dmgAdd = t.dmg; u.spdAdd = t.spd;
     u.maxHp = Math.round(st.hp * t.hp); u.hp = u.maxHp; u.speed = st.speed + t.spd;
   }
@@ -1145,13 +1153,13 @@ export class Game {
       if (t.kind !== 'market' || t.built < 1 || t.hp <= 0) return { ok: false, reason: 'Only markets and villages trade.' };
       if (t.team === team) return { ok: true, own: true };
       if (this.rel[team][t.team] === 'war') return { ok: false, reason: `At war with ${this.players[t.team].name}.` };
-      if (this.rel[team][t.team] !== 'trade' || !this.known[team][t.team]) return { ok: false, reason: `You need a trade treaty with ${this.players[t.team].name}.` };
+      if ((this.rel[team][t.team] !== 'trade' && this.rel[team][t.team] !== 'alliance') || !this.known[team][t.team]) return { ok: false, reason: `You need a trade treaty with ${this.players[t.team].name}.` };
       return { ok: true };
     }
     if (t.type === 'village') {
       if (t.owner === team || t.owner === -1) return { ok: true, own: t.owner === team };
       if (this.rel[team][t.owner] === 'war') return { ok: false, reason: `${t.name} belongs to a house you are at war with.` };
-      if (this.rel[team][t.owner] !== 'trade') return { ok: false, reason: `${t.name} trades only under a treaty with ${this.players[t.owner].name}.` };
+      if (this.rel[team][t.owner] !== 'trade' && this.rel[team][t.owner] !== 'alliance') return { ok: false, reason: `${t.name} trades only under a treaty with ${this.players[t.owner].name}.` };
       return { ok: true };
     }
     return { ok: false, reason: 'Nothing to trade with there.' };
@@ -1380,11 +1388,21 @@ export class Game {
 
   setRelation(a, b, state) {
     if (a === b || !RELATIONS.includes(state) || this.rel[a][b] === state) return;
+    const was = this.rel[a][b];
     this.rel[a][b] = this.rel[b][a] = state;
     this.relSince[a][b] = this.relSince[b][a] = this.time;
     const A = this.players[a].name, B = this.players[b].name;
-    const text = state === 'war' ? `${A} declares war on ${B}.` : state === 'trade' ? `${A} and ${B} open trade.` : `${A} and ${B} are at peace.`;
+    const text = state === 'war' ? `${A} declares war on ${B}.` : state === 'trade' ? `${A} and ${B} open trade.` : state === 'alliance' ? `${A} and ${B} swear an alliance.` : was === 'alliance' ? `${A} breaks its alliance with ${B}.` : `${A} and ${B} are at peace.`;
     this.log(a === PLAYER || b === PLAYER ? PLAYER : -1, text, state === 'war' ? 'war' : 'info');
+    if (was === 'war' && state !== 'war') { this.opinionShift(a, b, 15, 'made peace'); this.opinionShift(b, a, 15, 'made peace'); }
+    if (was === 'alliance' && state !== 'alliance') {   // an oath broken is remembered by the one betrayed and, a little, by every house that hears of it
+      this.opinionShift(b, a, -35, 'broke our alliance');
+      for (const p of this.players) if (p.alive && p.team !== a && p.team !== b && this.known[p.team][a]) this.opinionShift(p.team, a, -5, `broke faith with ${HOUSES[b].short}`);
+    }
+    if (state === 'war') {   // striking a house strikes its friends
+      for (const p of this.players) if (p.alive && p.team !== a && p.team !== b && this.rel[p.team][b] === 'alliance') this.opinionShift(p.team, a, -25, `attacked our ally ${HOUSES[b].short}`);
+      this.opinionShift(b, a, -20, 'declared war on us');
+    }
     if (state !== 'war') {
       // units of both houses stand down
       for (const u of this.units) {
@@ -1411,37 +1429,130 @@ export class Game {
   proposeRelation(a, b, state) {
     this.diploNote = '';
     if (!this.alive(b) || a === b) return false;
-    const B = this.players[b].name;
+    const B = this.players[b].name, human = !this.players[b].ai;
     if (state === 'war') { if (this.rel[a][b] !== 'war') this.setRelation(a, b, 'war'); return true; }
     if (this.rel[a][b] === state) return true;
-    if (state === 'peace' && this.rel[a][b] === 'trade') { this.setRelation(a, b, 'peace'); return true; } // either side may cancel a treaty
+    if (state === 'peace' && (this.rel[a][b] === 'trade' || this.rel[a][b] === 'alliance')) { this.setRelation(a, b, 'peace'); return true; } // either side may cancel a treaty
+    if (state === 'trade' && this.rel[a][b] === 'alliance') return true;   // allies trade freely
     if (!this.known[a][b]) return this.deny(a, `You have not met ${B} yet. Scout toward them.`);
     if (this.rel[a][b] === 'war') {
       const wait = this.parleyIn(a, b);
       if (wait > 0) return this.deny(a, `${B} will not parley for ${Math.ceil(wait)} more seconds.`);
-      if (state === 'trade') return this.deny(a, `Make peace with ${B} first, then propose trade.`);
-      if (state === 'peace' && this.players[b].ai && !this.willMakePeace(b, a)) { this.snub[b][a] = this.time; return this.deny(a, `${B} refuses peace: they think they are winning. Beat their army or wait.`); }
+      if (state !== 'peace') return this.deny(a, `Make peace with ${B} first, then propose ${state === 'alliance' ? 'an alliance' : 'trade'}.`);
+      if (state === 'peace' && this.players[b].ai) {
+        const j = dip.judge(this, 'peace', a, b);
+        if (!j.ok) { this.snub[b][a] = this.time; return this.deny(a, j.why); }
+        if (!this.willMakePeace(b, a)) { this.snub[b][a] = this.time; return this.deny(a, `${B} refuses peace: they think they are winning. Beat their army or wait.`); }
+      }
     }
     // a pending offer from them to us is simply accepted
-    const back = this.offers.findIndex((o) => o.from === b && o.to === a && o.state === state);
-    if (back >= 0) return this.respondOffer(a, b, true);
+    const back = this.offers.findIndex((o) => o.from === b && o.to === a && (o.kind || 'treaty') === 'treaty' && o.state === state);
+    if (back >= 0) return this.respondOffer(a, b, true, this.offers[back].id);
     if (this.players[b].ai) {
       if (a === PLAYER && this.time - this.snub[b][a] < 45 && state === 'trade') return this.deny(a, `${B} is still sulking over your last offer (${Math.ceil(45 - (this.time - this.snub[b][a]))}s).`);
+      if (state === 'trade' || state === 'alliance') {
+        const j = dip.judge(this, state, a, b);
+        if (!j.ok) { if (state === 'alliance') dip.snubbed(this, 'alliance', a, b); else this.snub[b][a] = this.time; return this.deny(a, j.why); }
+      }
+      if (state === 'alliance') { dip.exec(this, 'alliance', a, b); if (a === PLAYER) dip.record(this, b, a, 'alliance', `${dip.leaderName(this, b)} of ${HOUSES[b].short} accepts your alliance.`, 'accepted'); return true; }
       this.setRelation(a, b, state);
       return true;
     }
-    if (this.offers.some((o) => o.from === a && o.to === b && o.state === state)) return this.deny(a, `Your offer to ${B} is still waiting.`);
-    this.offers.push({ from: a, to: b, state, t: this.time });
-    this.log(b === PLAYER ? PLAYER : -1, `${this.players[a].name} offers a ${state === 'trade' ? 'trade treaty' : 'peace'}.`, 'info');
+    if (this.offers.some((o) => o.from === a && o.to === b && (o.kind || 'treaty') === 'treaty' && o.state === state)) return this.deny(a, `Your offer to ${B} is still waiting.`);
+    this.offers.push({ id: this.nextLetter++, from: a, to: b, kind: 'treaty', state, t: this.time, expires: this.time + dip.DIPLO.expire.treaty });
+    this.log(b === PLAYER ? PLAYER : -1, `${this.players[a].name} offers ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : 'peace'}.`, 'info');
     return 'pending';
   }
-  respondOffer(team, from, accept) {
-    const i = this.offers.findIndex((o) => o.to === team && o.from === from);
+  // The answer to a letter waiting on `team`. Several kinds: a treaty, an invitation into a war, a demand for tribute, a plea for aid.
+  respondOffer(team, from, accept, id = null) {
+    const i = this.offers.findIndex((o) => o.to === team && o.from === from && (id == null || o.id === id));
     if (i < 0) return false;
-    const [o] = this.offers.splice(i, 1);
-    if (!accept) { this.snub[team][from] = this.time; if (team === PLAYER) this.log(PLAYER, `You decline ${this.players[from].name}.`, 'info'); return false; }
-    if (!this.alive(from)) return false;
-    this.setRelation(o.from, o.to, o.state);
+    const [o] = this.offers.splice(i, 1), kind = o.kind || 'treaty', N = HOUSES[from].short;
+    const settle = (s) => dip.settleLetter(this, o.id, s);
+    if (!accept) {
+      settle('declined');
+      if (kind === 'treaty') { this.snub[team][from] = this.time; if (o.state === 'alliance') dip.snubbed(this, 'alliance', from, team); }
+      else dip.snubbed(this, kind, from, team, o);
+      if (team === PLAYER) this.log(PLAYER, `You decline ${N}.`, 'info');
+      return false;
+    }
+    if (!this.alive(from)) { settle('lapsed'); return false; }
+    if (kind === 'treaty') {
+      if (o.state === 'alliance') dip.exec(this, 'alliance', from, team); else this.setRelation(o.from, o.to, o.state);
+      settle('accepted'); return true;
+    }
+    if (kind === 'tribute' || kind === 'aid') {
+      if (this.players[team].gold < o.amount) { this.offers.splice(i, 0, o); return this.deny(team, `You do not have ${o.amount} coin.`); }
+      dip.exec(this, kind, from, team, o); settle('accepted');
+      this.log(team === PLAYER ? PLAYER : -1, kind === 'tribute' ? `You pay ${o.amount} coin to ${N}.` : `You send ${o.amount} coin to ${N}.`, 'info');
+      return true;
+    }
+    if (kind === 'joinwar') {
+      if (!this.alive(o.target)) { settle('lapsed'); return false; }
+      dip.exec(this, 'joinwar', from, team, o); settle('accepted');
+      this.log(team === PLAYER ? PLAYER : -1, `You join ${N} against ${HOUSES[o.target].short}.`, 'war');
+      return true;
+    }
+    return false;
+  }
+  // letters left unanswered lapse; ignoring a demand or a call to arms counts as refusing it
+  updateDiplomacy(dt) {
+    this._opT -= dt;
+    if (this._opT <= 0) { this._opT = dip.DIPLO.opinionEvery; dip.drift(this); }
+    for (let i = this.offers.length - 1; i >= 0; i--) {
+      const o = this.offers[i];
+      if (o.expires == null) o.expires = this.time + dip.DIPLO.expire.treaty;
+      if (this.time < o.expires) continue;
+      this.offers.splice(i, 1); dip.settleLetter(this, o.id, 'ignored');
+      if ((o.kind === 'tribute' || o.kind === 'joinwar' || o.kind === 'aid') && this.players[o.to]) dip.snubbed(this, o.kind, o.from, o.to, o);
+    }
+  }
+  // how hard each house leans on the independent and rival villages around it, and how many villages lean its way (cached: it walks every village)
+  influenceMap() {
+    if (this._infl && this.time - this._inflT < 3) return this._infl;
+    const pull = new Array(this.houses).fill(0), leaning = new Array(this.houses).fill(0);
+    for (const v of this.villages) {
+      const pv = this.pullsFor(v);
+      for (let i = 0; i < this.houses; i++) if (v.owner !== i) pull[i] += pv[i];
+      if (v.owner < 0 && v.lean >= 0) leaning[v.lean]++;
+    }
+    this._inflT = this.time; return (this._infl = { pull, leaning });
+  }
+  opinionShift(a, b, d, why) { dip.shift(this, a, b, d, why); }
+  // ---- what the player may ask of another house -------------------------------------------------------
+  giveGift(a, b, amount) {
+    this.diploNote = '';
+    if (!this.alive(b) || a === b || !this.known[a][b]) return this.deny(a, 'You have not met them.');
+    amount = Math.floor(amount);
+    if (amount < dip.DIPLO.minGiftGold) return this.deny(a, `A gift of less than ${dip.DIPLO.minGiftGold} coin insults them.`);
+    if (this.players[a].gold < amount) return this.deny(a, 'You do not have that much coin.');
+    const pr = this.players[b].persona || { greed: 0.5 };
+    this.players[a].gold -= amount; this.players[b].gold += amount;
+    const fresh = dip.cooled(this, a, b, 'gift'); dip.stamp(this, a, b, 'gift');
+    this.opinionShift(b, a, Math.min(18, (amount / 6) * (1 + pr.greed * 0.5)) * (fresh ? 1 : 0.3), 'sent a gift');
+    const text = `${this.players[a].name} sends ${amount} coin to ${HOUSES[b].short}.`;
+    dip.record(this, a, b, 'gift', text, 'note'); this.log(a === PLAYER || b === PLAYER ? PLAYER : -1, text, 'info');
+    return true;
+  }
+  askOf(a, b, kind, ctx = {}) {   // kind: demand | askwar | askaid
+    this.diploNote = '';
+    if (!this.alive(b) || a === b || !this.known[a][b]) return this.deny(a, 'You have not met them.');
+    if (!this.players[b].ai) return this.deny(a, 'Only rival lords answer at once.');
+    const map = { demand: 'tribute', askwar: 'joinwar', askaid: 'aid' }, jk = map[kind];
+    if (!dip.cooled(this, a, b, kind)) return this.deny(a, `${HOUSES[b].short} has heard enough from you for now.`);
+    if (kind === 'askwar' && (this.rel[a][b] === 'war')) return this.deny(a, 'You are at war with them.');
+    if (kind === 'askwar' && (ctx.target == null || ctx.target === a || ctx.target === b || !this.alive(ctx.target))) return this.deny(a, 'Choose a house to fight.');
+    if (ctx.amount != null && (this.players[a].gold < 0)) return false;
+    dip.stamp(this, a, b, kind);
+    const j = dip.judge(this, jk, a, b, ctx);
+    const who = `${dip.leaderName(this, b)} of ${HOUSES[b].short}`;
+    if (!j.ok) {
+      if (kind === 'demand') this.opinionShift(b, a, -12, 'demanded tribute'); else if (kind === 'askwar') this.opinionShift(b, a, -2); else this.opinionShift(b, a, -1);
+      dip.record(this, b, a, kind, `${who} refuses: ${j.why}`, 'declined'); return this.deny(a, j.why);
+    }
+    dip.exec(this, jk, a, b, ctx);
+    const text = kind === 'demand' ? `${who} pays ${ctx.amount} coin to avoid trouble.` : kind === 'askwar' ? `${who} agrees to fight ${HOUSES[ctx.target].short}.` : `${who} sends ${ctx.amount} coin.`;
+    dip.record(this, b, a, kind, text, 'accepted'); this.log(a === PLAYER ? PLAYER : -1, text, 'good');
     return true;
   }
 
@@ -1548,6 +1659,8 @@ export class Game {
     this.time += dt;
     this.visT -= dt;
     if (this.visT <= 0) { this.updateVisibility(); this.visT = 0.25; }
+    this.updateKings(dt);
+    this.updateDiplomacy(dt);
     this.updateBuildings(dt);
     this.updateEconomy(dt);
     this.updateVillages(dt);
@@ -1623,14 +1736,14 @@ export class Game {
   // idle soldiers of the lord standing around a village (an occupation force)
   watchersOf(v) {
     let n = 0;
-    for (const u of this.units) if (u.team === v.owner && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - v.x, u.y - v.y) <= 7) n++;
+    for (const u of this.units) if (u.team === v.owner && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - v.x, u.y - v.y) <= 7) n += this.guardWeight(u);
     return n;
   }
   // soldiers keeping a castle: those garrisoned inside plus idle ones standing watch nearby
   guardOf(b) {
     let n = 0;
-    for (const id of b.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0 && SOLDIER.has(u.kind)) n++; }
-    for (const u of this.units) if (u.team === b.team && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - b.x, u.y - b.y) <= GUARD.watch + b.size / 2) n++;
+    for (const id of b.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0 && SOLDIER.has(u.kind)) n += this.guardWeight(u); }
+    for (const u of this.units) if (u.team === b.team && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - b.x, u.y - b.y) <= GUARD.watch + b.size / 2) n += this.guardWeight(u);
     return n;
   }
   // influence of each house on a village: sum over its seats, falling off linearly with distance
@@ -1651,7 +1764,12 @@ export class Game {
       if (o === v || o.owner < 0) continue;
       const d = Math.hypot(v.x - o.x, v.y - o.y), inf = INFLUENCE_HOME;
       if (d >= inf.r) continue;
-      pulls[o.owner] += (1 - d / inf.r) * inf.w * (GUARD.floor + (1 - GUARD.floor) * Math.min(1, o.garrison.length / GUARD.full));
+      pulls[o.owner] += (1 - d / inf.r) * inf.w * (GUARD.floor + (1 - GUARD.floor) * Math.min(1, this.garrisonWeight(o) / GUARD.full));
+    }
+    for (const p of this.players) {   // a ruler among the folk sways them: handshakes, feasts, promises
+      const k = this._kings?.[p.team]; if (!k || k.inside || !p.alive) continue;
+      const d = Math.hypot(v.x - k.x, v.y - k.y); if (d >= KING.pullR) continue;
+      pulls[p.team] += KING.pull * (1 - d / KING.pullR) * (1 + RANK_BONUS.guard * (k.rank || 0));
     }
     for (const w of v.news || []) pulls[w.team] += w.amt;   // word brought by wanderers from a village that team holds
     return pulls;
@@ -1699,7 +1817,7 @@ export class Game {
         }
         if (v.loyalty >= SUBMIT_LOYALTY && v.lean >= 0 && this.alive(v.lean)) this.submit(v, v.lean, v.spyFlip === v.lean ? 'spy' : 'castle');
       } else {
-        const vd = this.districtAt(v.owner, v.x, v.y), own = pulls[v.owner] + 0.12 * Math.min(6, v.garrison.length + this.watchersOf(v)) + (vd ? 0.06 * vd.score : 0);   // soldiers billeted in or standing watch over the village steady it
+        const vd = this.districtAt(v.owner, v.x, v.y), own = pulls[v.owner] + 0.12 * Math.min(6, this.garrisonWeight(v) + this.watchersOf(v)) + (vd ? 0.06 * vd.score : 0);   // soldiers billeted in or standing watch over the village steady it
         const net = own - bp;
         if (own === 0 && bp === 0) v.loyalty = Math.max(0, v.loyalty - 0.06 * dt); // a lord far away is slowly forgotten
         else v.loyalty = Math.max(0, Math.min(100, v.loyalty + net * LOYALTY_RATE * dt));
@@ -1750,6 +1868,7 @@ export class Game {
     v.loyalty = how === 'pillage' ? 48 : 62;
     v.protection = v.maxProtection * 0.4;
     v.hitT = 0; v.flash = 1;
+    if (prev >= 0 && prev !== team) this.opinionShift(prev, team, how === 'pillage' ? -20 : -10, how === 'pillage' ? `sacked ${v.name}` : `swayed ${v.name} away`);
     const who = HOUSES[team].short;
     const text = { pillage: `${v.name} falls to ${who} after the sack.`, castle: `${v.name} bows to ${who}'s influence.`, spy: `${v.name} is turned by ${who}'s spy.` }[how] || `${v.name} submits to ${who}.`;
     this.log(team === PLAYER || prev === PLAYER ? PLAYER : -1, text + (taken ? ` ${taken} building${taken > 1 ? 's' : ''} in the town change hands.` : '') + (spoils ? ' ' + spoils.text : ''), team === PLAYER ? 'good' : 'warn');
@@ -1787,7 +1906,7 @@ export class Game {
     u.aggroT -= dt;
     if (u.aggroT > 0) return;
     u.aggroT = 0.45;
-    const t = this.closestEnemy(u, Math.max(6.5, s.range + 2), u.team);
+    const t = this.closestEnemy(u, u.kind === 'king' ? 4.5 : Math.max(6.5, s.range + 2), u.team);
     if (t) { u.task = { type: 'attack', targetId: t.id }; u.repathT = 0; }
   }
 
@@ -1810,18 +1929,21 @@ export class Game {
     let dmg = s.dmg;
     const arms = this.players[u.team].arms || 0;
     dmg += u.dmgAdd || 0;
+    dmg *= 1 + RANK_BONUS.dmg * (u.rank || 0);
+    if (this.kingNear(u)) dmg *= 1 + KING.dmg;
+    if (this.players[u.team].leaderless) dmg *= KING.leaderless;
     if (this.players[u.team].broke) dmg *= BROKE.fight;
     if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
     if (t.type === 'building') dmg *= s.bld;
-    if (s.range > 1.6) { this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team }); this.sfx('arrow', u.x, u.y); }
-    else this.damage(t, dmg, u.team);
+    if (s.range > 1.6) { this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team, by: u.id }); this.sfx('arrow', u.x, u.y); }
+    else this.damage(t, dmg, u.team, u);
   }
 
   hitVillage(u, v, dmg, s) {
     const m = v.militia || 0;
-    v.protection -= dmg / (1 + 0.2 * v.garrison.length + 0.06 * m); v.hitT = 6; v.flash = 0.2;
+    v.protection -= dmg / (1 + 0.2 * this.garrisonWeight(v) + 0.06 * m); v.hitT = 6; v.flash = 0.2;
     if (m > 0) v.pop = Math.max(2, v.pop - MILITIA.loss * Math.min(m, 4));   // militia fall as they fight
     v.loyalty = Math.max(0, v.loyalty - 1.5);
     const loot = Math.min(2, v.stores.gold || 0);
@@ -1833,11 +1955,83 @@ export class Game {
   }
 
   sfx(name, x, y) { if (this.sfxOn && this.sfxQ.length < 40) this.sfxQ.push({ name, x, y }); }
-  damage(t, amt, byTeam) {
+  // ---- the ruler ---------------------------------------------------------------------------------------
+  crown(team, x, y) {
+    const p = this.players[team], fac = HOUSES[team]?.faction;
+    if (!p.persona) {   // a temper for the leader: four leanings, the strongest names him
+      const r = () => 0.15 + this.rnd() * 0.75, aggr = r(), greed = r(), honor = r(), wary = r();
+      const top = Math.max(aggr, greed, honor, wary);
+      p.persona = { aggr, greed, honor, wary, temper: aggr === top ? 'warlike' : greed === top ? 'mercantile' : honor === top ? 'honourable' : 'cunning' };
+    }
+    const k = this.addUnit('king', team, x, y);
+    k.title = KING.titles[fac] || 'King'; k.hpMul = 1;
+    p.kingId = k.id; p.kingName = k.name; p.heirAt = null;
+    return k;
+  }
+  kingOf(team) { const k = this.byId.get(this.players[team]?.kingId); return k && k.hp > 0 ? k : null; }
+  // is a soldier of `team` standing within the king's presence?
+  kingNear(u) {
+    const k = this._kings?.[u.team]; if (!k || k.hp <= 0 || k === u) return false;
+    const ax = k.inside ? this.byId.get(k.inside)?.x : k.x, ay = k.inside ? this.byId.get(k.inside)?.y : k.y;
+    return ax != null && Math.hypot(u.x - ax, u.y - ay) <= KING.aura;
+  }
+  updateKings(dt) {
+    this._kings = this.players.map((p) => { const k = this.byId.get(p.kingId); return k && k.hp > 0 ? k : null; });
+    for (const p of this.players) {
+      if (!p.alive || this._kings[p.team] || p.heirAt == null) continue;
+      p.leaderless = true;
+      if (this.time >= p.heirAt && this.seatOf(p.team)) {
+        const s = this.seatOf(p.team), k = this.crown(p.team, s.x + 0.4, s.y + 3.4);
+        p.leaderless = false; this._kings[p.team] = k;
+        this.log(p.team === PLAYER ? PLAYER : -1, p.team === PLAYER ? `An heir, ${shortName(k.name)}, takes the crown of your house.` : `${p.name} has a new ${k.title}: ${k.name}.`, p.team === PLAYER ? 'good' : 'info');
+      }
+    }
+  }
+  kingFalls(k, byTeam, by) {
+    const p = this.players[k.team]; if (!p || p.kingId !== k.id) return;
+    p.heirAt = this.time + KING.heir; p.leaderless = true; p.kingsLost = (p.kingsLost || 0) + 1;
+    for (const v of this.villages) if (v.owner === k.team) v.loyalty = Math.max(0, v.loyalty - KING.loyaltyHit);
+    if (by) this.award(by, KING.killXp);
+    this.log(k.team === PLAYER || byTeam === PLAYER ? PLAYER : -1, k.team === PLAYER ? `Your ${k.title} ${shortName(k.name)} has fallen! Your soldiers lose heart until an heir rises.` : `${k.title} ${shortName(k.name)} of ${HOUSES[k.team].short} has fallen!`, k.team === PLAYER ? 'bad' : 'good');
+    if (this.opinionShift && byTeam >= 0 && byTeam !== k.team) this.opinionShift(k.team, byTeam, -40, 'slew your king');
+  }
+
+  // ---- ratings -----------------------------------------------------------------------------------------
+  // A soldier's rank: experience for damage dealt and for kills; each rank adds damage and health (RANK_BONUS) and raises its worth on guard.
+  ranked(u) { return u.type === 'unit' && (SOLDIER.has(u.kind) || u.kind === 'recruit' || u.kind === 'scout' || u.kind === 'king'); }
+  award(u, xp) {
+    if (!u || u.hp <= 0 || !this.ranked(u) || !(xp > 0)) return;
+    u.xp = (u.xp || 0) + xp * (this.kingNear(u) ? 1 + KING.xp : 1);
+    while ((u.rank || 0) < RANKS.length - 1 && u.xp >= RANKS[(u.rank || 0) + 1].xp) this.promote(u);
+  }
+  promote(u) {
+    const r = (u.rank || 0) + 1, grow = (1 + RANK_BONUS.hp * r) / (1 + RANK_BONUS.hp * (r - 1)), old = u.maxHp;
+    u.rank = r; u.xp = Math.max(u.xp || 0, RANKS[r].xp);
+    u.maxHp = Math.round(old * grow); u.hp = Math.min(u.maxHp, u.hp + (u.maxHp - old) + old * 0.15);
+    if (this.sfxOn) this.fx.push({ x: u.x, y: u.y, kind: 'rank', size: 1, born: this.time });
+    if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is promoted to ${RANKS[r].label}.`, 'good');
+    return r;
+  }
+  garrisonWeight(t) { let n = 0; for (const id of t.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0) n += this.guardWeight(u); } return n; }
+  // worth of one soldier for the standing guard of a keep or village (1 for a rookie)
+  guardWeight(u) { return (u.kind === 'king' ? 2 : 1) * (1 + RANK_BONUS.guard * (u.rank || 0)); }
+  // fighting power of one unit: health times damage per second, 1.0 for a rookie footman; archers count double for fighting from range
+  powerOf(u) {
+    const s = UNITS[u.kind]; if (!s || !s.dmg || u.kind === 'serf' || u.kind === 'camel' || u.kind === 'spy' || u.kind === 'scholar') return 0;
+    return (u.maxHp * (((s.dmg + (u.dmgAdd || 0)) * (1 + RANK_BONUS.dmg * (u.rank || 0))) / s.cd)) / 818 * (s.range > 1.6 ? 2 : 1);
+  }
+  // everyone a house could field, garrisoned or marching
+  forcesOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && this.powerOf(u) > 0); }
+  powerOfTeam(team) { return this.forcesOf(team).reduce((a, u) => a + this.powerOf(u), 0); }
+  damage(t, amt, byTeam, by = null) {
     if (t.hp <= 0) return;
+    const before = t.hp;
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
+    if (by) this.award(by, Math.min(amt, before) * XP.perDamage);
     if (t.hp <= 0) {
-      t.hp = 0; this.sfx(t.type === 'building' ? 'crumble' : 'death', t.x, t.y);
+      t.hp = 0;
+      if (t.kind === 'king') this.kingFalls(t, byTeam, by);
+      if (by) this.award(by, t.type === 'building' ? XP.killBuilding : XP.kill * (1 + XP.killRankMul * (t.rank || 0))); this.sfx(t.type === 'building' ? 'crumble' : 'death', t.x, t.y);
       if (this.sfxOn && this.fx.length < 30) this.fx.push({ x: t.x, y: t.y, kind: t.type === 'building' ? 'collapse' : 'poof', size: t.size || 1, born: this.time });
       if (t.type === 'building') {
         if (t.team === PLAYER) this.log(PLAYER, `Your ${BUILDINGS[t.kind].label} is destroyed!`, 'bad');
@@ -1857,7 +2051,7 @@ export class Game {
       if (!t || t.hp <= 0) { p.dead = true; continue; }
       const dx = t.x - p.x, dy = t.y - p.y, d = Math.hypot(dx, dy), step = 13 * dt;
       p.ang = Math.atan2(dy, dx);
-      if (d <= step + 0.2) { p.dead = true; this.damage(t, p.dmg, p.team); } else { p.x += (dx / d) * step; p.y += (dy / d) * step; }
+      if (d <= step + 0.2) { p.dead = true; this.damage(t, p.dmg, p.team, p.by != null ? this.byId.get(p.by) : null); } else { p.x += (dx / d) * step; p.y += (dy / d) * step; }
     }
     this.projectiles = this.projectiles.filter((p) => !p.dead);
     for (const f of this.floaters) f.age += dt;
@@ -2099,7 +2293,7 @@ export class Game {
       v: 1, size: this.W, seed: this.seed, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
       time: this.time, nextId: this.nextId, outcome: this.outcome, forfeits: this.forfeits || 0,
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
-      players: clean(this.players), known: this.known, offers: clean(this.offers), snub: this.snub, rel: this.rel, relSince: this.relSince,
+      players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
       resAmt: this.resources.map((r) => r.amount), seen: this.seen.map(rle),
     };
@@ -2110,7 +2304,7 @@ export class Game {
     this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff });
     this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0;
     this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
-    this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; this.rel = d.rel; this.relSince = d.relSince;
+    this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;
     this.alertT = d.alertT; this.winHold = d.winHold; this.richHold = d.richHold; this.named = d.named.map((x) => new Set(x));
     { let a = ((this.seed ^ 0x9e3779b9) + Math.floor(this.time * 1000)) >>> 0; this.rnd = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
     d.resAmt.forEach((a, i) => { if (this.resources[i]) this.resources[i].amount = a; });

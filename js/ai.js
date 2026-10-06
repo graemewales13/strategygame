@@ -2,7 +2,8 @@
 // They start with a home village of thirty folk and three serfs: no keep, no army. They train serfs, gather, build in a fixed order,
 // raise a keep toward the nearest free village, contest villages, send a spy, then eventually go to war.
 
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, WAGE_FREE, ALL_GOODS, RES_VALUE } from './config.js';
+import { deliberate, DIPLO } from './diplomacy.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -28,6 +29,13 @@ function think(game, team, p) {
   if (!seat) return;
   const serfs = game.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0);
   const t = game.time;
+
+  // 0. the king keeps to his own hearth: he fights what comes to him and walks home after
+  const king = game.kingOf(team);
+  if (king && !king.inside) {
+    const dh = Math.hypot(king.x - seat.x, king.y - seat.y);
+    if ((king.task.type === 'idle' && dh > 7) || (king.task.type === 'attack' && dh > KING.leash) || (king.hp < king.maxHp * 0.4 && dh > 4)) game.cmdMove([king], seat.x + 0.4, seat.y + 4.2);
+  }
 
   // 1. serfs first: drafted from the home village (or trained at a keep)
   const serfWant = 5 + Math.min(11, Math.floor(t / 55));
@@ -75,6 +83,8 @@ function think(game, team, p) {
       for (const q of game.players) if (q.alive && q.team !== team && game.known[team][q.team] && game.rel[team][q.team] === 'peace' && !(q.team === PLAYER && game.offers.some((o) => o.from === team && o.to === PLAYER))) { game.proposeRelation(team, q.team, 'trade'); break; }
     }
   }
+  p.dipT = (p.dipT ?? 18) - 1.5;
+  if (p.dipT <= 0) { p.dipT = DIPLO.every; deliberate(game, team); }
   treasury(game, team, p, seat, serfs);
 
   // 3. idle serfs go to work, spread by share: timber 45%, grain 35%, coin 20% (coin only once barracks stand)
@@ -161,7 +171,9 @@ function think(game, team, p) {
       if (!q.alive || q.team === team) continue;
       const s = game.seatOf(q.team);
       if (!s) continue;
-      const d = Math.hypot(s.x - seat.x, s.y - seat.y) + (game.rel[team][q.team] === 'trade' ? 500 : 0); // trade partners are the last to be attacked
+      if (game.rel[team][q.team] === 'alliance') continue;   // oaths are kept (until a leader's temper breaks them)
+      if (game.rel[team][q.team] !== 'war' && (game.opinion[team][q.team] > 40 || game.time - game.relSince[team][q.team] < 240)) continue;   // friends, and a house we have just made peace with, are left alone
+      const d = Math.hypot(s.x - seat.x, s.y - seat.y) + (game.rel[team][q.team] === 'trade' ? 500 : 0) + game.opinion[team][q.team] * 1.2 - (game.rel[team][q.team] === 'war' ? 300 : 0); // trade partners and friends are the last to be attacked; a house already at war is finished first
       if (d < bd) { bd = d; target = q; }
     }
     if (target) {
@@ -170,7 +182,8 @@ function think(game, team, p) {
       if (ready.length >= 7) {
         const foe = game.buildings.filter((b) => b.team === target.team && b.hp > 0)
           .sort((a, c) => (c.kind === 'keep' ? 1 : 0) - (a.kind === 'keep' ? 1 : 0) || Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
-        if (foe) game.cmdAttack(ready, foe);
+        const goal = foe || game.seatOf(target.team);   // a house with only a village left is finished there
+        if (goal) game.cmdAttack(ready, goal);
       }
     }
   } else {

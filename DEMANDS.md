@@ -44,3 +44,9 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - Splash click, every main-menu button, Skirmish/Begin, Continue, Options, Campaign, and the HUD Menu/Map/speed/house buttons must respond to real mouse clicks. Run `node tools/ui-smoke.cjs` (serve the repo on :8123 first) before pushing any UI or startup change.
 
 - Board size is chosen before the match and stored in the browser; do not make the land or wealth victory rules depend on it.
+
+## Rulers, ratings and rival houses
+- Every house is led by a named **king** character; soldiers carry **ratings** (ranks) that matter in combat and in influence over villages.
+- Information and interaction with other houses must be rich, like a real strategy game: stats (size, money, influence, power), trade/war/alliance, and rival leaders who **send letters** (alliance offers, calls to join wars against third houses, tribute demands, aid requests). Keep this on the Council screen (C) and the house panel.
+- An AI that makes peace must not re-declare war within moments; a house with only a village left must still be attacked to finish it (an idle player must lose).
+

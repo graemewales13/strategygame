@@ -265,3 +265,37 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 #objectives .osteps { display: flex; gap: 4px; margin-top: 7px; }
 #objectives .osteps i { flex: 1; height: 4px; border-radius: 2px; background: #4a3a1a; }
 #objectives .osteps i.on { background: #d6aa44; }
+
+/* ---- the Council of Houses, letters, leaders ---- */
+.rel.alliance { background: #8fd48a; color: #10260f; } .rel.me { background: #e2c15e; color: #1a1209; }
+#diplo .rel, #council .rel { font-size: 10px; padding: 1px 7px; border-radius: 8px; color: #1a1209; text-transform: uppercase; font-weight: 700; }
+#diplo .rel.war, #council .rel.war { color: #fff; }
+#diplo { width: 360px; max-height: calc(100vh - 90px); overflow: auto; }
+#diplo .drow.wrap { flex-wrap: wrap; align-items: center; } #diplo .dlabel, #council .dlabel { font-size: 11px; color: #b9a67a; width: 100%; }
+.dbtn.sm { font-size: 11px !important; padding: 4px 3px !important; }
+.hleader { margin: 6px 0 4px; font-size: 13px; color: #f0e2b6; } .hleader .rk { color: #e2c15e; font-size: 11px; }
+.tmp { font-size: 10px; padding: 0 6px; border-radius: 8px; text-transform: uppercase; background: #4a331a; border: 1px solid #8a6636; margin-left: 4px; }
+.tmp.warlike { border-color: #c4584a; color: #ffb3a8; } .tmp.mercantile { border-color: #d8b24a; color: #f4dc7a; } .tmp.honourable { border-color: #6fb36a; color: #b8e8b2; } .tmp.cunning { border-color: #8a8ad8; color: #c9c9ff; }
+.hstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 6px; }
+.hs { background: #1c140b; border: 1px solid #4a3620; border-radius: 4px; padding: 3px 5px; min-width: 0; }
+.hs label { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: #a8946a; }
+.hs b { font-size: 13px; color: #f6e7b4; font-weight: 600; } .hs small { font-weight: 400; color: #a8946a; font-size: 10px; }
+.att.good { color: #9fe39a; } .att.bad { color: #f09088; }
+#council { position: fixed; top: 54px; left: 14px; right: 14px; bottom: 14px; z-index: 40; background: linear-gradient(#251a0e, #17100a); border: 2px solid #b08f58; border-radius: 8px; box-shadow: 0 10px 40px #000d; padding: 12px 16px; color: #e8d9ae; font: 13px/1.35 Georgia, serif; overflow: auto; user-select: text; }
+#council .chead { display: flex; align-items: baseline; gap: 14px; font-size: 18px; border-bottom: 1px solid #5a4325; padding-bottom: 6px; margin-bottom: 10px; } #council .chead span { font-size: 12px; color: #b9a67a; }
+#council .dx { margin-left: auto; background: none; border: 0; color: #cdbb8a; font-size: 22px; cursor: pointer; }
+.ccards { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
+.hcard { background: rgba(0,0,0,.25); border: 1px solid #5a4325; border-radius: 6px; padding: 8px 10px; }
+.hcard.me { border-color: #e2c15e; } .hcard.fallen { opacity: .5; } .hcard.focus { box-shadow: 0 0 0 2px #e2c15e; }
+.hctop { display: flex; align-items: center; gap: 8px; font-size: 15px; } .hctop .hrank { margin-left: auto; font-size: 20px; color: #e2c15e; } .hctop .rel { margin-left: auto; } .hctop .rel + .hrank { margin-left: 8px; }
+.hmotto { font-size: 11px; color: #a8946a; font-style: italic; }
+#council .drow { display: flex; gap: 5px; margin: 5px 0; } #council .dbtn { flex: 1; padding: 6px 3px; background: #4a331a; color: #f0e2b6; border: 1px solid #8a6636; border-radius: 4px; cursor: pointer; font: inherit; font-size: 12px; }
+#council .dbtn:hover:not(:disabled) { background: #66471f; } #council .dbtn.warbtn { border-color: #a04030; background: #4a1e16; } #council .dbtn:disabled { opacity: .45; cursor: not-allowed; } #council .dbtn.cur { box-shadow: 0 0 0 2px #e8c260 inset; opacity: 1; }
+#council .drow.wrap { flex-wrap: wrap; align-items: center; } #council .drow.wrap .dbtn { flex: 0 0 auto; padding: 4px 9px; }
+#council .dline { color: #cdbb8a; font-size: 12px; margin: 3px 0; } #council .dnote { font-size: 11px; color: #b9a67a; }
+.letters { margin-top: 4px; } .lrow { display: flex; gap: 10px; padding: 3px 4px; border-bottom: 1px solid #3a2a16; font-size: 12.5px; } .lrow .lt { color: #a8946a; width: 40px; flex: none; } .lrow .lx { flex: 1; } .lrow em { color: #a8946a; font-size: 11px; }
+.lrow.accepted em { color: #9fe39a; } .lrow.declined em, .lrow.ignored em { color: #f09088; }
+#offers { width: 340px; align-items: stretch; } .offer { max-width: none; } .offer .oh { display: flex; align-items: baseline; gap: 8px; } .offer .oh .ok { font-size: 11px; text-transform: uppercase; color: #cdbb8a; } .offer .oh small { margin-left: auto; color: #a8946a; }
+.offer .otext { margin: 4px 0; font-style: italic; font-size: 12.5px; line-height: 1.35; } .offer button:disabled { opacity: .4; cursor: not-allowed; }
+.offer.tribute { background: rgba(48,20,14,.95); } .offer.joinwar { background: rgba(44,24,12,.95); }
+@media (max-width: 760px) { .hstats { grid-template-columns: repeat(2, 1fr); } .ccards { grid-template-columns: 1fr; } }

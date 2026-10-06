@@ -17,7 +17,7 @@ What exists on `grok` today, and what still stands between it and a commercial r
 | Campaign | Gives a reason to keep playing past the skirmish | Scripted maps, starting conditions and win text per scenario; the objectives system is the base |
 | Multiplayer | The biggest retention driver for RTS | `Game` is already host-authoritative with intents; needs a transport (WebSocket relay), lockstep or snapshot sync, lobby |
 | Faction mechanics | Peoples differ mostly by name/colour | Unique units, buildings, one economy twist each |
-| AI personalities | Rivals feel alike | Aggressive, trader, turtle; difficulty beyond purse scaling |
+| AI personalities | Leaders now have a temper (warlike, mercantile, honourable, cunning) that colours their letters and wars; their *build* orders are still alike | Temper-specific build orders, difficulty beyond purse scaling |
 | Art and animation | The code-side effects above sit on still sprites; real walk/attack frames and repainted terrain need an artist | Commissioned unit/building sets and tiles, UI polish, trailer-ready screenshots |
 | Real audio | Synth sound is serviceable only | Recorded effects and composed score |
 | Distribution | Players need a download or store page | Package with Electron or Tauri; Steam page, achievements, cloud saves |

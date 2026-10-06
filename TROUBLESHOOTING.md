@@ -102,3 +102,8 @@ The game is now **Auld World** (was Seven Holds). Title, header, README, package
 - Camels: select, click up to 3 markets, it loops until stopped. Markets only (own, or a treaty partner's); villages are refused.
 - Districts: a market with supply, works, homes and service buildings within 20 tiles earns up to +125%; mines, foundries and village tribute also gain per link.
 - Diplomacy: the house chip opens a panel with plain reasons for any refusal (war must last 60 s before peace talks).
+
+## T-038 - Idle player never lost; AI broke peace at once
+- Symptom: with the player idle, AI armies sat at home forever (test "an idle player can be beaten" timed out). Cause: the AI only picked *buildings* of its war target; a house with only a village had none. Fix: attack the target's seat village when no building is left (`ai.js` step 6).
+- Symptom: an AI made peace, then declared war again seconds later (its ally pulled it back in, or a hostility rule fired). Fix: `settled()` in `diplomacy.js`: no new war against a house peace was made with in the last 240 s, and joining an ally's war is refused for the same houses.
+
