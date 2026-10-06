@@ -26,6 +26,12 @@ ui.onReroll = (opts) => {
   ui.firstFocus = false;
   centerOnHall();
 };
+ui.onLoad = (data) => {
+  game.restore(data);
+  ui.setGame(game);
+  renderer.resetWorld?.();
+  centerOnHall();
+};
 function centerOnHall() {
   const s = game.seatOf(0);
   renderer.cam.zoom = 1;

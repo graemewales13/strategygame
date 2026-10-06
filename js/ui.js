@@ -1,4 +1,5 @@
 // Auld World - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
+import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
   TILE, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
@@ -243,6 +244,8 @@ export class UI {
     const tg = e.target;
     if (tg && (tg.tagName === 'TEXTAREA' || (tg.tagName === 'INPUT' && tg.type !== 'checkbox'))) { if (k === 'enter' || k === 'escape') tg.blur?.(); if (k !== 'escape') return; }
     if (k === 'escape') return this.onEsc();
+    if (k === 'f5') { e.preventDefault(); return void this.saveGame('manual'); }
+    if (k === 'f9') { e.preventDefault(); return void this.loadGame('manual'); }
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
     if (k === 't') { this.showStand = !this.showStand; $('standings').classList.toggle('hidden', !this.showStand); return; }
     if (k === 'm' || k === 'tab') { e.preventDefault(); return this.toggleCampaign(); }
@@ -446,7 +449,7 @@ export class UI {
     // events -> toasts
     for (const ev of g.events.splice(0)) if (ev.team === PLAYER || ev.team === -1) this.toast(ev.text, ev.kind);
     this.hudT -= dt;
-    if (this.hudT <= 0) { this.hudT = 0.12; this.renderOffers(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
+    if (this.hudT <= 0) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
@@ -838,6 +841,12 @@ export class UI {
     $('mBegin').onclick = () => this.closeMenu();
     $('mBack').onclick = () => this.showMain();
     $('hContinue').onclick = () => this.closeMenu();
+    $('sbSave').onclick = () => this.saveGame('manual');
+    $('sbLoad').onclick = () => this.loadGame('manual');
+    $('sbAuto').onclick = () => this.loadGame('auto');
+    window.addEventListener('visibilitychange', () => { if (document.hidden) { this.lastAuto = -999; this.autoSave(); } });
+    window.addEventListener('pagehide', () => { this.lastAuto = -999; this.autoSave(); });
+    this.refreshSaveBar();
     $('hNew').onclick = () => this.newValley();
     $('hMap').onclick = () => { this.closeMenu(true); this.toggleCampaign(); };
     $('hSkirmish').onclick = () => this.showSetup();
@@ -870,7 +879,35 @@ export class UI {
     }
   }
   openMenu() { this.menuOpen = true; this.setPaused(false); this.refreshMenu(); this.showMain(); $('campaign').classList.add('hidden'); this.campaignOpen = false; }
-  showMain() { $('menu').classList.add('hidden'); $('mainmenu').classList.remove('hidden'); }
+  // ------------------------------------------------------------ save / load
+  saveGame(slot = 'manual', quiet = false) {
+    const g = this.game;
+    if (!this.started || g.outcome) { if (!quiet) this.toast('There is no game in progress to save.', 'warn'); return false; }
+    const ok = writeSave(slot, g.serialize());
+    if (!quiet) this.toast(ok ? 'Game saved.' : 'Could not save: the browser refused storage (private window or full).', ok ? 'good' : 'warn');
+    this.refreshSaveBar();
+    return ok;
+  }
+  loadGame(slot = 'manual') {
+    const d = readSave(slot);
+    if (!d) { this.toast('No saved game there yet.', 'warn'); return false; }
+    try { this.onLoad(d); } catch (e) { console.error('[auld-world] load failed', e); this.toast('That save could not be loaded: ' + e.message, 'warn'); return false; }
+    this.started = true; this.firstFocus = true; this.closeMenu(); this.toast('Game loaded.', 'good');
+    return true;
+  }
+  autoSave() {
+    if (!this.started || this.game.outcome || this.menuOpen) return;
+    if (this.game.time - (this.lastAuto ?? -999) < 90) return;
+    this.lastAuto = this.game.time; this.saveGame('auto', true);
+  }
+  refreshSaveBar() {
+    const bar = $('savebar'); if (!bar) return;
+    const line = (slot, label) => { const i = saveInfo(slot); return i ? `${label}: ${i.minutes} min played, ${ago(i.saved)}` : `${label}: empty`; };
+    $('sbInfo').textContent = line('manual', 'Saved game') + '  |  ' + line('auto', 'Autosave');
+    $('sbSave').disabled = !this.started || !!this.game.outcome;
+    $('sbLoad').disabled = !saveInfo('manual'); $('sbAuto').disabled = !saveInfo('auto');
+  }
+  showMain() { this.refreshSaveBar(); $('menu').classList.add('hidden'); $('mainmenu').classList.remove('hidden'); }
   showSetup() { $('mainmenu').classList.add('hidden'); $('menu').classList.remove('hidden'); this.refreshMenu(); }
   closeMenu(keepStarted) { this.menuOpen = false; this.started = true; $('menu').classList.add('hidden'); $('mainmenu').classList.add('hidden'); if (!this.firstFocus) { this.focusHall(); this.firstFocus = true; } }
   newValley() {

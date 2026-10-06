@@ -11,18 +11,19 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muvc26ow",
-    "./js/art.js": "./js/art.js?v=muvc26ow",
-    "./js/config.js": "./js/config.js?v=muvc26ow",
-    "./js/entities.js": "./js/entities.js?v=muvc26ow",
-    "./js/game.js": "./js/game.js?v=muvc26ow",
-    "./js/main.js": "./js/main.js?v=muvc26ow",
-    "./js/map.js": "./js/map.js?v=muvc26ow",
-    "./js/names.js": "./js/names.js?v=muvc26ow",
-    "./js/net.js": "./js/net.js?v=muvc26ow",
-    "./js/render.js": "./js/render.js?v=muvc26ow",
-    "./js/terrain.js": "./js/terrain.js?v=muvc26ow",
-    "./js/ui.js": "./js/ui.js?v=muvc26ow"
+    "./js/ai.js": "./js/ai.js?v=muwkhh7m",
+    "./js/art.js": "./js/art.js?v=muwkhh7m",
+    "./js/config.js": "./js/config.js?v=muwkhh7m",
+    "./js/entities.js": "./js/entities.js?v=muwkhh7m",
+    "./js/game.js": "./js/game.js?v=muwkhh7m",
+    "./js/main.js": "./js/main.js?v=muwkhh7m",
+    "./js/map.js": "./js/map.js?v=muwkhh7m",
+    "./js/names.js": "./js/names.js?v=muwkhh7m",
+    "./js/net.js": "./js/net.js?v=muwkhh7m",
+    "./js/render.js": "./js/render.js?v=muwkhh7m",
+    "./js/save.js": "./js/save.js?v=muwkhh7m",
+    "./js/terrain.js": "./js/terrain.js?v=muwkhh7m",
+    "./js/ui.js": "./js/ui.js?v=muwkhh7m"
   }
 }
 </script>
@@ -30,7 +31,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muvc26ow';
+window.__BUILD = 'muwkhh7m';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -108,6 +109,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
       <button class="hot" id="hOptions" style="top:62.4%" aria-label="Options"></button>
       <button class="hot" id="hQuit" style="top:71.0%" aria-label="Quit"></button>
     </div>
+    <div id="savebar"><span id="sbInfo"></span><button id="sbSave">Save game (F5)</button><button id="sbLoad">Load saved game (F9)</button><button id="sbAuto">Load autosave</button></div>
   </div>
 
   <!-- Skirmish and options -->

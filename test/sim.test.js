@@ -772,3 +772,14 @@ test('town: a rival village that falls takes the buildings standing within four 
   assert.equal(near.team, PLAYER, 'the town building changes hands');
   assert.equal(far.team, 1, 'a distant building stays with its lord');
 });
+
+test('save/load: a game serialises to JSON and restores to the same state, and play carries on', () => {
+  const g = new Game({ seed: 7, houses: 4 }); run(g, 120);
+  const json = JSON.stringify(g.serialize());
+  const h = new Game({ seed: 1, houses: 3 }); h.restore(JSON.parse(json));
+  const sum = (x) => JSON.stringify({ t: x.time, u: x.units.length, b: x.buildings.length, v: x.villages.map((q) => q.owner).join(''), gold: x.players.map((p) => Math.round(p.gold)), seen: x.seen[0].reduce((a, b) => a + b, 0), houses: x.houses, rel: x.rel });
+  assert.equal(sum(h), sum(g), 'same state after load');
+  assert.ok(h.byId.get(h.units[0].id) === h.units[0], 'ids resolve to the loaded entities');
+  run(h, 60); assert.ok(h.time > g.time && h.units.length > 0, 'the restored game keeps ticking');
+  assert.throws(() => h.restore({ v: 99 }), /different version/);
+});

@@ -2067,6 +2067,37 @@ export class Game {
     }
   }
 
+  // ------------------------------------------------------------------ save / load
+  // A save keeps the seed (the map is regenerated, identically) plus everything that changes during play. Entities hold ids, never
+  // references to each other, so plain JSON round-trips them. Fields starting with "_" are caches and are rebuilt.
+  serialize() {
+    const clean = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)));
+    const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
+    return {
+      v: 1, seed: this.seed, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
+      time: this.time, nextId: this.nextId, outcome: this.outcome, forfeits: this.forfeits || 0,
+      units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
+      players: clean(this.players), known: this.known, offers: clean(this.offers), snub: this.snub, rel: this.rel, relSince: this.relSince,
+      alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
+      resAmt: this.resources.map((r) => r.amount), seen: this.seen.map(rle),
+    };
+  }
+  restore(d) {
+    if (!d || d.v !== 1) throw new Error('This save is from a different version.');
+    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff });
+    this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0;
+    this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
+    this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; this.rel = d.rel; this.relSince = d.relSince;
+    this.alertT = d.alertT; this.winHold = d.winHold; this.richHold = d.richHold; this.named = d.named.map((x) => new Set(x));
+    { let a = ((this.seed ^ 0x9e3779b9) + Math.floor(this.time * 1000)) >>> 0; this.rnd = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+    d.resAmt.forEach((a, i) => { if (this.resources[i]) this.resources[i].amount = a; });
+    this.seen = d.seen.map((r) => { const a = new Uint8Array(this.W * this.H); let p = 0; for (let i = 0; i < r.length; i += 2) { a.fill(r[i], p, p + r[i + 1]); p += r[i + 1]; } return a; });
+    this.byId = new Map(); for (const e of [...this.units, ...this.buildings, ...this.villages]) this.byId.set(e.id, e);
+    this.floaters = []; this.events.length = 0;
+    this.recomputeWalk(); this.visT = 0; this.updateVisibility(true);
+    return this;
+  }
+
   // ------------------------------------------------------------------ snapshot for a future network client
   snapshot() {
     return {

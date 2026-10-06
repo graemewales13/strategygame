@@ -243,3 +243,9 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .stoprow.cur { background: #3d2c1488; }
 .stoprow .sn { width: 190px; color: #f0e2b6; }
 .stoprow .st { flex: 1; color: #cdbb8a; }
+
+/* save / load bar under the painted main menu */
+#savebar { position: absolute; left: 50%; bottom: 2.5%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; padding: 8px 12px; background: rgba(12,9,4,.78); border: 1px solid #7a5f2c; border-radius: 6px; font: 13px Georgia, serif; color: #e8d9ae; z-index: 5; max-width: 94vw; }
+#savebar button { background: #3a2b12; color: #f3e3b0; border: 1px solid #a78437; border-radius: 4px; padding: 6px 12px; font: 600 13px Georgia, serif; cursor: pointer; }
+#savebar button:hover:not(:disabled) { background: #5a4220; }
+#savebar button:disabled { opacity: .4; cursor: default; }
