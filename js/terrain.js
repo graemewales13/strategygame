@@ -183,16 +183,16 @@ export class FogLayer {
     const g = this.g, now = performance.now(), dt = Math.min(0.5, (now - this.last) / 1000);
     this.acc += dt;
     if (this.acc < 0.1) return;
-    const step = Math.min(1, this.acc * 6); this.acc = 0; this.last = now;
+    const step = Math.min(1, this.acc * 10); this.acc = 0; this.last = now;
     if (this.seenRef !== g.seen[PLAYER] && this.seenRef) { this.cur.fill(1); this.drawn = false; }   // a new valley starts under fog
     this.seenRef = g.seen[PLAYER];
     const seen = g.seen[PLAYER], vis = g.vis[PLAYER], d = this.img.data, cur = this.cur;
     let dirty = false;
     for (let i = 0; i < cur.length; i++) {
-      const tgt = !g.fogOn ? 0 : !seen[i] ? 1 : vis[i] ? 0 : 0.5;
+      const tgt = !g.fogOn ? 0 : !seen[i] ? 0.55 : vis[i] ? 0 : 0.26;
       const c = cur[i];
       if (c !== tgt) { const n = Math.abs(tgt - c) < 0.02 ? tgt : c + (tgt - c) * step; cur[i] = n; dirty = true; }
-      const o = i * 4; d[o] = 6; d[o + 1] = 8; d[o + 2] = 12; d[o + 3] = Math.round(cur[i] * 255);
+      const o = i * 4; d[o] = 18; d[o + 1] = 22; d[o + 2] = 16; d[o + 3] = Math.round(cur[i] * 210);
     }
     if (!dirty && this.drawn) return;
     this.sctx.putImageData(this.img, 0, 0);

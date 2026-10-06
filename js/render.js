@@ -67,7 +67,7 @@ export class Renderer {
   panScreen(dx, dy) { const z = this.cam.zoom, a = dx / (HW * z), b = dy / (HH * z); this.cam.x += (a + b) / 2; this.cam.y += (b - a) / 2; this.clampCam(); }
   zoomAt(f, sx, sy) {
     const [wx, wy] = this.toWorld(sx, sy);
-    this.cam.zoom = Math.max(0.6, Math.min(1.8, this.cam.zoom * f));
+    this.cam.zoom = Math.max(0.28, Math.min(3.4, this.cam.zoom * f));
     const [wx2, wy2] = this.toWorld(sx, sy);
     this.cam.x += wx - wx2; this.cam.y += wy - wy2; this.clampCam();
   }
@@ -264,9 +264,9 @@ export class Renderer {
     ctx.closePath(); ctx.fill(); ctx.strokeStyle = acc; ctx.lineWidth = 1; ctx.stroke();
   }
   smoke(ctx, x, y, z, t, seed) {
-    for (let i = 0; i < 4; i++) {
-      const ph = (t * 0.3 + i / 4 + seed * 0.37) % 1;
-      ctx.fillStyle = `rgba(205,203,196,${0.32 * (1 - ph)})`;
+    for (let i = 0; i < 2; i++) {
+      const ph = (t * 0.3 + i / 2 + seed * 0.37) % 1;
+      ctx.fillStyle = `rgba(205,203,196,${0.16 * (1 - ph)})`;
       ctx.beginPath(); ctx.arc(x + Math.sin(ph * 5 + seed) * 3 * z + ph * 6 * z, y - ph * 30 * z, (2 + ph * 5) * z, 0, 7); ctx.fill();
     }
   }
