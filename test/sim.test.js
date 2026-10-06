@@ -783,3 +783,9 @@ test('save/load: a game serialises to JSON and restores to the same state, and p
   run(h, 60); assert.ok(h.time > g.time && h.units.length > 0, 'the restored game keeps ticking');
   assert.throws(() => h.restore({ v: 99 }), /different version/);
 });
+
+test('sound: the headless sim never queues sound effects; with sfxOn it queues a capped list', () => {
+  const g = new Game({ seed: 3, houses: 3 }); const u = g.units.find((x) => x.team === 0);
+  g.damage(u, 1, 1); assert.equal(g.sfxQ.length, 0);
+  g.sfxOn = true; for (let i = 0; i < 100; i++) g.damage(u, 0.01, 1); assert.ok(g.sfxQ.length > 0 && g.sfxQ.length <= 40);
+});

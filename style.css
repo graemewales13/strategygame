@@ -250,3 +250,8 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 #savebar button:hover:not(:disabled) { background: #5a4220; }
 #savebar button:disabled { opacity: .4; cursor: default; }
 #errbox button { margin-left: 6px; background: #3a1a12; color: #ffe3d8; border: 1px solid #c4533a; border-radius: 3px; padding: 2px 8px; font: 12px Georgia, serif; cursor: pointer; }
+
+.optrow.sound { flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.slid { display: flex; align-items: center; gap: 6px; font: 13px Georgia, serif; color: #e8d9ae; }
+.slid input { width: 90px; accent-color: #c9a24a; }
+#btnSound { min-width: 74px; }

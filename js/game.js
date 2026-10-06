@@ -27,6 +27,7 @@ const SOLDIER = new Set(['footman', 'bowman', 'knight']);
 export class Game {
   constructor(opts = {}) {
     this.events = [];
+    this.sfxQ = []; this.sfxOn = false;   // the client turns this on; the headless sim never queues sounds
     this.reset(opts);
   }
 
@@ -1453,6 +1454,7 @@ export class Game {
     if (!(amt > 0)) return;
     if (p.ai) amt *= this.diff.aiMul;
     p.gold += amt; p.earnedTotal += amt; p.acc[src] = (p.acc[src] || 0) + amt;
+    if (team === PLAYER && amt >= 3 && (src === 'trade' || src === 'sales' || src === 'loot')) { const m = this.seatOf(PLAYER); if (m) this.sfx('coin', m.x, m.y); }
   }
   // the army's pay: due every second, taken from the purse; an empty purse breeds trouble
   payWages(p, dt) {
@@ -1577,7 +1579,7 @@ export class Game {
             if (node && node.amount > 0 && u.kind === 'serf') this.cmdGather([u], node);
             else this.cmdMove([u], b.rally.x, b.rally.y);
           }
-          if (b.team === PLAYER) this.log(PLAYER, `${UNITS[q.kind].label} trained.`, 'info');
+          if (b.team === PLAYER) { this.log(PLAYER, `${UNITS[q.kind].label} trained.`, 'info'); this.sfx('ready', b.x, b.y); }
         }
       }
     }
@@ -1598,7 +1600,7 @@ export class Game {
     }
     if (!best) return;
     b.cooldown = s.cd;
-    this.projectiles.push({ x: b.x, y: b.y - 0.5, targetId: best.id, dmg: s.dmg, team: b.team });
+    this.projectiles.push({ x: b.x, y: b.y - 0.5, targetId: best.id, dmg: s.dmg, team: b.team }); this.sfx('arrow', b.x, b.y);
   }
 
   // idle soldiers of the lord standing around a village (an occupation force)
@@ -1723,7 +1725,7 @@ export class Game {
     if (v.owner === team) return;
     const prev = v.owner;
     this.ejectAll(v);
-    v.owner = team; v.lean = team; v.spyFlip = -1;
+    v.owner = team; v.lean = team; v.spyFlip = -1; if (team === PLAYER) this.sfx('fanfare', v.x, v.y);
     const taken = this.claimTown(v, team, prev);
     let spoils = null;
     if (how === 'pillage') { v.pop = Math.max(2, v.pop * (1 - SACK.killed)); spoils = this.plunder(v, team); }   // the sack costs lives
@@ -1795,7 +1797,7 @@ export class Game {
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
     if (t.type === 'building') dmg *= s.bld;
-    if (s.range > 1.6) this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team });
+    if (s.range > 1.6) { this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team }); this.sfx('arrow', u.x, u.y); }
     else this.damage(t, dmg, u.team);
   }
 
@@ -1812,11 +1814,12 @@ export class Game {
     if (v.protection <= 0) this.submit(v, u.team, 'pillage');
   }
 
+  sfx(name, x, y) { if (this.sfxOn && this.sfxQ.length < 40) this.sfxQ.push({ name, x, y }); }
   damage(t, amt, byTeam) {
     if (t.hp <= 0) return;
-    t.hp -= amt; t.flash = 0.15;
+    t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
     if (t.hp <= 0) {
-      t.hp = 0;
+      t.hp = 0; this.sfx(t.type === 'building' ? 'crumble' : 'death', t.x, t.y);
       if (t.type === 'building') {
         if (t.team === PLAYER) this.log(PLAYER, `Your ${BUILDINGS[t.kind].label} is destroyed!`, 'bad');
         else if (byTeam === PLAYER) this.log(PLAYER, `${HOUSES[t.team].short} ${BUILDINGS[t.kind].label} destroyed.`, 'good');
@@ -1825,7 +1828,7 @@ export class Game {
     }
     if (t.team === PLAYER && this.time - this.alertT[PLAYER] > 8 && byTeam !== PLAYER) {
       this.alertT[PLAYER] = this.time;
-      this.log(PLAYER, `Your ${t.type === 'unit' ? UNITS[t.kind].label : BUILDINGS[t.kind].label} is under attack!`, 'bad');
+      this.log(PLAYER, `Your ${t.type === 'unit' ? UNITS[t.kind].label : BUILDINGS[t.kind].label} is under attack!`, 'bad'); this.sfx('alarm', t.x, t.y);
     }
   }
 
@@ -1942,7 +1945,7 @@ export class Game {
     if (b.built >= 1) {
       b.hp = b.maxHp;
       if (b.kind === 'village') { this.foundVillage(b); return; }
-      if (b.team === PLAYER) this.log(PLAYER, `${BUILDINGS[b.kind].label} complete.`, 'good');
+      if (b.team === PLAYER) { this.log(PLAYER, `${BUILDINGS[b.kind].label} complete.`, 'good'); this.sfx('built', b.x, b.y); }
     }
   }
 

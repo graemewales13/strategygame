@@ -1,4 +1,5 @@
 // Auld World - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
+import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG } from './art.js';
 import {
@@ -448,6 +449,7 @@ export class UI {
     this.pruneSel();
     // events -> toasts
     for (const ev of g.events.splice(0)) if (ev.team === PLAYER || ev.team === -1) this.toast(ev.text, ev.kind);
+    g.sfxOn = true; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     if (this.hudT <= 0) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
@@ -841,6 +843,16 @@ export class UI {
     $('mBegin').onclick = () => this.closeMenu();
     $('mBack').onclick = () => this.showMain();
     $('hContinue').onclick = () => this.closeMenu();
+    // sound: browsers only start audio after a click or key, so unlock on the first one
+    const wake = () => { unlock(); window.removeEventListener('pointerdown', wake, true); window.removeEventListener('keydown', wake, true); };
+    window.addEventListener('pointerdown', wake, true); window.addEventListener('keydown', wake, true);
+    document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('button')) play('click'); });
+    const sliders = { sMaster: 'master', sMusic: 'music', sSfx: 'sfx' };
+    for (const [id, k] of Object.entries(sliders)) { const el = $(id); if (!el) continue; el.value = Math.round(settings[k] * 100); el.oninput = () => { unlock(); setVolume(k, el.value / 100); if (k === 'sfx') play('coin'); }; }
+    const syncMute = () => { $('btnSound').textContent = settings.muted ? 'Sound off' : 'Sound on'; if ($('sMute')) $('sMute').checked = settings.muted; };
+    $('btnSound').onclick = () => { unlock(); setMuted(!settings.muted); syncMute(); };
+    if ($('sMute')) $('sMute').onchange = () => { setMuted($('sMute').checked); syncMute(); };
+    syncMute();
     $('sbSave').onclick = () => this.saveGame('manual');
     $('sbLoad').onclick = () => this.loadGame('manual');
     $('sbAuto').onclick = () => this.loadGame('auto');

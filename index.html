@@ -11,19 +11,20 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muwklitp",
-    "./js/art.js": "./js/art.js?v=muwklitp",
-    "./js/config.js": "./js/config.js?v=muwklitp",
-    "./js/entities.js": "./js/entities.js?v=muwklitp",
-    "./js/game.js": "./js/game.js?v=muwklitp",
-    "./js/main.js": "./js/main.js?v=muwklitp",
-    "./js/map.js": "./js/map.js?v=muwklitp",
-    "./js/names.js": "./js/names.js?v=muwklitp",
-    "./js/net.js": "./js/net.js?v=muwklitp",
-    "./js/render.js": "./js/render.js?v=muwklitp",
-    "./js/save.js": "./js/save.js?v=muwklitp",
-    "./js/terrain.js": "./js/terrain.js?v=muwklitp",
-    "./js/ui.js": "./js/ui.js?v=muwklitp"
+    "./js/ai.js": "./js/ai.js?v=muwkozhl",
+    "./js/art.js": "./js/art.js?v=muwkozhl",
+    "./js/audio.js": "./js/audio.js?v=muwkozhl",
+    "./js/config.js": "./js/config.js?v=muwkozhl",
+    "./js/entities.js": "./js/entities.js?v=muwkozhl",
+    "./js/game.js": "./js/game.js?v=muwkozhl",
+    "./js/main.js": "./js/main.js?v=muwkozhl",
+    "./js/map.js": "./js/map.js?v=muwkozhl",
+    "./js/names.js": "./js/names.js?v=muwkozhl",
+    "./js/net.js": "./js/net.js?v=muwkozhl",
+    "./js/render.js": "./js/render.js?v=muwkozhl",
+    "./js/save.js": "./js/save.js?v=muwkozhl",
+    "./js/terrain.js": "./js/terrain.js?v=muwkozhl",
+    "./js/ui.js": "./js/ui.js?v=muwkozhl"
   }
 }
 </script>
@@ -31,7 +32,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muwklitp';
+window.__BUILD = 'muwkozhl';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -76,6 +77,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     <div id="clockwrap">
       <span id="clock">0:00</span>
       <button id="btnSpeed" title="Game speed">1x</button>
+      <button id="btnSound" title="Sound on / off">Sound on</button>
       <button id="btnMap" title="Campaign map (M / Tab)">Map</button>
       <button id="btnMenu" title="Menu (Esc)">Menu</button>
     </div>
@@ -133,6 +135,11 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
           <label class="chk"><input type="checkbox" id="mSeedLock"> Keep seed on New Valley</label>
         </div>
         <div class="optrow"><span class="seedlabel">Seed</span><input id="mSeed" type="text" inputmode="numeric" spellcheck="false"><button id="mSeedGo" class="small">Roll this seed</button></div>
+        <div class="optrow sound"><span class="seedlabel">Sound</span>
+          <label class="slid">Master <input type="range" id="sMaster" min="0" max="100"></label>
+          <label class="slid">Music <input type="range" id="sMusic" min="0" max="100"></label>
+          <label class="slid">Effects <input type="range" id="sSfx" min="0" max="100"></label>
+          <label class="chk"><input type="checkbox" id="sMute"> Mute</label></div>
         <button class="big alt" id="mQuit">Quit</button>
         <p class="tiny">Right-click to move, gather, sack, infiltrate. Drag to select. WASD pans. M opens the campaign map. Esc returns here.</p>
       </div>
