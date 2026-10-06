@@ -49,4 +49,4 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - Every house is led by a named **king** character; soldiers carry **ratings** (ranks) that matter in combat and in influence over villages.
 - Information and interaction with other houses must be rich, like a real strategy game: stats (size, money, influence, power), trade/war/alliance, and rival leaders who **send letters** (alliance offers, calls to join wars against third houses, tribute demands, aid requests). Keep this on the Council screen (C) and the house panel.
 - An AI that makes peace must not re-declare war within moments; a house with only a village left must still be attacked to finish it (an idle player must lose).
-
+- In a fight characters must not simply run away (serfs excepted). When something in a town is attacked, garrisoned soldiers leave their buildings and fight, then assess the town, fight on if needed, otherwise return inside.

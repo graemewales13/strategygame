@@ -7,7 +7,7 @@ import {
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
@@ -507,6 +507,7 @@ export class Game {
     if (!t || t.hp <= 0 && t.type !== 'village') return false;
     const owner = t.type === 'village' ? t.owner : t.team;
     if (!units.length || units[0].team !== owner || (t.type === 'building' && t.built < 1) || !this.garrisonCap(t)) return false;
+    units = this.freeOf(units);
     let sent = 0;
     for (const u of units) {
       if (u.hp <= 0 || u.inside || u.kind === 'ram') continue;
@@ -752,10 +753,30 @@ export class Game {
     } else if (b.levy != null) b.levy = null;
   }
 
+  // ---- no running from a fight -------------------------------------------------------------------------
+  // A fighter who has traded blows in the last few seconds with a foe still within reach cannot break off (movement, garrison and work orders
+  // turn into fighting on): he finishes the foe first. Serfs, scouts, spies and camels may still run.
+  locked(u) {
+    if (!(this.time - (u.engagedT ?? -99) < SALLY.lockFor) || !this.ranked(u) || u.kind === 'scout' || u.inside) return false;
+    for (const o of this.units) if (o.hp > 0 && !o.inside && o.team !== u.team && this.isEnemy(u.team, o.team) && Math.hypot(o.x - u.x, o.y - u.y) <= SALLY.lockR) return true;
+    return false;
+  }
+  // locked fighters among `units` turn on the nearest foe; the rest are returned
+  freeOf(units) {
+    const free = [];
+    for (const u of units) {
+      if (!this.locked(u)) { free.push(u); continue; }
+      const t = this.closestEnemy(u, SALLY.lockR + 1, u.team);
+      if (t) { u.task = { type: 'attack', targetId: t.id }; u.path = []; u.repathT = 0; }
+      if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is locked in combat and cannot break off.`, 'warn');
+    }
+    return free;
+  }
   cmdMove(units, x, y) {
+    units = this.freeOf(units);
     units.forEach((u, i) => {
       const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)];
-      u.task = { type: 'move' };
+      u.task = { type: 'move' }; u.sally = null;
       this.setPath(u, x + ox * 0.9, y + oy * 0.9);
     });
     return true;
@@ -1665,6 +1686,7 @@ export class Game {
     this.updateEconomy(dt);
     this.updateVillages(dt);
     this.updateWanderers(dt);
+    this.updateSally(dt);
     this.updateUnits(dt);
     this.updateProjectiles(dt);
     if (this.aiOn) updateAI(this, dt);
@@ -1874,6 +1896,28 @@ export class Game {
     this.log(team === PLAYER || prev === PLAYER ? PLAYER : -1, text + (taken ? ` ${taken} building${taken > 1 ? 's' : ''} in the town change hands.` : '') + (spoils ? ' ' + spoils.text : ''), team === PLAYER ? 'good' : 'warn');
   }
 
+  // When foes come near a garrisoned keep, tower, barracks or village (or something in its town is being hit), the soldiers inside march out and fight.
+  // doIdle then has them assess the town and go back in once it is quiet.
+  updateSally(dt) {
+    this._sallyT = (this._sallyT ?? 0) - dt;
+    if (this._sallyT > 0) return;
+    this._sallyT = SALLY.every;
+    const posts = [...this.buildings, ...this.villages].filter((t) => t.garrison?.length && t.hp > 0 || (t.type === 'village' && t.garrison?.length));
+    if (!posts.length) return;
+    for (const t of posts) {
+      const team = t.type === 'village' ? t.owner : t.team;
+      if (team < 0 || (t.type === 'building' && t.built < 1)) continue;
+      const r = t.type === 'village' || t.kind === 'keep' ? SALLY.townR : SALLY.postR;
+      const foe = this.closestEnemy({ x: t.x, y: t.y }, r, team);
+      if (!foe) continue;
+      for (const id of t.garrison.slice()) {
+        const u = this.byId.get(id); if (!u || u.hp <= 0 || u.drilling || !this.ranked(u) || u.kind === 'recruit' && false) continue;
+        if (u.kind === 'king' && u.hp < u.maxHp * 0.6) continue;   // a wounded king stays behind the walls
+        this.eject(u, t); u.sally = t.id; u.task = { type: 'attack', targetId: foe.id }; u.repathT = 0;
+      }
+    }
+  }
+
   updateUnits(dt) {
     for (const u of this.units) {
       if (u.hp <= 0) continue;
@@ -1884,7 +1928,7 @@ export class Game {
       u.repathT -= dt;
       u.anim += dt * (u.path.length ? 8 : 2);
       switch (u.task.type) {
-        case 'move': if (!this.follow(u, dt)) u.task = { type: 'idle' }; break;
+        case 'move': if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt)) u.task = { type: 'idle' }; break;
         case 'attack': this.doAttack(u, s, dt); break;
         case 'gather': this.doGather(u, dt); break;
         case 'mine': u.task = { type: 'idle' }; u.path = []; break;   // old saves: serfs no longer dig, the villagers do
@@ -1906,6 +1950,15 @@ export class Game {
     u.aggroT -= dt;
     if (u.aggroT > 0) return;
     u.aggroT = 0.45;
+    if (u.sally) {   // a soldier who sallied from his post: finish the job, look round the town, then go back inside
+      const home = this.byId.get(u.sally), hx = home?.x ?? u.x, hy = home?.y ?? u.y;
+      const foe = this.closestEnemy(u, SALLY.lookR, u.team) || this.closestEnemy({ x: hx, y: hy }, SALLY.townR, u.team);
+      if (foe) { u.task = { type: 'attack', targetId: foe.id }; u.repathT = 0; return; }
+      u.sally = null;
+      const ok = home && home.hp > 0 && (home.type === 'village' ? home.owner === u.team : home.team === u.team) && home.garrison.length < this.garrisonCap(home);
+      if (ok) this.cmdEnter([u], home);
+      return;
+    }
     const t = this.closestEnemy(u, u.kind === 'king' ? 4.5 : Math.max(6.5, s.range + 2), u.team);
     if (t) { u.task = { type: 'attack', targetId: t.id }; u.repathT = 0; }
   }
@@ -2026,6 +2079,7 @@ export class Game {
   damage(t, amt, byTeam, by = null) {
     if (t.hp <= 0) return;
     const before = t.hp;
+    if (t.type === 'unit' && byTeam >= 0) { t.engagedT = this.time; if (by) by.engagedT = this.time; }
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
     if (by) this.award(by, Math.min(amt, before) * XP.perDamage);
     if (t.hp <= 0) {

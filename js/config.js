@@ -262,6 +262,8 @@ export const RANKS = [{ label: 'Rookie', xp: 0 }, { label: 'Trained', xp: 40 }, 
 export const RANK_BONUS = { dmg: 0.12, hp: 0.10, guard: 0.25 };   // per rank
 export const XP = { perDamage: 0.1, kill: 14, killBuilding: 8, killRankMul: 0.5 };
 // ---- the ruler. Every house is led by a named character; his presence rallies soldiers and sways villages, his fall shakes the house.
+// no running from a fight; garrisons sally out when foes come near their town
+export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11, lookR: 9 };
 export const KING = { aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 90, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
   titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King' } };
 // Leaders have a temper that colours how they treat the other houses (see ai.js diplomacy): aggr, greed, honor and wary are 0..1.

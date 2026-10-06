@@ -169,4 +169,36 @@ test('council: intel for a house lists leader, size, power, influence, money (fu
   assert.ok(typeof i.influence === 'number' && Array.isArray(i.why));
 });
 
+test('fighting: a fighter in melee cannot run away until the foe is dead; workers still can', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; const h = g.seatOf(PLAYER);
+  const a = g.addUnit('footman', PLAYER, h.x + 6, h.y + 6), b = g.addUnit('footman', 1, h.x + 7, h.y + 6); b.hp = b.maxHp = 400;
+  g.damage(a, 5, 1, b);
+  g.cmdMove([a], h.x, h.y);
+  assert.equal(a.task.type, 'attack', 'ordered to flee, he fights on'); assert.equal(a.task.targetId, b.id);
+  g.cmdEnter([a], h); assert.equal(a.task.type, 'attack', 'and cannot hide in the keep either');
+  const s = g.addUnit('serf', PLAYER, h.x + 6.5, h.y + 6); s.engagedT = g.time; g.cmdMove([s], h.x, h.y); assert.equal(s.task.type, 'move', 'serfs run');
+  b.hp = 0; g.cleanup(); g.cmdMove([a], h.x, h.y); assert.equal(a.task.type, 'move', 'free once the foe is dead');
+  // a moving soldier caught by a foe turns and fights
+  const c = g.addUnit('footman', PLAYER, h.x + 9, h.y + 9), d = g.addUnit('footman', 1, h.x + 9.5, h.y + 9); g.cmdMove([c], h.x, h.y); g.damage(c, 3, 1, d); g.tick(0.1);
+  assert.equal(c.task.type, 'attack');
+});
+
+test('fighting: garrisoned soldiers march out when foes come near, then return when it is quiet', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; const h = g.seatOf(PLAYER);
+  const keep = g.addBuilding('keep', PLAYER, Math.round(h.x + 6), Math.round(h.y), true); g.recomputeWalk();
+  const men = [0, 1, 2].map((i) => { const u = g.addUnit('footman', PLAYER, keep.x, keep.y); u.inside = keep.id; keep.garrison.push(u.id); return u; });
+  const serf = g.addUnit('serf', PLAYER, keep.x, keep.y); serf.inside = keep.id; keep.garrison.push(serf.id);
+  g.tick(0.6); assert.ok(men.every((u) => u.inside === keep.id), 'quiet: they stay in');
+  const foe = g.addUnit('footman', 1, keep.x + 8, keep.y + 2); foe.hp = foe.maxHp = 60;
+  g.tick(0.6);
+  assert.ok(men.every((u) => !u.inside && u.task.type === 'attack' && u.sally === keep.id), 'they sally'); assert.equal(serf.inside, keep.id, 'serfs stay hidden');
+  run(g, 40);
+  assert.ok(foe.hp <= 0, 'the intruder is dead');
+  run(g, 25);
+  assert.ok(men.every((u) => u.inside === keep.id), 'and they go back inside: ' + men.map((u) => u.inside + '/' + u.task.type));
+  // a second wave while they are out: they assess and fight on instead of going in
+  const f2 = g.addUnit('footman', 1, keep.x + 7, keep.y); f2.hp = f2.maxHp = 60; g.tick(0.6);
+  assert.ok(men.every((u) => !u.inside));
+});
+
 console.log(`${passed} passed`);
