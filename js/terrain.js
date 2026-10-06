@@ -1,6 +1,7 @@
 // Auld World - painted terrain and soft fog. Both are cached on offscreen canvases; render.js only blits them.
 import { PLAYER, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW } from './config.js';
 import { TILES } from './art.js';
+import { gfx } from './gfx.js';
 
 const TS = 32;      // texture pixels per tile
 const CH = 16;      // tiles per chunk edge
@@ -84,6 +85,37 @@ export class TerrainCache {
       }
     }
 
+    // ---- large-scale variation: soft lush / parched patches drifting across the ground, so a wide plain never shows its tile repeat
+    if (gfx.q >= 1) {
+      for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
+        const t = this.type(x, y); if (t < 0 || t === T_WATER || t === T_FORD || t === T_ROCK) continue;
+        const n = vnoise(x * 0.06, y * 0.06) * 0.65 + vnoise(x * 0.19 + 40, y * 0.19 + 9) * 0.35, m = n - 0.5;
+        if (Math.abs(m) < 0.06) continue;
+        const [cxp, cyp] = ctr(x, y), a = Math.min(0.2, (Math.abs(m) - 0.06) * 0.7);
+        const col = m > 0 ? (t === T_SAND || t === T_DRY ? '214,176,96' : '70,120,34') : (t === T_GRASS ? '168,150,70' : '120,96,56');
+        const gr = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, TS * 1.1);
+        gr.addColorStop(0, `rgba(${col},${a})`); gr.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = gr; ctx.fillRect(cxp - TS * 1.1, cyp - TS * 1.1, TS * 2.2, TS * 2.2);
+      }
+    }
+    // ---- ragged biome edges: extra jittered blobs of the neighbour's colour along each seam (high quality)
+    if (gfx.q >= 2) {
+      for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
+        const t = this.type(x, y); if (t < 0 || t === T_ROCK || t === T_WATER || t === T_FORD) continue;
+        for (const [dx, dy] of [[1, 0], [0, 1]]) {
+          const n = this.type(x + dx, y + dy); if (n < 0 || n === t || n === T_ROCK || n === T_WATER || n === T_FORD) continue;
+          for (let k = 0; k < 3; k++) {
+            const h1 = hash(x, y, 80 + k + dx * 3), h2 = hash(x, y, 90 + k + dy * 3), along = (k + 0.5) / 3 + (h1 - 0.5) * 0.25;
+            const bx = px(x) + (dx ? TS : along * TS) + (dx ? (h2 - 0.5) * TS * 0.5 : 0), by = py(y) + (dy ? TS : along * TS) + (dy ? (h2 - 0.5) * TS * 0.5 : 0);
+            const [r, gg, b] = avgOf(h1 > 0.5 ? n : t), rad = TS * (0.3 + h2 * 0.35);
+            const gr = ctx.createRadialGradient(bx, by, 0, bx, by, rad);
+            gr.addColorStop(0, `rgba(${r | 0},${gg | 0},${b | 0},0.55)`); gr.addColorStop(1, `rgba(${r | 0},${gg | 0},${b | 0},0)`);
+            ctx.fillStyle = gr; ctx.fillRect(bx - rad, by - rad, rad * 2, rad * 2);
+          }
+        }
+      }
+    }
+
     // ---- river: sand shore, shallows, then deep water. Same trick as trails: round-capped strokes between tile centres
     const waterLinks = (fn) => {
       for (let y = range[2]; y < range[3]; y++) for (let x = range[0]; x < range[1]; x++) {
@@ -144,6 +176,16 @@ export class TerrainCache {
         ctx.fillStyle = ['#f0e070', '#f2f2f6', '#e07a8a', '#9ab4ec'][((h * 57) | 0) % 4];
         ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, 7); ctx.fill();
       }
+    }
+    // ---- ground detail: pebbles, cracked earth, dry scrub and wheel ruts on the open ground
+    if (gfx.q >= 1) for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
+      const t = this.type(x, y); if (t === T_WATER || t === T_FORD || t === T_ROCK || t < 0) continue;
+      const h = hash(x, y, 120), bx = px(x) + hash(x, y, 121) * TS, by = py(y) + hash(x, y, 122) * TS;
+      if (t === T_SAND || t === T_DRY || t === T_DIRT) {
+        if (h < 0.16) { ctx.fillStyle = 'rgba(80,66,44,.55)'; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.ellipse(bx + k * 3 - 3, by + (k & 1) * 2, 1.6 + hash(x, y, 130 + k), 1, 0, 0, 7); ctx.fill(); } }
+        else if (h < 0.22 && t !== T_DIRT) { ctx.strokeStyle = 'rgba(96,78,48,.4)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + 5, by + 2); ctx.lineTo(bx + 7, by + 7); ctx.moveTo(bx + 5, by + 2); ctx.lineTo(bx + 11, by + 1); ctx.stroke(); }
+        else if (h < 0.27) { ctx.strokeStyle = 'rgba(122,110,52,.75)'; ctx.lineWidth = 1.3; ctx.beginPath(); for (let k = -2; k <= 2; k++) { ctx.moveTo(bx, by); ctx.lineTo(bx + k * 2.4, by - 6 + Math.abs(k)); } ctx.stroke(); }
+      } else if (t === T_GRASS && h < 0.1) { ctx.fillStyle = 'rgba(40,52,18,.35)'; ctx.beginPath(); ctx.ellipse(bx, by, 4 + hash(x, y, 125) * 3, 2.2, 0, 0, 7); ctx.fill(); }
     }
     return cv;
   }

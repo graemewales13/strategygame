@@ -4,6 +4,7 @@ import {
   PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
+import { gfx } from './gfx.js';
 import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, factionSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
@@ -35,6 +36,7 @@ export class Renderer {
     this.ctx = canvas.getContext('2d');
     this.game = game;
     this.terrain = new TerrainCache(game);
+    gfx.onChange = () => { this.terrain.chunks.clear(); };
     this.fog = new FogLayer(game);
     this.cam = { x: 0, y: 0, zoom: 1 }; // x, y = the world tile at the middle of the screen
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -174,16 +176,30 @@ export class Renderer {
   }
 
   // ---------------------------------------------------------------- terrain extras
+  // animated water over the baked river: drifting ripple arcs, foam lapping the banks, and sparkles on the sun side
   shimmer(ctx, g, x0, y0, x1, y1, t, isSeen, z) {
-    ctx.lineWidth = Math.max(1, z);
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-      if (g.terrain[y * g.W + x] !== T_WATER || !isSeen(x, y)) continue;
-      const h = hash(x, y), ph = t * (0.9 + h * 0.5) + h * 40, a = 0.08 + 0.2 * Math.max(0, Math.sin(ph));
-      if (a < 0.14) continue;
-      const [sx, sy] = this.toScreen(x + 0.3 + h * 0.4, y + 0.3 + hash(y, x) * 0.4), ox = Math.sin(ph * 0.7) * 3 * z;
-      ctx.strokeStyle = `rgba(215,236,244,${a})`;
-      ctx.beginPath(); ctx.moveTo(sx - 7 * z + ox, sy); ctx.lineTo(sx + 7 * z + ox, sy); ctx.stroke();
+    const q = gfx.q; if (q < 1 && z < 0.5) return;
+    ctx.lineWidth = Math.max(1, z); ctx.lineCap = 'round';
+    const W = g.W, T = g.terrain, wet = (x, y) => x >= 0 && y >= 0 && x < W && y < g.H && (T[y * W + x] === T_WATER || T[y * W + x] === T_FORD);
+    for (let y = Math.max(0, y0 | 0); y < Math.min(g.H, y1); y++) for (let x = Math.max(0, x0 | 0); x < Math.min(W, x1); x++) {
+      if (T[y * W + x] !== T_WATER || !isSeen(x, y)) continue;
+      const h = hash(x, y), ph = t * (0.9 + h * 0.5) + h * 40, s = Math.sin(ph), a = 0.08 + 0.2 * Math.max(0, s);
+      const edge = q >= 1 && (!wet(x + 1, y) || !wet(x - 1, y) || !wet(x, y + 1) || !wet(x, y - 1));
+      if (edge) {   // foam: a pulsing white line hugging the bank
+        const [sx, sy] = this.toScreen(x + 0.5, y + 0.5), f = 0.25 + 0.25 * Math.sin(t * 1.6 + h * 30);
+        ctx.strokeStyle = `rgba(240,248,250,${f})`; ctx.lineWidth = Math.max(1, 1.6 * z);
+        ctx.beginPath(); ctx.ellipse(sx + Math.sin(t * 0.8 + h * 9) * 2 * z, sy, 9 * z, 3.6 * z, 0, 0.2, 2.6 + h); ctx.stroke(); ctx.lineWidth = Math.max(1, z);
+      }
+      if (a >= 0.14) {
+        const [sx, sy] = this.toScreen(x + 0.3 + h * 0.4, y + 0.3 + hash(y, x) * 0.4), ox = Math.sin(ph * 0.7) * 3 * z;
+        ctx.strokeStyle = `rgba(215,236,244,${a})`;
+        ctx.beginPath(); ctx.moveTo(sx - 7 * z + ox, sy); ctx.quadraticCurveTo(sx + ox, sy - 2 * z * s, sx + 7 * z + ox, sy); ctx.stroke();
+      }
+      if (q >= 2 && h > 0.86 && s > 0.92) {   // a glint of sun
+        const [sx, sy] = this.toScreen(x + 0.5, y + 0.5); ctx.fillStyle = 'rgba(255,252,230,.85)'; ctx.fillRect(sx - 1.5 * z, sy - 1.5 * z, 3 * z, 3 * z);
+      }
     }
+    ctx.lineCap = 'butt';
   }
   diamond(ctx, tx, ty, w, h) {
     const a = this.toScreen(tx, ty), b = this.toScreen(tx + w, ty), c = this.toScreen(tx + w, ty + h), d = this.toScreen(tx, ty + h);

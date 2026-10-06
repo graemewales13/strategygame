@@ -3,6 +3,7 @@ import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js'
 import { progress } from './objectives.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG } from './art.js';
+import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
@@ -843,6 +844,10 @@ export class UI {
       if (!this.started) this.onReroll?.({ seed: this.game.seed, houses: cfg.houses }); else this.toast(`${b.textContent} from the next New Valley.`, 'info');
     });
     refreshDiff();
+    const gseg = $('mGfx');
+    const showGfx = () => gseg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.q === gfx.q));
+    showGfx();
+    gseg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; setQuality(+b.dataset.q); showGfx(); this.toast(['Low', 'Medium', 'High'][gfx.q] + ' graphics.', 'info'); });
     const sseg = $('mSize');
     const curSize = Object.keys(MAP_SIZES).find((k) => MAP_SIZES[k] === this.game.W) || 'standard';
     sseg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.s === curSize));

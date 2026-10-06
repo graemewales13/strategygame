@@ -11,21 +11,22 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muwlgfew",
-    "./js/art.js": "./js/art.js?v=muwlgfew",
-    "./js/audio.js": "./js/audio.js?v=muwlgfew",
-    "./js/config.js": "./js/config.js?v=muwlgfew",
-    "./js/entities.js": "./js/entities.js?v=muwlgfew",
-    "./js/game.js": "./js/game.js?v=muwlgfew",
-    "./js/main.js": "./js/main.js?v=muwlgfew",
-    "./js/map.js": "./js/map.js?v=muwlgfew",
-    "./js/names.js": "./js/names.js?v=muwlgfew",
-    "./js/net.js": "./js/net.js?v=muwlgfew",
-    "./js/objectives.js": "./js/objectives.js?v=muwlgfew",
-    "./js/render.js": "./js/render.js?v=muwlgfew",
-    "./js/save.js": "./js/save.js?v=muwlgfew",
-    "./js/terrain.js": "./js/terrain.js?v=muwlgfew",
-    "./js/ui.js": "./js/ui.js?v=muwlgfew"
+    "./js/ai.js": "./js/ai.js?v=muwm7jsd",
+    "./js/art.js": "./js/art.js?v=muwm7jsd",
+    "./js/audio.js": "./js/audio.js?v=muwm7jsd",
+    "./js/config.js": "./js/config.js?v=muwm7jsd",
+    "./js/entities.js": "./js/entities.js?v=muwm7jsd",
+    "./js/game.js": "./js/game.js?v=muwm7jsd",
+    "./js/gfx.js": "./js/gfx.js?v=muwm7jsd",
+    "./js/main.js": "./js/main.js?v=muwm7jsd",
+    "./js/map.js": "./js/map.js?v=muwm7jsd",
+    "./js/names.js": "./js/names.js?v=muwm7jsd",
+    "./js/net.js": "./js/net.js?v=muwm7jsd",
+    "./js/objectives.js": "./js/objectives.js?v=muwm7jsd",
+    "./js/render.js": "./js/render.js?v=muwm7jsd",
+    "./js/save.js": "./js/save.js?v=muwm7jsd",
+    "./js/terrain.js": "./js/terrain.js?v=muwm7jsd",
+    "./js/ui.js": "./js/ui.js?v=muwm7jsd"
   }
 }
 </script>
@@ -33,7 +34,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muwlgfew';
+window.__BUILD = 'muwm7jsd';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -129,6 +130,9 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
         </div>
         <div class="opt"><span>Difficulty</span>
           <div class="seg" id="mDiff"><button data-d="easy">Easy</button><button data-d="mid">Mid</button><button data-d="hard">Hard</button></div>
+        </div>
+        <div class="opt"><span>Graphics</span>
+          <div class="seg" id="mGfx"><button data-q="0">Low</button><button data-q="1">Medium</button><button data-q="2">High</button></div>
         </div>
         <div class="opt"><span>Board size</span>
           <div class="seg" id="mSize"><button data-s="small">Small</button><button data-s="standard">Standard</button><button data-s="huge">Huge</button></div>
