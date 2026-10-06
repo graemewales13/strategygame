@@ -16,7 +16,27 @@ const pendingClick = () => window.__boot && window.__boot.pending;
 await Promise.race([loadArt(), new Promise((r) => setTimeout(r, 10000))]);   // a slow image must not hold the game hostage
 const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff });
 const host = new LocalHost(game);
-const renderer = new Renderer(document.getElementById('game'), game);
+let renderer;
+let pref = null; try { pref = localStorage.getItem('auld3d'); } catch {}
+const want3d = params.get('3d') ? params.get('3d') === '1' : pref !== '0';   // 3D by default; falls back to the 2D view if WebGL is missing
+if (want3d) {
+  try {
+    const { Renderer3D } = await import('./render3d.js');
+    renderer = new Renderer3D(document.getElementById('game'), game);
+    window.__is3d = true;
+  } catch (e) { console.error('[auld-world] 3D view unavailable, using 2D', e); document.getElementById('gl3d')?.remove(); renderer = null; }
+}
+if (!renderer) renderer = new Renderer(document.getElementById('game'), game);
+const viewBtn = document.getElementById('btnView');
+if (viewBtn) {
+  viewBtn.textContent = window.__is3d ? '3D' : '2D';
+  viewBtn.title = window.__is3d ? 'Switch to the classic 2D view (restarts the page)' : 'Switch to the 3D view (restarts the page)';
+  viewBtn.onclick = () => {
+    if (game.time > 5 && !confirm('Switching the view reloads the page and your current match is lost. Save first (menu > Save). Switch now?')) return;
+    try { localStorage.setItem('auld3d', window.__is3d ? '0' : '1'); } catch {}
+    const q = new URLSearchParams(location.search); q.set('3d', window.__is3d ? '0' : '1'); location.search = q.toString();
+  };
+}
 const minimap = new Minimap(document.getElementById('minimap'), game, renderer);
 const ui = new UI({ game, host, renderer, minimap, cfg });
 

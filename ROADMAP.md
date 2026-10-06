@@ -11,6 +11,8 @@ What exists on `grok` today, and what still stands between it and a commercial r
 - Graphics pass (Options > Graphics: Low / Medium / High): terrain variation and ragged biome edges, animated water with bank foam, cast shadows from sprite silhouettes, cloud shadows, haze, vignette, slow day tint, camel gait and cargo sacks, wounded-building cracks/smoke/flames, collapse and death dust, flags on military buildings, builder dust.
 - Board size: Small 160, Standard 320, Huge 400 (Options in the skirmish menu; reloads the page; saves record their size).
 
+- 3D view (Three.js): relief terrain, water, procedural low-poly models, orbit camera, same UI/sim. Next: hand-made glTF models, animated water shader, day/night, building construction scaffolds.
+
 ## Not built yet (needs more than a code session)
 | Area | Why it matters | Notes |
 |---|---|---|

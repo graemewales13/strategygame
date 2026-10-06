@@ -11,23 +11,25 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muwtlnge",
-    "./js/art.js": "./js/art.js?v=muwtlnge",
-    "./js/audio.js": "./js/audio.js?v=muwtlnge",
-    "./js/config.js": "./js/config.js?v=muwtlnge",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=muwtlnge",
-    "./js/entities.js": "./js/entities.js?v=muwtlnge",
-    "./js/game.js": "./js/game.js?v=muwtlnge",
-    "./js/gfx.js": "./js/gfx.js?v=muwtlnge",
-    "./js/main.js": "./js/main.js?v=muwtlnge",
-    "./js/map.js": "./js/map.js?v=muwtlnge",
-    "./js/names.js": "./js/names.js?v=muwtlnge",
-    "./js/net.js": "./js/net.js?v=muwtlnge",
-    "./js/objectives.js": "./js/objectives.js?v=muwtlnge",
-    "./js/render.js": "./js/render.js?v=muwtlnge",
-    "./js/save.js": "./js/save.js?v=muwtlnge",
-    "./js/terrain.js": "./js/terrain.js?v=muwtlnge",
-    "./js/ui.js": "./js/ui.js?v=muwtlnge"
+    "./js/ai.js": "./js/ai.js?v=mux9b1nn",
+    "./js/art.js": "./js/art.js?v=mux9b1nn",
+    "./js/audio.js": "./js/audio.js?v=mux9b1nn",
+    "./js/config.js": "./js/config.js?v=mux9b1nn",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mux9b1nn",
+    "./js/entities.js": "./js/entities.js?v=mux9b1nn",
+    "./js/game.js": "./js/game.js?v=mux9b1nn",
+    "./js/gfx.js": "./js/gfx.js?v=mux9b1nn",
+    "./js/main.js": "./js/main.js?v=mux9b1nn",
+    "./js/map.js": "./js/map.js?v=mux9b1nn",
+    "./js/models3d.js": "./js/models3d.js?v=mux9b1nn",
+    "./js/names.js": "./js/names.js?v=mux9b1nn",
+    "./js/net.js": "./js/net.js?v=mux9b1nn",
+    "./js/objectives.js": "./js/objectives.js?v=mux9b1nn",
+    "./js/render.js": "./js/render.js?v=mux9b1nn",
+    "./js/render3d.js": "./js/render3d.js?v=mux9b1nn",
+    "./js/save.js": "./js/save.js?v=mux9b1nn",
+    "./js/terrain.js": "./js/terrain.js?v=mux9b1nn",
+    "./js/ui.js": "./js/ui.js?v=mux9b1nn"
   }
 }
 </script>
@@ -35,7 +37,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muwtlnge';
+window.__BUILD = 'mux9b1nn';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -81,6 +83,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
       <span id="clock">0:00</span>
       <button id="btnSpeed" title="Game speed">1x</button>
       <button id="btnSound" title="Sound on / off">Sound on</button>
+      <button id="btnView" title="View">3D</button>
       <button id="btnCouncil" title="The Council of Houses: stats, treaties, letters (C)">Council</button>
       <button id="btnMap" title="Campaign map (M / Tab)">Map</button>
       <button id="btnMenu" title="Menu (Esc)">Menu</button>
