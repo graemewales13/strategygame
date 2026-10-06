@@ -11,22 +11,22 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muwmx6r0",
-    "./js/art.js": "./js/art.js?v=muwmx6r0",
-    "./js/audio.js": "./js/audio.js?v=muwmx6r0",
-    "./js/config.js": "./js/config.js?v=muwmx6r0",
-    "./js/entities.js": "./js/entities.js?v=muwmx6r0",
-    "./js/game.js": "./js/game.js?v=muwmx6r0",
-    "./js/gfx.js": "./js/gfx.js?v=muwmx6r0",
-    "./js/main.js": "./js/main.js?v=muwmx6r0",
-    "./js/map.js": "./js/map.js?v=muwmx6r0",
-    "./js/names.js": "./js/names.js?v=muwmx6r0",
-    "./js/net.js": "./js/net.js?v=muwmx6r0",
-    "./js/objectives.js": "./js/objectives.js?v=muwmx6r0",
-    "./js/render.js": "./js/render.js?v=muwmx6r0",
-    "./js/save.js": "./js/save.js?v=muwmx6r0",
-    "./js/terrain.js": "./js/terrain.js?v=muwmx6r0",
-    "./js/ui.js": "./js/ui.js?v=muwmx6r0"
+    "./js/ai.js": "./js/ai.js?v=muwoi8hy",
+    "./js/art.js": "./js/art.js?v=muwoi8hy",
+    "./js/audio.js": "./js/audio.js?v=muwoi8hy",
+    "./js/config.js": "./js/config.js?v=muwoi8hy",
+    "./js/entities.js": "./js/entities.js?v=muwoi8hy",
+    "./js/game.js": "./js/game.js?v=muwoi8hy",
+    "./js/gfx.js": "./js/gfx.js?v=muwoi8hy",
+    "./js/main.js": "./js/main.js?v=muwoi8hy",
+    "./js/map.js": "./js/map.js?v=muwoi8hy",
+    "./js/names.js": "./js/names.js?v=muwoi8hy",
+    "./js/net.js": "./js/net.js?v=muwoi8hy",
+    "./js/objectives.js": "./js/objectives.js?v=muwoi8hy",
+    "./js/render.js": "./js/render.js?v=muwoi8hy",
+    "./js/save.js": "./js/save.js?v=muwoi8hy",
+    "./js/terrain.js": "./js/terrain.js?v=muwoi8hy",
+    "./js/ui.js": "./js/ui.js?v=muwoi8hy"
   }
 }
 </script>
@@ -34,7 +34,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muwmx6r0';
+window.__BUILD = 'muwoi8hy';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -154,7 +154,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
         <p class="tiny">Right-click to move, gather, sack, infiltrate. Drag to select. WASD pans. M opens the campaign map. Esc returns here.</p>
       </div>
       <div class="menuright">
-        <div class="valewrap"><canvas id="vale" width="440" height="440"></canvas><div class="valecap">The valley · seed <b id="mSeedShow"></b></div></div>
+        <div class="valewrap"><canvas id="vale" width="440" height="440"></canvas><div class="valecap">The valley · seed <b id="mSeedShow"></b><br><small id="buildTag"></small></div></div>
         <div id="crests"></div>
       </div>
     </div>

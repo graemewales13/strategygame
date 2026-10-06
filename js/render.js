@@ -21,7 +21,7 @@ const FMUL = { mine: 1.15, keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, wareh
 const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fortified', abbey: 'farm', inn: 'fishing', farm: 'farm' };
 const VWIDE = { '1tile': 3.4 };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
-const USCALE = { recruit: 50, serf: 44, scout: 50, footman: 56, bowman: 56, knight: 72, spy: 52, scholar: 54 }; // drawn height at zoom 1
+const USCALE = { recruit: 44, serf: 40, scout: 46, footman: 45, bowman: 45, knight: 58, spy: 46, scholar: 48 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
   hamlet: [['village_cluster', 0, 0.35, 3.9]],
@@ -444,7 +444,7 @@ export class Renderer {
     if (own && h > b.size * 2 * HW * z * 1.3) { h = b.size * 2 * HW * z * 1.3; w = (c.width / c.height) * h; }   // tall towers stay slim
     const dy = by - h + b.size * HH * z * 0.34;
     // house-colour footing
-    this.diamond(ctx, b.tx, b.ty, b.size, b.size); ctx.fillStyle = f.primary; ctx.globalAlpha = 0.24; ctx.fill(); ctx.globalAlpha = 1;
+    this.diamond(ctx, b.tx, b.ty, b.size, b.size); ctx.fillStyle = f.primary; ctx.globalAlpha = 0.08; ctx.fill(); ctx.strokeStyle = f.primary; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.5 * z); ctx.stroke(); ctx.globalAlpha = 1;
     this.shadowAt(ctx, bx + 4 * z, by - b.size * HH * z * 0.5, w * 0.42, b.size * HH * z * 0.5, 0.22);
     if (c && prog >= 1) this.castShadow(ctx, c, bx, by - b.size * HH * z * 0.3, w, h * 0.92, false, dim ? 0.14 : 0.3, 0.9);
     ctx.save();

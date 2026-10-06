@@ -844,10 +844,11 @@ export class UI {
       if (!this.started) this.onReroll?.({ seed: this.game.seed, houses: cfg.houses }); else this.toast(`${b.textContent} from the next New Valley.`, 'info');
     });
     refreshDiff();
+    if ($('buildTag')) $('buildTag').textContent = 'build ' + (window.__BUILD || '?') + ' · graphics ' + ['Low', 'Medium', 'High'][gfx.q];
     const gseg = $('mGfx');
     const showGfx = () => gseg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.q === gfx.q));
     showGfx();
-    gseg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; setQuality(+b.dataset.q); showGfx(); this.toast(['Low', 'Medium', 'High'][gfx.q] + ' graphics.', 'info'); });
+    gseg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; setQuality(+b.dataset.q); showGfx(); if ($('buildTag')) $('buildTag').textContent = 'build ' + (window.__BUILD || '?') + ' · graphics ' + ['Low', 'Medium', 'High'][gfx.q]; this.toast(['Low', 'Medium', 'High'][gfx.q] + ' graphics.', 'info'); });
     const sseg = $('mSize');
     const curSize = Object.keys(MAP_SIZES).find((k) => MAP_SIZES[k] === this.game.W) || 'standard';
     sseg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.s === curSize));
