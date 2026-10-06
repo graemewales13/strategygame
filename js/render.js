@@ -227,12 +227,12 @@ export class Renderer {
   atmosphere(ctx, g) {
     if (gfx.q < 1) return;
     const w = this.w, h = this.h;
-    let gr = ctx.createLinearGradient(0, 0, 0, h * 0.35); gr.addColorStop(0, 'rgba(196,208,224,.16)'); gr.addColorStop(1, 'rgba(196,208,224,0)');
+    let gr = ctx.createLinearGradient(0, 0, 0, h * 0.35); gr.addColorStop(0, 'rgba(196,208,224,.07)'); gr.addColorStop(1, 'rgba(196,208,224,0)');
     ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h * 0.35);
     if (!this._vig || this._vig.w !== w || this._vig.h !== h) {
       const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d');
       const r = x.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.hypot(w, h) * 0.58);
-      r.addColorStop(0, 'rgba(8,6,2,0)'); r.addColorStop(1, 'rgba(8,6,2,.42)'); x.fillStyle = r; x.fillRect(0, 0, w, h);
+      r.addColorStop(0, 'rgba(8,6,2,0)'); r.addColorStop(1, 'rgba(8,6,2,.3)'); x.fillStyle = r; x.fillRect(0, 0, w, h);
       this._vig = c; c.w = w; c.h = h;
     }
     ctx.drawImage(this._vig, 0, 0, w, h);

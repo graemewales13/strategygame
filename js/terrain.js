@@ -85,6 +85,42 @@ export class TerrainCache {
       }
     }
 
+    // ---- hide the tile grid: blend a heavily blurred copy of the ground over itself (not over rock tiles, so the stone keeps its edges).
+    // The painted tiles differ in brightness, which reads as a diamond checkerboard; this melts it into continuous country.
+    if (gfx.q >= 1) {
+      const orig = mk(size, size); orig.getContext('2d').drawImage(cv, 0, 0);
+      let src = cv, sw = size;
+      while (sw > 80) { const nw = Math.max(80, sw >> 1), c2 = mk(nw, nw), x2 = c2.getContext('2d'); x2.imageSmoothingQuality = 'high'; x2.drawImage(src, 0, 0, nw, nw); src = c2; sw = nw; }
+      ctx.save(); ctx.beginPath();
+      for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) { const t = this.type(x, y); if (t !== T_ROCK && t !== T_WATER && t !== T_FORD) ctx.rect(px(x) - 0.5, py(y) - 0.5, TS + 1, TS + 1); }
+      ctx.clip(); ctx.globalAlpha = 0.82; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(src, 0, 0, size, size);
+      ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = 0.85; ctx.drawImage(orig, 0, 0);   // put the painted texture's fine contrast back on top of the smoothed colour
+      ctx.restore();
+    }
+    // ---- relief: a made-up height field lit from the upper left, so the land rolls in soft rises and hollows
+    if (gfx.q >= 1) {
+      const H = (x, y) => vnoise(x * 0.045 + 7, y * 0.045 + 3) * 0.65 + vnoise(x * 0.13, y * 0.13 + 20) * 0.35;
+      for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
+        const t = this.type(x, y); if (t < 0 || t === T_WATER || t === T_FORD || t === T_ROCK) continue;
+        const sh = H(x - 1, y - 1) - H(x + 1, y + 1), a = Math.min(0.34, Math.abs(sh) * 3.4); if (a < 0.03) continue;
+        const [cxp, cyp] = ctr(x, y), gr = ctx.createRadialGradient(cxp, cyp, 0, cxp, cyp, TS * 1.15), c = sh > 0 ? '255,244,205' : '24,26,40';
+        gr.addColorStop(0, `rgba(${c},${a})`); gr.addColorStop(1, `rgba(${c},0)`);
+        ctx.fillStyle = gr; ctx.fillRect(cxp - TS * 1.15, cyp - TS * 1.15, TS * 2.3, TS * 2.3);
+      }
+    }
+    // ---- dunes: long curved crests across the sand and dry ground, light on the lit side, dark in the lee
+    if (gfx.q >= 1) {
+      ctx.lineCap = 'round';
+      for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
+        const t = this.type(x, y); if (t !== T_SAND && t !== T_DRY) continue;
+        const n = vnoise(x * 0.09 + 50, y * 0.09 + 11); if (n < 0.5 || hash(x, y, 140) > 0.55) continue;
+        const [cxp, cyp] = ctr(x, y), L = TS * (0.9 + hash(x, y, 141) * 1.1), bend = (hash(x, y, 142) - 0.5) * TS * 0.6;
+        ctx.lineWidth = 2.4; ctx.strokeStyle = 'rgba(40,28,10,.16)'; ctx.beginPath(); ctx.moveTo(cxp - L / 2, cyp + 3); ctx.quadraticCurveTo(cxp, cyp + 3 + bend, cxp + L / 2, cyp + 3); ctx.stroke();
+        ctx.lineWidth = 1.8; ctx.strokeStyle = 'rgba(255,240,196,.3)'; ctx.beginPath(); ctx.moveTo(cxp - L / 2, cyp - 1); ctx.quadraticCurveTo(cxp, cyp - 1 + bend, cxp + L / 2, cyp - 1); ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    }
+
     // ---- large-scale variation: soft lush / parched patches drifting across the ground, so a wide plain never shows its tile repeat
     if (gfx.q >= 1) {
       for (let y = ty0; y < ty0 + N; y++) for (let x = tx0; x < tx0 + N; x++) {
@@ -197,7 +233,10 @@ export class TerrainCache {
     const [bx0, by0, bx1, by1] = r.viewBounds(1);
     const cx0 = Math.max(0, Math.floor(bx0 / CH)), cy0 = Math.max(0, Math.floor(by0 / CH));
     const cx1 = Math.min(this.cw - 1, Math.floor(bx1 / CH)), cy1 = Math.min(this.ch - 1, Math.floor(by1 / CH));
+    const t0 = performance.now();
     for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+      // painting a chunk is the expensive part: spend at most ~22 ms a frame on new ones; the rest appear over the next few frames
+      if (!this.chunks.has(cy * this.cw + cx) && performance.now() - t0 > 22 && this.chunks.size > 0) { r.wantMore = true; continue; }
       const c = this.chunk(cx, cy);
       const m = r.isoMatrix(cx * CH - 1, cy * CH - 1, TS);
       ctx.setTransform(m[0] * dpr, m[1] * dpr, m[2] * dpr, m[3] * dpr, m[4] * dpr, m[5] * dpr);
