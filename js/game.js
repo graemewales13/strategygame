@@ -8,7 +8,7 @@ import {
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
-  MINEABLE, CAMEL_CAP, ROUTE_STOPS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
+  MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
 import { createMap } from './map.js';
@@ -408,6 +408,7 @@ export class Game {
       case 'stop': mine().forEach((u) => { u.route = null; u.task = { type: 'idle' }; u.path = []; }); return true;
       case 'route': return this.cmdRoute(mine(), this.byId.get(it.targetId), it.want);
       case 'stoproute': return this.stopRoute(mine());
+      case 'routeauto': return this.cmdRouteAuto(mine(), it.mode);
       case 'draft': return this.draft(team, it.villageId, it.n || 1, it.role || 'serf') > 0;
       case 'sell': return this.sellGoods(team, it.marketId, it.good, it.amount) > 0;
       case 'attack':
@@ -1137,6 +1138,18 @@ export class Game {
     if (k === 'wood') return this.near(b, ['mill']);
     return false;
   }
+  // townsfolk use up goods that arrived by camel (anything the market is not stocked with locally), so a scarce good stays wanted
+  consumeShelf(b, dt) {
+    const shelf = b.stock; if (!shelf) return;
+    const eat = (ROUTE.eat + ROUTE.eatEach * Math.min(8, Math.max(0, Math.round((this.consumerIncome(b) - CONSUMERS.base) / CONSUMERS.each)))) * dt;
+    let coin = 0;
+    for (const k in shelf) {
+      if (k === 'gold' || !(shelf[k] > 0) || this.supplied(b, k)) continue;
+      const n = Math.min(shelf[k], eat); shelf[k] -= n;
+      coin += n * (RES_VALUE[k] / RES_VALUE.gold) * this.priceMul(b, k) * ROUTE.pay;
+    }
+    if (coin > 0) this.earn(b.team, 'market', coin);
+  }
   supplyMarket(b, p, dt) {
     const shelf = b.stock || (b.stock = {}), cap = this.near(b, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP;
     for (const k of ALL_GOODS) {
@@ -1192,10 +1205,12 @@ export class Game {
     return Math.max(0.06, Math.min(0.22, 0.05 + d / 600));
   }
   // What a market or village will pay for a good, as a multiple of its base worth: scarce there = dear, plentiful = cheap.
-  priceMul(t, k) {
+  priceMul(t, k) { return this.pmAt(t, k, this.stockOf(t, k)); }
+  // the same, as if the shelf held `have` of the good (used to price a whole load as the shelf empties or fills)
+  pmAt(t, k, have) {
     if (k === 'gold') return 1;
     const ref = t.type === 'village' ? (VILLAGE_KINDS[t.kind].stores[k] || 0) : SHELF_CAP * 0.5;
-    const have = this.stockOf(t, k);
+    have = Math.max(0, have);
     const m = ref > 0 ? 1.75 - 1.1 * Math.min(1.6, have / ref) : 1.6 - 0.25 * Math.min(1, have / 40);
     return Math.max(0.6, Math.min(1.9, m));
   }
@@ -1283,88 +1298,174 @@ export class Game {
       if (!home) return say('A route starts at one of your markets: raise a market first.');
       if (t.id === home.id) { say('That is this camel\'s home market. Choose another market for it to visit.'); continue; }
       u.inside = null; u.home = home.id;
-      const r = u.route || (u.route = { stops: [], i: 0, want: ALL_GOODS.includes(want) ? want : 'gold', earned: 0, trips: 0 });
+      const r = u.route || (u.route = { stops: [], i: 0, want: ALL_GOODS.includes(want) ? want : 'gold', earned: 0, trips: 0, laps: 0, moved: false });
       const at = r.stops.indexOf(t.id);
       if (at >= 0) { r.stops.splice(at, 1); if (r.i >= r.stops.length) r.i = 0; if (!r.stops.length) { u.route = null; this.caravanHome(u); } done++; continue; }
       if (r.stops.length >= ROUTE_STOPS) { say(`A camel keeps at most ${ROUTE_STOPS} markets. Click one of its stops to remove it first.`); continue; }
       r.stops.push(t.id); done++;
       if (!(u.task.type === 'caravan' && u.task.route)) {
-        if (this.cargoTotal(u) >= 1) { r.i = r.stops.length - 1; u.task = { type: 'caravan', route: true, stage: 'out', t: 0 }; this.setPathToEntity(u, t); }
-        else { u.task = { type: 'caravan', route: true, stage: 'prep', t: 0 }; this.setPathToEntity(u, home); }
+        if (this.goodsTotal(u) >= 1) { r.i = 1; u.task = { type: 'caravan', route: true, stage: 'go', t: 0 }; this.setPathToEntity(u, this.circuitOf(u)[1] || t); }
+        else { r.i = 0; u.task = { type: 'caravan', route: true, stage: 'go', t: 0 }; this.setPathToEntity(u, home); }
       }
     }
     if (done && team === PLAYER) { const u = camels[0], r = u.route; this.log(team, r ? `${camels.length > 1 ? `${camels.length} camels` : (u.name || 'The camel')} will trade at ${r.stops.length} market${r.stops.length > 1 ? 's' : ''}.` : 'The route is cleared.', 'good'); }
     return done > 0;
+  }
+  // one click: loop every market of yours ('own'), or the best treaty-partner markets ('partners'); replaces the camel's route
+  cmdRouteAuto(units, mode) {
+    const camels = units.filter((u) => u.kind === 'camel' && u.hp > 0);
+    if (!camels.length) return false;
+    const team = camels[0].team, say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); this.diploNote = m; return false; };
+    let n = 0;
+    for (const u of camels) {
+      const home = this.routeHome(u);
+      if (!home) return say('A route starts at one of your markets: raise a market first.');
+      let pool;
+      if (mode === 'partners') {
+        pool = this.buildings.filter((b) => b.kind === 'market' && b.team !== team && b.built >= 1 && b.hp > 0 && this.canDeal(team, b).ok && Math.hypot(b.x - home.x, b.y - home.y) < 160);
+        pool.sort((a, b) => (this.legQuote(team, home, b, ROUTE.purse).profit + this.legQuote(team, b, home, ROUTE.purse).profit) - (this.legQuote(team, home, a, ROUTE.purse).profit + this.legQuote(team, a, home, ROUTE.purse).profit));
+        pool = pool.slice(0, Math.min(3, ROUTE_STOPS));
+      } else pool = this.marketsOf(team).filter((m) => m.id !== home.id);
+      const order = []; let cur = home;
+      while (pool.length && order.length < ROUTE_STOPS) { pool.sort((a, b) => Math.hypot(a.x - cur.x, a.y - cur.y) - Math.hypot(b.x - cur.x, b.y - cur.y)); cur = pool.shift(); order.push(cur); }
+      if (!order.length) return say(mode === 'partners' ? 'No treaty partner has a market in reach: open trade with a house you have met first.' : 'You have no other market to loop to: raise a second market.');
+      u.inside = null; u.home = home.id;
+      u.route = { stops: order.map((m) => m.id), i: 0, want: 'gold', earned: 0, trips: 0, laps: 0, moved: false };
+      u.task = { type: 'caravan', route: true, stage: 'go', t: 0 }; u.path = []; this.setPathToEntity(u, home); n++;
+    }
+    if (team === PLAYER) this.log(team, `${camels.length > 1 ? camels.length + ' camels' : (camels[0].name || 'The camel')} now loop${camels.length > 1 ? '' : 's'} ${mode === 'partners' ? 'to your trade partners' : 'between all your markets'}.`, 'good');
+    return n > 0;
   }
   stopRoute(units) {
     for (const u of units) if (u.kind === 'camel' && u.route) { u.route = null; if (u.task.type === 'caravan' && u.task.route) { this.caravanHome(u); } }
     return true;
   }
   stopName(t) { return t.team === undefined ? t.name : `${this.players[t.team].short || HOUSES[t.team].short}'s market`; }
-  // what to carry to one of my own markets: goods this shelf holds far more of than that one
-  ownQuote(home, t, cap = CAMEL_CAP) {
-    const a = home?.stock || {}, b = t?.stock || {}, opts = [];
-    for (const k of ALL_GOODS) { if (k === 'gold') continue; const sur = Math.floor(a[k] || 0) - Math.floor(b[k] || 0); if (sur >= 10) opts.push([k, Math.floor(sur / 2)]); }
-    opts.sort((x, y) => y[1] - x[1]);
-    const items = {}; let room = cap;
-    for (const [k, n] of opts) { const m = Math.min(n, room, 25); if (m >= 1) { items[k] = m; room -= m; } }
-    return { items, profit: 0, n: cap - room, fee: 0 };
+  // ---- route trading. A camel runs a circuit for ever: home market -> stop 1 -> stop 2 ... -> home. At every stop it
+  //  * at one of your markets: unloads onto the shelf, is paid a bounty by the townsfolk for goods that were scarce there (priced against the
+  //    shelf it loaded from), banks any coin, has the shelf topped up from the stockpile (mines, foundries, warehouses beside it), and loads
+  //    whatever the next stop wants most;
+  //  * at a partner's market: sells what it carries for coin (or the wanted good), then spends its coin on goods that are cheap there and
+  //    dear at the next stop. Goods flow both ways; nothing waits for a "worth it" load, the camel simply keeps walking the circuit.
+  // top up an own market's shelf from the stockpile for every good its suppliers make (instant: a camel at the door is a customer)
+  restock(m) {
+    const p = this.players[m.team], shelf = m.stock || (m.stock = {}), cap = this.near(m, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP;
+    for (const k of ALL_GOODS) {
+      if (k === 'gold' || !this.supplied(m, k)) continue;
+      const have = shelf[k] || 0, move = Math.min(cap - have, (p[k] || 0) - (SHELF_RESERVE[k] ?? SHELF_RESERVE.other));
+      if (move >= 1) { p[k] -= move; shelf[k] = have + move; }
+    }
   }
-  quoteStop(home, t) { return this.canDeal(home.team, t).own ? this.ownQuote(home, t) : this.routeQuote(home, t); }
+  goodsTotal(u) { let n = 0; if (u.cargo) for (const k in u.cargo) if (k !== 'gold') n += u.cargo[k]; return n; }
+  // the best load to take from market S to market N for this house: { items, srcSum, costOf, profit, cost, n }. Gains are in coin and count each unit at the
+  // price it would really fetch as the shelves empty and fill, so shuttling the same goods back and forth earns nothing.
+  legQuote(team, S, N, budget = 0, cap = CAMEL_CAP) {
+    const sOwn = S.team === team, nOwn = N.team === team, sh = S.stock || {}, fee = sOwn && nOwn ? 0 : this.feeFor(S, N);
+    const goldAvail = nOwn ? 1e9 : this.availFor(N, 'gold');
+    const marg = (k, i) => {
+      const W = RES_VALUE[k] / RES_VALUE.gold, pS = this.pmAt(S, k, (sh[k] || 0) - i), pN = nOwn ? this.pmAt(N, k, this.stockOf(N, k) + i) : this.priceMul(N, k);
+      let g, c = 0;
+      if (sOwn) g = nOwn ? ROUTE.arb * W * (pN - pS) : W * (pN * (1 - fee) - 1);
+      else { c = pS * (1 + fee) * W; g = nOwn ? W * (1 - pS * (1 + fee)) + ROUTE.arb * W * (pN - pS) : W * (pN * (1 - fee) - pS * (1 + fee)); }
+      return { g, c, pS, pN, W };
+    };
+    const cands = [];
+    for (const k of ALL_GOODS) { const have = Math.floor(sh[k] || 0); if (k !== 'gold' && have >= 1) cands.push({ k, have, g0: marg(k, 0).g }); }
+    cands.sort((a, b) => b.g0 - a.g0);
+    let room = cap, spend = budget, profit = 0, cost = 0, need = 0; const items = {}, srcSum = {}, costOf = {};
+    for (const o of cands) {
+      if (o.g0 < ROUTE.minGain) break;
+      for (let i = 0; i < o.have && i < ROUTE.perGood && room > 0; i++) {
+        const m = marg(o.k, i);
+        if (m.g < ROUTE.minGain || (m.c > 0 && spend < m.c)) break;
+        const take = !nOwn && sOwn ? this.priceAt(N, o.k) * (1 - fee) / RES_VALUE.gold : 0;
+        if (need + take > goldAvail) break;
+        items[o.k] = (items[o.k] || 0) + 1; srcSum[o.k] = (srcSum[o.k] || 0) + m.pS; costOf[o.k] = (costOf[o.k] || 0) + m.c;
+        room--; spend -= m.c; cost += m.c; profit += m.g; need += take;
+      }
+    }
+    return { items, srcSum, costOf, profit, cost, fee, n: cap - room };
+  }
+  quoteStop(home, t) { return this.legQuote(home.team, home, t, ROUTE.purse); }
+  // a circuit's markets in order: home first, then the stops that are still good
+  circuitOf(u) {
+    const home = this.routeHome(u); if (!home) return [];
+    return [home, ...(u.route?.stops || []).map((id) => this.byId.get(id)).filter(Boolean)];
+  }
+  // business at one market, then load for the next and set off
+  routeArrive(u, S, r, circ, k) {
+    const team = u.team, p = this.players[team], own = S.team === team, mine = team === PLAYER, W = (g) => RES_VALUE[g] / RES_VALUE.gold;
+    u.cargo = u.cargo || {}; u.src = u.src || {}; u.imp = u.imp || {};
+    if (own) {
+      const shelf = S.stock || (S.stock = {}); let bounty = 0, moved = 0;
+      for (const g of Object.keys(u.cargo)) {
+        let n = u.cargo[g]; if (g === 'gold' || !(n > 0.01)) { if (g !== 'gold') delete u.cargo[g]; continue; }
+        const imp = Math.min(n, u.imp[g] || 0);   // goods bought abroad come home to the stockpile; the rest stocks this shelf
+        if (imp > 0) { p[g] = (p[g] || 0) + imp; n -= imp; if (mine && imp >= 1) this.floaters.push({ x: S.x, y: S.y - 1, text: `+${Math.round(imp)}`, res: g, age: 0 }); }
+        if (n <= 0.01) { delete u.cargo[g]; continue; }
+        let sum = 0; const have = shelf[g] || 0;
+        for (let i = 0; i < Math.floor(n); i++) sum += this.pmAt(S, g, have + i);
+        bounty += ROUTE.arb * W(g) * Math.max(0, sum - (u.src[g] ?? sum));
+        shelf[g] = have + n; moved += n; delete u.cargo[g];
+      }
+      const gold = u.cargo.gold || 0;
+      if (gold > 0) { const back = Math.min(gold, u.purse || 0); p.gold += back; if (gold > back) this.earn(team, 'trade', gold - back); r.earned += Math.max(0, gold - back); p.tradeEarned += Math.max(0, gold - back); delete u.cargo.gold; }
+      u.purse = 0; u.src = {}; u.imp = {};
+      if (bounty >= 0.5) { this.earn(team, 'trade', bounty); r.earned += bounty; p.tradeEarned += bounty; if (mine) this.floaters.push({ x: S.x, y: S.y - 1, text: `+${Math.round(bounty)}`, res: 'gold', age: 0 }); }
+      if (moved >= 1 && mine) this.floaters.push({ x: S.x + 1, y: S.y, text: `${Math.round(moved)} goods`, res: 'wood', age: 0 });
+      this.restock(S);
+    } else {
+      const before = { ...u.cargo };
+      const gain = this.exchange(u, S, r.want) || 0; r.earned += gain; p.tradeEarned += gain;
+      for (const g in u.cargo) if (g !== 'gold' && u.cargo[g] > (before[g] || 0) + 0.01) u.imp[g] = (u.imp[g] || 0) + u.cargo[g] - (before[g] || 0);
+    }
+    // on to the next stop
+    const nextI = (r.i + 1) % circ.length, N = circ[nextI];
+    if (r.i === 0 && r.moved) { r.laps++; r.trips++; p.trips++; }
+    if (own && N.team !== team && !(u.purse > 0)) { const w = Math.min(ROUTE.purse, Math.floor(p.gold * 0.5)); if (w >= 10) { p.gold -= w; u.cargo.gold = (u.cargo.gold || 0) + w; u.purse = w; } }
+    const q = this.legQuote(team, S, N, own ? 0 : (u.cargo.gold || 0), Math.max(0, CAMEL_CAP - this.goodsTotal(u)));
+    const shelf = S.stock || (S.stock = {}), them = !own ? this.players[S.team] : null;
+    for (const g in q.items) {
+      const n = q.items[g];
+      if (!own) { const pay = q.costOf[g] || 0; u.cargo.gold = Math.max(0, (u.cargo.gold || 0) - pay); them.gold += pay; }
+      shelf[g] -= n; u.cargo[g] = (u.cargo[g] || 0) + n; u.src[g] = (u.src[g] || 0) + q.srcSum[g]; if (!own) u.imp[g] = (u.imp[g] || 0) + n;
+    }
+    r.leg = { from: S.id, to: N.id, n: q.n, profit: q.profit, items: q.items };
+    r.i = nextI; r.moved = true; k.stage = 'dwell'; k.t = 0; k.stuck = 0; u._front = null;
+  }
   doRoute(u, dt) {
     const k = u.task, r = u.route;
     const cancel = (why) => { if (u.team === PLAYER) this.log(PLAYER, why, 'warn'); u.route = null; this.caravanHome(u); };
     if (!r || !r.stops?.length) { u.route = null; this.caravanHome(u); return; }
     const home = this.routeHome(u);
     if (!home) return cancel('A route ends: you have no market to start from.');
+    u.home = home.id;
     // drop stops that are gone or can no longer be dealt with (war, treaty ended, market destroyed)
     for (let n = r.stops.length - 1; n >= 0; n--) {
       const m = this.byId.get(r.stops[n]);
       const why = !m || m.hp <= 0 || m.kind !== 'market' ? 'the market is gone' : (() => { const c = this.canDeal(u.team, m); return c.ok ? '' : c.reason; })();
-      if (why) { if (u.team === PLAYER) this.log(PLAYER, `A camel drops a stop: ${why}`, 'warn'); r.stops.splice(n, 1); if (r.i > n) r.i--; }
+      if (why) { if (u.team === PLAYER) this.log(PLAYER, `A camel drops a stop: ${why}`, 'warn'); r.stops.splice(n, 1); r.i = 0; }
     }
     if (!r.stops.length) return cancel('A route ends: no market is left to visit.');
-    if (r.i >= r.stops.length) r.i = 0;
-    const t = this.byId.get(r.stops[r.i]);
-    // arrive at the chosen front tile (not merely within reach of whichever side we met first)
-    const go = (dest) => { const f = u._front && u._front.id === dest.id && u.path.length ? u._front : null; if (f ? Math.hypot(u.x - f.x, u.y - f.y) > 0.8 : distTo(u.x, u.y, dest) > 1.6) { if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, dest); this.follow(u, dt); return false; } u.path = []; return true; };
-    if (k.stage === 'prep' || k.stage === 'wait') {
-      if (k.stage === 'prep' && !go(home)) return;
-      u.home = home.id;
-      if (k.stage === 'prep') {
-        // back at the shelf: unsold goods go back on it, coin goes to the stockpile
-        const p = this.players[u.team];
-        for (const g in u.cargo || {}) { if (g === 'gold') this.earn(u.team, 'trade', u.cargo[g]); else p[g] = (p[g] || 0) + u.cargo[g]; if (u.team === PLAYER && u.cargo[g] >= 1) this.floaters.push({ x: home.x, y: home.y - 1, text: `+${Math.round(u.cargo[g])}`, res: g, age: 0 }); }
-        u.cargo = {};
-        k.stage = 'wait'; k.t = 99;
-      }
+    const circ = this.circuitOf(u);
+    if (r.i >= circ.length || r.i < 0) r.i = 0;
+    const dest = circ[r.i];
+    if (k.stage === 'dwell') {
       k.t = (k.t || 0) + dt;
-      if (k.t < 6) return;
-      k.t = 0;
-      // choose the next stop that has something worth carrying, starting from where the cycle is
-      let pick = -1;
-      for (let n = 0; n < r.stops.length; n++) {
-        const idx = (r.i + n) % r.stops.length, m = this.byId.get(r.stops[idx]);
-        if (this.quoteStop(home, m).n >= 4) { pick = idx; break; }
-      }
-      if (pick < 0) { if (!r.noted && u.team === PLAYER) { r.noted = true; this.log(PLAYER, `${u.name || 'A camel'} waits at the market: nothing on its shelf is worth carrying to its stops yet.`, 'info'); } return; }
-      r.noted = false; r.i = pick;
-      const target = this.byId.get(r.stops[pick]), q = this.quoteStop(home, target), shelf = home.stock; u.cargo = {};
-      for (const g in q.items) { shelf[g] -= q.items[g]; u.cargo[g] = q.items[g]; }
-      k.stage = 'out'; this.setPathToEntity(u, target); return;
+      if (k.t >= ROUTE.dwell) { k.stage = 'go'; k.stuck = 0; u._front = null; this.setPathToEntity(u, dest); }
+      return;
     }
-    if (k.stage === 'out') {
-      if (!go(t)) return;
-      const gain = this.exchange(u, t, r.want) || 0;
-      r.earned += gain; r.trips++; this.players[u.team].tradeEarned += gain;
-      k.stage = 'back'; this.setPathToEntity(u, home); return;
+    // walk to the chosen front tile of the market
+    const f = u._front && u._front.id === dest.id && u.path.length ? u._front : null;
+    if (f ? Math.hypot(u.x - f.x, u.y - f.y) > 0.8 : distTo(u.x, u.y, dest) > 1.6) {
+      if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, dest);
+      this.follow(u, dt);
+      k.stuck = u.path.length ? 0 : (k.stuck || 0) + dt;
+      if (k.stuck > 8) { r.i = (r.i + 1) % circ.length; k.stuck = 0; r.skipped = (r.skipped || 0) + 1; if (u.team === PLAYER && r.skipped % 3 === 1) this.log(PLAYER, `${u.name || 'A camel'} cannot find a road to ${this.stopName(dest)} and skips it.`, 'warn'); }
+      return;
     }
-    if (k.stage === 'back') {
-      if (!go(home)) return;
-      this.players[u.team].trips++;
-      r.i = (r.i + 1) % r.stops.length;   // next market round the circuit
-      k.stage = 'prep';
-    }
+    u.path = [];
+    this.routeArrive(u, dest, r, circ, k);
   }
   caravanHome(u) {
     const alive = (b) => b && b.hp > 0 && b.team === u.team && b.built >= 1;
@@ -1389,9 +1490,9 @@ export class Game {
     const them = t.type === 'building' ? this.players[t.team] : null;
     let soldAny = false, profit = 0;
     for (const give of Object.keys(u.cargo)) {
-      if (give === want || u.cargo[give] < 1) continue;
+      if (give === want || give === 'gold' || u.cargo[give] < 1) continue;   // coin in the saddlebag is the purse, spent by the buying step, not a good to sell
       const fee = this.feeFor(u, t), r = (this.priceAt(t, give) / this.priceAt(t, want)) * (1 - fee), avail = this.availFor(t, want);
-      const total = this.cargoTotal(u);
+      const total = this.goodsTotal(u);   // coin is light: it never fills the saddlebags
       let s = Math.floor(u.cargo[give]);
       for (; s > 0; s--) { const got = Math.floor(s * r); if (got <= avail && (want === 'gold' || total - s + got <= CAMEL_CAP)) break; }   // coin is light: it never fills the saddlebags
       const got = Math.floor(s * r);
@@ -1709,7 +1810,7 @@ export class Game {
         case 'keep': this.tickKeep(b, dt); break;
         case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; }
           this.earn(b.team, 'tavern', 0.35 * dt); break;
-        case 'market': this.earn(b.team, 'market', this.consumerIncome(b) * dt); this.supplyMarket(b, p, dt); if (b.glut) for (const k in b.glut) b.glut[k] = Math.max(0, b.glut[k] - SELL.decay * dt); break;
+        case 'market': this.earn(b.team, 'market', this.consumerIncome(b) * dt); this.supplyMarket(b, p, dt); this.consumeShelf(b, dt); if (b.glut) for (const k in b.glut) b.glut[k] = Math.max(0, b.glut[k] - SELL.decay * dt); break;
         case 'temple': if (this.hasBuilding(b.team, 'academy')) this.earn(b.team, 'temple', 0.3 * dt); break;
         case 'academy': {
           let n = 0;

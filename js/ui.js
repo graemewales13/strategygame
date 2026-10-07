@@ -355,6 +355,11 @@ export class UI {
         if (!this.host.send({ type: 'route', ids: [u.id], targetId: t.id })) this.toast(g.diploNote || 'That camel cannot take that road.', 'warn');
         break;
       }
+      case 'routeauto': {
+        const ids = this.selUnits().filter((x) => x.kind === 'camel').map((x) => x.id);
+        if (ids.length && !this.host.send({ type: 'routeauto', ids, mode: d.mode })) this.toast(g.diploNote || 'No loop is possible yet.', 'warn');
+        break;
+      }
       case 'routestop': {
         const ids = this.selUnits().filter((x) => x.kind === 'camel').map((x) => x.id);
         if (ids.length) this.host.send({ type: 'route', ids, targetId: +d.market });
@@ -617,6 +622,7 @@ export class UI {
       case 'return': return 'Carrying goods home';
       case 'build': return 'Building';
       case 'infiltrate': return 'Infiltrating';
+      case 'caravan': return u.route ? (t.stage === 'dwell' ? 'Trading at a market' : 'On its trade loop') : 'Heading home';
       default: return 'Idle';
     }
   }
@@ -792,7 +798,7 @@ export class UI {
     html += `<div class="tcol"><div class="ctitle">Shelf (fed by mines, foundries, farms, mills and warehouses within ${MARKET_RADIUS} tiles)</div>${any ? this.goodChips(shelf, '', null, SHELF_CAP) : '<div class="hint">Empty: raise a mine, foundry, farm or warehouse near this market.</div>'}`;
     const me = g.players[PLAYER], sellable = ALL_GOODS.filter((k) => k !== 'gold' && (me[k] || 0) >= 1);
     html += `<div class="ctitle">Sell from your stockpile (click = 20) · price falls as you sell</div>${sellable.length ? `<div class="goods sellrow">${sellable.map((k) => `<span class="gchip" data-act="sell" data-good="${k}" data-tip="${encodeURIComponent(`<b>Sell ${GOOD_LABEL[k]}</b><br>${g.sellPrice(b, k).toFixed(2)} coin each now (worth ${(RES_VALUE[k] / RES_VALUE.gold).toFixed(1)}).<br>Caravans to a distant market or village fetch more.`)}">${dot(k)}${GOOD_LABEL[k]} ${Math.floor(me[k])} · ${g.sellPrice(b, k).toFixed(1)}c</span>`).join('')}</div>` : '<div class="hint">Nothing in the stockpile worth selling yet. Mines and foundries fill it.</div>'}`;
-    html += `<div class="hint">Train a <b>camel</b>, select it, then click up to three markets for its loop. Trade so far: <b>+${Math.floor(me.tradeEarned || 0)} coin</b> over ${me.trips || 0} trips.</div></div></div>`;
+    html += `<div class="hint">Train a <b>camel</b>, select it, then click markets (or use the loop buttons): it circles them for ever. Trade so far: <b>+${Math.floor(me.tradeEarned || 0)} coin</b> over ${me.trips || 0} trips.</div></div></div>`;
     return html;
   }
   // a market that is not the camel's own base: what is on its shelf, what a camel could earn there per trip, and a camel to send
@@ -804,7 +810,7 @@ export class UI {
     let html = `<div class="ctitle">${esc(name)} · goods and what a camel earns here</div>`;
     if (!chk.ok) return html + `<div class="hint">${esc(chk.reason)} Open the diplomacy panel (click their house at the top) to propose a trade treaty.</div>`;
     const have = ALL_GOODS.filter((k) => k !== 'gold' && g.stockOf(t, k) >= 1);
-    html += `<div class="hint">${chk.own ? 'A camel can move your surplus here from its home shelf.' : `Coin in their purse: <b>${g.availFor(t, 'gold')}</b>.`} ${have.length ? 'On the shelf:' : 'The shelf is empty.'}</div>`;
+    html += `<div class="hint">${chk.own ? 'A camel moves goods here from where they are plentiful; townsfolk pay for what is scarce.' : `Coin in their purse: <b>${g.availFor(t, 'gold')}</b>.`} ${have.length ? 'On the shelf:' : 'The shelf is empty.'}</div>`;
     if (have.length) html += `<div class="goods">${have.map((k) => `<span class="gchip" data-tip="${encodeURIComponent(`<b>${GOOD_LABEL[k]}</b><br>Pays ${g.priceAt(t, k).toFixed(1)} each (worth ${RES_VALUE[k]})`)}">${dot(k)}${GOOD_LABEL[k]} ${g.stockOf(t, k)} · ${g.priceAt(t, k).toFixed(1)}</span>`).join('')}</div>`;
     const camels = g.units.filter((u) => u.team === PLAYER && u.kind === 'camel' && u.hp > 0);
     html += `<div class="ctitle">Send a camel (it keeps up to ${ROUTE_STOPS} markets on a loop)</div>`;
@@ -814,7 +820,7 @@ export class UI {
     html += `<div class="cgrid">${rows.map((u) => {
       const home = g.routeHome(u), on = u.route?.stops?.includes(t.id), full = !on && (u.route?.stops?.length || 0) >= ROUTE_STOPS;
       const isHome = home && home.id === t.id, q = home && !isHome ? g.quoteStop(home, t) : null;
-      const sub = on ? 'on its loop · click to remove' : isHome ? 'its home market' : full ? 'already has 3 markets' : q && q.n >= 4 ? (chk.own ? 'moves goods here' : `+${Math.floor(q.profit)} coin a trip`) : 'nothing worth carrying yet';
+      const sub = on ? 'on its loop · click to remove' : isHome ? 'its home market' : full ? `already has ${ROUTE_STOPS} markets` : q && q.n >= 1 ? (chk.own ? 'moves goods here' : `+${Math.floor(q.profit)} coin a trip`) : 'little to carry yet';
       return this.btn('routecamel', { glyph: '🐪', art: 'camel', name: esc(u.name?.split(' ')[0] || 'Camel'), sub, off: isHome || full, data: { id: u.id }, tip: `<b>${esc(u.name || 'Camel')}</b><br>${on ? 'Click to take this market off its loop.' : 'Adds this market to its loop: home shelf, here, home, next market, home... until stopped.'}${u.route?.stops?.length ? `<br>${u.route.stops.length} market${u.route.stops.length > 1 ? 's' : ''} on its loop now.` : ''}` });
     }).join('')}</div>`;
     return html;
@@ -825,22 +831,25 @@ export class UI {
     const cell = (r, k, f = (x) => x) => `<td class="${r[k] === best(k) && r[k] > 0 ? 'lead' : ''}">${f(r[k])}</td>`;
     return `<table class="stand"><tr><th></th><th>Money</th><th>Land</th><th>Folk</th><th>Army</th><th>Science</th><th>Loyalty</th></tr>${rows.map((r) => `<tr class="${r.team === PLAYER ? 'me' : ''} ${r.alive ? '' : 'fallen'}"><td style="color:${HOUSES[r.team].accent}">${esc(HOUSES[r.team].short)}</td>${cell(r, 'money')}${cell(r, 'land')}${cell(r, 'pop')}${cell(r, 'army')}${cell(r, 'sci')}${cell(r, 'loyalty', (x) => x + '%')}</tr>`).join('')}</table>`;
   }
-  // a camel's loop: its markets, what each is worth per trip, and how to change them
+  // a camel's loop: its markets, what each leg is worth, what it is doing now, and how to change the route
   camelPanel(us) {
-    const g = this.game, u = us[0], single = us.length === 1, r = u.route, stops = (r?.stops || []).map((id) => g.byId.get(id)).filter(Boolean);
-    const home = g.routeHome(u), total = g.cargoTotal(u);
-    let html = `<div class="ctitle">${single ? esc(u.name || 'Camel') : us.length + ' camels'} · loop of ${stops.length}/${ROUTE_STOPS} markets${single ? ` · carrying ${Math.floor(total)}/${CAMEL_CAP}` : ''}</div>`;
+    const g = this.game, u = us[0], single = us.length === 1, r = u.route, circ = g.circuitOf(u), stops = circ.slice(1);
+    const home = circ[0], total = g.goodsTotal(u), kinds = (items) => Object.entries(items || {}).filter(([, n]) => n >= 1).map(([k, n]) => `${Math.round(n)} ${GOOD_LABEL[k].toLowerCase()}`).join(', ');
+    let html = `<div class="ctitle">${single ? esc(u.name || 'Camel') : us.length + ' camels'} · loop of ${stops.length}/${ROUTE_STOPS} markets${single ? ` · carrying ${Math.floor(total)}/${CAMEL_CAP}${u.cargo?.gold ? ` + ${Math.floor(u.cargo.gold)} coin` : ''}` : ''}</div>`;
     if (!home) html += `<div class="hint">Raise a market first: a camel works out of one of yours.</div>`;
-    else html += `<div class="hint">Home: <b>${esc(HOUSES[PLAYER].short)}'s market</b> (${Math.round(Math.hypot(u.x - home.x, u.y - home.y))} tiles away).</div>`;
+    else html += `<div class="hint">Starts and ends at <b>${esc(HOUSES[PLAYER].short)}'s market</b> (${Math.round(Math.hypot(u.x - home.x, u.y - home.y))} tiles away). It never stops: at each market it unloads, loads for the next, and trades both ways with treaty partners.</div>`;
+    html += `<div class="cgrid c4">${this.btn('routeauto', { glyph: '⟲', name: 'All my markets', data: { mode: 'own' }, tip: '<b>Loop all my markets</b><br>The camel circles every market you own, nearest first, moving goods from where mines, foundries and warehouses stock them to where they are scarce. Townsfolk pay for what arrives.' })}${this.btn('routeauto', { glyph: '⇄', name: 'Trade partners', data: { mode: 'partners' }, tip: '<b>Loop to trade partners</b><br>The camel runs between your market and the best treaty-partner markets, selling your goods for coin and buying their cheap goods to bring home.' })}${stops.length ? this.btn('stopgo', { glyph: '■', name: 'Stop loop', tip: '<b>Stop loop</b><br>Finish up and come home; clears every stop.' }) : ''}</div>`;
     if (stops.length) {
       html += `<div class="stoplist">${stops.map((m, i) => {
-        const q = home ? g.quoteStop(home, m) : { n: 0, profit: 0 }, own = m.team === PLAYER, here = single && r.i === i && u.task.stage && u.task.stage !== 'wait';
-        return `<div class="stoprow ${here ? 'cur' : ''}"><span class="sn">${i + 1}. ${esc(g.stopName(m))}</span><span class="st">${q.n >= 4 ? (own ? 'moves goods' : `+${Math.floor(q.profit)} coin/trip`) : 'nothing to carry yet'}</span><button class="cbtn mini" data-act="routestop" data-market="${m.id}" data-tip="${encodeURIComponent('<b>Remove this stop</b>')}">×</button></div>`;
+        const prev = circ[i], q = g.legQuote(PLAYER, prev, m, 100), own = m.team === PLAYER, here = single && r.i === i + 1;
+        return `<div class="stoprow ${here ? 'cur' : ''}"><span class="sn">${i + 1}. ${esc(g.stopName(m))}</span><span class="st">${q.n >= 1 ? `${own ? 'carries' : 'sells'} ~${Math.round(q.profit)} coin/trip` : 'little to carry yet'}</span><button class="cbtn mini" data-act="routestop" data-market="${m.id}" data-tip="${encodeURIComponent('<b>Remove this stop</b>')}">×</button></div>`;
       }).join('')}</div>`;
-      if (single) html += `<div class="hint">${r.trips} trips so far, <b>+${Math.floor(r.earned)} coin</b>. Now: ${esc(({ prep: 'at home, loading', wait: 'at home, loading', out: 'on the road to a market', back: 'walking home', home: 'walking home' })[u.task.stage] || 'idle')}.</div>`;
-      html += `<div class="cgrid c4">${this.btn('stopgo', { glyph: '■', name: 'Stop loop', tip: '<b>Stop loop</b><br>Finish up and come home; clears every stop.' })}</div>`;
+      if (single) {
+        const dest = circ[r.i], leg = r.leg && r.leg.to === dest?.id ? r.leg : null;
+        html += `<div class="hint">${r.laps || 0} laps, <b>+${Math.floor(r.earned)} coin</b> from trade. ${u.task.stage === 'dwell' ? 'Trading at the market.' : `On its way to <b>${dest ? esc(g.stopName(dest)) : 'a market'}</b>.`} ${leg && leg.n >= 1 ? `Carrying ${esc(kinds(leg.items))}${leg.profit >= 1 ? `, about +${Math.round(leg.profit)} coin` : ''}.` : 'Nothing worth carrying on this leg yet; it keeps walking the loop and will pick up goods as shelves fill.'}</div>`;
+      }
     }
-    html += stops.length < ROUTE_STOPS ? `<div class="hint"><b>Click a market</b> on the map to add it (yours, or a treaty partner's). Click one of its stops again to remove it.</div>` : `<div class="hint">Three markets: the loop is full. Click a stop's × to swap one.</div>`;
+    html += stops.length < ROUTE_STOPS ? `<div class="hint">Or <b>click a market</b> on the map to add it to the loop (yours, or a treaty partner's). Click one of its stops again to remove it.</div>` : `<div class="hint">The loop is full (${ROUTE_STOPS} markets). Click a stop's × to swap one.</div>`;
     return html;
   }
   pullText(v) {

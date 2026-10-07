@@ -20,7 +20,7 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - A captured village brings every building within about four tiles with it; those buildings are marked as belonging to the town.
 
 ## Camels and trade
-- Camels are simple: select a camel, click the market(s) to visit (up to 3), and it keeps looping until stopped.
+- Camels are simple: select a camel, click the market(s) to visit (up to 5) or press All my markets / Trade partners, and it keeps looping until stopped. A route camel must NEVER stall or go idle on its own: it always walks its circuit, loading at every stop, trading both ways with treaty partners, and must not be able to earn coin by shuttling the same goods back and forth.
 - Camels trade only with markets (yours or a treaty partner's), never with villages.
 - A market shows its goods and the revenue a camel's load would earn.
 

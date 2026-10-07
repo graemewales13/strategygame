@@ -22,7 +22,7 @@ export const OBJECTIVES = [
     done: (g) => g.buildings.some((b) => b.team === PLAYER && b.kind === 'market' && b.built >= 1 && g.district(b).score >= 3) },
   { id: 'keep', title: 'Raise a keep and barracks', hint: 'The keep sways nearby villages and drills soldiers. The barracks trains them.',
     done: (g) => mine(g, 'keep') && mine(g, 'barracks') },
-  { id: 'camel', title: 'Send a camel trading', hint: 'Train a camel at the market, select it, then click up to three markets. It loops between them for ever.',
+  { id: 'camel', title: 'Send a camel trading', hint: 'Train a camel at the market, select it, then press All my markets or Trade partners (or click markets on the map). It loops for ever, hauling goods.',
     done: (g) => g.units.some((u) => u.team === PLAYER && u.kind === 'camel' && u.route && u.route.stops.length) || g.players[PLAYER].trips > 0 },
   { id: 'village', title: 'Win a village', hint: 'Station soldiers or a keep beside an independent village, or send a spy, until its loyalty turns. You can also sack it.',
     done: (g) => heldVillages(g) >= 1 },

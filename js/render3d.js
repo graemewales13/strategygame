@@ -336,6 +336,7 @@ export class Renderer3D extends Renderer {
     }
     ctx.globalAlpha = 1;
     this.econOverlay(ctx, ui, t, z);
+    this.routeOverlay(ctx, ui, t, z);
     if (ui?.placing) this.ghost(ctx, g, ui);
     if (ui?.dragBox) { const b = ui.dragBox; ctx.fillStyle = 'rgba(240,226,160,0.12)'; ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 1; ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); ctx.strokeRect(b.x0 + 0.5, b.y0 + 0.5, b.x1 - b.x0, b.y1 - b.y0); }
     if (ui?.pings) for (const p of ui.pings) {

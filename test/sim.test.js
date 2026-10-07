@@ -1,7 +1,7 @@
 // Headless sim tests: `npm test` or `node test/sim.test.js`. No dependencies.
 import assert from 'node:assert/strict';
 import { Game } from '../js/game.js';
-import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE } from '../js/config.js';
+import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE, ROUTE_STOPS } from '../js/config.js';
 
 // Deterministic runs: the sim uses Math.random for spawn jitter and spy catches.
 let _s = 12345;
@@ -12,9 +12,9 @@ const test = (name, fn) => { try { fn(); passed++; console.log('  ok  ', name); 
 const run = (g, secs, dt = 0.1) => { for (let t = 0; t < secs; t += dt) g.tick(dt); };
 
 // helpers for the market / caravan tests
-const placeNear = (g, team, kind, r0 = 5) => {
+const placeNear = (g, team, kind, r0 = 5, r1 = 17) => {
   const h = g.seatOf(team), size = { market: 3, mine: 2, warehouse: 3, foundry: 3, cottage: 2 }[kind] || 3;
-  for (let r = r0; r < 17; r++) for (let a = 0; a < 90; a++) {
+  for (let r = r0; r < r1; r++) for (let a = 0; a < 90; a++) {
     const an = (a / 90) * 6.283, tx = Math.round(h.x + Math.cos(an) * r - size / 2), ty = Math.round(h.y + Math.sin(an) * r - size / 2);
     let ok = tx > 1 && ty > 1 && tx + size < g.W - 1 && ty + size < g.H - 1;
     for (let y = ty; ok && y < ty + size; y++) for (let x = tx; x < tx + size; x++) if (g.block[y * g.W + x] || g.resAt[y * g.W + x] >= 0 || g.terrain[y * g.W + x] === 2 || g.terrain[y * g.W + x] === 3) ok = false;
@@ -425,19 +425,19 @@ test('caravan: camel loads at the home market, trades at a treaty partner market
   camel.task = { type: 'idle' }; send(); assert.notEqual(camel.task.type, 'caravan', 'war');
 });
 
-test('caravan: camels trade only with markets; villages are refused; stops cap at three and toggle off', () => {
+test('caravan: camels trade only with markets; villages are refused; stops cap and toggle off', () => {
   const g = new Game({ seed: 9, houses: 3, ai: false });
   const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
   const v = g.villages.find((x) => x.kind === 'mine'); v.owner = -1;
   const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
   assert.equal(g.cmdRoute([camel], v, 'gold'), false, 'a village is no trading partner');
   assert.ok(!camel.route, 'no route made');
-  const ms = [1, 2, 3, 4].map((i) => { const m = g.addBuilding('market', 0, mk.tx + 5 * i, mk.ty + 6, true); return m; });
+  const ms = Array.from({ length: ROUTE_STOPS + 1 }, (_, i) => g.addBuilding('market', 0, mk.tx + 5 * (i % 4 + 1), mk.ty + 6 + 5 * Math.floor(i / 4), true));
   g.recomputeWalk();
-  for (let i = 0; i < 3; i++) assert.equal(g.cmdRoute([camel], ms[i], 'gold'), true);
-  assert.equal(camel.route.stops.length, 3);
-  assert.equal(g.cmdRoute([camel], ms[3], 'gold'), false, 'fourth stop refused');
-  assert.equal(g.cmdRoute([camel], ms[0], 'gold'), true); assert.equal(camel.route.stops.length, 2, 'clicking a stop removes it');
+  for (let i = 0; i < ROUTE_STOPS; i++) assert.equal(g.cmdRoute([camel], ms[i], 'gold'), true);
+  assert.equal(camel.route.stops.length, ROUTE_STOPS);
+  assert.equal(g.cmdRoute([camel], ms[ROUTE_STOPS], 'gold'), false, 'one stop too many is refused');
+  assert.equal(g.cmdRoute([camel], ms[0], 'gold'), true); assert.equal(camel.route.stops.length, ROUTE_STOPS - 1, 'clicking a stop removes it');
 });
 
 test('orders: any soldier or serf can attack a building by right-click; camels cannot; recruits become spies', () => {
@@ -621,6 +621,43 @@ test('routes: a camel loops its markets, earns coin at a partner and keeps going
   assert.ok(p.gold > g0 + 5, 'coin earned: ' + (p.gold - g0));
   g.applyIntent({ type: 'stoproute', team: 0, ids: [camel.id] });
   assert.equal(camel.route, null);
+});
+
+test('routes: a camel loops for ever between your own markets, carries goods to where they are scarce, and cannot print coin by shuttling', () => {
+  const g = new Game({ seed: 9, houses: 3, ai: false });
+  const a = placeNear(g, 0, 'market', 5), wh = placeNear(g, 0, 'warehouse', 4), b = placeNear(g, 0, 'market', 32, 45);
+  g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true); g.recomputeWalk();
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) > 20 && !g.supplied(b, 'iron') && g.supplied(a, 'iron'), 'one market is stocked by the warehouse, the far one is bare');
+  const p = g.players[0]; p.iron = 300; p.coal = 300; p.steel = 100;
+  const camel = g.addUnit('camel', 0, a.x + 2.5, a.y + 2.5);
+  assert.equal(g.applyIntent({ type: 'routeauto', team: 0, ids: [camel.id], mode: 'own' }), true);
+  assert.deepEqual(camel.route.stops, [b.id]);
+  run(g, 240);
+  assert.ok((b.stock.iron || 0) + (b.stock.steel || 0) > 15, 'the bare market was stocked: ' + JSON.stringify(b.stock));
+  const laps1 = camel.route.laps; run(g, 240);
+  assert.ok(camel.route.laps > laps1 + 2 && camel.task.type === 'caravan', 'it keeps looping, never idles: laps ' + camel.route.laps);
+  // shelves have settled: shuttling the same goods back and forth earns no more coin
+  const e0 = camel.route.earned; run(g, 300);
+  assert.ok(camel.route.earned - e0 < 40, 'no coin from a closed loop: ' + (camel.route.earned - e0));
+  // as folk at the far market eat what arrived, the camel brings more
+  const before = Object.values(b.stock).reduce((x, y) => x + y, 0); b.stock = {}; run(g, 200);
+  assert.ok(Object.values(b.stock).reduce((x, y) => x + y, 0) > 10, 'it restocks a drained shelf: ' + JSON.stringify(b.stock)); void before;
+});
+
+test('routes: a camel buys cheap goods from a partner and sells them dear at home, so trade runs both ways', () => {
+  const g = new Game({ seed: 9, houses: 3, ai: false });
+  const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
+  const mb = placeNear(g, 1, 'market'); g.meet(0, 1); g.proposeRelation(0, 1, 'trade'); assert.equal(g.rel[0][1], 'trade');
+  const p = g.players[0], them = g.players[1];
+  mk.stock = {}; mb.stock = { copper: 50, steel: 40 }; them.gold = 400;
+  const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
+  const c0 = p.copper || 0, g0 = p.gold;
+  assert.equal(g.applyIntent({ type: 'routeauto', team: 0, ids: [camel.id], mode: 'partners' }), true);
+  run(g, 420);
+  assert.ok((p.copper || 0) + (p.steel || 0) > c0 + 10, `goods bought abroad reach our stockpile: copper ${p.copper} steel ${p.steel}`);
+  assert.ok(mb.stock.copper < 50 || mb.stock.steel < 40, 'their shelf was bought from');
+  assert.ok(camel.route && camel.route.laps >= 2, 'laps ' + camel.route?.laps);
+  assert.ok(p.gold > g0 - 20, 'the purse is returned: ' + (p.gold - g0));
 });
 
 test('names: every unit has a name from its people, unique within the house', () => {

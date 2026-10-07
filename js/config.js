@@ -103,7 +103,7 @@ export const UNITS = {
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
-  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click up to three markets (yours or a treaty partner) and it loops between them for ever.' },
+  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click markets (yours or a treaty partner\'s) and it loops between them for ever, hauling goods both ways.' },
   king:    { label: 'King',    hp: 240, speed: 3.0, dmg: 14, range: 1,   cd: 1.0,  sight: 9,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.5, vil: 1.2, art: 'knight', info: 'The ruler of a house. Rallies soldiers, sways villages by his presence, and must not fall.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
 };
@@ -244,7 +244,7 @@ export const ABILITIES = {
   scholar: 'Heals friends, boosts academy influence',
   ram: 'Siege: right-click walls',
   king: 'Leads your soldiers (+damage near him), sways villages he visits, enters keeps to heal. If he falls your soldiers lose heart until an heir rises',
-  camel: 'Carries up to 40 goods: select it, then click up to 3 markets to loop between (markets only)',
+  camel: 'Carries up to 40 goods: select it, then click up to 5 markets to loop between for ever (markets only)',
 };
 // Keep (castle) drills garrisoned recruits and serfs into soldiers.
 export const DRILL = {
@@ -282,7 +282,10 @@ export const TRAITS = {
 };
 
 // ---- caravans: camels carry goods between markets and villages ------------------------------
-export const ROUTE_STOPS = 3;      // markets a camel keeps on its circuit
+export const ROUTE_STOPS = 5;      // markets a camel keeps on its circuit (besides its home market)
+// arb: share of the price gap paid out as coin when a camel moves goods to where they are scarcer; purse: working coin a camel draws to buy abroad;
+// dwell: seconds spent at each stop; perGood: most of one good per leg; minGain: smallest coin gain per unit worth carrying
+export const ROUTE = { arb: 0.6, purse: 100, dwell: 1.2, perGood: 25, minGain: 0.05, eat: 0.02, eatEach: 0.012, pay: 0.45 };   // eat: goods a market's folk use per second per good that came by camel (+eatEach per customer), paid at pay x the local price
 export const CAMEL_CAP = 40;       // goods per camel
 // ---- communities. A market and the people and works around it form a district. The flow it models:
 //   SUPPLY (mines dig, farms and mills grow)  ->  WORKS (foundries, forges, workshops make steel and ware)  ->  MARKET (shelf, camels, coin)  ->  HOMES (cottages, towns) who pay, and SERVICE (taverns, temples, abbeys) who keep them content.

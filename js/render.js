@@ -56,7 +56,7 @@ export class Renderer {
     this.canvas.style.height = this.h + 'px';
   }
   get z() { return this.cam.zoom; }
-  toScreen(x, y) { const z = this.cam.zoom, a = x - this.cam.x, b = y - this.cam.y; return [this.w / 2 + (a - b) * HW * z, this.h / 2 + (a + b) * HH * z]; }
+  toScreen(x, y, lift = 0) { const z = this.cam.zoom, a = x - this.cam.x, b = y - this.cam.y; return [this.w / 2 + (a - b) * HW * z, this.h / 2 + (a + b) * HH * z - lift * 20 * z]; }
   toWorld(sx, sy) { const z = this.cam.zoom, a = (sx - this.w / 2) / (HW * z), b = (sy - this.h / 2) / (HH * z); return [this.cam.x + (a + b) / 2, this.cam.y + (b - a) / 2]; }
   isoMatrix(tx0, ty0, ppt) { const z = this.cam.zoom, [ex, ey] = this.toScreen(tx0, ty0); return [HW * z / ppt, HH * z / ppt, -HW * z / ppt, HH * z / ppt, ex, ey]; }
   viewPoly() { return [this.toWorld(0, 0), this.toWorld(this.w, 0), this.toWorld(this.w, this.h), this.toWorld(0, this.h)]; }
@@ -159,6 +159,7 @@ export class Renderer {
 
     this.atmosphere(ctx, g);
     this.econOverlay(ctx, ui, t, z);
+    this.routeOverlay(ctx, ui, t, z);
     if (ui?.placing) this.ghost(ctx, g, ui);
     if (ui?.dragBox) {
       const b = ui.dragBox;
@@ -337,6 +338,26 @@ export class Renderer {
   }
   // The economy made visible: each own market wears four pips (supply, works, homes, service: lit when linked). Select a market, or press E,
   // to see its district ring and the lines along which goods and folk flow to it.
+  // the loop of every selected camel: a dashed road through its markets, numbered, with a marching dot toward the next one
+  routeOverlay(ctx, ui, t, z) {
+    if (!ui || ui.sel?.type !== 'units') return;
+    const g = this.game, seen = new Set(), zz = Math.max(0.7, Math.min(1.5, z));
+    for (const u of g.units) {
+      if (u.kind !== 'camel' || u.team !== PLAYER || !u.route || !ui.isSelected(u)) continue;
+      const circ = g.circuitOf(u); if (circ.length < 2) continue;
+      const key = circ.map((m) => m.id).join('-'); if (seen.has(key)) continue; seen.add(key);
+      ctx.save(); ctx.lineWidth = 2.2; ctx.setLineDash([9, 7]); ctx.lineDashOffset = -t * 18; ctx.strokeStyle = 'rgba(244,214,120,0.85)'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      circ.concat([circ[0]]).forEach((m, i) => { const [x, y] = this.toScreen(m.x, m.y); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.stroke(); ctx.setLineDash([]);
+      circ.forEach((m, i) => {
+        const [x, y] = this.toScreen(m.x, m.y, 2.2), own = m.team === PLAYER, cur = u.route.i === i;
+        ctx.beginPath(); ctx.arc(x, y, (cur ? 12 : 10) * zz, 0, 7); ctx.fillStyle = own ? 'rgba(40,30,12,0.88)' : 'rgba(60,20,16,0.88)'; ctx.fill(); ctx.lineWidth = cur ? 3 : 2; ctx.strokeStyle = cur ? '#fff2b0' : own ? '#e2c15e' : '#f09a6a'; ctx.stroke();
+        ctx.fillStyle = '#fff2c4'; ctx.font = `bold ${Math.round(12 * zz)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(i === 0 ? 'H' : String(i), x, y + 1); ctx.textBaseline = 'alphabetic';
+      });
+      ctx.restore();
+    }
+  }
   econOverlay(ctx, ui, t, z) {
     const g = this.game, COL = { supply: '#e0a43c', works: '#8fb6d8', homes: '#7fc46a', service: '#c08ae0' }, ORDER = ['supply', 'works', 'homes', 'service'];
     const sel = ui?.selEntity?.(), all = !!ui?.showEcon;
