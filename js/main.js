@@ -9,7 +9,8 @@ import { Recorder } from './recorder.js';
 import { learnPlaybook } from './learn.js';
 import { initTrainPanel } from './trainui.js';
 
-const cfg = { houses: DEFAULT_HOUSES, fog: true, diff: 'mid' };
+const cfg = { houses: DEFAULT_HOUSES, fog: true, diff: 'mid', people: 'random' };
+try { const p = localStorage.getItem('auld.people'); if (p) cfg.people = p; } catch {}
 const params = new URLSearchParams(location.search);
 if (params.get('houses')) cfg.houses = Math.max(3, Math.min(5, +params.get('houses')));
 if (params.get('fog') === '0') cfg.fog = false;
@@ -17,7 +18,7 @@ if (['easy', 'mid', 'hard'].includes(params.get('diff'))) cfg.diff = params.get(
 
 const pendingClick = () => window.__boot && window.__boot.pending;
 await Promise.race([loadArt(), new Promise((r) => setTimeout(r, 10000))]);   // a slow image must not hold the game hostage
-const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff });
+const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people });
 const host = new LocalHost(game);
 let renderer;
 let pref = null; try { pref = localStorage.getItem('auld3d'); } catch {}
@@ -56,7 +57,7 @@ trainPanel = initTrainPanel({ recorder, getPlaybook: () => game.playbook, getSee
 
 ui.onReroll = (opts) => {
   recorder.finish('quit');
-  game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog, diff: cfg.diff });
+  game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people });
   ui.setGame(game);
   recorder.start(game);
   ui.firstFocus = false;

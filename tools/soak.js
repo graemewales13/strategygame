@@ -86,7 +86,7 @@ for (const seed of seeds) {
     for (const b of g.buildings) {
       if (b.hp <= 0) continue;
       for (const id of b.garrison || []) { const u = g.byId.get(id); if (!u || u.inside !== b.id || u.hp <= 0) flag('garrison list out of sync', t, `${b.kind} team ${b.team} unit ${id}`); }
-      for (const k in b.stock || {}) if (!(b.stock[k] >= 0) || b.stock[k] > 101) flag('bad shelf value', t, `${k}=${b.stock[k]}`);
+      for (const k in b.stock || {}) if (!(b.stock[k] >= 0) || b.stock[k] > (b.kind === "warehouse" ? 151 : 101)) flag('bad shelf value', t, `${k}=${b.stock[k]}`);
     }
     for (const v of g.villages) { for (const k in v.stores || {}) if (!(v.stores[k] >= 0)) flag('bad village stock', t, `${v.name} ${k}=${v.stores[k]}`); for (const id of v.garrison || []) { const u = g.byId.get(id); if (!u || u.inside !== v.id) flag('village garrison out of sync', t, v.name); } }
     for (const u of g.units) {

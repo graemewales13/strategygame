@@ -1,5 +1,6 @@
 // Tests for ratings, kings and diplomacy. Fast: `node test/rules.test.js` (part of `npm test`).
 import assert from 'node:assert/strict';
+import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
 import { deliberate as dip_deliberate, intel } from '../js/diplomacy.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS } from '../js/config.js';
@@ -81,6 +82,42 @@ test('crowding: a group sent to one spot ends up spread out, never stacked into 
   let min = 9; for (let i = 0; i < us.length; i++) for (let j = i + 1; j < us.length; j++) min = Math.min(min, Math.hypot(us[i].x - us[j].x, us[i].y - us[j].y));
   assert.ok(min > 0.45, 'nobody overlaps: closest pair ' + min.toFixed(2));
   assert.ok(us.every((u) => Math.hypot(u.x - (h.x + 14), u.y - (h.y + 4)) < 5), 'and they all arrived');
+});
+
+test('peoples: names fit the nation; the player can pick or be dealt any people; the seating is deterministic and survives a save', () => {
+  const g0 = mk(); assert.equal(HOUSES[0].faction, 'egyptians'); assert.match(HOUSES[0].short, /Khemet/);
+  const NAT = { egyptians: /Khemet/, romans: /Aurelius/, scottish: /MacAlpin/, british: /Wessex/, mongols: /Borjigin/ };
+  for (const f of Object.keys(NAT)) {
+    const g = new Game({ seed: 11, houses: 4, ai: false, people: f });
+    assert.equal(HOUSES[0].faction, f, 'the player is ' + f); assert.match(HOUSES[0].name, NAT[f], 'and the house name fits: ' + HOUSES[0].name);
+    assert.equal(g.players[0].name, HOUSES[0].name);
+    assert.equal(new Set(HOUSES.map((h) => h.faction)).size, 5, 'every people sits once');
+    assert.ok(HOUSES.every((h) => NAT[h.faction].test(h.name)), 'every house name fits its people');
+  }
+  const a = new Game({ seed: 5, houses: 3, ai: false, people: 'random' }).peopleOrder.join(), b = new Game({ seed: 5, houses: 3, ai: false, people: 'random' }).peopleOrder.join();
+  assert.equal(a, b, 'the same seed seats the same peoples');
+  const seen = new Set(); for (let s = 1; s <= 40; s++) seen.add(new Game({ seed: s, houses: 3, ai: false, people: 'random' }).peopleOrder[0]);
+  assert.ok(seen.size >= 4, 'random deals the player different peoples: ' + [...seen]);
+  const g = new Game({ seed: 8, houses: 3, ai: false, people: 'mongols' }), data = JSON.parse(JSON.stringify(g.serialize()));
+  new Game({ seed: 99, houses: 3, ai: false });   // another game reseats the world...
+  new Game({ seed: 8, houses: 3, ai: false }).restore(data);
+  assert.equal(HOUSES[0].faction, 'mongols', '...but loading the save restores the seating');
+  new Game({ seed: 1, houses: 3, ai: false });
+});
+
+test('building: a lane of at least one tile is kept between buildings', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); g.players[PLAYER].wood = 999; g.players[PLAYER].stone = 999; g.seen[PLAYER].fill(1);
+  const b = g.addBuilding('market', PLAYER, h.tx + 7, h.ty + 7, true);
+  assert.equal(g.canPlace(PLAYER, 'market', b.tx + b.size, b.ty).ok, false, 'touching is refused');
+  assert.match(g.canPlace(PLAYER, 'market', b.tx + b.size, b.ty).reason, /gap/);
+  assert.equal(g.canPlace(PLAYER, 'market', b.tx + b.size + 1, b.ty).ok, true, 'one tile of lane is allowed');
+});
+
+test('title view: the fog-free backdrop never leaks into the match (loading or toggling fog from the title screen keeps fog)', () => {
+  const g = new Game({ seed: 3, houses: 3, ai: false, fog: true }); const data = JSON.parse(JSON.stringify(g.serialize()));
+  g.titleView = true; assert.equal(g.fogOn, false, 'the view is lifted'); g.restore(data);
+  assert.equal(g.fogOn, true, 'a loaded game has fog'); assert.ok(g.seen[PLAYER].some((v) => v === 0), 'and the map is not revealed');
+  g.titleView = true; g.setFog(true); assert.equal(g.fogOn, true); assert.ok(g.seen[PLAYER].some((v) => v === 0));
 });
 
 test('king: his presence sways a nearby free village', () => {

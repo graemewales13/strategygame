@@ -2,7 +2,7 @@
 
 A browser real-time strategy game in the spirit of *Seven Kingdoms* and *Age of Empires II*. You start with a home village of thirty folk and three serfs in a wide valley, and grow a house until you rule it. Plain HTML, CSS and JavaScript modules; canvas for the field. No build step, no dependencies.
 
-You are yellow **House Calder**. Rivals: red **Varr**, blue **Cael**, green **Thorn**, violet **Ash**. Pick 3, 4 or 5 houses in the menu; empty seats are AI.
+You are the yellow seat. Choose your people in Skirmish setup (Egyptians, Romans, Scots, British, Mongols) or leave it on Random: the nation, house name and motto are dealt per game (and per seed), the colours stay with the seats. Houses are named for their people: Khemet (Egyptian), Aurelius (Roman), MacAlpin (Scottish), Wessex (British), Borjigin (Mongol). Pick 3, 4 or 5 houses in the menu; empty seats are AI.
 
 ## Run it
 
@@ -154,7 +154,7 @@ Money is the first measure of a house; the others are land influence (villages h
 - Village purses refill from their folk (bigger villages pay more); AI markets pay from their treasury.
 
 ## Peoples and painted kits
-Five peoples (`FACTIONS` in config): Egyptians, Romans, British, Mongols, Scottish. Vikings are not a house. Calder is Egyptian, Varr Roman, Cael Scottish, Thorn British, Ash Mongol. Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Camels draw as dromedary (Mongols: Bactrian, Romans: donkey); the ram and hamlet use the shared art. There is no Viking kit.
+Five peoples (`FACTIONS` in config): Egyptians, Romans, British, Mongols, Scottish. Vikings are not a house. The peoples are seated by `setPeoples/seatPeoples` in config (default order: Khemet Egyptian, Aurelius Roman, MacAlpin Scottish, Wessex British, Borjigin Mongol); seat colours never move. Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Camels draw as dromedary (Mongols: Bactrian, Romans: donkey); the ram and hamlet use the shared art. There is no Viking kit.
 
 ## Money and manpower (the economy)
 Start: a home village of **30 folk**, **three serfs**, 300 grain, 480 timber, **320 coin**, 60 stone. Coin is booked by source (hover the coin counter; the green/red figure beside it is net income per second after army pay). `node tools/econ.js [minutes] [seed] [team]` prints a per-minute table of any rival house.

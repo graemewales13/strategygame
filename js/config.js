@@ -24,13 +24,33 @@ export const FACTIONS = {
   scottish:  { label: 'Scottish',  blurb: 'Grey stone, heather thatch, tower houses.' },
 };
 export const FACTION_BUILDINGS = ['mine', 'keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower'];
+// Each seat has a fixed colour (and heraldic device); the PEOPLE who sit in it (nation, house name, motto) are chosen per game: see setPeoples().
 export const HOUSES = [
-  { faction: 'egyptians', name: 'House Calder', short: 'Calder', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'Hold what you till' },
-  { faction: 'romans', name: 'House Varr', short: 'Varr', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', motto: 'Blood and iron' },
-  { faction: 'scottish', name: 'House Cael', short: 'Cael', color: 'blue', primary: '#3a6ea8', accent: '#92c6ff', dark: '#1c334d', motto: 'Still waters' },
-  { faction: 'british', name: 'House Thorn', short: 'Thorn', color: 'green', primary: '#37753f', accent: '#97d17c', dark: '#173a1c', motto: 'We endure' },
-  { faction: 'mongols', name: 'House Ash', short: 'Ash', color: 'violet', primary: '#7a4a98', accent: '#cb9ce0', dark: '#30203f', motto: 'From embers' },
+  { faction: 'egyptians', name: 'House Khemet', short: 'Khemet', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'The Black Land endures' },
+  { faction: 'romans', name: 'House Aurelius', short: 'Aurelius', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', motto: 'Strength through order' },
+  { faction: 'scottish', name: 'Clan MacAlpin', short: 'MacAlpin', color: 'blue', primary: '#3a6ea8', accent: '#92c6ff', dark: '#1c334d', motto: 'Stand fast' },
+  { faction: 'british', name: 'House Wessex', short: 'Wessex', color: 'green', primary: '#37753f', accent: '#97d17c', dark: '#173a1c', motto: 'Hearth and crown' },
+  { faction: 'mongols', name: 'Khanate Borjigin', short: 'Borjigin', color: 'violet', primary: '#7a4a98', accent: '#cb9ce0', dark: '#30203f', motto: 'Under the eternal sky' },
 ];
+const PEOPLE = HOUSES.map((h) => ({ faction: h.faction, name: h.name, short: h.short, motto: h.motto }));
+export const PEOPLE_KEYS = PEOPLE.map((p) => p.faction);
+// Seat the peoples: order[seat] = index into the classic order. Seats keep their colours; nation, name and motto move with the people.
+export function setPeoples(order) {
+  const o = Array.isArray(order) && order.length === PEOPLE.length && new Set(order).size === PEOPLE.length ? order : PEOPLE.map((_, i) => i);
+  HOUSES.forEach((h, i) => Object.assign(h, PEOPLE[o[i]]));
+  return o;
+}
+// A seating for a game: 'classic' keeps the old order; a faction key seats that people as the player; anything else is a random seating from the seed.
+export function seatPeoples(choice, seed) {
+  if (choice === undefined || choice === 'classic') return PEOPLE.map((_, i) => i);
+  let a = ((seed >>> 0) ^ 0x5bd1e995) >>> 0; const rnd = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const idx = PEOPLE.map((_, i) => i);
+  for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+  const want = PEOPLE_KEYS.indexOf(choice);
+  if (want >= 0) { const at = idx.indexOf(want); [idx[0], idx[at]] = [idx[at], idx[0]]; }
+  return idx;
+}
+
 
 // Terrain ids
 export const T_GRASS = 0;
@@ -263,6 +283,7 @@ export const RANK_BONUS = { dmg: 0.12, hp: 0.10, guard: 0.25 };   // per rank
 export const XP = { perDamage: 0.1, kill: 14, killBuilding: 8, killRankMul: 0.5 };
 // ---- the ruler. Every house is led by a named character; his presence rallies soldiers and sways villages, his fall shakes the house.
 // no running from a fight; garrisons sally out when foes come near their town
+export const BUILD_GAP = 1;   // empty tiles required between a new building and any other
 export const DEFEND_R = 5;   // idle soldiers this close to something under attack go to its defence
 export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11, lookR: 9 };
 export const KING = { aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 2, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,

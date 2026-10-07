@@ -511,3 +511,7 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 body.titleview #topbar, body.titleview #hud { display: none; }
 
 .buildtag { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 11px var(--font); letter-spacing: .15em; color: #8a7a52; text-transform: uppercase; }
+
+.seg.wrap { flex-wrap: wrap; }
+#mPeople { max-width: 300px; }
+#mPeople button { padding: 6px 9px; font-size: 12px; min-width: 0; }

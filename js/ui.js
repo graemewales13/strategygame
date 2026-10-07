@@ -952,6 +952,14 @@ export class UI {
       if (!this.started) this.onReroll?.({ seed: this.game.seed, houses: cfg.houses }); else this.toast(`${b.textContent} from the next New Valley.`, 'info');
     });
     refreshDiff();
+    const pseg = $('mPeople');
+    const refreshPeople = () => pseg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.p === cfg.people));
+    pseg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      cfg.people = b.dataset.p; refreshPeople(); try { localStorage.setItem('auld.people', cfg.people); } catch {}
+      if (!this.started) { this.onReroll?.({ seed: this.game.seed, houses: cfg.houses }); this.refreshMenu(); } else this.toast(`${b.textContent} from the next New Valley.`, 'info');
+    });
+    refreshPeople();
     if ($('buildTag')) $('buildTag').textContent = 'build ' + (window.__BUILD || '?') + ' · graphics ' + ['Low', 'Medium', 'High'][gfx.q];
     const gseg = $('mGfx');
     const showGfx = () => gseg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.q === gfx.q));
@@ -1014,7 +1022,7 @@ export class UI {
     const g = this.game;
     $('mSeed').value = g.seed; $('mSeedShow').textContent = g.seed;
     $('mBegin').textContent = this.started ? 'Resume the Valley' : 'Begin the Valley';
-    $('mFog').checked = g.fogOn;
+    $('mFog').checked = !!g._fog;   // the real setting (the title view lifts fog for display only)
     $('mHouses').querySelectorAll('button').forEach((b) => b.classList.toggle('on', +b.dataset.n === this.cfg.houses));
     $('mDiff').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.d === this.cfg.diff));
     drawVale($('vale'), g, { fog: false });

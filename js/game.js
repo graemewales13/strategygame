@@ -3,11 +3,11 @@
 // No DOM access in this file, so it runs unchanged under Node for tests.
 
 import {
-  MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
+  MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, setPeoples, seatPeoples, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, DEFEND_R, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
@@ -36,12 +36,14 @@ export class Game {
   // title screens show the whole valley under the menu: the view ignores fog until the match begins (never affects the sim)
   get fogOn() { return this._fog && !this.titleView; }
   set fogOn(v) { this._fog = v; }
-  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid' } = {}) {
+  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order } = {}) {
+    this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
     this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
     this.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, houses));
     this.fogOn = fog;
     this.aiOn = ai;
     this.seed = seed ?? Math.floor(Math.random() * 1e9) + 1;
+    this.people = people; this.peopleOrder = setPeoples(order || seatPeoples(people, this.seed));   // which nation sits in which seat
     { let a = (this.seed ^ 0x9e3779b9) >>> 0; this.rnd = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; this.named = []; }
     const map = createMap(this.seed, this.houses);
     this.map = map;
@@ -949,6 +951,12 @@ export class Game {
         if (!(s.onDeposit && MINEABLE.includes(n.kind))) return { ok: false, reason: 'Blocked by resources' };
       }
     }
+    if (kind !== 'mine') {   // leave a lane between buildings: tall sprites would otherwise pile onto one another
+      for (const o of this.buildings) {
+        if (o.hp <= 0 || o.kind === 'mine' || Math.abs(o.tx - tx) > s.size + 2 || Math.abs(o.ty - ty) > s.size + 2) continue;
+        if (Math.max(tx - (o.tx + o.size), o.tx - (tx + s.size), ty - (o.ty + o.size), o.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to another building: leave a gap' };
+      }
+    }
     if (this.wallsOff(tx, ty, s.size)) return { ok: false, reason: 'Would wall off a pocket of ground' };
     if (s.onDeposit) {
       const nodes = this.depositsUnder(tx, ty, s.size);
@@ -1200,13 +1208,23 @@ export class Game {
     shelf[good] -= amt; u.cargo = u.cargo || {}; u.cargo[good] = (u.cargo[good] || 0) + amt; u.home = m.id;
     return true;
   }
+  // put a camel's cargo on a market's shelf up to its cap; the surplus goes to a warehouse beside it, and what even that cannot hold stays on the camel
+  shelve(m, u) {
+    const shelf = m.stock || (m.stock = {}), cap = this.near(m, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP;
+    for (const k of Object.keys(u.cargo || {})) {
+      const have = shelf[k] || 0, put = Math.min(u.cargo[k], Math.max(0, cap - have));
+      shelf[k] = have + put;
+      let rest = u.cargo[k] - put;
+      if (rest > 0.01 && WAREHOUSE_GOODS.includes(k)) rest = this.depotStore(m, k, rest);
+      if (rest > 0.01) u.cargo[k] = rest; else delete u.cargo[k];
+    }
+  }
   unloadShelf(team, unitId) {
     const u = this.byId.get(unitId);
     if (!u || u.team !== team || u.kind !== 'camel' || !u.cargo) return false;
     const m = this.nearestMarket(team, u.x, u.y, 4.5); if (!m) return false;
-    const shelf = m.stock || (m.stock = {});
-    for (const k in u.cargo) shelf[k] = (shelf[k] || 0) + u.cargo[k];
-    u.cargo = {}; return true;
+    this.shelve(m, u);
+    return true;
   }
   // may these people deal with that market or village? { ok, reason, own }
   canDeal(team, t) {
@@ -1516,9 +1534,8 @@ export class Game {
     u.cargo = u.cargo || {};
     const name = t.type === 'village' ? t.name : `${this.players[t.team].short || HOUSES[t.team].short}'s market`;
     if (chk.own) {   // our own market: just stock its shelf
-      const shelf = t.stock || (t.stock = {});
-      for (const g in u.cargo) shelf[g] = (shelf[g] || 0) + u.cargo[g];
-      u.cargo = {}; u.home = t.id; say(`The caravan stocks ${name}.`); return;
+      this.shelve(t, u);
+      u.home = t.id; say(`The caravan stocks ${name}.`); return;
     }
     if (!want) { say(`The caravan reaches ${name} with nothing to buy.`, 'warn'); return; }
     const them = t.type === 'building' ? this.players[t.team] : null;
@@ -2423,7 +2440,7 @@ export class Game {
 
   // ------------------------------------------------------------------ fog of war
   setFog(on) {
-    this.fogOn = on;
+    this.titleView = false; this.fogOn = on;
     if (on) this.seen.forEach((a) => a.fill(0));
     this.updateVisibility(true);
   }
@@ -2520,7 +2537,7 @@ export class Game {
     const clean = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)));
     const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
     return {
-      v: 1, size: this.W, seed: this.seed, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
+      v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
       time: this.time, nextId: this.nextId, outcome: this.outcome, forfeits: this.forfeits || 0,
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
@@ -2529,9 +2546,10 @@ export class Game {
     };
   }
   restore(d) {
+    this.titleView = false;
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
     if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
-    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff });
+    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder });
     this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0;
     this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;
