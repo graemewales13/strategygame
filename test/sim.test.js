@@ -384,6 +384,19 @@ test('market shelf: stocked only from nearby suppliers (mine -> its ore, foundry
   assert.ok(mk.stock.iron <= 100.01);
 });
 
+test('warehouse: a full market spills surplus into the warehouse, which refills the shelf and holds a bounded amount', () => {
+  const g = new Game({ seed: 5, houses: 3, ai: false });
+  const p = g.players[PLAYER]; p.iron = 600; p.steel = 300;
+  const mk = placeNear(g, PLAYER, 'market'), wh = placeNear(g, PLAYER, 'warehouse', 4);
+  run(g, 60);
+  const held = Object.values(wh.stock || {}).reduce((x, y) => x + y, 0);
+  assert.ok(held > 20, 'surplus went to the warehouse: ' + JSON.stringify(wh.stock));
+  assert.ok((mk.stock.iron || 0) <= 100.01, 'shelf stays within its cap');
+  assert.ok(Object.values(wh.stock).every((v) => v <= 150.01), 'warehouse cap holds');
+  const keep = p.iron; mk.stock = {}; run(g, 10);
+  assert.ok((mk.stock.iron || 0) > 5, 'the warehouse refills an emptied shelf: ' + JSON.stringify(mk.stock)); void keep;
+});
+
 test('mines: gold deposits can be mined too', () => {
   const g = new Game({ seed: 5, houses: 3, ai: false }); g.tick(0.1); g.seen[PLAYER].fill(1);
   const h = g.seatOf(PLAYER), p = g.players[PLAYER]; p.wood = 500; p.gold = 100;

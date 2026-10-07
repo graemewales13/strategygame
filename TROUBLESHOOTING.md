@@ -113,3 +113,7 @@ The game is now **Auld World** (was Seven Holds). Title, header, README, package
 - Water looked glaringly white: low land dipped below the water plane and the specular highlight blew out. Land now sits above the water plane (+0.5) and the specular is dull.
 - The three.js files are imported by relative path, so `tools/stamp.js` does not cache-bust them (they never change except by upgrading; rename the files if you do).
 - Headless tests need no GPU: Chromium falls back to SwiftShader (slow but works), or to 2D.
+
+## T-040 - Warehouse overflow, record-and-train AI
+- `ui.js` imported `MARKET_RADIUS` twice; `node --check` does not catch duplicate imports, only loading the module does. The page failed to start ("Identifier ... already declared"). Always run `tools/boot-test.cjs` / a real page load after touching imports.
+- An imported or odd playbook could name a building that does not exist and crash the AI (`BUILDINGS[kind]` undefined): `learn.js` now drops unknown kinds both when learning and when blending the plan (test: "playbooks with missing or odd fields never crash a match").

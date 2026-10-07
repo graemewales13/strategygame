@@ -5,6 +5,9 @@ import { LocalHost } from './net.js';
 import { Renderer, Minimap, drawCrest } from './render.js';
 import { UI } from './ui.js';
 import { loadArt } from './art.js';
+import { Recorder } from './recorder.js';
+import { learnPlaybook } from './learn.js';
+import { initTrainPanel } from './trainui.js';
 
 const cfg = { houses: DEFAULT_HOUSES, fog: true, diff: 'mid' };
 const params = new URLSearchParams(location.search);
@@ -37,18 +40,33 @@ if (viewBtn) {
     const q = new URLSearchParams(location.search); q.set('3d', window.__is3d ? '0' : '1'); location.search = q.toString();
   };
 }
+// the rivals learn from the player: every match is recorded, and the playbook is re-learned between matches (never mid-match)
+let store = null; try { store = localStorage; } catch {}
+const recorder = new Recorder(store);
+let shipped = [];
+try { const r = await Promise.race([fetch('data/features.json'), new Promise((_, no) => setTimeout(no, 3000))]); if (r.ok) shipped = (await r.json()).records || []; } catch {}
+let trainPanel = { refresh() {} };
+const retrain = () => { try { game.playbook = learnPlaybook([...shipped, ...recorder.records().filter((r) => r.result !== 'live')]); } catch (e) { console.error('[auld-world] learning failed', e); game.playbook = null; } };
+recorder.onChange = () => { if (!recorder.cur) retrain(); trainPanel.refresh(); };
+retrain(); recorder.start(game);
+window.addEventListener('pagehide', () => recorder.finish('quit'));
 const minimap = new Minimap(document.getElementById('minimap'), game, renderer);
 const ui = new UI({ game, host, renderer, minimap, cfg });
+trainPanel = initTrainPanel({ recorder, getPlaybook: () => game.playbook, getSeedCount: () => shipped.length });
 
 ui.onReroll = (opts) => {
+  recorder.finish('quit');
   game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog, diff: cfg.diff });
   ui.setGame(game);
+  recorder.start(game);
   ui.firstFocus = false;
   centerOnHall();
 };
 ui.onLoad = (data) => {
+  recorder.finish('quit');
   game.restore(data);
   ui.setGame(game);
+  recorder.start(game, { record: false });
   renderer.resetWorld?.();
   centerOnHall();
 };
@@ -91,6 +109,7 @@ function frame(now) {
   if (!ui.menuOpen && !ui.paused) {
     let sim = dt * ui.speed;
     try { while (sim > 1e-6) { const s = Math.min(0.05, sim); game.tick(s); sim -= s; } } catch (e) { reportError('simulation', e); }
+    try { recorder.tick(); } catch (e) { console.error('[auld-world] recorder', e); recorder.cur = null; game.tap = null; }
   }
   // one bad frame must not freeze the whole game: report it and keep going
   try { ui.update(dt); } catch (e) { reportError('update', e); }
@@ -100,4 +119,4 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-window.__seven = { game, host, renderer, ui }; // debugging hook
+window.__seven = { game, host, renderer, ui, recorder }; // debugging hook

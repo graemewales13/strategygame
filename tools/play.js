@@ -3,6 +3,8 @@
 import { Game } from '../js/game.js';
 import { BUILDINGS } from '../js/config.js';
 import { findSpot, pickDeposit } from '../js/ai.js';
+import { Recorder } from '../js/recorder.js';
+import { writeFileSync } from 'node:fs';
 
 const minutes = +process.argv[2] || 20, seeds = (process.argv[3] || '1,2,3').split(',').map(Number), houses = +process.argv[4] || 4, style = process.argv[5] || 'econ', diff = process.argv[6] || 'mid', QUIET = !!process.env.QUIET;
 let rng = 1; Math.random = () => ((rng = (rng * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -92,10 +94,13 @@ for (const seed of seeds) {
     else if (kp) for (const u of army2.filter((u) => u.task.type === 'idle' && Math.hypot(u.x - kp.x, u.y - kp.y) > 6)) intent({ type: 'move', ids: [u.id], x: kp.x + 2, y: kp.y + 4 });
   };
 
+  // RECORD=<dir>: record this scripted player exactly as the game records a human (used to test the training pipeline end to end)
+  const store = new Map(), rec = process.env.RECORD ? new Recorder({ getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) }) : null;
+  if (rec) rec.start(g);
   let t = 0, nextStep = 0;
   const rows = [];
   while (t < minutes * 60 && !g.outcome) {
-    g.tick(0.1); t += 0.1;
+    g.tick(0.1); t += 0.1; rec?.tick();
     if (t >= nextStep) { nextStep = t + 2; step(); }
     for (; evIdx < g.events.length; evIdx++) { const e = g.events[evIdx]; if (e.team === T && e.kind === 'warn') { const k = e.text.replace(/\d+/g, 'N'); if (!seenWarn.has(k)) { seenWarn.add(k); flag('warn: ' + k, e.t, e.text); } else flag('warn: ' + k, e.t, e.text); } }
     if (Math.round(t * 10) % 600 === 0) {
@@ -110,6 +115,7 @@ for (const seed of seeds) {
   if (process.env.EV) for (const e of g.events) if (e.team === T && e.t > +process.env.EV && e.kind !== "warn") console.log("   ev", Math.round(e.t), e.text);
   if (process.env.WV) { console.log("villages", g.villages.filter((v) => v.owner === T).map((v) => `${v.name} pop ${Math.floor(v.pop)} ${v.home >= 0 ? "HOME" : ""}`).join(", ")); console.log("warns", g.events.filter((e) => e.team === T && e.kind === "warn").slice(-6).map((e) => Math.round(e.t) + " " + e.text).join(" | ")); }
   if (process.env.REL) { console.log("rel", JSON.stringify(g.rel)); console.log(g.events.filter((e) => e.kind === "war").slice(0, 12).map((e) => Math.round(e.t) + " " + e.text).join("\n")); }
+  if (rec) { rec.finish(g.outcome ? (g.outcome.result === 'victory' ? 'victory' : 'defeat') : 'quit'); writeFileSync(`${process.env.RECORD}/${style}-${diff}-${seed}.json`, rec.exportJSON()); }
   results.push({ seed, style, diff, houses, result: g.outcome?.result || 'none', kind: g.outcome?.kind || '-', min: Math.round(g.time / 60), wealth: Math.floor(g.wealthOf(T)), land: g.standings()[0].land, army: g.militaryOf(T).length, rivalWealth: Math.floor(Math.max(...g.players.filter((q) => q.team !== T).map((q) => g.wealthOf(q.team)))) });
   if (QUIET) continue;
   console.log(`== seed ${seed} (${style}) ${g.outcome ? 'OUTCOME ' + JSON.stringify(g.outcome) : 'no result'} t=${Math.round(g.time / 60)}m`);

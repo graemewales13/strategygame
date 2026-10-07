@@ -45,6 +45,10 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 
 - Board size is chosen before the match and stored in the browser; do not make the land or wealth victory rules depend on it.
 
+## The AI learns from the player
+- The player's play is recorded (orders + periodic samples, in the browser) and the rival AI is trained from it **continually**, until it is well trained. Recording must never break play (the recorder is wrapped and switches itself off on error), must be switchable off, exportable and clearable, and the AI must fall back to its built-in habits when there is no usable recording. A playbook only nudges the AI (confidence-capped); it must never remove the AI's ability to build everything or fight.
+- Full markets spill into warehouses (`WAREHOUSE_CAP`), which refill the shelf; goods can be moved on by camel routes or sold.
+
 ## Rulers, ratings and rival houses
 - Every house is led by a named **king** character; soldiers carry **ratings** (ranks) that matter in combat and in influence over villages.
 - Information and interaction with other houses must be rich, like a real strategy game: stats (size, money, influence, power), trade/war/alliance, and rival leaders who **send letters** (alliance offers, calls to join wars against third houses, tribute demands, aid requests). Keep this on the Council screen (C) and the house panel.

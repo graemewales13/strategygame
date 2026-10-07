@@ -11,25 +11,28 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muy04gzi",
-    "./js/art.js": "./js/art.js?v=muy04gzi",
-    "./js/audio.js": "./js/audio.js?v=muy04gzi",
-    "./js/config.js": "./js/config.js?v=muy04gzi",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=muy04gzi",
-    "./js/entities.js": "./js/entities.js?v=muy04gzi",
-    "./js/game.js": "./js/game.js?v=muy04gzi",
-    "./js/gfx.js": "./js/gfx.js?v=muy04gzi",
-    "./js/main.js": "./js/main.js?v=muy04gzi",
-    "./js/map.js": "./js/map.js?v=muy04gzi",
-    "./js/models3d.js": "./js/models3d.js?v=muy04gzi",
-    "./js/names.js": "./js/names.js?v=muy04gzi",
-    "./js/net.js": "./js/net.js?v=muy04gzi",
-    "./js/objectives.js": "./js/objectives.js?v=muy04gzi",
-    "./js/render.js": "./js/render.js?v=muy04gzi",
-    "./js/render3d.js": "./js/render3d.js?v=muy04gzi",
-    "./js/save.js": "./js/save.js?v=muy04gzi",
-    "./js/terrain.js": "./js/terrain.js?v=muy04gzi",
-    "./js/ui.js": "./js/ui.js?v=muy04gzi"
+    "./js/ai.js": "./js/ai.js?v=muy31uom",
+    "./js/art.js": "./js/art.js?v=muy31uom",
+    "./js/audio.js": "./js/audio.js?v=muy31uom",
+    "./js/config.js": "./js/config.js?v=muy31uom",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=muy31uom",
+    "./js/entities.js": "./js/entities.js?v=muy31uom",
+    "./js/game.js": "./js/game.js?v=muy31uom",
+    "./js/gfx.js": "./js/gfx.js?v=muy31uom",
+    "./js/learn.js": "./js/learn.js?v=muy31uom",
+    "./js/main.js": "./js/main.js?v=muy31uom",
+    "./js/map.js": "./js/map.js?v=muy31uom",
+    "./js/models3d.js": "./js/models3d.js?v=muy31uom",
+    "./js/names.js": "./js/names.js?v=muy31uom",
+    "./js/net.js": "./js/net.js?v=muy31uom",
+    "./js/objectives.js": "./js/objectives.js?v=muy31uom",
+    "./js/recorder.js": "./js/recorder.js?v=muy31uom",
+    "./js/render.js": "./js/render.js?v=muy31uom",
+    "./js/render3d.js": "./js/render3d.js?v=muy31uom",
+    "./js/save.js": "./js/save.js?v=muy31uom",
+    "./js/terrain.js": "./js/terrain.js?v=muy31uom",
+    "./js/trainui.js": "./js/trainui.js?v=muy31uom",
+    "./js/ui.js": "./js/ui.js?v=muy31uom"
   }
 }
 </script>
@@ -37,7 +40,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muy04gzi';
+window.__BUILD = 'muy31uom';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -156,6 +159,13 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
           <label class="slid">Music <input type="range" id="sMusic" min="0" max="100"></label>
           <label class="slid">Effects <input type="range" id="sSfx" min="0" max="100"></label>
           <label class="chk"><input type="checkbox" id="sMute"> Mute</label></div>
+        <div class="optrow trainbox" id="trainBox">
+          <span class="seedlabel">AI training</span>
+          <label class="chk"><input type="checkbox" id="trRec" checked> Learn from my play</label>
+          <div id="trStat" class="tiny"></div>
+          <div class="trbar"><i id="trFill"></i></div>
+          <div class="trbtns"><button class="small" id="trExport">Export recordings</button><button class="small" id="trImport">Import</button><button class="small" id="trClear">Clear</button><input type="file" id="trFile" accept=".json,application/json" hidden></div>
+        </div>
         <button class="big alt" id="mQuit">Quit</button>
         <p class="tiny">Right-click to move, gather, sack, infiltrate. Drag to select. WASD pans. M opens the campaign map. Esc returns here.</p>
       </div>

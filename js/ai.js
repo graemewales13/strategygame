@@ -3,6 +3,7 @@
 // raise a keep toward the nearest free village, contest villages, send a spy, then eventually go to war.
 
 import { deliberate, DIPLO } from './diplomacy.js';
+import { curveAt, blendPlan, lerp, clamp } from './learn.js';
 import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
@@ -22,6 +23,8 @@ export function updateAI(game, dt) {
   }
 }
 
+// the playbook a house plays by: its own (set per player, e.g. in the arena) or the game's, learned from the human player
+export const pbOf = (game, p) => (p.playbook !== undefined ? p.playbook : game.playbook || null);
 const count = (game, team, kind) => game.buildings.filter((b) => b.team === team && b.kind === kind && b.hp > 0).length;
 
 function think(game, team, p) {
@@ -38,7 +41,9 @@ function think(game, team, p) {
   }
 
   // 1. serfs first: drafted from the home village (or trained at a keep)
-  const serfWant = 5 + Math.min(11, Math.floor(t / 55));
+  const pb = pbOf(game, p), wb = pb ? pb.conf : 0;   // what the recorded player did, and how far we trust it
+  let serfWant = 5 + Math.min(11, Math.floor(t / 55));
+  if (pb?.serf?.length) serfWant = Math.round(clamp(lerp(serfWant, curveAt(pb.serf, pb.step, t), wb), 4, 18));
   if (serfs.length + queued(game, team, 'serf') < serfWant) {
     const keepT = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && UNITS.serf.from.includes(b.kind) && b.queue.length < 2);
     if (keepT) game.train(team, keepT.id, 'serf');
@@ -52,7 +57,7 @@ function think(game, team, p) {
     let next = null;
     if (needCottage && serfs.length) next = 'cottage';
     else {
-      for (const [kind, n] of PLAN) {
+      for (const [kind, n] of blendPlan(PLAN, pb)) {
         if (kind === 'mine' && p.noMine) continue;
         if (count(game, team, kind) >= n) continue;
         if (BUILDINGS[kind].requires.some((r) => !game.hasBuilding(team, r))) continue;
@@ -89,6 +94,7 @@ function think(game, team, p) {
 
   // 3. idle serfs go to work, spread by share: timber 45%, grain 35%, coin 20% (coin only once barracks stand)
   const share = { wood: 0.45, food: 0.35, gold: game.hasBuilding(team, 'barracks') ? 0.2 : 0 };
+  if (pb?.share) for (const r of ['wood', 'food', 'gold']) if (r !== 'gold' || share.gold) share[r] = lerp(share[r], pb.share[r], wb);
   const working = { wood: 0, food: 0, gold: 0 };
   for (const u of serfs) if (u.task.type === 'gather' || u.task.type === 'return') {
     const node = u.task.nodeId != null ? game.resources[u.task.nodeId] : null;
@@ -114,13 +120,22 @@ function think(game, team, p) {
   const incTot = Object.values(p.inc || {}).reduce((a, v) => a + v, 0);
   const payable = WAGE_FREE + Math.max(0, Math.floor((incTot - 0.1) / 0.06));   // soldiers the income can keep paid
   const rich = Math.max(0, Math.floor((p.gold - 250) / 45));   // a full purse buys men; a thin one holds the line it can pay for
-  const armyCap = Math.min(game.diff.armyCap, Math.min(3 + Math.floor(t / 65), payable) + rich);
+  let base = 3 + Math.floor(t / 65);
+  if (pb?.army?.length) base = Math.max(3, Math.round(lerp(base, curveAt(pb.army, pb.step, t), wb)));
+  const armyCap = Math.min(game.diff.armyCap, Math.min(base, payable) + rich);
   const queuedMil = game.buildings.filter((b) => b.team === team).reduce((n, b) => n + b.queue.filter((q) => q.kind !== 'serf').length, 0);
   if (army.length + queuedMil < armyCap) {
     const picks = [];
-    if (game.hasBuilding(team, 'stable') && army.length % 4 === 3) picks.push('knight');
-    if (game.hasBuilding(team, 'archery') && army.length % 3 === 2) picks.push('bowman');
-    picks.push('footman');
+    if (pb?.mix && wb >= 0.35) {   // train toward the player's mix of footmen, bowmen and knights
+      const have = (k) => army.filter((u) => u.kind === k).length + queued(game, team, k);
+      const total = Math.max(1, army.length + queuedMil), order = Object.keys(pb.mix).filter((k) => k !== 'ram' && UNITS[k]).sort((x, y) => (pb.mix[y] - have(y) / total) - (pb.mix[x] - have(x) / total));
+      for (const k of order) picks.push(k);
+      if (!picks.includes('footman')) picks.push('footman');
+    } else {
+      if (game.hasBuilding(team, 'stable') && army.length % 4 === 3) picks.push('knight');
+      if (game.hasBuilding(team, 'archery') && army.length % 3 === 2) picks.push('bowman');
+      picks.push('footman');
+    }
     if (game.hasBuilding(team, 'workshop') && army.filter((u) => u.kind === 'ram').length < 2 && army.length >= 6) picks.unshift('ram');
     for (const kind of picks) {
       const b = game.buildings.filter((x) => x.team === team && UNITS[kind].from.includes(x.kind) && x.built >= 1 && x.hp > 0).sort((a, c) => a.queue.length - c.queue.length)[0];
@@ -157,15 +172,17 @@ function think(game, team, p) {
 
   // 5. contest villages
   const readyArmy = army.filter((u) => u.task.type === 'idle');
-  const need = army.some((u) => u.kind === 'ram') ? 4 : 5;
-  if (readyArmy.length >= need && t > 90) {
+  let need = army.some((u) => u.kind === 'ram') ? 4 : 5, firstAt = 90;
+  if (pb?.attack) { need = Math.round(clamp(lerp(need, pb.attack.size, wb), 3, 14)); firstAt = clamp(lerp(90, pb.attack.first * 0.85, wb), 60, 1200); }
+  if (readyArmy.length >= need && t > firstAt) {
     const strength = readyArmy.reduce((n, u) => n + UNITS[u.kind].hp, 0);
     const v = nearestVillage(game, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => u.kind === 'ram') ? 400 : 0), 42);
     if (v) game.cmdAttack(readyArmy.filter((u) => u.kind !== 'spy'), v);
   }
 
   // 6. war: late, and only with a real army
-  if (t > game.diff.warAfter && army.length >= 9) {
+  const warAfter = pb?.warAt ? clamp(lerp(game.diff.warAfter, pb.warAt, wb), 240, 1800) : game.diff.warAfter;
+  if (t > warAfter && army.length >= 9) {
     let target = null, bd = 1e9;
     for (const q of game.players) {
       if (!q.alive || q.team === team) continue;
@@ -304,13 +321,15 @@ function treasury(game, team, p, seat, serfs) {
   if (mk) {
     const camels = game.units.filter((u) => u.team === team && u.kind === 'camel' && u.hp > 0);
     const mines = game.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0).length;
-    const want = Math.min(3, Math.ceil(mines / 2));
+    let want = Math.min(3, Math.ceil(mines / 2));
+    const pbk = pbOf(game, p), pbc = pbk?.camels; if (pbc) want = Math.round(clamp(lerp(want, Math.min(4, mines * pbc.perMine), pbk.conf), 0, 4));
     const q = game.buildings.filter((b) => b.team === team).reduce((n, b) => n + b.queue.filter((x) => x.kind === 'camel').length, 0);
     if (camels.length + q < want && p.gold > 90 && game.popUsed(team) < game.popCap(team)) game.train(team, mk.id, 'camel');
     if (p.routeT <= 0) {
       p.routeT = 25;
       const idle = camels.filter((c) => !c.route && c.task.type === 'idle');
-      if (idle.length) {
+      if (idle.length && pbc && pbc.routeUse >= 0.4 && markets.length >= 2 && game.cmdRouteAuto([idle[0]], 'own')) { /* the player ran camel loops between their own markets: so do we */ }
+      else if (idle.length) {
         let best = null, bs = 0;
         const cands = game.buildings.filter((b) => b.kind === 'market' && b.team !== team && b.built >= 1);   // camels trade with markets only
         for (const t of cands) {

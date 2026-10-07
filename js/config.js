@@ -299,6 +299,9 @@ export const LINKS = {
   service: { label: 'Service', blds: ['tavern', 'temple', 'academy'],           towns: ['abbey', 'inn'],    tip: 'a tavern, temple or academy (or an abbey or inn you hold)' },
 };
 export const MARKET_RADIUS = 20;   // a market is stocked by mines, foundries and warehouses within this many tiles
+export const WAREHOUSE_CAP = 150;   // goods per kind a warehouse holds for the markets beside it: shelves spill into it when full and draw from it as they empty
+export const WAREHOUSE_KEEP = 120;  // the stockpile keeps this much of a good before the surplus goes into the warehouse
+export const WAREHOUSE_GOODS = [...MATS, ...PROCESSED];   // ore, steel and fine ware are stored; food, timber and coin stay in the stockpile
 export const SHELF_CAP = 60;       // goods per kind on a market's shelf (100 with a warehouse beside it)
 export const SHELF_RESERVE = { food: 100, wood: 100, gold: 100, other: 10 }; // the stockpile keeps this much before the market stocks from it
 export const SPY_FEE = 25;         // coin to send a recruit out as a spy

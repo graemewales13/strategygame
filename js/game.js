@@ -8,7 +8,7 @@ import {
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
-  MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
+  MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
 import { createMap } from './map.js';
@@ -400,6 +400,11 @@ export class Game {
 
   // ------------------------------------------------------------------ intents (the network surface)
   applyIntent(it) {
+    const r = this._applyIntent(it);
+    if (this.tap && it.team === PLAYER) { try { this.tap(it, r); } catch (e) { this.tap = null; } }   // the recorder watches the player's orders; it can never break play
+    return r;
+  }
+  _applyIntent(it) {
     const team = it.team;
     if (this.outcome || !this.alive(team)) return null;
     const mine = () => (it.ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
@@ -1150,12 +1155,32 @@ export class Game {
     }
     if (coin > 0) this.earn(b.team, 'market', coin);
   }
+  // warehouses within reach of a market: they take what the shelf cannot hold and hand it back as the shelf empties
+  depotsOf(m) { return this.buildings.filter((o) => o.team === m.team && o.kind === 'warehouse' && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - m.x, o.y - m.y) <= MARKET_RADIUS); }
+  // put `n` of a good into the warehouse nearest the market with room; returns what could not be stored
+  depotStore(m, k, n) {
+    for (const w of this.depotsOf(m)) {
+      const st = w.stock || (w.stock = {}), room = WAREHOUSE_CAP - (st[k] || 0);
+      if (room >= 1) { const put = Math.min(room, n); st[k] = (st[k] || 0) + put; n -= put; if (n < 0.01) return 0; }
+    }
+    return n;
+  }
+  // pull up to `n` of a good from the warehouses beside the market
+  depotTake(m, k, n) {
+    let got = 0;
+    for (const w of this.depotsOf(m)) { const st = w.stock; if (!st || !(st[k] >= 1)) continue; const t = Math.min(st[k], n - got); st[k] -= t; got += t; if (got >= n - 0.01) break; }
+    return got;
+  }
   supplyMarket(b, p, dt) {
-    const shelf = b.stock || (b.stock = {}), cap = this.near(b, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP;
+    const shelf = b.stock || (b.stock = {}), depots = this.depotsOf(b), cap = depots.length ? SHELF_CAP + 40 : SHELF_CAP;
     for (const k of ALL_GOODS) {
-      const have = shelf[k] || 0;
-      if (have >= cap || !this.supplied(b, k)) continue;
-      const reserve = SHELF_RESERVE[k] ?? SHELF_RESERVE.other;
+      const have = shelf[k] || 0, reserve = SHELF_RESERVE[k] ?? SHELF_RESERVE.other;
+      if (have < cap && depots.length) { const got = this.depotTake(b, k, Math.min(4 * dt, cap - have)); if (got > 0) { shelf[k] = have + got; continue; } }   // the warehouse refills the shelf first
+      if (!this.supplied(b, k)) continue;
+      if (have >= cap) {   // the shelf is full: what the suppliers make now goes into the warehouse
+        if (depots.length && WAREHOUSE_GOODS.includes(k)) { const move = Math.min(2 * dt, (p[k] || 0) - Math.max(reserve, WAREHOUSE_KEEP)); if (move > 0) { const left = this.depotStore(b, k, move); p[k] -= move - left; } }
+        continue;
+      }
       const move = Math.min(2 * dt, cap - have, (p[k] || 0) - reserve);
       if (move > 0) { p[k] -= move; shelf[k] = have + move; }
     }
@@ -1351,8 +1376,11 @@ export class Game {
   restock(m) {
     const p = this.players[m.team], shelf = m.stock || (m.stock = {}), cap = this.near(m, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP;
     for (const k of ALL_GOODS) {
-      if (k === 'gold' || !this.supplied(m, k)) continue;
-      const have = shelf[k] || 0, move = Math.min(cap - have, (p[k] || 0) - (SHELF_RESERVE[k] ?? SHELF_RESERVE.other));
+      if (k === 'gold') continue;
+      let have = shelf[k] || 0;
+      if (have < cap) { const got = this.depotTake(m, k, cap - have); if (got > 0) { shelf[k] = have += got; } }
+      if (!this.supplied(m, k)) continue;
+      const move = Math.min(cap - have, (p[k] || 0) - (SHELF_RESERVE[k] ?? SHELF_RESERVE.other));
       if (move >= 1) { p[k] -= move; shelf[k] = have + move; }
     }
   }
@@ -1406,7 +1434,10 @@ export class Game {
         let sum = 0; const have = shelf[g] || 0;
         for (let i = 0; i < Math.floor(n); i++) sum += this.pmAt(S, g, have + i);
         bounty += ROUTE.arb * W(g) * Math.max(0, sum - (u.src[g] ?? sum));
-        shelf[g] = have + n; moved += n; delete u.cargo[g];
+        const capS = this.near(S, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP, put = Math.min(n, Math.max(0, capS - have));
+        const spill = n - put > 0.01 ? this.depotStore(S, g, n - put) : 0;   // a full shelf spills into a warehouse; what that cannot hold stays on the shelf
+        shelf[g] = have + put + spill;
+        moved += n; delete u.cargo[g];
       }
       const gold = u.cargo.gold || 0;
       if (gold > 0) { const back = Math.min(gold, u.purse || 0); p.gold += back; if (gold > back) this.earn(team, 'trade', gold - back); r.earned += Math.max(0, gold - back); p.tradeEarned += Math.max(0, gold - back); delete u.cargo.gold; }
