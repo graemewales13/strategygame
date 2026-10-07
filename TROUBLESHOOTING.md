@@ -117,3 +117,7 @@ The game is now **Auld World** (was Seven Holds). Title, header, README, package
 ## T-040 - Warehouse overflow, record-and-train AI
 - `ui.js` imported `MARKET_RADIUS` twice; `node --check` does not catch duplicate imports, only loading the module does. The page failed to start ("Identifier ... already declared"). Always run `tools/boot-test.cjs` / a real page load after touching imports.
 - An imported or odd playbook could name a building that does not exist and crash the AI (`BUILDINGS[kind]` undefined): `learn.js` now drops unknown kinds both when learning and when blending the plan (test: "playbooks with missing or odd fields never crash a match").
+
+## T-041 - Title screens, crowding, defenders, heirs
+- A leftover duplicate of the old painted-menu CSS block (later in `style.css`) kept painting `#mainmenu` black; the old rules are gone. When replacing a CSS block, grep for a second copy.
+- Camel unloads into a full shelf+warehouse no longer push a shelf past its cap (surplus is bought by the townsfolk), which the soak had flagged as "bad shelf value".

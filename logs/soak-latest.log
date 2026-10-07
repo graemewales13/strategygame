@@ -1,22 +1,12 @@
 
-== seed 1: no result at 15:00
-  speed: 12x realtime, slowest tick 494.3 ms
-  House Calder alive serfs 20 army 33 camels 2 villages 13 | bld 21 (mines 3 market 1 tavern 1 keep 1) | grain 2973 timber 2413 coin 2164 stone 86 iron 147 coal 0 steel 10 arms 3 sci 3
-  House Varr   alive serfs 20 army 31 camels 2 villages 10 | bld 22 (mines 3 market 1 tavern 1 keep 1) | grain 1849 timber 907 coin 1342 stone 65 iron 234 coal 22 steel 10 arms 3 sci 1
-  House Cael   alive serfs 20 army 29 camels 2 villages 12 | bld 21 (mines 3 market 1 tavern 1 keep 1) | grain 3683 timber 2683 coin 1788 stone 121 iron 0 coal 224 steel 1 arms 3 sci 1
-  House Thorn  alive serfs 21 army 27 camels 2 villages 14 | bld 22 (mines 3 market 1 tavern 1 keep 1) | grain 3744 timber 2705 coin 2207 stone 160 iron 2 coal 264 steel 10 arms 3 sci 2
-  exchanges 13; treaties 3; wars 3
-
-== seed 2: no result at 15:00
-  speed: 21x realtime, slowest tick 501.8 ms
-  House Calder alive serfs 20 army 27 camels 2 villages 8 | bld 21 (mines 3 market 1 tavern 1 keep 1) | grain 3198 timber 3267 coin 1836 stone 135 iron 182 coal 0 steel 6 arms 3 sci 1
-  House Varr   alive serfs 22 army 26 camels 2 villages 14 | bld 22 (mines 3 market 1 tavern 1 keep 1) | grain 2691 timber 2168 coin 1676 stone 128 iron 208 coal 2 steel 10 arms 3 sci 1
-  House Cael   alive serfs 22 army 29 camels 2 villages 10 | bld 22 (mines 3 market 1 tavern 1 keep 1) | grain 2928 timber 2076 coin 1822 stone 121 iron 0 coal 209 steel 5 arms 0 sci 1
-  House Thorn  alive serfs 21 army 32 camels 2 villages 12 | bld 21 (mines 3 market 1 tavern 1 keep 1) | grain 2793 timber 1342 coin 1702 stone 120 iron 0 coal 1 steel 8 arms 3 sci 1
-  exchanges 0; treaties 4; wars 2
+== seed 1: no result at 8:00
+  speed: 32x realtime, slowest tick 60.1 ms
+  House Calder alive serfs 18 army 14 camels 2 villages 8 | bld 18 (mines 3 market 1 tavern 1 keep 1) | grain 486 timber 79 coin 362 stone 547 iron 88 coal 2 steel 4 arms 1 sci 0
+  House Varr   alive serfs 17 army 17 camels 1 villages 8 | bld 14 (mines 2 market 1 tavern 1 keep 1) | grain 212 timber 101 coin 543 stone 533 iron 36 coal 34 steel 5 arms 0 sci 0
+  House Cael   alive serfs 18 army 18 camels 2 villages 7 | bld 17 (mines 3 market 1 tavern 1 keep 1) | grain 610 timber 90 coin 498 stone 443 iron 0 coal 62 steel 3 arms 1 sci 0
+  House Thorn  alive serfs 17 army 13 camels 2 villages 9 | bld 23 (mines 3 market 1 tavern 1 keep 1) | grain 673 timber 113 coin 385 stone 1051 iron 5 coal 306 steel 5 arms 2 sci 2
+  exchanges 5; treaties 6; wars 0
 
 == anomalies
-  x11   hoarding food >3000 (first @850s: seed 1: team 2: 3044)
-  x9    stuck camel while 'caravan' (first @620s: seed 1: team 0 #682 at 149.6,148.5 for 40s -> none)
-  x3    hoarding wood >3000 (first @870s: seed 2: team 0: 3039)
-  x2    slow tick >40 ms (first @900s: seed 1: 494 ms)
+  x34   bad shelf value (first @330s: seed 1: stone=113.40000000000107)
+  x1    slow tick >40 ms (first @480s: seed 1: 60 ms)

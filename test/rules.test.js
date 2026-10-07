@@ -51,8 +51,36 @@ test('king: soldiers near him hit harder; his fall leaves the house leaderless u
   const killer = g.addUnit('footman', 1, k.x, k.y); g.damage(k, 99999, 1, killer);
   assert.ok(g.players[PLAYER].leaderless === true); assert.ok(killer.xp >= 80, 'the slayer is famed');
   g.updateKings(0); assert.equal(g.kingOf(PLAYER), null);
-  run(g, 95);
+  run(g, 4);
   const heir = g.kingOf(PLAYER); assert.ok(heir && heir.id !== k.id && heir.rank === 0, 'an heir rises'); assert.equal(g.players[PLAYER].leaderless, false);
+});
+
+test('king: a throne is never left empty - an heir is named within moments', () => {
+  const g = mk(); const k = g.kingOf(PLAYER); const killer = g.addUnit('footman', 1, k.x, k.y); g.damage(k, 99999, 1, killer);
+  run(g, 4); assert.ok(g.kingOf(PLAYER) && g.kingOf(PLAYER).id !== k.id, 'a new king stands within seconds');
+  g.players[1].kingId = -1; g.players[1].heirAt = null; run(g, 4); assert.ok(g.kingOf(1), 'even a house whose king vanished without a record is given one');
+});
+
+test('defence: idle soldiers within 5 squares of a building under attack turn on the attacker; those farther off do not', () => {
+  const g = mk(); const h = g.seatOf(PLAYER);
+  const b = g.addBuilding('cottage', PLAYER, h.tx + 8, h.ty, true);
+  const near = g.addUnit('footman', PLAYER, b.x + 3, b.y), far = g.addUnit('footman', PLAYER, b.x + 9, b.y), busy = g.addUnit('footman', PLAYER, b.x - 3, b.y);
+  busy.task = { type: 'move' };
+  g.rel[0][1] = g.rel[1][0] = 'war';
+  const foe = g.addUnit('bowman', 1, b.x, b.y + 8); foe.hp = foe.maxHp = 9999;
+  near.aggroT = far.aggroT = 99;   // not their own eyes: the alarm alone must move them
+  g.damage(b, 5, 1, foe);
+  assert.equal(near.task.type, 'attack', 'the near soldier answers'); assert.equal(near.task.targetId, foe.id);
+  assert.equal(far.task.type, 'idle', 'the far one does not'); assert.equal(busy.task.type, 'move', 'one on an order keeps it');
+});
+
+test('crowding: a group sent to one spot ends up spread out, never stacked into one body', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), us = [];
+  for (let i = 0; i < 8; i++) us.push(g.addUnit('footman', PLAYER, h.x + 4, h.y + 4));   // all spawned on one point
+  g.cmdMove(us, h.x + 14, h.y + 4); run(g, 20);
+  let min = 9; for (let i = 0; i < us.length; i++) for (let j = i + 1; j < us.length; j++) min = Math.min(min, Math.hypot(us[i].x - us[j].x, us[i].y - us[j].y));
+  assert.ok(min > 0.45, 'nobody overlaps: closest pair ' + min.toFixed(2));
+  assert.ok(us.every((u) => Math.hypot(u.x - (h.x + 14), u.y - (h.y + 4)) < 5), 'and they all arrived');
 });
 
 test('king: his presence sways a nearby free village', () => {

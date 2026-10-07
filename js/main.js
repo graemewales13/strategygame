@@ -102,10 +102,23 @@ let lastReport = '';
 window.addEventListener('error', (ev) => reportError('script', ev.error || new Error(ev.message)));
 window.addEventListener('unhandledrejection', (ev) => reportError('promise', ev.reason instanceof Error ? ev.reason : new Error(String(ev.reason))));
 
-let last = performance.now();
+let last = performance.now(), titleT = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
+  // splash and title menu: the valley drifts slowly behind the type (3D turns around the hall, 2D sways); it is restored the moment a match begins
+  const title = ui.menuOpen && !ui.started && !ui.campaignOpen;
+  if (title !== !!game.titleView) {
+    game.titleView = title; document.body.classList.toggle('titleview', title); window.dispatchEvent(new Event('resize'));   // the HUD hides and the valley fills the window
+    if (!title) { titleT = 0; if (renderer.is3d) renderer.yaw = Math.PI / 4; centerOnHall(); }
+  }
+  if (title) {
+    titleT += dt; const s = game.seatOf(0);
+    if (s) {
+      if (renderer.is3d) { renderer.yaw = Math.PI / 4 + titleT * 0.045; renderer.cam.zoom = 0.8; renderer.centerOn(s.x, s.y); }
+      else { renderer.cam.zoom = 0.9; renderer.centerOn(s.x + Math.sin(titleT * 0.09) * 14, s.y + Math.cos(titleT * 0.07) * 10); }
+    }
+  }
   if (!ui.menuOpen && !ui.paused) {
     let sim = dt * ui.speed;
     try { while (sim > 1e-6) { const s = Math.min(0.05, sim); game.tick(s); sim -= s; } } catch (e) { reportError('simulation', e); }

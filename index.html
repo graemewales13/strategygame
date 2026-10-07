@@ -11,28 +11,28 @@
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muy31uom",
-    "./js/art.js": "./js/art.js?v=muy31uom",
-    "./js/audio.js": "./js/audio.js?v=muy31uom",
-    "./js/config.js": "./js/config.js?v=muy31uom",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=muy31uom",
-    "./js/entities.js": "./js/entities.js?v=muy31uom",
-    "./js/game.js": "./js/game.js?v=muy31uom",
-    "./js/gfx.js": "./js/gfx.js?v=muy31uom",
-    "./js/learn.js": "./js/learn.js?v=muy31uom",
-    "./js/main.js": "./js/main.js?v=muy31uom",
-    "./js/map.js": "./js/map.js?v=muy31uom",
-    "./js/models3d.js": "./js/models3d.js?v=muy31uom",
-    "./js/names.js": "./js/names.js?v=muy31uom",
-    "./js/net.js": "./js/net.js?v=muy31uom",
-    "./js/objectives.js": "./js/objectives.js?v=muy31uom",
-    "./js/recorder.js": "./js/recorder.js?v=muy31uom",
-    "./js/render.js": "./js/render.js?v=muy31uom",
-    "./js/render3d.js": "./js/render3d.js?v=muy31uom",
-    "./js/save.js": "./js/save.js?v=muy31uom",
-    "./js/terrain.js": "./js/terrain.js?v=muy31uom",
-    "./js/trainui.js": "./js/trainui.js?v=muy31uom",
-    "./js/ui.js": "./js/ui.js?v=muy31uom"
+    "./js/ai.js": "./js/ai.js?v=muy5inoh",
+    "./js/art.js": "./js/art.js?v=muy5inoh",
+    "./js/audio.js": "./js/audio.js?v=muy5inoh",
+    "./js/config.js": "./js/config.js?v=muy5inoh",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=muy5inoh",
+    "./js/entities.js": "./js/entities.js?v=muy5inoh",
+    "./js/game.js": "./js/game.js?v=muy5inoh",
+    "./js/gfx.js": "./js/gfx.js?v=muy5inoh",
+    "./js/learn.js": "./js/learn.js?v=muy5inoh",
+    "./js/main.js": "./js/main.js?v=muy5inoh",
+    "./js/map.js": "./js/map.js?v=muy5inoh",
+    "./js/models3d.js": "./js/models3d.js?v=muy5inoh",
+    "./js/names.js": "./js/names.js?v=muy5inoh",
+    "./js/net.js": "./js/net.js?v=muy5inoh",
+    "./js/objectives.js": "./js/objectives.js?v=muy5inoh",
+    "./js/recorder.js": "./js/recorder.js?v=muy5inoh",
+    "./js/render.js": "./js/render.js?v=muy5inoh",
+    "./js/render3d.js": "./js/render3d.js?v=muy5inoh",
+    "./js/save.js": "./js/save.js?v=muy5inoh",
+    "./js/terrain.js": "./js/terrain.js?v=muy5inoh",
+    "./js/trainui.js": "./js/trainui.js?v=muy5inoh",
+    "./js/ui.js": "./js/ui.js?v=muy5inoh"
   }
 }
 </script>
@@ -40,7 +40,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muy31uom';
+window.__BUILD = 'muy5inoh';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -113,16 +113,26 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
   </footer>
 
   <!-- Splash and main menu (painted art; the labels are in the picture, the buttons are hotspots over it) -->
-  <div id="splash" class="screen splash"><div class="splashimg"><div class="splashhint">Click anywhere to begin</div></div></div>
-  <div id="mainmenu" class="screen hidden">
-    <div class="mmimg" id="mmimg">
-      <button class="hot" id="hContinue" style="top:27.9%" aria-label="Continue"></button>
-      <button class="hot" id="hNew" style="top:36.5%" aria-label="New Game"></button>
-      <button class="hot" id="hMap" style="top:45.1%" aria-label="Campaign"></button>
-      <button class="hot" id="hSkirmish" style="top:53.7%" aria-label="Skirmish"></button>
-      <button class="hot" id="hOptions" style="top:62.4%" aria-label="Options"></button>
-      <button class="hot" id="hQuit" style="top:71.0%" aria-label="Quit"></button>
+  <div id="splash" class="screen splash">
+    <div class="splashcard">
+      <div class="eyebrow">A game of five houses</div>
+      <h1 class="bigtitle">Auld World</h1>
+      <div class="rule"><i></i></div>
+      <div class="splashhint">Click anywhere to begin</div>
     </div>
+  </div>
+  <div id="mainmenu" class="screen hidden">
+    <nav class="mmnav">
+      <div class="eyebrow">A game of five houses</div>
+      <h1 class="mmtitle">Auld World</h1>
+      <div class="rule"><i></i></div>
+      <button class="mbtn" id="hContinue">Continue</button>
+      <button class="mbtn" id="hNew">New Game</button>
+      <button class="mbtn" id="hMap">Campaign</button>
+      <button class="mbtn" id="hSkirmish">Skirmish</button>
+      <button class="mbtn" id="hOptions">Options</button>
+      <button class="mbtn" id="hQuit">Quit</button>
+    </nav>
     <div id="savebar"><span id="sbInfo"></span><button id="sbSave">Save game (F5)</button><button id="sbLoad">Load saved game (F9)</button><button id="sbAuto">Load autosave</button></div>
   </div>
 

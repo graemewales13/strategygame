@@ -7,7 +7,7 @@ import {
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, DEFEND_R, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
 } from './config.js';
@@ -33,6 +33,9 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ setup
+  // title screens show the whole valley under the menu: the view ignores fog until the match begins (never affects the sim)
+  get fogOn() { return this._fog && !this.titleView; }
+  set fogOn(v) { this._fog = v; }
   reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid' } = {}) {
     this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
     this.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, houses));
@@ -1435,8 +1438,8 @@ export class Game {
         for (let i = 0; i < Math.floor(n); i++) sum += this.pmAt(S, g, have + i);
         bounty += ROUTE.arb * W(g) * Math.max(0, sum - (u.src[g] ?? sum));
         const capS = this.near(S, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP, put = Math.min(n, Math.max(0, capS - have));
-        const spill = n - put > 0.01 ? this.depotStore(S, g, n - put) : 0;   // a full shelf spills into a warehouse; what that cannot hold stays on the shelf
-        shelf[g] = have + put + spill;
+        if (n - put > 0.01) this.depotStore(S, g, n - put);   // a full shelf spills into a warehouse; what even that cannot hold is bought up by the townsfolk
+        shelf[g] = have + put;
         moved += n; delete u.cargo[g];
       }
       const gold = u.cargo.gold || 0;
@@ -1819,7 +1822,7 @@ export class Game {
     this.updateVillages(dt);
     this.updateWanderers(dt);
     this.updateSally(dt);
-    this.updateUnits(dt);
+    this.updateUnits(dt); this.separate(dt);
     this.updateProjectiles(dt);
     if (this.aiOn) updateAI(this, dt);
     this.cleanup();
@@ -2050,6 +2053,31 @@ export class Game {
     }
   }
 
+  // Folk keep a little room: units that overlap are eased apart (never into blocked ground), so a marching group is a column of people, not one body.
+  separate(dt) {
+    const R = 0.66, W = this.W, cells = new Map(), live = [];
+    for (const u of this.units) if (u.hp > 0 && !u.inside) { live.push(u); const k = Math.floor(u.x) * 4096 + Math.floor(u.y); const c = cells.get(k); if (c) c.push(u); else cells.set(k, [u]); }
+    const k = Math.min(1, 7 * dt);
+    for (const u of live) {
+      const cx = Math.floor(u.x), cy = Math.floor(u.y); let px = 0, py = 0;
+      for (let ax = cx - 1; ax <= cx + 1; ax++) for (let ay = cy - 1; ay <= cy + 1; ay++) {
+        const c = cells.get(ax * 4096 + ay); if (!c) continue;
+        for (const o of c) {
+          if (o === u) continue;
+          let dx = u.x - o.x, dy = u.y - o.y, d = Math.hypot(dx, dy);
+          if (d >= R) continue;
+          if (d < 0.01) { const a = (u.id * 2.399) % 6.283; dx = Math.cos(a); dy = Math.sin(a); d = 0.01; }   // stacked exactly: part them in a fixed direction per person
+          const push = (R - d) / 2 / Math.max(d, 0.01); px += dx * push; py += dy * push;
+        }
+      }
+      if (!px && !py) continue;
+      const m = Math.hypot(px, py), cap = 0.3, f = m > cap ? cap / m : 1;
+      const nx = u.x + px * f * k, ny = u.y + py * f * k, ix = Math.floor(nx), iy = Math.floor(ny);
+      if (ix < 0 || iy < 0 || ix >= W || iy >= this.H || this.block[iy * W + ix]) continue;
+      u.x = nx; u.y = ny;
+    }
+  }
+
   updateUnits(dt) {
     for (const u of this.units) {
       if (u.hp <= 0) continue;
@@ -2131,6 +2159,7 @@ export class Game {
     v.protection -= dmg / (1 + 0.2 * this.garrisonWeight(v) + 0.06 * m); v.hitT = 6; v.flash = 0.2;
     if (m > 0) v.pop = Math.max(2, v.pop - MILITIA.loss * Math.min(m, 4));   // militia fall as they fight
     v.loyalty = Math.max(0, v.loyalty - 1.5);
+    this.rallyDefenders(v, u, u.team);
     const loot = Math.min(2, v.stores.gold || 0);
     if (loot) { v.stores.gold -= loot; this.earn(u.team, 'loot', loot * 0.6); }
     // the folk fight back: the sturdier the village, the harder it bites
@@ -2163,7 +2192,8 @@ export class Game {
   updateKings(dt) {
     this._kings = this.players.map((p) => { const k = this.byId.get(p.kingId); return k && k.hp > 0 ? k : null; });
     for (const p of this.players) {
-      if (!p.alive || this._kings[p.team] || p.heirAt == null) continue;
+      if (!p.alive || this._kings[p.team]) continue;
+      if (p.heirAt == null) p.heirAt = this.time + KING.heir;   // a throne is never left empty, whatever took the king (old saves, odd cases)
       p.leaderless = true;
       if (this.time >= p.heirAt && this.seatOf(p.team)) {
         const s = this.seatOf(p.team), k = this.crown(p.team, s.x + 0.4, s.y + 3.4);
@@ -2213,6 +2243,7 @@ export class Game {
     const before = t.hp;
     if (t.type === 'unit' && byTeam >= 0) { t.engagedT = this.time; if (by) by.engagedT = this.time; }
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
+    if (byTeam >= 0 && (t.type === 'building' || t.type === 'unit') && t.hp > 0) this.rallyDefenders(t, by, byTeam);
     if (by) this.award(by, Math.min(amt, before) * XP.perDamage);
     if (t.hp <= 0) {
       t.hp = 0;
@@ -2228,6 +2259,19 @@ export class Game {
     if (t.team === PLAYER && this.time - this.alertT[PLAYER] > 8 && byTeam !== PLAYER) {
       this.alertT[PLAYER] = this.time;
       this.log(PLAYER, `Your ${t.type === 'unit' ? UNITS[t.kind].label : BUILDINGS[t.kind].label} is under attack!`, 'bad'); this.sfx('alarm', t.x, t.y);
+    }
+  }
+
+  // Something of ours is being hit: every idle soldier within DEFEND_R squares of it turns on the attacker (or the nearest foe), so a town is never watched burning.
+  rallyDefenders(t, by, byTeam) {
+    const team = t.type === 'village' ? t.owner : t.team; if (team == null || team < 0 || byTeam === team || !this.isEnemy(team, byTeam)) return;
+    if ((t._rallyT ?? -9) > this.time - 0.4) return; t._rallyT = this.time;
+    const foe = by && by.hp > 0 && by.type === 'unit' ? by : this.closestEnemy(t, 12, team);
+    if (!foe) return;
+    for (const u of this.units) {
+      if (u.team !== team || u.hp <= 0 || u.inside || u.task.type !== 'idle' || u.kind === 'king' || this.powerOf(u) <= 0) continue;
+      if (distTo(u.x, u.y, t) > DEFEND_R) continue;
+      u.task = { type: 'attack', targetId: foe.id }; u.path = []; u.repathT = 0;
     }
   }
 

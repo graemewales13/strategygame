@@ -49,6 +49,12 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - The player's play is recorded (orders + periodic samples, in the browser) and the rival AI is trained from it **continually**, until it is well trained. Recording must never break play (the recorder is wrapped and switches itself off on error), must be switchable off, exportable and clearable, and the AI must fall back to its built-in habits when there is no usable recording. A playbook only nudges the AI (confidence-capped); it must never remove the AI's ability to build everything or fight.
 - Full markets spill into warehouses (`WAREHOUSE_CAP`), which refill the shelf; goods can be moved on by camel routes or sold.
 
+## Title screens, crowds, defence, the throne
+- The splash and title menu are clean type over a live, slowly drifting view of the valley (no painted pictures, no black bars); the HUD is hidden while they show and `game.titleView` lifts fog for the view only. Keep `#hContinue/#hNew/#hMap/#hSkirmish/#hOptions/#hQuit` ids as real buttons.
+- Units keep room (`Game.separate`): a marching group is never stacked into one body.
+- Idle soldiers within `DEFEND_R` (5) squares of a building, unit or village under attack turn on the attacker (`rallyDefenders`).
+- A king is always appointed: an heir is crowned `KING.heir` (2 s) after a king falls, and a house with no king and no heir timer is given one.
+
 ## Rulers, ratings and rival houses
 - Every house is led by a named **king** character; soldiers carry **ratings** (ranks) that matter in combat and in influence over villages.
 - Information and interaction with other houses must be rich, like a real strategy game: stats (size, money, influence, power), trade/war/alliance, and rival leaders who **send letters** (alliance offers, calls to join wars against third houses, tribute demands, aid requests). Keep this on the Council screen (C) and the house panel.
