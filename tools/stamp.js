@@ -8,4 +8,5 @@ const p = new URL('../index.html', import.meta.url); let s = readFileSync(p, 'ut
 s = s.replace(/<script type="importmap">[\s\S]*?<\/script>\n?/, '');
 s = s.replace('<script>\n// Before the game code', `<script type="importmap">\n${map}\n</script>\n<script>\n// Before the game code`);
 s = s.replace(/window\.__BUILD = '[^']*';/, `window.__BUILD = '${v}';`);
+s = s.replace(/href="style\.css(\?v=[^"]*)?"/, `href="style.css?v=${v}"`);
 writeFileSync(p, s); console.log('stamped', v);

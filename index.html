@@ -7,32 +7,33 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css">
+<meta http-equiv="Cache-Control" content="no-cache">
+<link rel="stylesheet" href="style.css?v=muy6oun4">
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muy5inoh",
-    "./js/art.js": "./js/art.js?v=muy5inoh",
-    "./js/audio.js": "./js/audio.js?v=muy5inoh",
-    "./js/config.js": "./js/config.js?v=muy5inoh",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=muy5inoh",
-    "./js/entities.js": "./js/entities.js?v=muy5inoh",
-    "./js/game.js": "./js/game.js?v=muy5inoh",
-    "./js/gfx.js": "./js/gfx.js?v=muy5inoh",
-    "./js/learn.js": "./js/learn.js?v=muy5inoh",
-    "./js/main.js": "./js/main.js?v=muy5inoh",
-    "./js/map.js": "./js/map.js?v=muy5inoh",
-    "./js/models3d.js": "./js/models3d.js?v=muy5inoh",
-    "./js/names.js": "./js/names.js?v=muy5inoh",
-    "./js/net.js": "./js/net.js?v=muy5inoh",
-    "./js/objectives.js": "./js/objectives.js?v=muy5inoh",
-    "./js/recorder.js": "./js/recorder.js?v=muy5inoh",
-    "./js/render.js": "./js/render.js?v=muy5inoh",
-    "./js/render3d.js": "./js/render3d.js?v=muy5inoh",
-    "./js/save.js": "./js/save.js?v=muy5inoh",
-    "./js/terrain.js": "./js/terrain.js?v=muy5inoh",
-    "./js/trainui.js": "./js/trainui.js?v=muy5inoh",
-    "./js/ui.js": "./js/ui.js?v=muy5inoh"
+    "./js/ai.js": "./js/ai.js?v=muy6oun4",
+    "./js/art.js": "./js/art.js?v=muy6oun4",
+    "./js/audio.js": "./js/audio.js?v=muy6oun4",
+    "./js/config.js": "./js/config.js?v=muy6oun4",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=muy6oun4",
+    "./js/entities.js": "./js/entities.js?v=muy6oun4",
+    "./js/game.js": "./js/game.js?v=muy6oun4",
+    "./js/gfx.js": "./js/gfx.js?v=muy6oun4",
+    "./js/learn.js": "./js/learn.js?v=muy6oun4",
+    "./js/main.js": "./js/main.js?v=muy6oun4",
+    "./js/map.js": "./js/map.js?v=muy6oun4",
+    "./js/models3d.js": "./js/models3d.js?v=muy6oun4",
+    "./js/names.js": "./js/names.js?v=muy6oun4",
+    "./js/net.js": "./js/net.js?v=muy6oun4",
+    "./js/objectives.js": "./js/objectives.js?v=muy6oun4",
+    "./js/recorder.js": "./js/recorder.js?v=muy6oun4",
+    "./js/render.js": "./js/render.js?v=muy6oun4",
+    "./js/render3d.js": "./js/render3d.js?v=muy6oun4",
+    "./js/save.js": "./js/save.js?v=muy6oun4",
+    "./js/terrain.js": "./js/terrain.js?v=muy6oun4",
+    "./js/trainui.js": "./js/trainui.js?v=muy6oun4",
+    "./js/ui.js": "./js/ui.js?v=muy6oun4"
   }
 }
 </script>
@@ -40,7 +41,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muy5inoh';
+window.__BUILD = 'muy6oun4';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -68,7 +69,7 @@ document.addEventListener('pointerdown', function (e) {
 document.addEventListener('keydown', function () { if (!window.__boot.ready) { window.__boot.pending = true; var h = document.querySelector('.splashhint'); if (h) h.textContent = 'Loading the valley...'; } }, true);
 </script>
 </head>
-<body>
+<body class="titleview">
 <div id="app">
   <header id="topbar">
     <div id="brand"><canvas id="brandCrest" width="36" height="40"></canvas><span>Auld World</span></div>
@@ -120,7 +121,9 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
       <div class="rule"><i></i></div>
       <div class="splashhint">Click anywhere to begin</div>
     </div>
+    <div class="buildtag" id="splashBuild"></div>
   </div>
+  <script>try { document.getElementById("splashBuild").textContent = "build " + window.__BUILD + " \u00b7 branch grok"; } catch (e) {}</script>
   <div id="mainmenu" class="screen hidden">
     <nav class="mmnav">
       <div class="eyebrow">A game of five houses</div>

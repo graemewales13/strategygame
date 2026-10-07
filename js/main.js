@@ -108,6 +108,7 @@ function frame(now) {
   last = now;
   // splash and title menu: the valley drifts slowly behind the type (3D turns around the hall, 2D sways); it is restored the moment a match begins
   const title = ui.menuOpen && !ui.started && !ui.campaignOpen;
+  document.body.classList.toggle('titleview', title);
   if (title !== !!game.titleView) {
     game.titleView = title; document.body.classList.toggle('titleview', title); window.dispatchEvent(new Event('resize'));   // the HUD hides and the valley fills the window
     if (!title) { titleT = 0; if (renderer.is3d) renderer.yaw = Math.PI / 4; centerOnHall(); }

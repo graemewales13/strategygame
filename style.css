@@ -201,7 +201,7 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 
 /* splash + title menu: live view of the valley under clean type */
 .splash, #mainmenu { background: none; place-items: stretch; }
-.splash { cursor: pointer; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 50%, rgba(6,8,12,.55), rgba(3,4,7,.82) 75%); }
+.splash { cursor: pointer; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 50%, rgba(6,8,12,0), rgba(3,4,7,.5) 85%); }
 #mainmenu { background: linear-gradient(90deg, rgba(5,7,10,.9) 0%, rgba(5,7,10,.72) 26%, rgba(5,7,10,.0) 58%), linear-gradient(0deg, rgba(5,7,10,.55), rgba(5,7,10,0) 30%); }
 #splash.gone { opacity: 0; pointer-events: none; transition: opacity .7s; }
 .splashcard { text-align: center; padding: 0 24px; animation: splashin 1.2s ease-out; }
@@ -509,3 +509,5 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .trbtns { display: flex; gap: 6px; flex-basis: 100%; }
 
 body.titleview #topbar, body.titleview #hud { display: none; }
+
+.buildtag { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 11px var(--font); letter-spacing: .15em; color: #8a7a52; text-transform: uppercase; }
