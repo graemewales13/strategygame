@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
 import { treasury } from '../js/ai.js';
-import { deliberate as dip_deliberate, intel } from '../js/diplomacy.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS } from '../js/config.js';
+import { deliberate as dip_deliberate, intel, stance } from '../js/diplomacy.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -53,14 +53,14 @@ test('king: soldiers near him hit harder; his fall leaves the house leaderless u
   const killer = g.addUnit('footman', 1, k.x, k.y); g.damage(k, 99999, 1, killer);
   assert.ok(g.players[PLAYER].leaderless === true); assert.ok(killer.xp >= 80, 'the slayer is famed');
   g.updateKings(0); assert.equal(g.kingOf(PLAYER), null);
-  run(g, 4);
+  run(g, KING.heir + 1);
   const heir = g.kingOf(PLAYER); assert.ok(heir && heir.id !== k.id && heir.rank === 0, 'an heir rises'); assert.equal(g.players[PLAYER].leaderless, false);
 });
 
 test('king: a throne is never left empty - an heir is named within moments', () => {
   const g = mk(); const k = g.kingOf(PLAYER); const killer = g.addUnit('footman', 1, k.x, k.y); g.damage(k, 99999, 1, killer);
-  run(g, 4); assert.ok(g.kingOf(PLAYER) && g.kingOf(PLAYER).id !== k.id, 'a new king stands within seconds');
-  g.players[1].kingId = -1; g.players[1].heirAt = null; run(g, 4); assert.ok(g.kingOf(1), 'even a house whose king vanished without a record is given one');
+  run(g, KING.heir + 1); assert.ok(g.kingOf(PLAYER) && g.kingOf(PLAYER).id !== k.id, 'a new king stands once the heir is crowned');
+  g.players[1].kingId = -1; g.players[1].heirAt = null; run(g, KING.heir + 1); assert.ok(g.kingOf(1), 'even a house whose king vanished without a record is given one');
 });
 
 test('defence: idle soldiers within 5 squares of a building under attack turn on the attacker; those farther off do not', () => {
@@ -408,6 +408,45 @@ test('villagers: serfs and armed villagers fight at 10-30% of a footman, and ser
   g.damage(s, 3, 1, raider);
   assert.equal(s.task.type, 'attack', 'the struck serf fights back'); assert.equal(by.task.type, 'attack', 'and the idle serf beside him');
   assert.equal(far.task.type, 'idle', 'serfs further off keep out of it');
+});
+
+test('the royal line: each fallen king is followed by an heir; when the last of the line dies the house falls, whatever else it holds', () => {
+  const g = mk(); const t = 1, p = g.players[t];
+  assert.equal(p.heirs ?? KING.heirs, KING.heirs);
+  for (let i = 0; i < KING.heirs; i++) {
+    const k = g.kingOf(t); assert.ok(k, `king ${i + 1} stands`); const by = g.addUnit('footman', PLAYER, k.x, k.y);
+    g.damage(k, 99999, PLAYER, by); run(g, KING.heir + 1);
+    assert.ok(p.alive, 'an heir takes the crown');
+  }
+  assert.equal(p.heirs, 0); assert.ok(g.seatOf(t), 'the house still has its seat');
+  const last = g.kingOf(t), by = g.addUnit('footman', PLAYER, last.x, last.y);
+  g.damage(last, 99999, PLAYER, by); run(g, 1);
+  assert.equal(p.alive, false, 'the last of the line is dead: the house falls');
+  assert.ok(!g.villages.some((v) => v.owner === t), 'its villages go free');
+});
+
+test('the royal line: a house that loses its seat lives on while its king lives, and its fugitive king is seen by all', () => {
+  const g = mk(); const t = 1, home = g.seatOf(t);
+  for (const v of g.villagesOf(t)) { v.owner = -1; v.lean = -1; v.loyalty = 0; } void home; for (const b of g.buildings) if (b.team === t && b.kind === 'keep') b.hp = 0;
+  g.cleanup?.(); run(g, 1);
+  assert.ok(g.players[t].alive, 'losing the seat no longer ends a house');
+  const k = g.kingOf(t); g.fogOn = true; g.updateVisibility();
+  assert.ok(g.canSee(PLAYER, k.x, k.y), 'the fugitive king can be hunted');
+});
+
+test('stance: a keep over a rival village, soldiers in its land and weakness make a neighbour mean war; distance and trade calm it', () => {
+  const g = mk(); const a = 1, b = PLAYER; g.known[a][b] = g.known[b][a] = true; g.time = 600;
+  const calm = stance(g, a, b);
+  const v = g.villagesOf(a)[0];
+  g.addBuilding('keep', b, Math.round(v.x) + 5, Math.round(v.y) - 2, true); g.recomputeWalk();
+  for (let i = 0; i < 6; i++) g.addUnit('knight', b, v.x + 3 + i * 0.5, v.y + 4);
+  g.time += 10; g._stance = {};
+  const hot = stance(g, a, b);
+  assert.ok(hot.threat > calm.threat + 0.3, `threat ${calm.threat.toFixed(2)} -> ${hot.threat.toFixed(2)}`);
+  assert.ok(hot.reasons.some((r) => r.kind === 'threat' && /soldiers stand in our land/.test(r.text)), 'and it says why');
+  g.rel[a][b] = g.rel[b][a] = 'trade'; g.relSince[a][b] = g.relSince[b][a] = g.time - 1000; g.time += 10; g._stance = {};
+  assert.ok(stance(g, a, b).ties > hot.ties, 'trade is a tie');
+  const st = stance(g, a, b); assert.ok(['means war', 'wary', 'friendly', 'at ease'].includes(st.mood));
 });
 
 console.log(`${passed} passed`);

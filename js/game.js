@@ -1666,7 +1666,14 @@ export class Game {
     const A = this.players[a].name, B = this.players[b].name;
     const text = state === 'war' ? `${A} declares war on ${B}.` : state === 'trade' ? `${A} and ${B} open trade.` : state === 'alliance' ? `${A} and ${B} swear an alliance.` : was === 'alliance' ? `${A} breaks its alliance with ${B}.` : `${A} and ${B} are at peace.`;
     this.log(a === PLAYER || b === PLAYER ? PLAYER : -1, text, state === 'war' ? 'war' : 'info');
-    if (was === 'war' && state !== 'war') { this.opinionShift(a, b, 15, 'made peace'); this.opinionShift(b, a, 15, 'made peace'); }
+    if (was === 'war' && state !== 'war') {
+      this.opinionShift(a, b, 15, 'made peace'); this.opinionShift(b, a, 15, 'made peace');
+      for (const u of this.units) {   // the peace is kept: soldiers of either side stop fighting the other (or they would start the war again)
+        if (u.task.type !== 'attack' || (u.team !== a && u.team !== b)) continue;
+        const t = this.byId.get(u.task.targetId), tt = t ? (t.type === 'village' ? t.owner : t.team) : -1;
+        if (tt === (u.team === a ? b : a)) { u.task = { type: 'idle' }; u.path = []; u.sally = null; }
+      }
+    }
     if (was === 'alliance' && state !== 'alliance') {   // an oath broken is remembered by the one betrayed and, a little, by every house that hears of it
       this.opinionShift(b, a, -35, 'broke our alliance');
       for (const p of this.players) if (p.alive && p.team !== a && p.team !== b && this.known[p.team][a]) this.opinionShift(p.team, a, -5, `broke faith with ${HOUSES[b].short}`);
@@ -1695,7 +1702,8 @@ export class Game {
   willMakePeace(b, a) {
     const mine = this.militaryOf(b).length, theirs = this.militaryOf(a).length;
     const heldB = this.villages.filter((v) => v.owner === b).length, heldA = this.villages.filter((v) => v.owner === a).length;
-    if (this.time - this.relSince[a][b] > 300) return true;                  // a long war wears everyone out
+    if (this.time - this.relSince[a][b] > 600) return true;                  // a long war wears everyone out
+    if (dip.stance(this, b, a).peace >= 0.35) return true;                    // weary, or outmatched
     return mine <= theirs * 1.25 || heldB < heldA * 0.7;                       // outgunned, or being outgrown
   }
   proposeRelation(a, b, state) {
@@ -1942,7 +1950,6 @@ export class Game {
     this.updateProjectiles(dt);
     if (this.aiOn) updateAI(this, dt);
     this.cleanup();
-    this.checkForfeit(dt);
     this.checkEnd(dt);
   }
 
@@ -2312,14 +2319,24 @@ export class Game {
     const ax = k.inside ? this.byId.get(k.inside)?.x : k.x, ay = k.inside ? this.byId.get(k.inside)?.y : k.y;
     return ax != null && Math.hypot(u.x - ax, u.y - ay) <= KING.aura;
   }
+  // where an heir is crowned: the house's seat, else any village or building it still holds, else beside its largest band of fighters
+  thronePlace(team) {
+    const s = this.seatOf(team) || this.villagesOf(team)[0] || this.buildings.find((b) => b.team === team && b.hp > 0 && b.built >= 1);
+    if (s) return { x: s.x + 0.4, y: (s.ty != null ? s.ty + (s.size || 3) : s.y) + 0.8 };
+    const u = this.units.find((x) => x.team === team && x.hp > 0 && !x.inside && x.kind !== 'camel');
+    return u ? { x: u.x + 0.6, y: u.y + 0.6 } : null;
+  }
   updateKings(dt) {
     this._kings = this.players.map((p) => { const k = this.byId.get(p.kingId); return k && k.hp > 0 ? k : null; });
     for (const p of this.players) {
       if (!p.alive || this._kings[p.team]) continue;
-      if (p.heirAt == null) p.heirAt = this.time + KING.heir;   // a throne is never left empty, whatever took the king (old saves, odd cases)
+      if (p.heirs == null) p.heirs = KING.heirs;
+      if (p.heirAt == null) p.heirAt = this.time + KING.heir;   // a king who vanished without a record (old saves, odd cases) is followed like any other
       p.leaderless = true;
-      if (this.time >= p.heirAt && this.seatOf(p.team)) {
-        const s = this.seatOf(p.team), k = this.crown(p.team, s.x + 0.4, s.y + 3.4);
+      const at = this.time >= p.heirAt ? this.thronePlace(p.team) : null;
+      if (this.time >= p.heirAt && !at) { this.endLine(p.team, null, -1); continue; }   // nobody left to crown an heir among
+      if (at) {
+        const k = this.crown(p.team, at.x, at.y);
         p.leaderless = false; this._kings[p.team] = k;
         this.log(p.team === PLAYER ? PLAYER : -1, p.team === PLAYER ? `An heir, ${shortName(k.name)}, takes the crown of your house.` : `${p.name} has a new ${k.title}: ${k.name}.`, p.team === PLAYER ? 'good' : 'info');
       }
@@ -2327,10 +2344,13 @@ export class Game {
   }
   kingFalls(k, byTeam, by) {
     const p = this.players[k.team]; if (!p || p.kingId !== k.id) return;
-    p.heirAt = this.time + KING.heir; p.leaderless = true; p.kingsLost = (p.kingsLost || 0) + 1;
+    if (p.heirs == null) p.heirs = KING.heirs;
+    p.kingsLost = (p.kingsLost || 0) + 1;
+    if (p.heirs <= 0) { if (by) this.award(by, KING.killXp); this.endLine(k.team, k, byTeam); return; }   // the last of the line: the house falls with him
+    p.heirs -= 1; p.heirAt = this.time + KING.heir; p.leaderless = true;
     for (const v of this.villages) if (v.owner === k.team) v.loyalty = Math.max(0, v.loyalty - KING.loyaltyHit);
     if (by) this.award(by, KING.killXp);
-    this.log(k.team === PLAYER || byTeam === PLAYER ? PLAYER : -1, k.team === PLAYER ? `Your ${k.title} ${shortName(k.name)} has fallen! Your soldiers lose heart until an heir rises.` : `${k.title} ${shortName(k.name)} of ${HOUSES[k.team].short} has fallen!`, k.team === PLAYER ? 'bad' : 'good');
+    this.log(k.team === PLAYER || byTeam === PLAYER ? PLAYER : -1, k.team === PLAYER ? `Your ${k.title} ${shortName(k.name)} has fallen! Your soldiers lose heart until an heir rises (${p.heirs} heir${p.heirs === 1 ? '' : 's'} left after this one${p.heirs ? '' : ': guard the last of your line'}).` : `${k.title} ${shortName(k.name)} of ${HOUSES[k.team].short} has fallen!`, k.team === PLAYER ? 'bad' : 'good');
     if (this.opinionShift && byTeam >= 0 && byTeam !== k.team) this.opinionShift(k.team, byTeam, -40, 'slew your king');
   }
 
@@ -2373,6 +2393,7 @@ export class Game {
       t.hp = 0;
       if (by && by.type === 'unit' && by.team !== t.team) {   // the killer's service record and deeds
         if (t.type === 'unit') {
+          if (t.team >= 0) { const lk = t.team + '>' + by.team; (this.losses ||= {})[lk] = (this.losses[lk] || 0) + 1; }   // men lost to whom: war weariness
           by.kills = (by.kills || 0) + 1;
           this.earnDeed(by, 'blooded');
           if (by.kills >= 10) this.earnDeed(by, 'slayer');
@@ -2587,6 +2608,7 @@ export class Game {
       for (const u of this.units) if (u.team === t && u.hp > 0) mark(u.x, u.y, UNITS[u.kind].sight * (u.far === 'parthian' ? PERK.sight : 1));
       for (const b of this.buildings) if (b.team === t && b.hp > 0) mark(b.x, b.y, BUILDINGS[b.kind].sight);
       for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, v.home === t ? 13 : 8);
+      for (const p of this.players) { const k = p.alive && p.team !== t && !this.seatOf(p.team) ? this.kingOf(p.team) : null; if (k && !k.inside) mark(k.x, k.y, KING.fugitiveSight); }   // a king without a seat is hunted: all can see him
     }
     // meeting: a house is "known" once any of its people or buildings has been in sight (mutual: they have seen you too)
     for (let a = 0; a < this.houses; a++) for (let b = 0; b < this.houses; b++) {
@@ -2615,12 +2637,17 @@ export class Game {
       rebuilt = true;
     }
     if (rebuilt) this.recomputeWalk();
-    for (const p of this.players) {
-      if (!p.alive) continue;
-      if (!this.seatOf(p.team)) this.eliminate(p.team);
-    }
   }
 
+  // the last of a royal line is dead: the house falls, and whoever slew him is famed for it
+  endLine(team, k, byTeam) {
+    const p = this.players[team]; if (!p.alive) return;
+    p.lineEndedBy = byTeam;
+    const who = k ? `${k.title} ${shortName(k.name)}` : `the last of ${p.name}'s line`;
+    this.log(PLAYER, team === PLAYER ? `${who}, the last of your line, is dead. Your house has fallen.` : `${who}, the last of ${p.name}'s line, is dead${byTeam >= 0 ? ` at the hands of ${HOUSES[byTeam].short}` : ''}. ${p.name} is no more.`, team === PLAYER ? 'bad' : 'good');
+    if (byTeam >= 0 && this.opinionShift) for (const q of this.players) if (q.alive && q.team !== byTeam && q.team !== team) this.opinionShift(q.team, byTeam, -6, `ended the line of ${HOUSES[team].short}`);
+    this.eliminate(team);
+  }
   eliminate(team) {
     const p = this.players[team];
     p.alive = false;
@@ -2641,9 +2668,9 @@ export class Game {
   // Victory is conquest only: every rival house must fall or forfeit. Wealth and village share no longer win the game (they still count in the standings).
   checkEnd(dt) {
     const living = this.players.filter((p) => p.alive).map((p) => p.team);
-    if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', kind: 'fallen', reason: 'Your villages and castles are gone.' }; return; }
+    if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', kind: 'fallen', reason: 'The last of your royal line is dead.' }; return; }
     this.rivalsLeft = living.length - 1;
-    if (living.length === 1) this.outcome = { result: 'victory', kind: 'conquest', reason: this.forfeits ? 'Every rival house has fallen or forfeited.' : 'Every rival house has fallen.' };
+    if (living.length === 1) this.outcome = { result: 'victory', kind: 'conquest', reason: 'The last king of every rival house is dead.' };
   }
   // A house that has lost its home village and has no soldiers left cannot fight on: after FORFEIT_AFTER seconds it forfeits and its holdings go free.
   checkForfeit(dt) {

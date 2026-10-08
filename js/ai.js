@@ -2,7 +2,7 @@
 // They start with a home village of thirty folk and three serfs: no keep, no army. They train serfs, gather, build in a fixed order,
 // raise a keep toward the nearest free village, contest villages, send a spy, then eventually go to war.
 
-import { deliberate, DIPLO } from './diplomacy.js';
+import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
 import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND } from './config.js';
 
@@ -29,7 +29,11 @@ const count = (game, team, kind) => game.buildings.filter((b) => b.team === team
 
 function think(game, team, p) {
   const seat = game.seatOf(team);
-  if (!seat) return;
+  if (!seat) {   // the seat is lost: the king is a fugitive and makes for whatever his house still holds, keeping his men about him
+    const k = game.kingOf(team), at = game.thronePlace(team);
+    if (k && !k.inside && at && k.task.type === 'idle' && Math.hypot(k.x - at.x, k.y - at.y) > 5) game.cmdMove([k], at.x, at.y);
+    return;
+  }
   const serfs = game.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0);
   const t = game.time;
 
@@ -183,23 +187,25 @@ function think(game, team, p) {
     if (v) { game.cmdAttack(readyArmy.filter((u) => u.kind !== 'spy'), v); p.planVillage = v.id; }
   }
 
-  // 6. war: late, and only with a real army
+  // 6. war is chosen, not scheduled: a house fights the one it is at war with, or the one its stance says it means war on (threat, temptation,
+  // grudge, less ties: see stance() in diplomacy.js). The difficulty's warAfter (x0.6) is only the earliest a house will start a war of its own.
   const warAfter = pb?.warAt ? clamp(lerp(game.diff.warAfter, pb.warAt, wb), 240, 1800) : game.diff.warAfter;
-  p.warIn = Math.max(0, Math.round(warAfter - t));
-  if (t > warAfter && army.length >= 9) {
-    let target = null, bd = 1e9;
+  const earliest = warAfter * 0.6;
+  p.warIn = Math.max(0, Math.round(earliest - t));
+  const atWar = game.players.some((q) => q.alive && q.team !== team && game.rel[team][q.team] === 'war');
+  if (atWar || (t > earliest && army.length >= 7)) {
+    let target = null, bd = -1e9;
     for (const q of game.players) {
-      if (!q.alive || q.team === team) continue;
-      const s = game.seatOf(q.team);
-      if (!s) continue;
+      if (!q.alive || q.team === team || !game.known[team][q.team] || !game.seatOf(q.team)) continue;
       if (game.rel[team][q.team] === 'alliance') continue;   // oaths are kept (until a leader's temper breaks them)
-      if (game.rel[team][q.team] !== 'war' && (game.opinion[team][q.team] > 40 || game.time - game.relSince[team][q.team] < 240)) continue;   // friends, and a house we have just made peace with, are left alone
-      const d = Math.hypot(s.x - seat.x, s.y - seat.y) + (game.rel[team][q.team] === 'trade' ? 500 : 0) + game.opinion[team][q.team] * 1.2 - (game.rel[team][q.team] === 'war' ? 300 : 0); // trade partners and friends are the last to be attacked; a house already at war is finished first
-      if (d < bd) { bd = d; target = q; }
+      const st = stance(game, team, q.team), war = game.rel[team][q.team] === 'war';
+      if (!war && (st.war < game.diff.warBar || t <= earliest || army.length < 7 || game.time - game.relSince[team][q.team] < 240)) continue;   // a peace just made is kept a while
+      const score = (war ? 1 : 0) + st.war + st.temptation * 0.5;
+      if (score > bd) { bd = score; target = q; }
     }
     p.planWar = target ? target.team : null;
+    if (target && !pressWar(game, team, target.team)) target = null;   // an ultimatum first; the war comes if it is not answered
     if (target) {
-      if (game.rel[team][target.team] !== 'war') game.setRelation(team, target.team, 'war');
       const ready = army.filter((u) => u.task.type === 'idle');
       if (ready.length >= 7) {
         const foe = game.buildings.filter((b) => b.team === target.team && b.hp > 0)

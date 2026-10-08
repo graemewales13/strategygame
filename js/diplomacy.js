@@ -17,6 +17,87 @@ export const DIPLO = {
   minGiftGold: 10,
 };
 
+// ---- how one house sees another ---------------------------------------------------------------------------
+// Four readings, each 0..1 and each with the reasons behind it, all fading with distance (neighbours matter, far houses hardly do):
+//   threat     - they endanger us: their keeps and temples sway OUR villages, their soldiers stand in our land, their army outmatches ours nearby
+//   temptation - they are a prize: weaker than us, busy with another war, leaderless, broke, a village of theirs close and poorly guarded
+//   ties       - reasons to keep the peace: trade, alliance, a common enemy, goodwill, distance, a peace just made
+//   weariness  - at war: how long it has lasted, men lost to them, an empty purse, other fronts
+// war = what pushes toward war, weighed by the ruler's temper, less the ties; peace = what pushes a house at war to end it.
+export const STANCE = { every: 4, near: 28, far: 105, guardR: 14, ultimatum: 45 };
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+// where a house lives: its villages, keeps, towers and barracks
+const placesOf = (g, t) => [...g.villagesOf(t), ...g.buildings.filter((b) => b.team === t && b.hp > 0 && b.built >= 1 && (b.kind === 'keep' || b.kind === 'tower' || b.kind === 'barracks'))];
+export function stance(g, a, b) {
+  const c = (g._stance ||= {}), key = a + '>' + b, hit = c[key];
+  if (hit && g.time - hit.at < STANCE.every) return hit;
+  const s = readStance(g, a, b); s.at = g.time; c[key] = s; return s;
+}
+function readStance(g, a, b) {
+  const pr = pers(g, a), rel = g.rel[a][b], o = op(g, a, b), sa = strength(g, a), sb = strength(g, b), R = [];
+  const why = (kind, w, text) => { if (w >= 0.12) R.push({ kind, w, text }); };
+  const A = placesOf(g, a), B = placesOf(g, b);
+  let d = 1e9, nearB = null;
+  for (const x of A) for (const y of B) { const dd = Math.hypot(x.x - y.x, x.y - y.y); if (dd < d) { d = dd; nearB = y; } }
+  const prox = clamp01((STANCE.far - d) / (STANCE.far - STANCE.near));
+  // threat
+  let enc = 0, encV = null;
+  for (const v of g.villagesOf(a)) { const pl = g.pullsFor(v)[b] || 0; if (pl > 0) { enc += pl; if (!encV || pl > encV.pl) encV = { v, pl }; } }
+  enc = clamp01(enc / 0.6);
+  let foePow = 0, foeN = 0;
+  const mine = [...g.villagesOf(a), ...g.buildings.filter((x) => x.team === a && x.hp > 0)];
+  for (const u of g.units) {
+    if (u.team !== b || u.hp <= 0 || u.inside || !(g.powerOf(u) > 0)) continue;
+    if (mine.some((m) => Math.hypot(m.x - u.x, m.y - u.y) < STANCE.guardR)) { foePow += g.powerOf(u); foeN++; }
+  }
+  const army = clamp01(foePow / Math.max(2, g.powerOfTeam(a) * 0.6));
+  const over = clamp01((sb / sa - 1) / 1.5) * prox;
+  why('threat', enc, `${nameOf(g, b)} sways ${encV ? encV.v.name : 'our villages'} with buildings at its door`);
+  why('threat', army, `${foeN} of ${nameOf(g, b)}'s soldiers stand in our land`);
+  why('threat', over, `${nameOf(g, b)}'s army outmatches ours, and close by`);
+  const threat = clamp01(0.45 * enc + 0.45 * army + 0.3 * over);
+  // temptation
+  const weak = clamp01((sa / sb - 1.1) / 1.4), busy = enemiesOf(g, b).some((x) => x !== a) ? 0.3 : 0, headless = g.kingOf(b) ? 0 : 0.2, broke = g.players[b].broke ? 0.15 : 0;
+  let prize = 0, prizeV = null;
+  for (const v of g.villagesOf(b)) {
+    if (!A.some((x) => Math.hypot(x.x - v.x, x.y - v.y) < STANCE.near + 12)) continue;
+    const guard = g.garrisonWeight(v); if (guard < 2) { prize += 0.18; if (!prizeV) prizeV = v; }
+  }
+  prize = Math.min(0.45, prize);
+  why('temptation', weak * prox, `${nameOf(g, b)} is weaker than us`);
+  why('temptation', busy * prox, `${nameOf(g, b)} is already at war with ${enemiesOf(g, b).filter((x) => x !== a).map((x) => nameOf(g, x)).join(' and ')}`);
+  why('temptation', headless * prox, `${nameOf(g, b)}'s throne is empty`);
+  why('temptation', broke * prox, `${nameOf(g, b)}'s treasury is empty`);
+  why('temptation', prize * prox, `${prizeV ? prizeV.name : 'a village of theirs'} lies close and poorly guarded`);
+  const temptation = clamp01((0.6 * weak + busy + headless + broke + prize) * prox);
+  // ties
+  const shared = sharedEnemies(g, a, b), settledNow = g.time - g.relSince[a][b] < 240 && rel !== 'war';
+  const tie = { trade: rel === 'trade' ? 0.35 : 0, ally: rel === 'alliance' ? 0.8 : 0, common: 0.25 * shared.length, good: o > 0 ? (o / 100) * 0.6 : 0, far: (1 - prox) * 0.6, fresh: settledNow ? 0.5 : 0 };
+  why('ties', tie.ally, 'we are sworn allies');
+  why('ties', tie.trade, 'our caravans trade');
+  why('ties', tie.common, `we share an enemy in ${shared.map((x) => nameOf(g, x)).join(' and ')}`);
+  why('ties', tie.good, 'there is goodwill between us');
+  why('ties', tie.far, `${nameOf(g, b)} lies far away`);
+  why('ties', tie.fresh, 'a peace newly made');
+  const ties = Math.min(1.5, Object.values(tie).reduce((x, y) => x + y, 0));
+  const grudge = clamp01(-o / 100);
+  why('grudge', grudge, (g.whyOp[a + '>' + b] || []).find((w) => w.d < 0)?.why ? `they ${(g.whyOp[a + '>' + b] || []).find((w) => w.d < 0).why}` : 'old grievances');
+  // weariness
+  let weariness = 0, peace = 0;
+  if (rel === 'war') {
+    const mins = (g.time - g.relSince[a][b]) / 60, lost = g.losses?.[a + '>' + b] || 0, fronts = enemiesOf(g, a).length - 1;
+    weariness = clamp01(mins * 0.07 + lost * 0.035 + (g.players[a].broke ? 0.2 : 0) + 0.2 * fronts);
+    why('weariness', clamp01(mins * 0.07), `the war has dragged on ${Math.round(mins)} minutes`);
+    why('weariness', clamp01(lost * 0.035), `we have lost ${lost} men to them`);
+    why('weariness', 0.2 * fronts, 'we fight on other fronts');
+    peace = clamp01(weariness + clamp01((sb / sa - 1) * 0.5) * 0.6 - temptation * (0.3 + 0.5 * pr.aggr));
+  }
+  const war = temptation * (0.45 + 0.65 * pr.aggr) + threat * (0.35 + 0.4 * pr.wary) + grudge * 0.45 - ties * (0.5 + 0.4 * pr.honor);
+  R.sort((x, y) => y.w - x.w);
+  const mood = rel === 'war' ? (peace >= 0.55 ? 'wants peace' : 'fighting on') : war >= 0.5 ? 'means war' : war >= 0.25 ? 'wary' : ties >= 0.6 ? 'friendly' : 'at ease';
+  return { prox, dist: Math.round(d), threat, temptation, ties, grudge, weariness, war, peace, mood, reasons: R, near: nearB };
+}
+
 export const ATTITUDES = [[60, 'Devoted'], [30, 'Friendly'], [10, 'Warm'], [-10, 'Neutral'], [-30, 'Cool'], [-60, 'Hostile'], [-101, 'Hateful']];
 export const attitudeLabel = (o) => ATTITUDES.find(([min]) => o >= min)[1];
 
@@ -54,6 +135,7 @@ export function drift(g) {
       d += 0.5 * sharedEnemies(g, a, b).length;
       for (const c of alliesOf(g, a)) if (c !== b && g.rel[b][c] === 'war') d -= 1.0;          // you are fighting my friend
       for (const c of enemiesOf(g, a)) if (c !== b && g.rel[b][c] === 'alliance') d -= 0.5;   // you befriend my enemy
+      const st = stance(g, a, b); d -= 0.6 * st.threat;   // their keeps over our villages and their soldiers in our land are resented
       const sa = strength(g, a), sb = strength(g, b);
       if (rel !== 'alliance') {
         if (sb > sa * 1.8) d -= 0.25 + pr.greed * 0.3;                                         // envy of the stronger
@@ -200,6 +282,31 @@ export function record(g, from, to, kind, text, state, id = null) {
 }
 export function settleLetter(g, id, state) { const l = g.letters.find((x) => x.id === id); if (l) l.state = state; }
 
+// ---- going to war: a house that means war on another names its grievance first; against the human it waits STANCE.ultimatum seconds
+// for things to change (a keep pulled down, soldiers withdrawn, a gift) before it declares. Called from ai.js. Returns true once at war.
+export function pressWar(g, team, b) {
+  if (g.rel[team][b] === 'war') return true;
+  const p = g.players[team], s = stance(g, team, b), top = s.reasons.find((r) => r.kind !== 'ties' && r.kind !== 'weariness');
+  const text = top ? top.text : `${nameOf(g, b)} stands in our way`;
+  if (b !== PLAYER) {
+    g.setRelation(team, b, 'war');
+    record(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)} declares war on ${nameOf(g, b)}: ${text}.`, 'note');
+    return true;
+  }
+  const u = p.ultimatum;
+  if (!u || u.to !== b) {
+    p.ultimatum = { to: b, at: g.time };
+    notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "${text.replace(nameOf(g, b) + "'s", 'Your').replace(nameOf(g, b), 'You')}. You have until the next bell to make it right, or it is war."`);
+    return false;
+  }
+  if (g.time - u.at < STANCE.ultimatum) return false;
+  p.ultimatum = null;
+  if (s.war < 0.4) { notice(g, team, b, 'note', `${leaderName(g, team)} of ${nameOf(g, team)}: "So be it. For now we keep the peace."`); return false; }
+  notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "You did nothing. This is war."`);
+  g.setRelation(team, b, 'war');
+  return true;
+}
+
 // ---- what a leader does of his own accord ----------------------------------------------------------------------
 export function deliberate(g, team) {
   const p = g.players[team], pr = pers(g, team);
@@ -225,7 +332,7 @@ export function deliberate(g, team) {
     }
     // a house that is losing sues for peace
     if (rel === 'war' && g.parleyIn(team, b) <= 0) {
-      const sue = myS < strength(g, b) * 0.6 || g.time - g.relSince[team][b] > 300;
+      const sue = stance(g, team, b).peace >= 0.55;
       if (sue && cooled(g, team, b, 'alliance')) {
         if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER)) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'peace', { state: 'peace' }); wrote(); } }
         else if (judge(g, 'peace', team, b).ok && g.willMakePeace(b, team)) { stamp(g, team, b, 'alliance'); g.setRelation(team, b, 'peace'); }
@@ -234,7 +341,8 @@ export function deliberate(g, team) {
     }
     // proposals among friends
     if ((rel === 'peace' || rel === 'trade') && o >= DIPLO.need.alliance && cooled(g, team, b, 'alliance')) {
-      const useful = sharedEnemies(g, team, b).length || (enemiesOf(g, team).length && strength(g, b) > myS * 0.5) || (human && pr.honor > 0.6);
+      const commonThreat = g.players.some((c) => c.alive && c.team !== team && c.team !== b && g.known[team][c.team] && stance(g, team, c.team).threat >= 0.35 && stance(g, b, c.team).threat >= 0.25);
+      const useful = sharedEnemies(g, team, b).length || commonThreat || (enemiesOf(g, team).length && strength(g, b) > myS * 0.5) || (human && pr.honor > 0.6);
       if (!human && alliesOf(g, team).length >= 1) continue;
       if (useful) {
         if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER && x.state === 'alliance')) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'alliance', { state: 'alliance' }); wrote(); } }
@@ -271,21 +379,10 @@ export function deliberate(g, team) {
       p.lastGift = g.time; stamp(g, team, b, 'gift'); const amt = 50;
       p.gold -= amt; g.earn(b, 'tribute', amt); shift(g, team, b, 2, 'received our gift');
       notice(g, team, b, 'note', `${leaderName(g, team)} of ${nameOf(g, team)} sends you ${amt} coin: "A token of friendship between our houses."`);
-    } else if (o <= -30 && rel === 'peace' && cooled(g, team, b, 'letter') && pr.aggr > 0.4) {
-      stamp(g, team, b, 'letter');
-      notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "My patience with ${nameOf(g, b)} wears thin. Mend your ways, or answer to my spears."`);
+    } else if (rel !== 'war' && rel !== 'alliance' && cooled(g, team, b, 'letter') && stance(g, team, b).war >= 0.3) {
+      const s = stance(g, team, b), r = s.reasons.find((x) => x.kind === 'threat' || x.kind === 'grudge');
+      if (r) { stamp(g, team, b, 'letter'); notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "${r.text.replace(nameOf(g, b) + "'s", 'Your').replace(nameOf(g, b), 'You')}. Mend it, or answer to my spears."`); }
     }
-    // hostility turns into war when the house is stronger and cannot abide the other
-    if (o <= -45 && rel !== 'war' && rel !== 'alliance' && !settled(g, team, b) && g.time > 540 && myS > strength(g, b) * 1.2 && pr.aggr > 0.35) {
-      notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "Enough. ${nameOf(g, b)} has tried my patience. I declare war."`);
-      g.setRelation(team, b, 'war');
-    }
-  }
-  // AI against AI: the hated and weak are fought
-  for (const q of g.players) {
-    if (!q.alive || q.team === team || q.team === PLAYER || !g.known[team][q.team]) continue;
-    const b = q.team, o = op(g, team, b);
-    if (o <= -45 && g.rel[team][b] !== 'war' && g.rel[team][b] !== 'alliance' && !settled(g, team, b) && g.time > 540 && myS > strength(g, b) * 1.2 && pr.aggr > 0.35) g.setRelation(team, b, 'war');
   }
   void waiting;
 }
@@ -320,6 +417,8 @@ export function intel(g, t, viewer = PLAYER) {
     opinion: Math.round(o), attitude: attitudeLabel(o), why: (g.whyOp[t + '>' + viewer] || []).slice(0, 3),
     allies: alliesOf(g, t), enemies: enemiesOf(g, t),
     secrets: spied ? secretsOf(g, t) : null,
+    heirs: p.heirs ?? 2, fugitive: !g.seatOf(t),
+    stance: t === viewer ? null : stance(g, t, viewer),
   };
 }
 // what a spy inside one of their villages learns of a house: its army by kind, its captains and far-landers by name, and its plans

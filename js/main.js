@@ -52,9 +52,9 @@ ui.onLoad = (data) => {
   centerOnHall();
 };
 function centerOnHall() {
-  const s = game.seatOf(0);
+  const s = game.seatOf(0) || game.kingOf(0) || game.thronePlace(0);
   renderer.cam.zoom = 1;
-  renderer.centerOn(s.x, s.y);
+  if (s) renderer.centerOn(s.x, s.y);
 }
 centerOnHall();
 ui.refreshMenu();

@@ -433,7 +433,7 @@ export class UI {
     const ranks = RANKS[L.rank]?.label || '';
     const stat = (label, val, tip) => `<div class="hs" ${tip ? `data-tip="${encodeURIComponent(tip)}"` : ''}><label>${label}</label><b>${val}</b></div>`;
     const mine = intel(g, PLAYER);
-    let html = `<div class="hleader" data-tip="${encodeURIComponent(`<b>${esc(L.temper || '')}</b><br>${tempTip}`)}">♔ <b>${lead}</b>${L.alive ? ` <span class="rk">${'▲'.repeat(L.rank)} ${ranks}</span>` : ''}${L.temper ? ` <span class="tmp ${L.temper}">${L.temper}</span>` : ''}</div>`;
+    let html = `<div class="hleader" data-tip="${encodeURIComponent(`<b>${esc(L.temper || '')}</b><br>${tempTip}`)}">♔ <b>${lead}</b>${L.alive ? ` <span class="rk">${'▲'.repeat(L.rank)} ${ranks}</span>` : ''}${L.temper ? ` <span class="tmp ${L.temper}">${L.temper}</span>` : ''} <small data-tip="${encodeURIComponent('<b>The royal line</b><br>When a king falls the next heir is crowned. When the last of the line dies, the house falls.')}">${i.heirs > 0 ? `· ${i.heirs} heir${i.heirs === 1 ? '' : 's'}` : '· <b style="color:#e0866a">last of the line</b>'}${i.fugitive ? ' · <b style="color:#e0866a">fugitive, seat lost</b>' : ''}</small></div>`;
     html += `<div class="hstats">`
       + stat('Rank', `#${i.rank}`, `Composite of wealth, villages, folk, power, learning and arms.<br>Score ${i.score}`)
       + stat('Villages', `${i.land}${me ? '' : ` <small>(you ${mine.land})</small>`}`, `${i.landPop} folk live in them.`)
@@ -450,6 +450,11 @@ export class UI {
     if (i.enemies.length) rels.push('At war with ' + i.enemies.map((c) => esc(HOUSES[c].short)).join(', '));
     if (rels.length) html += `<div class="dline">${rels.join(' · ')}</div>`;
     html += `<div class="dline"><span class="att ${i.opinion >= 10 ? 'good' : i.opinion <= -10 ? 'bad' : ''}">${i.attitude} toward you (${i.opinion >= 0 ? '+' : ''}${i.opinion})</span>${i.why.length ? ' · ' + i.why.map((w) => `${w.d > 0 ? '+' : ''}${w.d} ${esc(w.why)}`).join('; ') : ''}</div>`;
+    if (i.stance) {
+      const st = i.stance, pct = (x) => Math.round(Math.min(1, x) * 100), top = st.reasons.slice(0, 3).map((r) => esc(r.text)).join('; ');
+      const col = st.mood === 'means war' || st.mood === 'fighting on' ? '#e0866a' : st.mood === 'wary' ? '#e8c35a' : '#9fe08f';
+      html += `<div class="dline" data-tip="${encodeURIComponent('<b>How they see you</b><br><b>Threat</b>: your buildings swaying their villages, your soldiers in their land, your army close and stronger.<br><b>Temptation</b>: you are weaker, busy at war, leaderless, broke, or a village of yours lies close and poorly guarded.<br><b>Ties</b>: trade, alliance, a common enemy, goodwill, distance, a fresh peace.<br>They go to war when threat and temptation clearly outweigh the ties (and warn you first).')}">They see you: <b style="color:${col}">${st.mood}</b> · threat ${pct(st.threat)}% · temptation ${pct(st.temptation)}% · ties ${pct(st.ties)}%${rel === 'war' ? ` · weariness ${pct(st.weariness)}%` : ''}${top ? `<br><small>${top}</small>` : ''}</div>`;
+    }
     if (i.secrets) {
       const s = i.secrets, mix = Object.entries(s.mix).map(([k, n]) => `${n} ${UNITS[k].label.toLowerCase()}${n === 1 ? '' : 's'}`).join(', ') || 'no soldiers';
       const plan = s.war != null ? `means war on <b>${s.war === PLAYER ? 'you' : esc(HOUSES[s.war].short)}</b>` : s.warIn ? `not ready for war (about ${Math.ceil(s.warIn / 60)} min)` : 'no war planned';

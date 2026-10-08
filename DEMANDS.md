@@ -7,9 +7,9 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - Five peoples only: Egyptians, Romans, British, Mongols, Scottish. No Vikings. *(branch `grok`)*
 
 ## Winning and losing
-- **Conquest is the only win.** Every rival house must be killed or forfeit. Trading, wealth or holding villages must never win the game.
+- **Conquest is the only win.** The royal line of every rival house must end. Trading, wealth or holding villages must never win the game.
 - **Do not modify or reintroduce a land (village-share) win or a wealth win.**
-- A house forfeits after 45 s with no home village and no soldiers.
+- A house falls only when the last of its royal line dies (king + `KING.heirs` heirs, owner's rule 2026-10-08). No forfeits, and losing the seat does not end a house; a seatless king is a fugitive visible to all.
 
 ## Map and fog
 - The board is at least 8x the original area (320x320). Mining material stays at the original total, so it is scarcer. Village frequency stays the same.
@@ -54,7 +54,7 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - The game is 2D only. The owner rejected the Three.js 3D view (reverted 2026-10-08): do not reintroduce it.
 - Units keep room (`Game.separate`): a marching group is never stacked into one body.
 - Idle soldiers within `DEFEND_R` (5) squares of a building, unit or village under attack turn on the attacker (`rallyDefenders`).
-- A king is always appointed: an heir is crowned `KING.heir` (2 s) after a king falls, and a house with no king and no heir timer is given one.
+- While the line lasts a king is always appointed: the next heir is crowned `KING.heir` (20 s) after a king falls, at the seat or wherever the house still holds.
 
 ## Peoples, names and building room
 - Characters must never stack into what looks like one person: keep at least about a tile between them. Camels with work available must not stand idle unless the player stopped them.
@@ -72,3 +72,4 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - A click must show what matters about the thing clicked: a training building lists its muster roll (each soldier, clickable), a group lists each person, a rival unit or building shows their house, standing, opinion and ruler with a Council button. Never reveal a rival garrison under fog.
 - Serfs can found villages to reach ore far from any village: a village needs a keep or a mine, and founded beside a deposit it is a mining camp that works the mines at once.
 - No easy armies from villages: a village arms one villager at a time (DRAFT.armEvery), never a footman. Serfs and armed villagers can fight, but only at 10-30% of a soldier (serf about 12%, recruit about 28% of a footman's health x damage); serfs fight back when struck.
+- War and peace must make sense: houses decide from a visible reading of each other (threat, temptation, ties, weariness, with reasons, fading with distance; see `stance()` in diplomacy.js), not from a timer. Warn the player with an ultimatum before declaring war; peace stands both armies down.

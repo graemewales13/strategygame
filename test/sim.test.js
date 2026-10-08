@@ -776,13 +776,16 @@ test('victory: wealth alone never wins; only conquest or forfeit ends the game',
   assert.ok(!g.outcome, 'a fortune does not end it: ' + JSON.stringify(g.outcome));
 });
 
-test('victory: a rival with no home and no army forfeits; the last house standing wins', () => {
+test('victory: a rival that loses its home and army lives on while its line does; when the last king of every rival dies, the last house standing wins', () => {
   const g = new Game({ seed: 4, houses: 3, ai: false });
   for (const t of [1, 2]) {
     for (const v of g.villages) if (v.home === t) { v.owner = 0; v.loyalty = 95; }
     for (const u of g.militaryOf(t)) u.hp = 0;
   }
-  for (let i = 0; i < 700 && !g.outcome; i++) g.tick(0.5);
+  for (let i = 0; i < 200; i++) g.tick(0.5);
+  assert.ok(!g.outcome && g.players[1].alive && g.players[2].alive, 'no forfeit: a house ends only with its line');
+  for (const t of [1, 2]) { g.players[t].heirs = 0; const k = g.kingOf(t) || (g.updateKings(0), g.kingOf(t)); if (k) g.damage(k, 1e6, 0, null); }
+  for (let i = 0; i < 20 && !g.outcome; i++) g.tick(0.5);
   assert.ok(g.outcome && g.outcome.result === 'victory' && g.outcome.kind === 'conquest', JSON.stringify(g.outcome));
 });
 

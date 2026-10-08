@@ -199,12 +199,13 @@ export const SPY_CATCH = 0.004;  // base catch chance per second, plus protectio
 // a spy caught in a held village costs you `caught` opinion with its lord.
 export const SPY_INTEL = { fresh: 45, caught: -12 };
 // difficulty tiers. playerMul scales the player's starting purse and stores; aiMul scales every coin an AI house earns;
-// armyCap and warAfter govern how big and how soon rival armies come; think slows or quickens their decisions;
+// armyCap and warAfter govern how big and how soon rival armies come (warAfter x0.6 is the earliest a house starts a war; warBar is how strongly
+// its stance must call for war, see stance() in diplomacy.js); think slows or quickens their decisions;
 // wealth is the fortune (coin plus goods at market value) that wins the game when held for WEALTH_HOLD seconds.
 export const DIFFICULTY = {
-  easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, think: 1.5, wealth: 4000 },
-  mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.0,  armyCap: 22, warAfter: 840,  think: 1.15, wealth: 6000 },
-  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.1, armyCap: 32, warAfter: 600,  think: 1.0, wealth: 10000 },
+  easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, warBar: 0.65, think: 1.5, wealth: 4000 },
+  mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.0,  armyCap: 22, warAfter: 840,  warBar: 0.5, think: 1.15, wealth: 6000 },
+  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.1, armyCap: 32, warAfter: 600,  warBar: 0.4, think: 1.0, wealth: 10000 },
 };
 export const FORFEIT_AFTER = 45;   // seconds a house with no home village and no soldiers holds out before it forfeits
 export const WEALTH_HOLD = 90;   // legacy, unused: wealth no longer wins
@@ -289,7 +290,9 @@ export const XP = { perDamage: 0.1, kill: 14, killBuilding: 8, killRankMul: 0.5 
 export const BUILD_GAP = 1;   // empty tiles required between a new building and any other
 export const DEFEND_R = 5;   // idle soldiers this close to something under attack go to its defence
 export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11, lookR: 9 };
-export const KING = { aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 2, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
+// The royal line: a house has a king and `heirs` heirs. Each fallen king is followed by the next heir after `heir` seconds; when the last of the
+// line dies the house falls. A king whose house has lost its seat is a fugitive, seen by every house (`fugitiveSight`).
+export const KING = { aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 20, heirs: 2, fugitiveSight: 2.5, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
   titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King' } };
 // Leaders have a temper that colours how they treat the other houses (see ai.js diplomacy): aggr, greed, honor and wary are 0..1.
 export const TEMPERS = [
