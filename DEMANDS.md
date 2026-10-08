@@ -66,3 +66,7 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - Information and interaction with other houses must be rich, like a real strategy game: stats (size, money, influence, power), trade/war/alliance, and rival leaders who **send letters** (alliance offers, calls to join wars against third houses, tribute demands, aid requests). Keep this on the Council screen (C) and the house panel.
 - An AI that makes peace must not re-declare war within moments; a house with only a village left must still be attacked to finish it (an idle player must lose).
 - In a fight characters must not simply run away (serfs excepted). When something in a town is attacked, garrisoned soldiers leave their buildings and fight, then assess the town, fight on if needed, otherwise return inside.
+
+## Characters and views
+- People are characters, not counters: every fighter keeps a service record and earns deeds; far-landers (peoples with no house on the board) turn up in taverns with gifts of their homeland; Elite soldiers can be made captains. See `CHARACTERS.md`.
+- A click must show what matters about the thing clicked: a training building lists its muster roll (each soldier, clickable), a group lists each person, a rival unit or building shows their house, standing, opinion and ruler with a Council button. Never reveal a rival garrison under fog.

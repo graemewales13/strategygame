@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -159,6 +159,8 @@ function think(game, team, p) {
     const i = tav2.roster.findIndex((w) => game.canAfford(team, w.cost));
     if (i >= 0) game.hire(team, tav2.id, i);
   }
+  // an Elite soldier with coin to spare behind him is given command
+  if (p.gold > 150) { const c = game.units.find((u) => u.team === team && u.hp > 0 && !u.captain && (u.rank || 0) >= CAPTAIN.minRank && (u.kind === 'footman' || u.kind === 'bowman' || u.kind === 'knight')); if (c) game.appoint(team, c.id); }
   if (keepB) {
     for (const u of game.units) if (u.team === team && u.kind === 'recruit' && !u.inside && u.task.type === 'idle' && keepB.garrison.length < 12) game.cmdEnter([u], keepB);
     for (const id of keepB.garrison) {

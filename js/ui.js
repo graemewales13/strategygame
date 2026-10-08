@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD,
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
@@ -400,6 +400,8 @@ export class UI {
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'gsel': this.gsel = +d.id; break;
+      case 'captain': { const u = this.selUnits()[0]; if (u) this.host.send({ type: 'captain', unitId: u.id }); break; }
+      case 'selroll': { const b = this.selEntity(); if (b) { const r = this.rollOf(b).filter((u) => !u.inside); if (r.length) this.setUnits(r); } break; }
       case 'drill': {
         const b = this.selEntity(); if (!b) break;
         let u = this.gsel != null ? g.byId.get(this.gsel) : null;
@@ -641,16 +643,18 @@ export class UI {
     } else if (s.type === 'units') {
       const us = this.selUnits();
       if (us.length === 1) {
-        const u = us[0], st = UNITS[u.kind], mine = u.team === PLAYER;
-        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${esc(u.title || st.label)} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : ''}${esc(st.info)}</div>
-          <div class="stat"><label>Can</label><span>${esc(ABILITIES[u.kind] || '')}</span></div>
+        const u = us[0], st = UNITS[u.kind], mine = u.team === PLAYER, far = u.far ? FARLANDS[u.far] : null;
+        const who = far ? `${esc(far.label)} from ${esc(far.land)}<br>` : u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : '';
+        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${u.captain ? 'Captain · ' : ''}${esc(u.title || st.label)} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${who}${esc(st.info)}</div>
+          ${mine ? `<div class="stat"><label>Can</label><span>${esc(ABILITIES[u.kind] || '')}</span></div>` : this.foeRow(u.team)}
           <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(u.hp / u.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(u.hp)}/${u.maxHp}</span></div>
-          <div class="stat"><label>Damage</label><span>${(((st.dmg + (u.dmgAdd || 0)) * (1 + RANK_BONUS.dmg * (u.rank || 0)))).toFixed(0)}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${st.speed}</span></div>
+          <div class="stat"><label>Damage</label><span>${st.dmg ? g.shownDamage(u).toFixed(0) : '0'}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${(u.speed ?? st.speed).toFixed(1)}</span></div>
           ${g.ranked(u) ? this.rankRow(u) : ''}
+          ${this.characterRows(u)}
           ${mine ? `<div class="stat"><label>Task</label><span>${this.taskText(u)}${u.carry && u.carry.amount > 0.5 ? ` · ${Math.floor(u.carry.amount)} ${u.carry.kind}` : ''}</span></div>` : ''}`;
       } else {
         const by = {}; us.forEach((u) => { by[u.kind] = (by[u.kind] || 0) + 1; });
-        html = `<div class="seltitle">${us.length} units</div><div class="selsub">${us.length <= 8 ? esc(us.map((u) => u.name?.split(' ')[0]).filter(Boolean).join(', ')) + '. ' : ''}Click a type to narrow the selection. Ctrl+1..9 stores a group.</div><div class="chips">${Object.entries(by).map(([k, n]) => `<span class="chip x" data-act="kind" data-kind="${k}">${GLYPH[k]?.length === 1 ? GLYPH[k] : ''} ${UNITS[k].label} × ${n}</span>`).join('')}</div>`;
+        html = `<div class="seltitle">${us.length} units</div><div class="selsub">Click a type to narrow the selection, or a name to pick one out. Ctrl+1..9 stores a group.</div><div class="chips">${Object.entries(by).map(([k, n]) => `<span class="chip x" data-act="kind" data-kind="${k}">${GLYPH[k]?.length === 1 ? GLYPH[k] : ''} ${UNITS[k].label} × ${n}</span>`).join('')}</div>${this.rollChips(us, 16)}`;
       }
     } else if (s.type === 'building') {
       const b = g.byId.get(s.id); if (!b) { this.clearSel(); return; }
@@ -667,6 +671,8 @@ export class UI {
         html += `<div class="stat"><label>Garrison</label><span>${inn.length}/${GARRISON[b.kind]} inside${b.kind === 'keep' ? ' (heal while inside)' : ''}</span></div>`;
         if (inn.length) html += `<div class="chips">${inn.map((u) => `<span class="chip x ${this.gsel === u.id ? 'on' : ''}" data-act="gsel" data-id="${u.id}" data-tip="${encodeURIComponent(`<b>${esc(u.name || UNITS[u.kind].label)}</b><br>${UNITS[u.kind].label}${u.trait ? ' · ' + TRAITS[u.trait].label : ''} · ${Math.ceil(u.hp)}/${u.maxHp} hp${u.drilling ? '<br>In training' : ''}`)}">${GLYPH[u.kind]?.length === 1 ? GLYPH[u.kind] : ''} ${esc(u.name || UNITS[u.kind].label)}${u.drilling ? ' …' : ''}</span>`).join('')}</div>`;
       }
+      if (!mine) html += this.foeRow(b.team) + (GARRISON[b.kind] && g.canSee(PLAYER, b.x, b.y) ? `<div class="stat"><label>Garrison</label><span>${b.garrison.length ? `about ${b.garrison.length} inside` : 'empty, as far as your scouts can tell'}</span></div>` : '');
+      if (mine && b.built >= 1) { const roll = this.rollOf(b); if (roll.length) html += `<div class="stat"><label>Muster roll</label><span>${roll.length} raised here still serve${roll.some((u) => u.inside) ? ` (${roll.filter((u) => u.inside).length} inside somewhere)` : ''}</span></div>${this.rollChips(roll, 12)}`; }
       if (mine && b.kind === 'keep' && b.built >= 1) { const lv = b.levy != null ? g.byId.get(b.levy) : null; html += `<div class="stat"><label>Levy</label><span>${lv ? `${esc(lv.name)} (${Math.floor(lv.pop)} villagers left)` : 'none: right-click a village you hold'}</span></div>`; }
       if (b.kind === 'mine' && b.built >= 1) {
         const left = b.nodeIds.reduce((a, id) => a + Math.max(0, g.resources[id].amount), 0), max = b.nodeIds.reduce((a, id) => a + g.resources[id].max, 0);
@@ -686,7 +692,7 @@ export class UI {
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
         <div class="stat"><label>Population</label><div class="meter"><i class="loy" style="width:${(v.pop / v.popMax) * 100}%"></i></div><span class="v">${Math.floor(v.pop)}/${v.popMax}</span></div>
         <div class="stat"><label>Folk</label><span>${v.folk.join(', ')} · ${v.hunger ? '<b style="color:#e0866a">starving: the store is out of grain</b>' : v.pop >= v.popMax ? 'at full strength' : 'growing (fed from the village store)'} · grain ${Math.floor(v.stores.food || 0)}</span></div>${v.owner === PLAYER ? `<div class="stat"><label>Housing</label><span>houses ${Math.floor(v.pop * POP_HOUSING)} of your population cap; tribute ${Math.round((0.5 + 0.7 * (v.pop / v.popMax)) * 100)}% of base</span></div>` : ''}
-        <div class="stat"><label>Influence</label><span>${this.pullText(v)}</span></div>${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
+        <div class="stat"><label>Influence</label><span>${this.pullText(v)}</span></div>${v.owner === PLAYER && v.garrison?.length ? `<div class="stat"><label>Garrison</label><span>${v.garrison.length}/${VILLAGE_GARRISON} inside</span></div>${this.rollChips(v.garrison.map((id) => g.byId.get(id)).filter(Boolean), 8)}` : ''}${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
     } else if (s.type === 'node') {
       const n = g.resources[s.id]; if (!n) { this.clearSel(); return; }
       const res = NODE_RES[n.kind];
@@ -734,11 +740,19 @@ export class UI {
     }
     return html + `</div>`;
   }
+  captainBtn(us) {
+    if (us.length !== 1) return '';
+    const u = us[0], g = this.game;
+    if (u.captain || !['footman', 'bowman', 'knight'].includes(u.kind)) return '';
+    const n = g.units.filter((x) => x.team === PLAYER && x.captain && x.hp > 0).length, ok = (u.rank || 0) >= CAPTAIN.minRank && n < CAPTAIN.max && g.canAfford(PLAYER, CAPTAIN.cost);
+    return this.btn('captain', { glyph: '⚑', name: 'Make captain', sub: CAPTAIN.cost.gold + 'c', off: !ok, tip: `<b>Make captain</b><br>Soldiers within ${CAPTAIN.aura} tiles hit ${Math.round(CAPTAIN.dmg * 100)}% harder and learn ${Math.round(CAPTAIN.xp * 100)}% faster; a captain on guard counts half again. Needs an ${RANKS[CAPTAIN.minRank].label} or better; ${n}/${CAPTAIN.max} captains.<br><span class="cost">${CAPTAIN.cost.gold} coin</span>` });
+  }
   rosterPanel(b) {
     const g = this.game, p = g.players[PLAYER];
     let html = `<div class="ctitle">Wanderers for hire (new faces every ${Math.round(120 / 60)} min)</div><div class="cgrid">`;
     b.roster.forEach((w, i) => {
-      const t = TRAITS[w.trait], afford = g.canAfford(PLAYER, w.cost);
+      const far = w.far ? FARLANDS[w.far] : null, t = TRAITS[w.trait], afford = g.canAfford(PLAYER, w.cost);
+      if (far) { html += this.btn('hire', { off: !afford, glyph: '✦', art: 'recruit', name: `${w.name.split(' ')[0]}`, sub: `${far.perk} · ${costShort(w.cost)}`, data: { i }, cls: 'far', tip: `<b>${esc(w.name)}</b><br>${esc(far.label)} from ${esc(far.land)}. A traveller of a people with no house in the valley.<br><b>${far.perk}</b>: ${far.tip}<br><span class="info">Starts Trained. Keeps the gift when drilled into a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>` }); return; }
       const tip = `<b>${esc(w.name)}</b> · ${t.label}<br><span class="info">${t.hp > 1 ? `+${Math.round((t.hp - 1) * 100)}% health. ` : ''}${t.dmg ? `+${t.dmg} damage. ` : ''}${t.spd ? `Faster. ` : ''}${w.trait === 'green' ? 'Untrained but cheap.' : ''}Drill them in a keep to make a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>`;
       html += this.btn('hire', { off: !afford, glyph: '☗', art: 'recruit', name: `${w.name}`, sub: `${t.label} · ${costShort(w.cost)}`, data: { i }, tip });
     });
@@ -775,6 +789,40 @@ export class UI {
       + `<div class="hint">${miss.length ? `Add ${miss.map((k) => LINKS[k].label.toLowerCase()).join(' and ')} within ${DISTRICT.r} tiles: each link adds +${Math.round(DISTRICT.perLink * 100)}% market coin, faster foundries, richer villages.` : 'Supply feeds works, works feed the market, homes and service keep it paid. Foundries here run fast; villages here pay more.'}</div>`;
   }
   // where a mine or foundry stands in the chain
+  // a rival's house as seen from a click on one of their units or buildings: where you stand, their ruler's temper and opinion of you
+  foeRow(team) {
+    const g = this.game; if (team == null || team < 0 || team === PLAYER) return '';
+    const rel = g.rel[PLAYER][team], op = Math.round(g.opinion?.[team]?.[PLAYER] || 0), t = TEMPERS.find((x) => x.key === g.players[team]?.persona?.temper), k = g.kingOf(team);
+    return `<div class="stat"><label>House</label><span>${esc(HOUSES[team].name)} · <b class="rel ${rel}" style="padding:0 5px;border-radius:2px">${rel}</b> · thinks of you <b>${op > 0 ? '+' : ''}${op}</b></span></div>`
+      + (k ? `<div class="stat"><label>Ruler</label><span>${esc(k.title)} ${esc(k.name)}${t ? ` · <span data-tip="${encodeURIComponent(`<b>${t.label}</b><br>${t.tip}`)}">${t.label}</span>` : ''}</span></div>` : '');
+  }
+  // what makes this person who they are: far-land gift, captaincy, deeds, service record
+  characterRows(u) {
+    const g = this.game, far = u.far ? FARLANDS[u.far] : null; let h = '';
+    if (far) h += `<div class="stat"><label>Gift</label><span data-tip="${encodeURIComponent(`<b>${far.perk}</b><br>${far.tip}`)}"><b>${esc(far.perk)}</b>: ${esc(far.tip)}</span></div>`;
+    if (u.captain) h += `<div class="stat"><label>Command</label><span>Captain: soldiers within ${CAPTAIN.aura} tiles +${Math.round(CAPTAIN.dmg * 100)}% damage, +${Math.round(CAPTAIN.xp * 100)}% experience</span></div>`;
+    if (u.deeds?.length) h += `<div class="chips">${u.deeds.map((d) => `<span class="chip" data-tip="${encodeURIComponent(`<b>${DEEDS[d].label}</b><br>${DEEDS[d].tip}`)}">${esc(DEEDS[d].label)}</span>`).join('')}</div>`;
+    if (u.kind !== 'camel' && u.kind !== 'serf') {
+      const from = u.from != null ? g.byId.get(u.from) : null, served = Math.max(0, g.time - (u.born ?? g.time));
+      h += `<div class="stat"><label>Record</label><span>${u.kills || 0} kill${u.kills === 1 ? '' : 's'}${u.razed ? ` · ${u.razed} building${u.razed === 1 ? '' : 's'} razed` : ''} · served ${served < 60 ? 'under a minute' : Math.floor(served / 60) + ' min'}${from ? ` · raised at a ${BUILDINGS[from.kind].label.toLowerCase()}` : ''}</span></div>`;
+    }
+    return h;
+  }
+  // living units first raised by building b, best first
+  rollOf(b) {
+    return this.game.units.filter((u) => u.from === b.id && u.team === b.team && u.hp > 0).sort((a, c) => (c.rank || 0) - (a.rank || 0) || (c.xp || 0) - (a.xp || 0));
+  }
+  // one chip per person: name, rank chevrons, captaincy, health; click to select them
+  rollChips(list, max) {
+    if (!list.length) return '';
+    const g = this.game, chev = (r) => (r ? '›'.repeat(r) : '');
+    const chips = list.slice(0, max).map((u) => {
+      const st = UNITS[u.kind], far = u.far ? FARLANDS[u.far] : null, pct = Math.round((u.hp / u.maxHp) * 100);
+      const tip = `<b>${esc(u.name || st.label)}</b>${u.captain ? ' · Captain' : ''}<br>${st.label}${g.ranked(u) ? ' · ' + RANKS[u.rank || 0].label : ''}${far ? ' · ' + esc(far.label) : ''}<br>${Math.ceil(u.hp)}/${u.maxHp} health · ${u.kills || 0} kills${u.deeds?.length ? '<br>' + u.deeds.map((d) => DEEDS[d].label).join(', ') : ''}${u.inside ? '<br>Inside' : ''}<br>Click to select.`;
+      return `<span class="chip x" data-act="select" data-id="${u.id}" data-tip="${encodeURIComponent(tip)}" style="${pct < 40 ? 'border-color:#c4533a' : ''}">${GLYPH[u.kind]?.length === 1 ? GLYPH[u.kind] : ''} ${esc((u.name || st.label).split(' ')[0])}${u.captain ? ' ⚑' : ''}${far ? ' ✦' : ''} <b style="color:#e8c35a">${chev(u.rank || 0)}</b></span>`;
+    }).join('');
+    return `<div class="chips">${chips}${list.length > max ? `<span class="chip">+${list.length - max} more</span>` : ''}</div>`;
+  }
   rankRow(u) {
     const r = u.rank || 0, nxt = RANKS[r + 1], lo = RANKS[r].xp, pct = nxt ? Math.min(100, (((u.xp || 0) - lo) / (nxt.xp - lo)) * 100) : 100;
     return `<div class="stat" data-tip="${encodeURIComponent(`<b>${RANKS[r].label}</b><br>+${Math.round(RANK_BONUS.dmg * r * 100)}% damage, +${Math.round(RANK_BONUS.hp * r * 100)}% health. Experience comes from wounding and killing foes. A rated soldier on guard counts for ${(1 + RANK_BONUS.guard * r).toFixed(2)} when a keep or village is swaying its neighbours.`)}"><label>Rank</label><span style="color:#e2c15e">${'▲'.repeat(r) || '·'} ${RANKS[r].label}</span><div class="meter"><i class="ore" style="width:${pct}%"></i></div><span class="v">${nxt ? Math.floor(u.xp || 0) + '/' + nxt.xp : 'max'}</span></div>`;
@@ -894,7 +942,7 @@ export class UI {
       if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
       if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
-      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}</div>`;
+      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${this.captainBtn(us)}</div>`;
       if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));
       if (us.some((u) => u.kind === 'recruit')) html += `<div class="ctitle">Role</div><div class="cgrid c4">${this.btn('spy', { glyph: GLYPH.spy, art: 'spy', name: 'Become spy', sub: SPY_FEE + 'c', off: g.players[PLAYER].gold < SPY_FEE, tip: `<b>Become a spy</b><br>${SPY_FEE} coin. Spies right-click an independent or rival village to sway its loyalty (and can be caught).` })}</div><div class="hint">Or right-click a keep to garrison, then drill into a soldier.</div>`;
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click: a deposit with a <b>mine</b> to dig, timber, berries or gold to gather, a building site to build.</div>`;
@@ -908,6 +956,7 @@ export class UI {
         html += this.trainGrid(ent);
         if (ent.kind === 'market') html += this.marketPanel(ent);
         if (ent.kind === 'tavern' && ent.roster) html += this.rosterPanel(ent);
+        { const roll = this.rollOf(ent); if (roll.length > 1) html += `<div class="cgrid" style="margin-top:6px">${this.btn('selroll', { glyph: '☰', name: 'Select roll', sub: `${roll.filter((u) => !u.inside).length} outside`, tip: '<b>Select the muster roll</b><br>Selects everyone raised here who is out in the field.' })}</div>`; }
         if (ent.kind === 'keep') html += this.keepPanel(ent);
         else if (GARRISON[ent.kind] && ent.garrison.length) html += `<div class="cgrid" style="margin-top:6px">${this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' })}</div>`;
         if (ent.kind === 'mine') html += `<div class="hint">Local villagers dig for you: no villages in reach means no workers. Your own villages work harder. Ore goes straight into your stockpile.</div>`;
@@ -922,7 +971,10 @@ export class UI {
       html = this.villageActs(ent) + this.tradeBoard(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (a keep with soldiers inside, plus a temple, tavern or market near it) or a <b>spy</b>. Independent villages also trade with your camels.'}</div>`;
     } else if (ent && ent.type === 'building') {
       const army = g.militaryOf(PLAYER).length;
-      html = `<div class="ctitle">Options</div><div class="cgrid">${this.btn('sendarmyb', { glyph: '⚔', name: 'Attack', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Attack</b><br>Sends every soldier at it. Or select units and right-click it (rams are best against walls).' })}</div>${ent.kind === 'market' ? this.tradeBoard(ent) : ''}<div class="hint">${esc(HOUSES[ent.team].name)} building. Select units and right-click it to attack.</div>`;
+      html = `<div class="ctitle">Options</div><div class="cgrid">${this.btn('sendarmyb', { glyph: '⚔', name: 'Attack', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Attack</b><br>Sends every soldier at it. Or select units and right-click it (rams are best against walls).' })}${ent.team >= 0 && ent.team !== PLAYER ? this.btn('council', { glyph: '⚜', name: 'Council', data: { team: ent.team }, tip: '<b>Council of Houses</b><br>Everything about this house and every dealing with it.' }) : ''}</div>${ent.kind === 'market' ? this.tradeBoard(ent) : ''}<div class="hint">${esc(HOUSES[ent.team].name)} building. Select units and right-click it to attack.</div>`;
+    } else if (s.type === 'units' && this.selUnits().length) {
+      const t = this.selUnits()[0].team;
+      html = `<div class="ctitle">${esc(HOUSES[t].name)}</div><div class="cgrid">${this.btn('council', { glyph: '⚜', name: 'Council', data: { team: t }, tip: `<b>Council of Houses</b><br>Their strength, wealth and temper, and every dealing with them: peace, trade, alliance, gifts, war.` })}</div>`;
     } else if (s.type === 'node' && g.resources[s.id]) {
       const n = g.resources[s.id], mined = MINEABLE.includes(n.kind), hasMine = mined && g.buildings.some((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(n.id));
       html = `<div class="ctitle">Options</div><div class="cgrid">${mined && !hasMine ? this.btn('minehere', { glyph: '⛏', art: 'mine', name: 'Build mine', sub: costShort(BUILDINGS.mine.cost), off: !g.canAfford(PLAYER, BUILDINGS.mine.cost), tip: `<b>Mine</b><br>Raised beside the deposit; then assign serfs. <span class="cost">${costText(BUILDINGS.mine.cost, g.players[PLAYER])}</span>` }) : ''}${!mined ? this.btn('gathernode', { glyph: '⚒', name: 'Gather', sub: '4 idle serfs', tip: '<b>Gather</b><br>Sends up to four idle serfs.' }) : ''}</div><div class="hint">${mined ? (hasMine ? 'A mine stands here: select it to send diggers.' : 'Ore needs a <b>Mine</b>. Once built, serfs dig it into your stockpile.') : 'Select serfs and right-click to gather.'}</div>`;

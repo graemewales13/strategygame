@@ -504,3 +504,7 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .seg.wrap { flex-wrap: wrap; }
 #mPeople { max-width: 300px; }
 #mPeople button { padding: 6px 9px; font-size: 12px; min-width: 0; }
+
+/* far-landers in the tavern roster */
+.cbtn.far { border-color: #e8c35a; box-shadow: 0 0 6px rgba(232,195,90,.45) inset; }
+.cbtn.far .g { color: #ffe08a; }

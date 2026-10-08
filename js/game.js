@@ -9,13 +9,13 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS,
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
 import * as dip from './diplomacy.js';
-import { pickName, shortName, FOUNDED } from './names.js';
+import { pickName, shortName, FOUNDED, FAR_NAMES } from './names.js';
 
 const SPIRAL = (() => {
   const a = [];
@@ -126,6 +126,7 @@ export class Game {
     const u = makeUnit(this.nid(), kind, team, x, y);
     { const set = (this.named[team] ||= new Set()); u.name = pickName(HOUSES[team]?.faction, set, this.rnd); set.add(u.name); }
     if ((this.players?.[team]?.sci || 0) >= 3) { u.maxHp = Math.round(u.maxHp * 1.15); u.hp = u.maxHp; } // Drill
+    u.born = this.time || 0; u.kills = 0;   // service record: when they joined and how many foes they have felled
     this.units.push(u);
     this.byId.set(u.id, u);
     return u;
@@ -392,6 +393,7 @@ export class Game {
   follow(u, dt) {
     if (!u.path.length) return false;
     let step = u.speed ?? UNITS[u.kind].speed;
+    if (u.kind === 'camel' && this._aura?.caravan.length && this.auraNear('caravan', u, PERK.caravanR)) step *= PERK.caravan;
     const tileIdx = Math.floor(u.y) * this.W + Math.floor(u.x);
     step *= (1 / GROUND_COST[this.terrain[tileIdx]]) * dt;
     while (step > 0 && u.path.length) {
@@ -429,6 +431,7 @@ export class Game {
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
       case 'hire': return this.hire(team, it.buildingId, it.index);
+      case 'captain': return this.appoint(team, it.unitId);
       case 'levy': return this.setLevy(team, it.buildingId, it.villageId);
       case 'settle': return this.settle(team, it.villageId);
       case 'drill': return this.drill(team, it.buildingId, it.unitId, it.kind);
@@ -566,13 +569,18 @@ export class Game {
   ejectAll(t) { for (const uid of t.garrison.slice()) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; }
 
   // ---- tavern: random wanderers for hire; keep: levy villagers and drill soldiers ----------------------------
-  rollWanderer() {
+  rollWanderer(roster = []) {
+    if (Math.random() < FARLAND_CHANCE && !roster.some((w) => w && w.far)) {   // a traveller from a land with no house in the valley
+      const keys = Object.keys(FARLANDS), far = keys[Math.floor(Math.random() * keys.length)], f = FARLANDS[far], pool = FAR_NAMES[far];
+      const name = `${pool.first[Math.floor(Math.random() * pool.first.length)]} ${pool.by[Math.floor(Math.random() * pool.by.length)]}`;
+      return { name, trait: 'veteran', far, cost: { food: 20, wood: 0, gold: f.cost } };
+    }
     const keys = Object.keys(TRAITS);
     const trait = keys[Math.floor(Math.random() * keys.length)], t = TRAITS[trait];
     const name = WANDERER_NAMES[Math.floor(Math.random() * WANDERER_NAMES.length)];
     return { name, trait, cost: { food: 15, wood: 0, gold: t.cost } };
   }
-  newRoster() { return Array.from({ length: TAVERN_ROSTER }, () => this.rollWanderer()); }
+  newRoster() { const r = []; for (let i = 0; i < TAVERN_ROSTER; i++) r.push(this.rollWanderer(r)); return r; }
   hire(team, buildingId, index) {
     const b = this.byId.get(buildingId), say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
     if (!b || b.team !== team || b.kind !== 'tavern' || b.built < 1 || b.hp <= 0 || !b.roster?.[index]) return null;
@@ -581,17 +589,77 @@ export class Game {
     if (this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');
     this.pay(team, w.cost);
     const u = this.addUnit('recruit', team, b.x + (Math.random() - 0.5) * 1.2, b.ty + b.size + 0.7);
-    this.applyTrait(u, w.trait); u.name = w.name;
-    b.roster[index] = this.rollWanderer();
+    this.applyTrait(u, w.trait, w.far); u.name = w.name; u.from = b.id;
+    b.roster[index] = null; b.roster[index] = this.rollWanderer(b.roster);
     if (b.rally) this.cmdMove([u], b.rally.x, b.rally.y);
-    if (team === PLAYER) this.log(team, `${w.name} the ${TRAITS[w.trait].label.toLowerCase()} joins your banner.`, 'good');
+    if (team === PLAYER) this.log(team, w.far ? `${w.name}, a ${FARLANDS[w.far].label.toLowerCase()} from ${FARLANDS[w.far].land}, joins your banner.` : `${w.name} the ${TRAITS[w.trait].label.toLowerCase()} joins your banner.`, 'good');
     return u;
   }
-  applyTrait(u, trait) {
-    const t = TRAITS[trait] || TRAITS.green, st = UNITS[u.kind];
-    if (trait === 'veteran' && !(u.rank > 0)) { u.rank = 1; u.xp = RANKS[1].xp; }
-    u.trait = trait; u.hpMul = t.hp; u.dmgAdd = t.dmg; u.spdAdd = t.spd;
+  applyTrait(u, trait, far = null) {
+    const f = far ? FARLANDS[far] : null, t = f || TRAITS[trait] || TRAITS.green, st = UNITS[u.kind];
+    if ((trait === 'veteran' || f) && !(u.rank > 0)) { u.rank = 1; u.xp = RANKS[1].xp; }
+    u.trait = f ? null : trait; u.hpMul = t.hp; u.dmgAdd = t.dmg; u.spdAdd = t.spd;
+    if (f) { u.far = far; u.origin = f.land; }
     u.maxHp = Math.round(st.hp * t.hp); u.hp = u.maxHp; u.speed = st.speed + t.spd;
+  }
+  // ---- characters: far-landers' gifts, deeds and captains ---------------------------------------------------
+  // the far-landers and captains whose presence works on the folk around them, gathered once a tick
+  updateAuras() {
+    const a = this._aura = { physician: [], drill: [], caravan: [], envoy: [], captain: [] };
+    for (const u of this.units) {
+      if (u.hp <= 0) continue;
+      if (u.captain) a.captain.push(u);
+      if (!u.far) continue;
+      if (u.far === 'greek') a.physician.push(u); else if (u.far === 'han') a.drill.push(u); else if (u.far === 'moor') a.caravan.push(u); else if (u.far === 'aksum') a.envoy.push(u);
+    }
+  }
+  auraNear(list, u, r) {
+    for (const o of this._aura?.[list] || []) {
+      if (o === u || o.team !== u.team || o.hp <= 0) continue;
+      const h = o.inside ? this.byId.get(o.inside) : o; if (h && Math.hypot(u.x - h.x, u.y - h.y) <= r) return o;
+    }
+    return null;
+  }
+  captainNear(u) { return !u.captain && SOLDIER.has(u.kind) && !!this.auraNear('captain', u, CAPTAIN.aura); }
+  // damage multiplier from a soldier's own gifts and deeds against target t (null: an ordinary foot soldier)
+  charMul(u, t) {
+    let m = 1;
+    for (const d of u.deeds || []) m += (DEEDS[d]?.dmg || 0) + (t && t.type === 'building' ? DEEDS[d]?.bld || 0 : 0);
+    if (u.far === 'norse') m += PERK.berserk * Math.max(0, 1 - u.hp / u.maxHp);
+    if (u.far === 'rus' && t && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || t.kind === 'ram')) m += PERK.breaker;
+    if (u.far === 'nihon' && t && t.type === 'unit' && (t.rank || 0) >= 1) m += PERK.duel;
+    if (this.captainNear(u)) m += CAPTAIN.dmg;
+    return m;
+  }
+  // the damage a unit's panel shows: what it deals to an ordinary foot soldier, every standing bonus counted
+  shownDamage(u) {
+    const s = UNITS[u.kind], p = this.players[u.team]; if (!s || !s.dmg || !p) return 0;
+    let d = (s.dmg + (u.dmgAdd || 0)) * (1 + RANK_BONUS.dmg * (u.rank || 0));
+    if (this.kingNear(u)) d *= 1 + KING.dmg;
+    if (p.leaderless) d *= KING.leaderless;
+    if (p.broke) d *= BROKE.fight;
+    d *= this.charMul(u, null);
+    const forge = this.hasBuilding(u.team, 'forge'), arms = p.arms || 0;
+    if (forge && (u.kind === 'footman' || u.kind === 'knight')) d += 3 + arms * 1.5;
+    if (forge && u.kind === 'bowman') d += 2 + arms;
+    return d;
+  }
+  earnDeed(u, key) {
+    if (!u || u.hp <= 0 || !DEEDS[key] || (u.deeds ||= []).includes(key)) return;
+    u.deeds.push(key);
+    const hp = DEEDS[key].hp; if (hp) { const old = u.maxHp; u.maxHp = Math.round(old * (1 + hp)); u.hp += u.maxHp - old; }
+    if (u.team === PLAYER && key !== 'blooded') this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is now called ${DEEDS[key].label}.`, 'good');
+  }
+  // a rated soldier (Elite or better) may be given command; captains lift the soldiers around them
+  appoint(team, id) {
+    const u = this.byId.get(id), say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return false; };
+    if (!u || u.team !== team || u.hp <= 0 || u.captain || !SOLDIER.has(u.kind) || u.kind === 'king') return false;
+    if ((u.rank || 0) < CAPTAIN.minRank) return say(`Only an ${RANKS[CAPTAIN.minRank].label} or better can lead.`);
+    if (this.units.filter((x) => x.team === team && x.captain && x.hp > 0).length >= CAPTAIN.max) return say(`A house may have ${CAPTAIN.max} captains.`);
+    if (!this.canAfford(team, CAPTAIN.cost)) return say('Not enough coin to commission a captain.');
+    this.pay(team, CAPTAIN.cost); u.captain = true;
+    if (team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : 'A soldier'} is made captain.`, 'good');
+    return true;
   }
   // a recruit may be sent out as a spy (for a fee); spies right-click villages to infiltrate and sway their loyalty
   assignRole(team, ids, role) {
@@ -1846,7 +1914,7 @@ export class Game {
     this.time += dt;
     this.visT -= dt;
     if (this.visT <= 0) { this.updateVisibility(); this.visT = 0.25; }
-    this.updateKings(dt);
+    this.updateKings(dt); this.updateAuras();
     this.updateDiplomacy(dt);
     this.updateBuildings(dt);
     this.updateEconomy(dt);
@@ -1892,6 +1960,7 @@ export class Game {
         if (q.t >= UNITS[q.kind].time) {
           b.queue.shift();
           const u = this.addUnit(q.kind, b.team, b.x + (Math.random() - 0.5) * 1.2, b.ty + b.size + 0.7);
+          u.from = b.id;
           if (b.rally) {
             const node = b.rally.nodeId != null ? this.resources[b.rally.nodeId] : null;
             if (node && node.amount > 0 && u.kind === 'serf') this.cmdGather([u], node);
@@ -1958,6 +2027,9 @@ export class Game {
       const k = this._kings?.[p.team]; if (!k || k.inside || !p.alive) continue;
       const d = Math.hypot(v.x - k.x, v.y - k.y); if (d >= KING.pullR) continue;
       pulls[p.team] += KING.pull * (1 - d / KING.pullR) * (1 + RANK_BONUS.guard * (k.rank || 0));
+    }
+    for (const e of this._aura?.envoy || []) {   // an envoy from a far land talks the folk round
+      if (e.inside) continue; const d = Math.hypot(v.x - e.x, v.y - e.y); if (d < PERK.envoyR) pulls[e.team] += PERK.envoy * (1 - d / PERK.envoyR);
     }
     for (const w of v.news || []) pulls[w.team] += w.amt;   // word brought by wanderers from a village that team holds
     return pulls;
@@ -2130,6 +2202,8 @@ export class Game {
         case 'caravan': if (u.task.route) this.doRoute(u, dt); else this.doCaravan(u, dt); break;
         default: this.doIdle(u, s, dt);
       }
+      if (u.far === 'greek') { for (const o of this.units) if (o.team === u.team && o.hp > 0 && o.hp < o.maxHp && !o.inside && o.kind !== 'camel' && Math.hypot(o.x - u.x, o.y - u.y) < PERK.healR) o.hp = Math.min(o.maxHp, o.hp + PERK.heal * dt); }
+      if (u._brink && u.hp > u.maxHp * 0.5) { u._brink = false; this.earnDeed(u, 'survivor'); }
       if (u.kind === 'scholar' && u.task.type === 'idle') {
         for (const o of this.units) if (o.team === u.team && o.hp > 0 && o.hp < o.maxHp && Math.hypot(o.x - u.x, o.y - u.y) < 3.5) o.hp = Math.min(o.maxHp, o.hp + 1.6 * dt);
       }
@@ -2177,6 +2251,7 @@ export class Game {
     if (this.kingNear(u)) dmg *= 1 + KING.dmg;
     if (this.players[u.team].leaderless) dmg *= KING.leaderless;
     if (this.players[u.team].broke) dmg *= BROKE.fight;
+    dmg *= this.charMul(u, t);
     if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
@@ -2247,7 +2322,7 @@ export class Game {
   ranked(u) { return u.type === 'unit' && (SOLDIER.has(u.kind) || u.kind === 'recruit' || u.kind === 'scout' || u.kind === 'king'); }
   award(u, xp) {
     if (!u || u.hp <= 0 || !this.ranked(u) || !(xp > 0)) return;
-    u.xp = (u.xp || 0) + xp * (this.kingNear(u) ? 1 + KING.xp : 1);
+    u.xp = (u.xp || 0) + xp * (this.kingNear(u) ? 1 + KING.xp : 1) * (this.auraNear('drill', u, PERK.drillR) ? 1 + PERK.drillXp : 1) * (this.captainNear(u) ? 1 + CAPTAIN.xp : 1);
     while ((u.rank || 0) < RANKS.length - 1 && u.xp >= RANKS[(u.rank || 0) + 1].xp) this.promote(u);
   }
   promote(u) {
@@ -2260,7 +2335,7 @@ export class Game {
   }
   garrisonWeight(t) { let n = 0; for (const id of t.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0) n += this.guardWeight(u); } return n; }
   // worth of one soldier for the standing guard of a keep or village (1 for a rookie)
-  guardWeight(u) { return (u.kind === 'king' ? 2 : 1) * (1 + RANK_BONUS.guard * (u.rank || 0)); }
+  guardWeight(u) { return (u.kind === 'king' ? 2 : u.captain ? CAPTAIN.guard : 1) * (1 + RANK_BONUS.guard * (u.rank || 0)); }
   // fighting power of one unit: health times damage per second, 1.0 for a rookie footman; archers count double for fighting from range
   powerOf(u) {
     const s = UNITS[u.kind]; if (!s || !s.dmg || u.kind === 'serf' || u.kind === 'camel' || u.kind === 'spy' || u.kind === 'scholar') return 0;
@@ -2276,8 +2351,18 @@ export class Game {
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
     if (byTeam >= 0 && (t.type === 'building' || t.type === 'unit') && t.hp > 0) this.rallyDefenders(t, by, byTeam);
     if (by) this.award(by, Math.min(amt, before) * XP.perDamage);
+    if (t.type === 'unit' && t.hp > 0 && t.hp < t.maxHp * 0.1 && SOLDIER.has(t.kind)) t._brink = true;   // near death: if they live through it, a deed
     if (t.hp <= 0) {
       t.hp = 0;
+      if (by && by.type === 'unit' && by.team !== t.team) {   // the killer's service record and deeds
+        if (t.type === 'unit') {
+          by.kills = (by.kills || 0) + 1;
+          this.earnDeed(by, 'blooded');
+          if (by.kills >= 10) this.earnDeed(by, 'slayer');
+          if (t.kind === 'king') this.earnDeed(by, 'kingslayer');
+          if ((t.rank || 0) >= (by.rank || 0) + 2) this.earnDeed(by, 'giant');
+        } else if (t.type === 'building') { by.razed = (by.razed || 0) + 1; if (by.razed >= 3) this.earnDeed(by, 'breaker'); }
+      }
       if (t.kind === 'king') this.kingFalls(t, byTeam, by);
       if (by) this.award(by, t.type === 'building' ? XP.killBuilding : XP.kill * (1 + XP.killRankMul * (t.rank || 0))); this.sfx(t.type === 'building' ? 'crumble' : 'death', t.x, t.y);
       if (this.sfxOn && this.fx.length < 30) this.fx.push({ x: t.x, y: t.y, kind: t.type === 'building' ? 'collapse' : 'poof', size: t.size || 1, born: this.time });
@@ -2473,7 +2558,7 @@ export class Game {
           }
         }
       };
-      for (const u of this.units) if (u.team === t && u.hp > 0) mark(u.x, u.y, UNITS[u.kind].sight);
+      for (const u of this.units) if (u.team === t && u.hp > 0) mark(u.x, u.y, UNITS[u.kind].sight * (u.far === 'parthian' ? PERK.sight : 1));
       for (const b of this.buildings) if (b.team === t && b.hp > 0) mark(b.x, b.y, BUILDINGS[b.kind].sight);
       for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, v.home === t ? 13 : 8);
     }

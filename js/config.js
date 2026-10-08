@@ -302,6 +302,31 @@ export const TRAITS = {
   fleet:   { label: 'Fleet',    hp: 1,   dmg: 0, spd: 0.7, cost: 40 },
   veteran: { label: 'Veteran',  hp: 1.2, dmg: 2, spd: 0.2, cost: 70 },
 };
+// Far-landers: travellers from peoples who have no house in the valley. Now and then one sits in a tavern (FARLAND_CHANCE per slot, never two
+// in one roster). Each brings a gift of their homeland (perk) that stays with them when they are drilled into a soldier or sent out as a spy.
+export const FARLAND_CHANCE = 0.3;
+export const FARLANDS = {
+  norse:    { label: 'Norse sea-wolf',      land: 'the Northern Fjords',              perk: 'Berserker',     tip: 'Fights harder the more wounded: up to +60% damage near death.',                    hp: 1.25, dmg: 2, spd: 0,   cost: 85 },
+  parthian: { label: 'Parthian rider',      land: 'Parthia, beyond the salt deserts', perk: 'Outrider',      tip: 'Swift and far-sighted: +1.1 speed, +50% sight.',                                  hp: 1.1,  dmg: 1, spd: 1.1, cost: 80 },
+  greek:    { label: 'Greek physician',     land: 'the Isles of the Middle Sea',      perk: 'Physician',     tip: 'Heals wounded friends within 4 tiles (2 health a second), even on the march.',     hp: 1,    dmg: 0, spd: 0,   cost: 75 },
+  han:      { label: 'Han drillmaster',     land: 'the Middle Kingdom, far east',     perk: 'Drillmaster',   tip: 'Soldiers within 6 tiles earn +50% experience.',                                   hp: 1.1,  dmg: 1, spd: 0,   cost: 90 },
+  rus:      { label: 'Rus bear-hunter',     land: 'the river forests of the Rus',     perk: 'Horse-breaker', tip: '+75% damage against knights, kings and rams.',                                     hp: 1.3,  dmg: 1, spd: 0,   cost: 80 },
+  moor:     { label: 'Moorish caravaneer',  land: 'the Maghreb, past the great sands', perk: 'Caravaneer',   tip: 'Your camels within 8 tiles walk 25% faster.',                                     hp: 1,    dmg: 0, spd: 0.4, cost: 70 },
+  aksum:    { label: 'Aksumite envoy',      land: 'Aksum, across the Red Sea',        perk: 'Envoy',         tip: 'Sways villages within 10 tiles toward your house, like a lesser king.',           hp: 1,    dmg: 0, spd: 0.3, cost: 95 },
+  nihon:    { label: 'Wandering swordsman', land: 'the Eastern Isles',                perk: 'Duellist',      tip: '+40% damage against rated foes (Trained or better).',                             hp: 1.15, dmg: 3, spd: 0.2, cost: 100 },
+};
+export const PERK = { berserk: 0.6, sight: 1.5, healR: 4, heal: 2, drillR: 6, drillXp: 0.5, breaker: 0.75, caravanR: 8, caravan: 1.25, envoyR: 10, envoy: 0.3, duel: 0.4 };
+// Deeds: soldiers earn a byname from what they have done, and it changes how they fight.
+export const DEEDS = {
+  blooded:    { label: 'Blooded',      tip: 'Made a first kill.' },
+  slayer:     { label: 'the Slayer',   tip: 'Ten kills. +8% damage.', dmg: 0.08 },
+  kingslayer: { label: 'Kingslayer',   tip: 'Slew a ruler. +10% damage; feared across the valley.', dmg: 0.10 },
+  giant:      { label: 'Giant-killer', tip: 'Killed a foe two ranks above them. +10% health.', hp: 0.10 },
+  survivor:   { label: 'Death-cheater', tip: 'Took a blow that left them near death, and lived. +10% health.', hp: 0.10 },
+  breaker:    { label: 'Wall-breaker', tip: 'Brought down three buildings. +25% damage against buildings.', bld: 0.25 },
+};
+// Captains (the Seven Kingdoms general): an Elite or better soldier can be given command. Soldiers near a captain hit harder and learn faster.
+export const CAPTAIN = { minRank: 3, cost: { food: 0, wood: 0, gold: 60 }, max: 3, aura: 6, dmg: 0.06, xp: 0.25, guard: 1.5 };
 
 // ---- caravans: camels carry goods between markets and villages ------------------------------
 export const ROUTE_STOPS = 5;      // markets a camel keeps on its circuit (besides its home market)

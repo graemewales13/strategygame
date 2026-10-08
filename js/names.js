@@ -28,6 +28,18 @@ export const NAMES = {
   },
 };
 
+// far-landers who turn up in taverns (see FARLANDS in config.js): peoples with no house in the valley
+export const FAR_NAMES = {
+  norse: { first: ['Hallvard', 'Sigtrygg', 'Ragnhild', 'Bjarni', 'Thyra', 'Grim', 'Astrid', 'Kolbein'], by: ['Wave-Reader', 'Raven-Fed', 'of the Long Dark', 'Oar-Breaker', 'the Unburied'] },
+  parthian: { first: ['Arsaces', 'Surena', 'Mithradat', 'Vologases', 'Rhodogune', 'Tiridat', 'Artabanu', 'Phraates'], by: ['of the Thousand Arrows', 'Salt-Rider', 'the Backward Shot', 'of Ctesiphon', 'Sun-Lance'] },
+  greek: { first: ['Kallias', 'Theano', 'Demokedes', 'Agnodike', 'Philinos', 'Hippon', 'Melissa', 'Alkmaion'], by: ['of Kos', 'the Herb-Wise', 'Bone-Setter', 'of the Asklepion', 'Wine-Dark'] },
+  han: { first: ['Zhang Liang', 'Ban Chao', 'Li Guang', 'Wei Qing', 'Huo Qubing', 'Ma Yuan', 'Zhao Chongguo', 'Gan Ying'], by: ['of Chang\'an', 'the Silk Road', 'Iron Banner', 'of the Jade Gate', 'the Patient'] },
+  rus: { first: ['Svyatoslav', 'Dobrynya', 'Olga', 'Ilya', 'Vseslav', 'Yaroslava', 'Mstislav', 'Borislav'], by: ['Bear-Spear', 'of the Dnieper', 'Birch-Bark', 'the Wolf-Pelt', 'of Novgorod'] },
+  moor: { first: ['Tariq', 'Yusuf', 'Zaynab', 'Idris', 'Masinissa', 'Tin Hinan', 'Juba', 'Abd al-Malik'], by: ['of the Thousand Wells', 'Dune-Reader', 'of Fes', 'the Salt-Trader', 'Star-Guided'] },
+  aksum: { first: ['Ezana', 'Kaleb', 'Gersem', 'Makeda', 'Wazeba', 'Sembrouthes', 'Ella Amida', 'Saizana'], by: ['of the Obelisks', 'Red-Sea-Born', 'the Silver-Tongued', 'of Adulis', 'Incense-Bearer'] },
+  nihon: { first: ['Kagetora', 'Tomoe', 'Yoshitsune', 'Masakado', 'Benkei', 'Hangaku', 'Tadanori', 'Musashibo'], by: ['of No Master', 'the Drawn Blade', 'Cherry-Fall', 'of the Eastern Isles', 'the Quiet Edge'] },
+};
+
 const FALLBACK = 'british';
 
 // pick an unused name for a person of `faction`; `taken` is a Set of names already in play for that house

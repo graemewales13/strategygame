@@ -289,4 +289,61 @@ test('camels: an idle camel goes back to work by itself; only one the player sto
   assert.equal(d.task.type, 'caravan', 'giving the stopped camel a route sends it off again');
 });
 
+test('characters: a far-lander hired at a tavern keeps the gift of their homeland, also once drilled', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); g.players[PLAYER].gold = 2000;
+  const tav = g.addBuilding('tavern', PLAYER, h.tx + 8, h.ty + 8, true); run(g, 0.2);
+  tav.roster[0] = { name: 'Dobrynya Bear-Spear', trait: 'veteran', far: 'rus', cost: { food: 20, wood: 0, gold: 80 } };
+  const u = g.hire(PLAYER, tav.id, 0);
+  assert.equal(u.far, 'rus'); assert.equal(u.rank, 1, 'far-landers start Trained'); assert.ok(/Rus/.test(u.origin));
+  const knight = g.addUnit('knight', 1, u.x + 1, u.y), foot = g.addUnit('footman', 1, u.x + 1, u.y);
+  assert.ok(g.charMul(u, knight) > g.charMul(u, foot) + 0.7, 'the bear-hunter breaks horsemen');
+  u.kind = 'footman'; assert.ok(g.charMul(u, knight) > 1.7, 'and still does as a footman');
+  const rolls = []; for (let i = 0; i < 400; i++) rolls.push(g.rollWanderer([]));
+  assert.ok(rolls.some((w) => w.far) && rolls.some((w) => !w.far), 'taverns offer both folk and far-landers');
+  for (let i = 0; i < 50; i++) assert.ok(g.newRoster().filter((w) => w.far).length <= 1, 'never two far-landers at once');
+});
+
+test('characters: berserker, physician and envoy gifts work', () => {
+  const g = mk(); const h = g.seatOf(PLAYER);
+  const n = g.addUnit('footman', PLAYER, h.x, h.y + 8); n.far = 'norse';
+  const full = g.charMul(n, null); n.hp = n.maxHp * 0.1; assert.ok(g.charMul(n, null) > full + 0.4, 'the wounded berserker hits harder');
+  const doc = g.addUnit('recruit', PLAYER, h.x + 4, h.y + 8); doc.far = 'greek';
+  const hurt = g.addUnit('footman', PLAYER, h.x + 5, h.y + 8); hurt.hp = 20;
+  run(g, 3); assert.ok(hurt.hp > 24, `the physician heals (${hurt.hp})`);
+  const v = g.villages.find((x) => x.owner < 0);
+  const p0 = g.pullsFor(v)[PLAYER];
+  const e = g.addUnit('recruit', PLAYER, v.x + 2, v.y + 2); e.far = 'aksum'; g.updateAuras();
+  assert.ok(g.pullsFor(v)[PLAYER] > p0 + 0.1, 'an envoy leans on the village');
+});
+
+test('characters: deeds and the service record come from what a soldier does', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war';
+  const h = g.seatOf(PLAYER), a = g.addUnit('footman', PLAYER, h.x, h.y + 6);
+  for (let i = 0; i < 10; i++) { const f = g.addUnit('recruit', 1, h.x + 1, h.y + 6); g.damage(f, 9999, PLAYER, a); }
+  assert.equal(a.kills, 10); assert.ok(a.deeds.includes('blooded') && a.deeds.includes('slayer'));
+  const k = g.kingOf(1); g.damage(k, 99999, PLAYER, a); assert.ok(a.deeds.includes('kingslayer'));
+  const b = g.addUnit('footman', PLAYER, h.x, h.y + 7), hp0 = b.maxHp;
+  g.damage(b, b.maxHp * 0.95, 1, null); b.hp = b.maxHp; run(g, 0.2);
+  assert.ok(b.deeds?.includes('survivor') && b.maxHp > hp0, 'cheating death makes them tougher');
+});
+
+test('characters: only an Elite can be made captain; captains lift the soldiers near them', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); g.players[PLAYER].gold = 1000;
+  const c = g.addUnit('footman', PLAYER, h.x, h.y + 6), s = g.addUnit('footman', PLAYER, h.x + 2, h.y + 6), far = g.addUnit('footman', PLAYER, h.x + 30, h.y + 6);
+  assert.equal(g.appoint(PLAYER, c.id), false, 'a rookie cannot lead');
+  c.rank = 3; assert.equal(g.appoint(PLAYER, c.id), true); g.updateAuras();
+  assert.ok(g.charMul(s, null) > g.charMul(far, null), 'the soldier beside the captain hits harder');
+  const xp0 = s.xp || 0, xpf = far.xp || 0; g.award(s, 10); g.award(far, 10);
+  assert.ok(s.xp - xp0 > far.xp - xpf, 'and learns faster');
+  for (let i = 0; i < 4; i++) { const x = g.addUnit('knight', PLAYER, h.x, h.y + 9); x.rank = 4; g.appoint(PLAYER, x.id); }
+  assert.equal(g.units.filter((u) => u.team === PLAYER && u.captain).length, 3, 'at most three captains');
+});
+
+test('characters: a unit trained in a building is on that building\'s muster roll', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); Object.assign(g.players[PLAYER], { food: 999, wood: 999, gold: 999 });
+  const b = g.addBuilding('barracks', PLAYER, h.tx + 9, h.ty - 9, true);
+  g.train(PLAYER, b.id, 'footman'); run(g, 16);
+  assert.ok(g.units.some((u) => u.from === b.id && u.kind === 'footman'), 'the footman remembers his barracks');
+});
+
 console.log(`${passed} passed`);
