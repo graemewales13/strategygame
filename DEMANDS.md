@@ -56,6 +56,7 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - A king is always appointed: an heir is crowned `KING.heir` (2 s) after a king falls, and a house with no king and no heir timer is given one.
 
 ## Peoples, names and building room
+- Characters must never stack into what looks like one person: keep at least about a tile between them. Camels with work available must not stand idle unless the player stopped them.
 - House names must fit their nation (Khemet, Aurelius, MacAlpin, Wessex, Borjigin). The player is not always the same people: Skirmish setup has "Your people" (Random by default, seeded; the seating is saved with the game).
 - Buildings keep a one-tile lane between them (`BUILD_GAP`, mines excepted) so tall sprites never pile onto each other.
 

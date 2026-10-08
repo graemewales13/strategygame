@@ -415,7 +415,7 @@ export class Game {
     const mine = () => (it.ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
     switch (it.type) {
       case 'move': return this.cmdMove(mine(), it.x, it.y);
-      case 'stop': mine().forEach((u) => { u.route = null; u.task = { type: 'idle' }; u.path = []; }); return true;
+      case 'stop': mine().forEach((u) => { u.route = null; u.parked = true; u.task = { type: 'idle' }; u.path = []; }); return true;
       case 'route': return this.cmdRoute(mine(), this.byId.get(it.targetId), it.want);
       case 'stoproute': return this.stopRoute(mine());
       case 'routeauto': return this.cmdRouteAuto(mine(), it.mode);
@@ -787,7 +787,7 @@ export class Game {
     units = this.freeOf(units);
     units.forEach((u, i) => {
       const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)];
-      u.task = { type: 'move' }; u.sally = null;
+      u.task = { type: 'move' }; u.sally = null; if (u.kind === 'camel') u.parked = true;   // sent by hand: it waits there until given work
       this.setPath(u, x + ox * 0.9, y + oy * 0.9);
     });
     return true;
@@ -1343,7 +1343,7 @@ export class Game {
       const home = this.routeHome(u);
       if (!home) return say('A route starts at one of your markets: raise a market first.');
       if (t.id === home.id) { say('That is this camel\'s home market. Choose another market for it to visit.'); continue; }
-      u.inside = null; u.home = home.id;
+      u.inside = null; u.home = home.id; u.parked = false;
       const r = u.route || (u.route = { stops: [], i: 0, want: ALL_GOODS.includes(want) ? want : 'gold', earned: 0, trips: 0, laps: 0, moved: false });
       const at = r.stops.indexOf(t.id);
       if (at >= 0) { r.stops.splice(at, 1); if (r.i >= r.stops.length) r.i = 0; if (!r.stops.length) { u.route = null; this.caravanHome(u); } done++; continue; }
@@ -1358,10 +1358,10 @@ export class Game {
     return done > 0;
   }
   // one click: loop every market of yours ('own'), or the best treaty-partner markets ('partners'); replaces the camel's route
-  cmdRouteAuto(units, mode) {
+  cmdRouteAuto(units, mode, quiet = false) {
     const camels = units.filter((u) => u.kind === 'camel' && u.hp > 0);
     if (!camels.length) return false;
-    const team = camels[0].team, say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); this.diploNote = m; return false; };
+    const team = camels[0].team, say = (m) => { if (quiet) return false; if (team === PLAYER) this.log(team, m, 'warn'); this.diploNote = m; return false; };
     let n = 0;
     for (const u of camels) {
       const home = this.routeHome(u);
@@ -1375,15 +1375,29 @@ export class Game {
       const order = []; let cur = home;
       while (pool.length && order.length < ROUTE_STOPS) { pool.sort((a, b) => Math.hypot(a.x - cur.x, a.y - cur.y) - Math.hypot(b.x - cur.x, b.y - cur.y)); cur = pool.shift(); order.push(cur); }
       if (!order.length) return say(mode === 'partners' ? 'No treaty partner has a market in reach: open trade with a house you have met first.' : 'You have no other market to loop to: raise a second market.');
-      u.inside = null; u.home = home.id;
+      u.inside = null; u.home = home.id; u.parked = false;
       u.route = { stops: order.map((m) => m.id), i: 0, want: 'gold', earned: 0, trips: 0, laps: 0, moved: false };
       u.task = { type: 'caravan', route: true, stage: 'go', t: 0 }; u.path = []; this.setPathToEntity(u, home); n++;
     }
-    if (team === PLAYER) this.log(team, `${camels.length > 1 ? camels.length + ' camels' : (camels[0].name || 'The camel')} now loop${camels.length > 1 ? '' : 's'} ${mode === 'partners' ? 'to your trade partners' : 'between all your markets'}.`, 'good');
+    if (team === PLAYER && !quiet) this.log(team, `${camels.length > 1 ? camels.length + ' camels' : (camels[0].name || 'The camel')} now loop${camels.length > 1 ? '' : 's'} ${mode === 'partners' ? 'to your trade partners' : 'between all your markets'}.`, 'good');
     return n > 0;
   }
+  // A camel with nothing to do never just stands there: once idle it goes back to work, round its own route, or round every market of its house,
+  // or to the best treaty partners. Only a camel the player stopped or sent somewhere by hand stays put until given a route again.
+  autoCamels(dt) {
+    for (const u of this.units) {
+      if (u.kind !== 'camel' || u.hp <= 0 || u.inside) continue;
+      if (u.task.type !== 'idle') { u._idleT = 0; continue; }
+      if (u.parked) continue;
+      u._idleT = (u._idleT || 0) + dt; if (u._idleT < 1.5) continue;
+      u._idleT = -3 - (u.id % 5);   // not again for a few seconds if nothing came of it
+      if (u.route && u.route.stops?.length) { u.task = { type: 'caravan', route: true, stage: 'go', t: 0 }; u.path = []; this.setPathToEntity(u, this.routeHome(u) || this.byId.get(u.route.stops[0])); u._idleT = 0; continue; }
+      u.route = null;
+      if (this.cmdRouteAuto([u], 'own', true) || this.cmdRouteAuto([u], 'partners', true)) u._idleT = 0;
+    }
+  }
   stopRoute(units) {
-    for (const u of units) if (u.kind === 'camel' && u.route) { u.route = null; if (u.task.type === 'caravan' && u.task.route) { this.caravanHome(u); } }
+    for (const u of units) if (u.kind === 'camel' && u.route) { u.route = null; u.parked = true; if (u.task.type === 'caravan' && u.task.route) { this.caravanHome(u); } }
     return true;
   }
   stopName(t) { return t.team === undefined ? t.name : `${this.players[t.team].short || HOUSES[t.team].short}'s market`; }
@@ -1839,7 +1853,7 @@ export class Game {
     this.updateVillages(dt);
     this.updateWanderers(dt);
     this.updateSally(dt);
-    this.updateUnits(dt); this.separate(dt);
+    this.updateUnits(dt); this.separate(dt); this.autoCamels(dt);
     this.updateProjectiles(dt);
     if (this.aiOn) updateAI(this, dt);
     this.cleanup();
@@ -2072,7 +2086,7 @@ export class Game {
 
   // Folk keep a little room: units that overlap are eased apart (never into blocked ground), so a marching group is a column of people, not one body.
   separate(dt) {
-    const R = 0.66, W = this.W, cells = new Map(), live = [];
+    const R = 1.0, W = this.W, cells = new Map(), live = [];
     for (const u of this.units) if (u.hp > 0 && !u.inside) { live.push(u); const k = Math.floor(u.x) * 4096 + Math.floor(u.y); const c = cells.get(k); if (c) c.push(u); else cells.set(k, [u]); }
     const k = Math.min(1, 7 * dt);
     for (const u of live) {
@@ -2083,15 +2097,15 @@ export class Game {
           if (o === u) continue;
           let dx = u.x - o.x, dy = u.y - o.y, d = Math.hypot(dx, dy);
           if (d >= R) continue;
-          if (d < 0.01) { const a = (u.id * 2.399) % 6.283; dx = Math.cos(a); dy = Math.sin(a); d = 0.01; }   // stacked exactly: part them in a fixed direction per person
+          if (d < 0.01) { const a = ((u.id + o.id) * 2.399) % 6.283, sg = u.id > o.id ? 1 : -1; dx = Math.cos(a) * sg; dy = Math.sin(a) * sg; d = 0.01; }   // stacked exactly: the pair part in opposite directions
           const push = (R - d) / 2 / Math.max(d, 0.01); px += dx * push; py += dy * push;
         }
       }
       if (!px && !py) continue;
       const m = Math.hypot(px, py), cap = 0.3, f = m > cap ? cap / m : 1;
-      const nx = u.x + px * f * k, ny = u.y + py * f * k, ix = Math.floor(nx), iy = Math.floor(ny);
-      if (ix < 0 || iy < 0 || ix >= W || iy >= this.H || this.block[iy * W + ix]) continue;
-      u.x = nx; u.y = ny;
+      const nx = u.x + px * f * k, ny = u.y + py * f * k;
+      const free = (x, y) => { const a = Math.floor(x), b = Math.floor(y); return a >= 0 && b >= 0 && a < W && b < this.H && !this.block[b * W + a]; };
+      if (free(nx, ny) || !free(u.x, u.y)) { u.x = nx; u.y = ny; }   // (a unit stuck on blocked ground may step anywhere to get out) else if (free(nx, u.y)) u.x = nx; else if (free(u.x, ny)) u.y = ny;   // slide along walls
     }
   }
 

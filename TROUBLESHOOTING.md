@@ -121,3 +121,7 @@ The game is now **Auld World** (was Seven Holds). Title, header, README, package
 ## T-041 - Title screens, crowding, defenders, heirs
 - A leftover duplicate of the old painted-menu CSS block (later in `style.css`) kept painting `#mainmenu` black; the old rules are gone. When replacing a CSS block, grep for a second copy.
 - Camel unloads into a full shelf+warehouse no longer push a shelf past its cap (surplus is bought by the townsfolk), which the soak had flagged as "bad shelf value".
+
+## T-042 - Stacked people, idle camels
+- `separate()` now keeps a full tile (R=1.0), parts exactly-stacked pairs in opposite directions, slides along walls, and lets a unit stuck on blocked ground step out (before, a unit on a blocked tile never moved, so a group there stayed one body).
+- `autoCamels()` puts every idle camel back to work (own route, all own markets, or partner markets); `u.parked` marks camels the player stopped or moved by hand. Test helper reminder: `run(g, secs)` takes the game first; `run(secs)` silently does nothing.

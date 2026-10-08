@@ -80,7 +80,7 @@ test('crowding: a group sent to one spot ends up spread out, never stacked into 
   for (let i = 0; i < 8; i++) us.push(g.addUnit('footman', PLAYER, h.x + 4, h.y + 4));   // all spawned on one point
   g.cmdMove(us, h.x + 14, h.y + 4); run(g, 20);
   let min = 9; for (let i = 0; i < us.length; i++) for (let j = i + 1; j < us.length; j++) min = Math.min(min, Math.hypot(us[i].x - us[j].x, us[i].y - us[j].y));
-  assert.ok(min > 0.45, 'nobody overlaps: closest pair ' + min.toFixed(2));
+  assert.ok(min > 0.9, 'nobody overlaps: closest pair ' + min.toFixed(2));
   assert.ok(us.every((u) => Math.hypot(u.x - (h.x + 14), u.y - (h.y + 4)) < 5), 'and they all arrived');
 });
 
@@ -264,6 +264,29 @@ test('fighting: garrisoned soldiers march out when foes come near, then return w
   // a second wave while they are out: they assess and fight on instead of going in
   const f2 = g.addUnit('footman', 1, keep.x + 7, keep.y); f2.hp = f2.maxHp = 60; g.tick(0.6);
   assert.ok(men.every((u) => !u.inside));
+});
+
+test('crowding: twelve people idling on one spot each get their own room', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), us = [];
+  for (let i = 0; i < 12; i++) us.push(g.addUnit('footman', PLAYER, h.x + 4, h.y + 4));
+  run(g, 4);
+  let min = 9; for (let i = 0; i < us.length; i++) for (let j = i + 1; j < us.length; j++) min = Math.min(min, Math.hypot(us[i].x - us[j].x, us[i].y - us[j].y));
+  assert.ok(min > 0.9, 'closest pair ' + min.toFixed(2));
+});
+
+test('camels: an idle camel goes back to work by itself; only one the player stopped stays put', () => {
+  const g = mk(); const h = g.seatOf(PLAYER);
+  const m1 = g.addBuilding('market', PLAYER, h.tx + 7, h.ty + 7, true), m2 = g.addBuilding('market', PLAYER, h.tx + 7, h.ty - 9, true);
+  const c = g.addUnit('camel', PLAYER, m1.x + 2, m1.y + 3), d = g.addUnit('camel', PLAYER, m1.x + 3, m1.y + 3);
+  g.applyIntent({ team: PLAYER, type: 'stop', ids: [d.id] });
+  run(g, 6);
+  assert.ok(c.route && c.route.stops.length, 'the camel took a route round the markets');
+  assert.equal(c.task.type, 'caravan', 'and is walking it');
+  assert.equal(d.task.type, 'idle', 'a stopped camel stays');
+  c.route = null; c.task = { type: 'idle' }; c.path = []; run(g, 6);
+  assert.equal(c.task.type, 'caravan', 'after its route is lost it picks another');
+  g.applyIntent({ team: PLAYER, type: 'routeauto', ids: [d.id], mode: 'own' }); run(g, 1);
+  assert.equal(d.task.type, 'caravan', 'giving the stopped camel a route sends it off again');
 });
 
 console.log(`${passed} passed`);
