@@ -85,6 +85,23 @@ Rival houses play for the crown: at war they strike an **exposed king** first (s
 - **Council of Houses (C or the Council button).** Ranked cards for every house: leader and temper, villages, folk, army and power (against yours), money (exact for trade partners and allies, otherwise a guess), influence, learning, how they feel about you and why, who they are allied or at war with, and every action: peace, trade, **alliance**, war, gifts, demand tribute, ask for aid, ask them to declare war on a third house. Below, the correspondence.
 - **Opinions and letters.** Every house keeps an opinion of every other. Trade, common enemies and gifts warm it; envy of the strongest, broken oaths, sacked villages, slain kings and fighting a friend sour it. Leaders judge requests by opinion, strength and temper, and **write to you**: alliance offers, calls to arms against a third house, tribute demands (defy a stronger house and it may declare war), pleas for aid, offers of peace when losing, gifts, warnings. Letters appear as cards top right with Accept and Decline, and lapse if ignored (ignoring a demand or call to arms counts as refusing). Allies trade freely, never fight each other, and join each other's wars; breaking an oath is remembered by everyone. Victory is still conquest only: allies are for convenience.
 
+## Science and weapons
+**The Academy is your science division.** Every academy makes *learning* (0.3 a second, +0.15 for each scholar beside it, up to four; each abbey you hold adds 0.05; up to 300 is banked). Select an academy and choose one research at a time; learning pays for it, and the deeper tiers also cost silver (paid when chosen, refunded if you change your mind):
+
+| Tier | Research | Needs | Does |
+|---|---|---|---|
+| 1 (30 learning) | Husbandry | - | +15% farm grain, +10% gathering and digging |
+| 1 | Masonry | - | new buildings +15% health |
+| 1 | Drill | - | new soldiers +15% health |
+| 2 (60 + 4 silver) | Metallurgy | Masonry | unlocks the **Armoury**: spears, mail |
+| 2 | Fletching | Drill | longbows |
+| 2 | Medicine | Husbandry | idle soldiers mend; scholars heal twice as fast |
+| 3 (100 + 8 silver) | Steelcraft | Metallurgy | swords, lances, plate |
+| 3 | Mechanics | Metallurgy, Fletching | crossbows; rams +30% health |
+| 3 | Engineering | Masonry, Medicine | towers +2 range; keeps and towers +25% health |
+
+**The Armoury** (needs a forge and Metallurgy) makes kit into your stockpile from timber, iron and steel, five orders at a time: spears (+2 damage, +60% against horse), swords (+5), longbows (+1 damage, +1.5 range), crossbows (+6, slower to load), lances (+6), mail (+25% health), plate (+50% health, a little slower). Soldiers take up the best kit for their kind when trained or drilled, and swap up (handing the old kit back) when they stand idle within 7 tiles of an Armoury or sit garrisoned in a keep or barracks. The unit panel shows each soldier's kit. Rival houses research too, build armouries and keep kit in stock. Art still to come is listed in `ARTREQUIREMENTS.md` (until then the armoury borrows the forge's sprite).
+
 ## Characters: far-landers, deeds and captains
 Every fighter keeps a **service record** (kills, buildings razed, time served, where they were raised) and earns **deeds** from what they do: Blooded, the Slayer (10 kills, +8% damage), Kingslayer (+10% damage), Giant-killer and Death-cheater (+10% health each), Wall-breaker (+25% against buildings). Taverns sometimes offer a **far-lander**, a traveller of a people with no house in the valley (Norse, Parthian, Greek, Han, Rus, Moorish, Aksumite, Eastern Isles), with a gift of their homeland that stays with them when drilled (berserker, outrider, physician, drillmaster, horse-breaker, caravaneer, envoy, duellist). An Elite or better soldier can be made **captain** (60 coin, three per house): soldiers near a captain hit harder and learn faster. Training buildings show a **muster roll** of everyone raised there, a group selection lists each person, and a click on a rival unit or building shows their house, standing, opinion of you and ruler, with a Council button. See `CHARACTERS.md` for the assessment and the comparison with Seven Kingdoms, Age of Empires II and others.
 

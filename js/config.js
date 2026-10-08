@@ -23,7 +23,7 @@ export const FACTIONS = {
   mongols:   { label: 'Mongols',   blurb: 'Gers, banners, Bactrian camels.' },
   scottish:  { label: 'Scottish',  blurb: 'Grey stone, heather thatch, tower houses.' },
 };
-export const FACTION_BUILDINGS = ['mine', 'keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower'];
+export const FACTION_BUILDINGS = ['mine', 'keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower', 'armoury'];
 // Each seat has a fixed colour (and heraldic device); the PEOPLE who sit in it (nation, house name, motto) are chosen per game: see setPeoples().
 export const HOUSES = [
   { faction: 'egyptians', name: 'House Khemet', short: 'Khemet', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'The Black Land endures' },
@@ -90,7 +90,7 @@ export const GOOD_INFO = {
   copper: 'Smelted with coal into fine ware.',
   iron: 'Smelted with coal into steel.',
   coal: 'Fuel for the foundry.',
-  silver: 'Academies burn it for science.',
+  silver: 'Pays for the deeper research at an Academy.',
   steel: 'Forges turn it into better arms.',
   ware: 'Taverns, markets and temples use it to make villagers content.',
 };
@@ -104,7 +104,38 @@ export const MINE_JOBS = { r: 16, share: 0.3, campShare: 0.6, keep: 6, campKeep:
 export const SMELT = { steel: { in: { iron: 2, coal: 1 }, time: 7 }, ware: { in: { copper: 2, coal: 1 }, time: 8 } };
 export const ARMS_STEEL = 6;   // steel per forge arms level (max 3)
 export const SCI_SILVER = 6;   // silver per science level (max 3)
-export const SCIENCE = ['Husbandry', 'Masonry', 'Drill']; // +farm/gather yield, +building HP, +unit HP
+export const SCIENCE = ['Husbandry', 'Masonry', 'Drill']; // (legacy names of the first three techs; see TECH)
+// ---- science. The Academy is the house's science division: every academy makes LEARNING (a little on its own, more with scholars beside it,
+// and each abbey you hold adds some). Learning, and silver for the deeper arts, pays for one research at a time from the tree below; a
+// tech's `needs` must be known first. The Armoury and each weapon it makes are unlocked by research.
+export const LEARNING = { academy: 0.3, scholar: 0.15, abbey: 0.05, cap: 300 };   // learning a second; the pool holds at most `cap`
+export const TECH = {
+  husbandry:   { label: 'Husbandry',   tier: 1, cost: { learning: 30 },             needs: [],                          info: '+15% grain from farms, +10% gathering and digging.' },
+  masonry:     { label: 'Masonry',     tier: 1, cost: { learning: 30 },             needs: [],                          info: 'New buildings +15% health.' },
+  drill:       { label: 'Drill',       tier: 1, cost: { learning: 30 },             needs: [],                          info: 'New soldiers +15% health.' },
+  metallurgy:  { label: 'Metallurgy',  tier: 2, cost: { learning: 60, silver: 4 },  needs: ['masonry'],                 info: 'Unlocks the Armoury, which makes spears and mail.' },
+  fletching:   { label: 'Fletching',   tier: 2, cost: { learning: 60, silver: 4 },  needs: ['drill'],                   info: 'The Armoury makes longbows.' },
+  medicine:    { label: 'Medicine',    tier: 2, cost: { learning: 60, silver: 4 },  needs: ['husbandry'],               info: 'Idle soldiers mend their wounds; scholars heal twice as fast.' },
+  steelcraft:  { label: 'Steelcraft',  tier: 3, cost: { learning: 100, silver: 8 }, needs: ['metallurgy'],              info: 'The Armoury makes swords, lances and plate.' },
+  mechanics:   { label: 'Mechanics',   tier: 3, cost: { learning: 100, silver: 8 }, needs: ['metallurgy', 'fletching'], info: 'The Armoury makes crossbows; new rams +30% health.' },
+  engineering: { label: 'Engineering', tier: 3, cost: { learning: 100, silver: 8 }, needs: ['masonry', 'medicine'],     info: 'Towers shoot 2 tiles further; new keeps and towers +25% health.' },
+};
+export const TECH_KEYS = Object.keys(TECH);
+export const MEDICINE = { heal: 0.6, quiet: 6 };   // hp a second an idle soldier mends, once `quiet` seconds clear of a fight
+// ---- weapons and armour, made at the Armoury and kept in the stockpile. A soldier takes up the best kit for his kind when he is trained or
+// drilled, and swaps up (handing the old kit back) when he stands idle within REFIT.r tiles of an Armoury.
+export const GEAR = {
+  spear:    { label: 'Spears',    slot: 'weapon', for: ['footman'],                     tech: 'metallurgy', cost: { wood: 6, iron: 2 },  time: 8,  tier: 1, dmg: 2, vsHorse: 0.6, info: '+2 damage; +60% against knights, kings and rams.' },
+  sword:    { label: 'Swords',    slot: 'weapon', for: ['footman'],                     tech: 'steelcraft', cost: { steel: 2 },          time: 10, tier: 2, dmg: 5, info: '+5 damage.' },
+  longbow:  { label: 'Longbows',  slot: 'weapon', for: ['bowman'],                      tech: 'fletching',  cost: { wood: 10 },          time: 8,  tier: 1, dmg: 1, range: 1.5, info: '+1 damage, +1.5 range.' },
+  crossbow: { label: 'Crossbows', slot: 'weapon', for: ['bowman'],                      tech: 'mechanics',  cost: { wood: 6, steel: 2 }, time: 12, tier: 2, dmg: 6, cd: 0.4, info: '+6 damage, a little slower to load.' },
+  lance:    { label: 'Lances',    slot: 'weapon', for: ['knight'],                      tech: 'steelcraft', cost: { wood: 8, steel: 2 }, time: 12, tier: 2, dmg: 6, info: '+6 damage.' },
+  mail:     { label: 'Mail',      slot: 'armour', for: ['footman', 'bowman', 'knight'], tech: 'metallurgy', cost: { iron: 4 },           time: 10, tier: 1, hp: 0.25, info: '+25% health.' },
+  plate:    { label: 'Plate',     slot: 'armour', for: ['footman', 'knight'],           tech: 'steelcraft', cost: { steel: 4 },          time: 14, tier: 2, hp: 0.5, spd: -0.25, info: '+50% health, a little slower.' },
+};
+export const GEAR_KEYS = Object.keys(GEAR);
+export const REFIT = { r: 7, every: 2 };
+export const CRAFT_QUEUE = 5;
 export const WARE_JOY = { every: 25, secs: 70 }; // one ware lifts a village for 70s; a village consumes at most one per 25s
 export const NODE_RES = { tree: 'wood', berry: 'food', gold: 'gold' };
 export const GATHER_RATE = { wood: 0.95, food: 1.1, gold: 0.7 }; // per second while working
@@ -139,7 +170,8 @@ export const BUILDINGS = {
   forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks', 'foundry'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
   workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Trains rams.' },
   tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: [],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
-  academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'Trains scholars. Unlocks the workshop and temple coin. Burns silver into science (3 levels).' },
+  academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'The science division: makes learning (more with scholars beside it) and researches technologies, one at a time. Trains scholars. Unlocks the workshop and temple coin.' },
+  armoury:   { label: 'Armoury',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60, stone: 20 }, time: 24, requires: ['forge'], tech: 'metallurgy', info: 'Makes weapons and armour from the stockpile (each unlocked by research): spears, swords, longbows, crossbows, lances, mail, plate. Soldiers take them up when trained, or when idle nearby.' },
   temple:    { label: 'Temple',        size: 2, hp: 590,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 50 }, time: 20, requires: ['keep'],          info: 'Strong loyalty aura. Coin trickle with an academy.' },
   barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 40 }, time: 22, requires: [],          info: 'Trains footmen.' },
   archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
@@ -150,7 +182,7 @@ export const BUILDINGS = {
   tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['barracks'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
 // basic buildings first; the rest unlock as their requirements are built (market -> cottage -> farm -> mill, mine -> warehouse, barracks -> archery ...)
-export const BUILD_ORDER_UI = ['mine', 'market', 'keep', 'barracks', 'tavern', 'foundry', 'village', 'cottage', 'farm', 'mill', 'warehouse', 'archery', 'stable', 'tower', 'forge', 'workshop', 'academy', 'temple'];
+export const BUILD_ORDER_UI = ['mine', 'market', 'keep', 'barracks', 'tavern', 'foundry', 'village', 'cottage', 'farm', 'mill', 'warehouse', 'archery', 'stable', 'tower', 'forge', 'workshop', 'academy', 'armoury', 'temple'];
 // The first five are the game. The rest unlock after them.
 export const BASIC_BUILDINGS = ['mine', 'market', 'keep', 'barracks', 'tavern'];
 

@@ -4,12 +4,12 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
   ['mine', 1], ['market', 1], ['barracks', 1], ['cottage', 1], ['tavern', 1], ['keep', 1], ['farm', 1], ['cottage', 2], ['mine', 2], ['warehouse', 1], ['foundry', 1], ['mill', 1],
-  ['archery', 1], ['cottage', 3], ['forge', 1], ['mine', 3], ['stable', 1], ['temple', 1], ['academy', 1], ['village', 1], ['cottage', 4], ['farm', 2],
+  ['archery', 1], ['cottage', 3], ['forge', 1], ['academy', 1], ['mine', 3], ['stable', 1], ['armoury', 1], ['temple', 1], ['village', 1], ['cottage', 4], ['farm', 2],
   ['tower', 1], ['workshop', 1], ['cottage', 5], ['cottage', 6], ['cottage', 7],
 ];
 
@@ -189,6 +189,28 @@ function think(game, team, p) {
     tav2.roster.forEach((w, k) => { if (!w || !game.canAfford(team, w.cost)) return; const v = (w.far ? 3 : HIRE_WORTH[w.trait] || 1) / (w.cost.gold + 15); if (v > best) { best = v; i = k; } });
     if (i >= 0) game.hire(team, tav2.id, i);
   }
+  // the science division: always studying something; the order favours the arms the house fights with. Two scholars keep each academy busy.
+  { const ac = game.buildings.find((b) => b.team === team && b.kind === 'academy' && b.built >= 1 && b.hp > 0);
+    if (ac && p.gold > 140 && game.units.filter((u) => u.team === team && u.kind === 'scholar' && u.hp > 0).length + queued(game, team, 'scholar') < 2) game.train(team, ac.id, 'scholar'); }
+  if (!p.research && game.hasBuilding(team, 'academy')) {
+    const next = AI_STUDY.find((k) => !game.researchBlock(team, k));
+    if (next) game.startResearch(team, next);
+  }
+  // the armoury keeps a stock of the best kit it can make, about one set for every two soldiers
+  { const arm = game.buildings.find((b) => b.team === team && b.kind === 'armoury' && b.built >= 1 && b.hp > 0);
+    if (arm && (arm.craft || []).length < 2) {
+      const want = Math.min(8, Math.ceil(army.length / 2) + 1);
+      const item = GEAR_KEYS.filter((k) => game.hasTech(team, GEAR[k].tech) && (p.gear?.[k] || 0) < want && army.some((u) => GEAR[k].for.includes(u.kind)))
+        .sort((a, c) => GEAR[c].tier - GEAR[a].tier)[0];
+      if (item && game.canAfford(team, GEAR[item].cost) && p.gold > 60) game.craft(team, arm.id, item);
+    }
+    if (arm && (p.refitT = (p.refitT ?? 0) - 1) <= 0) {   // idle soldiers at home who could carry better kit walk over to the armoury
+      p.refitT = 8;
+      const better = (u) => GEAR_KEYS.some((k) => (p.gear?.[k] || 0) > 0 && GEAR[k].for.includes(u.kind) && GEAR[k].tier > ((u.gear?.[GEAR[k].slot] && GEAR[u.gear[GEAR[k].slot]].tier) || 0));
+      const go = army.filter((u) => u.task.type === 'idle' && !u.inside && Math.hypot(u.x - arm.x, u.y - arm.y) > 6 && Math.hypot(u.x - seat.x, u.y - seat.y) < 40 && better(u)).slice(0, 8);
+      if (go.length) game.cmdMove(go, arm.x + 1, arm.y + arm.size / 2 + 2);
+    }
+  }
   // an Elite soldier with coin to spare behind him is given command
   if (p.gold > 150) { const c = game.units.find((u) => u.team === team && u.hp > 0 && !u.captain && (u.rank || 0) >= CAPTAIN.minRank && (u.kind === 'footman' || u.kind === 'bowman' || u.kind === 'knight')); if (c) game.appoint(team, c.id); }
   if (keepB) {
@@ -257,6 +279,7 @@ export function huntGoal(game, team, foeTeam, seat, ready) {
   if (k && !k.inside) return k;
   return game.units.find((u) => u.team === foeTeam && u.hp > 0 && !u.inside && game.powerOf(u) > 0) || null;
 }
+const AI_STUDY = ['drill', 'masonry', 'husbandry', 'metallurgy', 'fletching', 'steelcraft', 'medicine', 'mechanics', 'engineering'];
 const HIRE_WORTH = { veteran: 2, keen: 1.6, brawny: 1.5, fleet: 1, green: 0.6 };
 // nearest unmined deposit inside our territory (or beside a village of ours), preferring ores we do not already dig
 export function pickDeposit(game, team, seat) {

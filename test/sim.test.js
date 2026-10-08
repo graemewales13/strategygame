@@ -251,17 +251,18 @@ test('treaty: unmet houses cannot treaty; AI grants at once; human target gets a
   assert.equal(g.rel[PLAYER][1], 'trade');
 });
 
-test('auto use: foundry smelts steel, forge turns steel into arms, academy turns silver into science, ware pleases a village', () => {
+test('auto use: foundry smelts steel, forge turns steel into arms, the academy researches, ware pleases a village', () => {
   const g = new Game({ seed: 11, houses: 3, ai: false });
   const h = g.seatOf(0), p = g.players[0];
   g.addBuilding('foundry', 0, h.tx + 5, h.ty, true); g.addBuilding('forge', 0, h.tx - 5, h.ty, true); g.addBuilding('academy', 0, h.tx, h.ty - 5, true); g.recomputeWalk();
   p.iron = 8; p.coal = 4; p.silver = 6; p.copper = 2;
   for (let i = 0; i < 60 * 10; i++) g.tick(0.1);
   assert.ok(p.steel >= 2 || p.arms >= 1, `steel ${p.steel} arms ${p.arms}`);
-  p.steel = 6; p.silver = 6;
+  p.steel = 6; p.silver = 6; g.startResearch(0, 'husbandry');
   for (let i = 0; i < 40 * 10; i++) g.tick(0.1);
+  p.learning = 50; g.tick(0.1);
   assert.ok(p.arms >= 1, 'arms level');
-  assert.ok(p.sci >= 1, 'science level');
+  assert.ok(p.sci >= 1 && g.hasTech(0, 'husbandry'), 'a technology researched');
   const v = g.villages[0]; v.owner = 0; v.loyalty = 60; v.protection = v.maxProtection;
   g.addBuilding('tavern', 0, Math.floor(v.x) - 3, Math.floor(v.y) - 6, true); p.ware = 2;
   g.updateEconomy(0.1);

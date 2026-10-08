@@ -508,4 +508,48 @@ test('gaps: you can pull down a building of your own (a third back) or cancel a 
   assert.equal(g.demolish(PLAYER, foe.id), false, 'not someone else\'s');
 });
 
+test('science: academies make learning; research follows the tree, and silver pays for the deeper arts', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  assert.ok(g.researchBlock(PLAYER, 'husbandry'), 'no academy, no research');
+  const ac = g.addBuilding('academy', PLAYER, h.tx + 9, h.ty - 9, true); g.recomputeWalk();
+  assert.ok(/Masonry/.test(g.researchBlock(PLAYER, 'metallurgy')), 'Metallurgy needs Masonry first');
+  assert.ok(g.applyIntent({ team: PLAYER, type: 'research', tech: 'masonry' }));
+  run(g, 3); assert.ok(p.learning > 0 && p.learnRate >= 0.2, 'the academy makes learning');
+  g.addUnit('scholar', PLAYER, ac.x + 1, ac.y + 2); g.addUnit('scholar', PLAYER, ac.x - 1, ac.y + 2); run(g, 3);
+  assert.ok(p.learnRate > 0.35, 'scholars beside it study faster: ' + p.learnRate);
+  p.learning = 39.9; run(g, 1); assert.ok(g.hasTech(PLAYER, 'masonry') && p.research === null && p.sci === 1);
+  p.silver = 0; assert.ok(/silver/.test(g.researchBlock(PLAYER, 'metallurgy')), 'the deeper arts cost silver');
+  p.silver = 10; assert.ok(g.startResearch(PLAYER, 'metallurgy')); assert.equal(p.silver, 6, 'paid up front');
+  assert.ok(g.startResearch(PLAYER, 'husbandry')); assert.equal(p.silver, 10, 'refunded when changed');
+});
+
+test('weapons: the Armoury needs Metallurgy; it makes kit that soldiers take up, and the kit tells in a fight', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  Object.assign(p, { food: 2000, wood: 2000, gold: 2000, stone: 300, iron: 50, steel: 50, silver: 50 });
+  g.addBuilding('barracks', PLAYER, h.tx + 9, h.ty - 9, true); g.addBuilding('foundry', PLAYER, h.tx - 9, h.ty - 9, true); g.addBuilding('forge', PLAYER, h.tx + 9, h.ty + 6, true); g.recomputeWalk();
+  assert.ok(g.missingFor(PLAYER, 'armoury').some((m) => /Metallurgy/.test(m)), 'locked behind research');
+  p.tech.masonry = p.tech.metallurgy = true;
+  assert.deepEqual(g.missingFor(PLAYER, 'armoury'), []);
+  const arm = g.addBuilding('armoury', PLAYER, h.tx - 9, h.ty + 6, true); g.recomputeWalk();
+  assert.ok(/Steelcraft/.test(g.craftBlock(PLAYER, arm, 'sword')), 'swords need Steelcraft');
+  assert.ok(g.applyIntent({ team: PLAYER, type: 'craft', buildingId: arm.id, item: 'spear' })); g.craft(PLAYER, arm.id, 'mail');
+  run(g, 20); assert.equal(p.gear.spear, 1); assert.equal(p.gear.mail, 1);
+  const plain = g.addUnit('footman', PLAYER, arm.x + 30, arm.y), kit = g.addUnit('footman', PLAYER, arm.x + 2, arm.y + 3);
+  run(g, 3); assert.equal(kit.gear?.weapon, 'spear', 'an idle soldier near the armoury takes up spears'); assert.equal(kit.gear?.armour, 'mail');
+  assert.ok(kit.maxHp > plain.maxHp * 1.2, 'mail adds health'); assert.ok(g.shownDamage(kit) > g.shownDamage(plain) + 1.5, 'spears add damage');
+  assert.equal(p.gear.spear, 0, 'taken from the store');
+  p.tech.steelcraft = true; g.craft(PLAYER, arm.id, 'sword'); run(g, 12); run(g, 3);
+  assert.equal(kit.gear.weapon, 'sword', 'swaps up to a sword'); assert.equal(p.gear.spear, 1, 'and hands the spears back');
+  p.tech.fletching = true; g.craft(PLAYER, arm.id, 'longbow'); run(g, 10);
+  const bow = g.addUnit('bowman', PLAYER, arm.x + 2, arm.y - 3), r0 = g.rangeOf(bow); run(g, 3);
+  assert.ok(g.rangeOf(bow) > r0 + 1, 'longbows shoot further');
+});
+
+test('science: Medicine mends idle soldiers', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  const u = g.addUnit('footman', PLAYER, h.x + 6, h.y + 6); u.hp = 30; run(g, 5); const hp0 = u.hp;
+  p.tech.husbandry = p.tech.medicine = true; run(g, 5);
+  assert.ok(u.hp > hp0 + 2, `mends with Medicine ${hp0} -> ${u.hp}`);
+});
+
 console.log(`${passed} passed`);

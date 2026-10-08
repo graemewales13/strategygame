@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, LEARNING, TECH, TECH_KEYS, MEDICINE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -73,7 +73,7 @@ export class Game {
 
     const n = this.houses;
     this.players = Array.from({ length: n }, (_, i) => ({
-      team: i, name: HOUSES[i].name, ...START_RES, ...(i === PLAYER ? Object.fromEntries(Object.entries(START_RES).map(([k, v]) => [k, Math.round(v * this.diff.playerMul)])) : {}), alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
+      team: i, name: HOUSES[i].name, ...START_RES, ...(i === PLAYER ? Object.fromEntries(Object.entries(START_RES).map(([k, v]) => [k, Math.round(v * this.diff.playerMul)])) : {}), alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, tech: {}, learning: 0, learnRate: 0, research: null, gear: {}, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
       acc: {}, inc: {}, spent: 0, wageRate: 0, wageDebt: 0, brokeT: 0, deserterT: 0, earnedTotal: 0,
     }));
     this.known = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
@@ -126,7 +126,8 @@ export class Game {
   addUnit(kind, team, x, y) {
     const u = makeUnit(this.nid(), kind, team, x, y);
     { const set = (this.named[team] ||= new Set()); u.name = pickName(HOUSES[team]?.faction, set, this.rnd); set.add(u.name); }
-    if ((this.players?.[team]?.sci || 0) >= 3) { u.maxHp = Math.round(u.maxHp * 1.15); u.hp = u.maxHp; } // Drill
+    if (this.hasTech(team, 'drill') && kind !== 'serf' && kind !== 'camel') { u.maxHp = Math.round(u.maxHp * 1.15); u.hp = u.maxHp; } // Drill
+    if (kind === 'ram' && this.hasTech(team, 'mechanics')) { u.maxHp = Math.round(u.maxHp * 1.3); u.hp = u.maxHp; } // Mechanics
     u.born = this.time || 0; u.kills = 0;   // service record: when they joined and how many foes they have felled
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -434,6 +435,9 @@ export class Game {
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
       case 'hire': return this.hire(team, it.buildingId, it.index);
+      case 'research': return this.startResearch(team, it.tech);
+      case 'craft': return this.craft(team, it.buildingId, it.item);
+      case 'uncraft': return this.uncraft(team, it.buildingId, it.index);
       case 'demolish': return this.demolish(team, it.buildingId);
       case 'captain': return this.appoint(team, it.unitId);
       case 'levy': return this.setLevy(team, it.buildingId, it.villageId);
@@ -572,6 +576,110 @@ export class Game {
   }
   ejectAll(t) { for (const uid of t.garrison.slice()) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; }
 
+  // ---- science: learning and research ----------------------------------------------------------------------------------
+  hasTech(team, key) {
+    const p = this.players?.[team]; if (!p) return false;
+    if (!p.tech) { p.tech = {}; ['husbandry', 'masonry', 'drill'].slice(0, p.sci || 0).forEach((k) => { p.tech[k] = true; }); }   // old saves: levels became the first three techs
+    return !!p.tech[key];
+  }
+  learnRate(team) {
+    let r = 0;
+    for (const b of this.buildings) if (b.team === team && b.kind === 'academy' && b.built >= 1 && b.hp > 0) r += LEARNING.academy + LEARNING.scholar * (b.scholars || 0);
+    for (const v of this.villages) if (v.owner === team && v.kind === 'abbey') r += LEARNING.abbey;
+    return r;
+  }
+  // why `key` cannot be researched now (null when it can)
+  researchBlock(team, key) {
+    const p = this.players[team], t = TECH[key];
+    if (!t) return 'No such research.';
+    if (this.hasTech(team, key)) return 'Already known.';
+    if (!this.hasBuilding(team, 'academy')) return 'Needs an Academy.';
+    const miss = t.needs.filter((k) => !this.hasTech(team, k)); if (miss.length) return `Needs ${miss.map((k) => TECH[k].label).join(' and ')} first.`;
+    if (p.research === key) return 'Under way.';
+    if ((t.cost.silver || 0) > (p.silver || 0)) return `Needs ${t.cost.silver} silver.`;
+    return null;
+  }
+  // choose what the academies study next (silver is paid now; it comes back if the research is changed before it is done)
+  startResearch(team, key) {
+    const p = this.players[team], why = this.researchBlock(team, key);
+    if (why) { if (team === PLAYER) this.log(PLAYER, why, 'warn'); return false; }
+    if (p.research && TECH[p.research].cost.silver) p.silver += TECH[p.research].cost.silver;
+    p.silver -= TECH[key].cost.silver || 0; p.research = key;
+    if (team === PLAYER) this.log(PLAYER, `Your academies turn to ${TECH[key].label}.`, 'info');
+    return true;
+  }
+  updateScience(p, dt) {
+    p.learnRate = this.learnRate(p.team);
+    if (!p.tech) this.hasTech(p.team, 'husbandry');
+    p.learning = Math.min(LEARNING.cap, (p.learning || 0) + p.learnRate * dt);
+    const key = p.research; if (!key) return;
+    if (p.learning < TECH[key].cost.learning) return;
+    p.learning -= TECH[key].cost.learning; p.tech[key] = true; p.research = null; p.sci = Object.keys(p.tech).length;
+    this.log(p.team === PLAYER ? PLAYER : -1, `${p.name}'s academy masters ${TECH[key].label}.${p.team === PLAYER ? ' ' + TECH[key].info : ''}`, p.team === PLAYER ? 'good' : 'info');
+  }
+  // ---- the Armoury: weapons and armour into the stockpile; soldiers take up the best they can use ---------------------------
+  craftBlock(team, b, item) {
+    const g = GEAR[item], p = this.players[team];
+    if (!g) return 'Nothing of that kind is made here.';
+    if (!b || b.team !== team || b.kind !== 'armoury' || b.built < 1 || b.hp <= 0) return 'Needs a finished Armoury.';
+    if (!this.hasTech(team, g.tech)) return `Research ${TECH[g.tech].label} first.`;
+    if ((b.craft || []).length >= CRAFT_QUEUE) return 'The armoury is busy: wait for the work in hand.';
+    if (!this.canAfford(team, g.cost)) return 'Not enough goods.';
+    return null;
+  }
+  craft(team, buildingId, item) {
+    const b = this.byId.get(buildingId), why = this.craftBlock(team, b, item);
+    if (why) { if (team === PLAYER) this.log(PLAYER, why, 'warn'); return false; }
+    this.pay(team, GEAR[item].cost); (b.craft ||= []).push({ item, t: 0 });
+    return true;
+  }
+  uncraft(team, buildingId, index) {
+    const b = this.byId.get(buildingId); if (!b || b.team !== team || !b.craft?.[index]) return false;
+    const [q] = b.craft.splice(index, 1), p = this.players[team];
+    for (const k in GEAR[q.item].cost) p[k] = (p[k] || 0) + GEAR[q.item].cost[k];
+    return true;
+  }
+  tickArmoury(b, dt) {
+    const q = b.craft?.[0]; if (!q) return;
+    q.t += dt;
+    if (q.t >= GEAR[q.item].time) { b.craft.shift(); const p = this.players[b.team]; (p.gear ||= {})[q.item] = (p.gear[q.item] || 0) + 1; }
+  }
+  gearOf(u, slot) { const k = u.gear?.[slot]; return k ? GEAR[k] : null; }
+  rangeOf(u) { return UNITS[u.kind].range + (this.gearOf(u, 'weapon')?.range || 0); }
+  cdOf(u) { return UNITS[u.kind].cd + (this.gearOf(u, 'weapon')?.cd || 0); }
+  // take up the best kit in the stockpile for each slot (better tier than what is carried), handing the old kit back
+  equip(u) {
+    const p = this.players[u.team]; if (!p || !['footman', 'bowman', 'knight'].includes(u.kind)) return false;
+    let changed = false;
+    for (const slot of ['weapon', 'armour']) {
+      const cur = this.gearOf(u, slot), best = GEAR_KEYS.filter((k) => GEAR[k].slot === slot && GEAR[k].for.includes(u.kind) && (p.gear?.[k] || 0) > 0 && GEAR[k].tier > (cur?.tier || 0)).sort((a, c) => GEAR[c].tier - GEAR[a].tier)[0];
+      if (!best) continue;
+      const was = u.gear?.[slot]; p.gear[best]--; if (was) p.gear[was] = (p.gear[was] || 0) + 1;
+      (u.gear ||= {})[slot] = best; changed = true;
+      if (slot === 'armour') {
+        const oldMul = 1 + (was ? GEAR[was].hp || 0 : 0), newMul = 1 + (GEAR[best].hp || 0), ratio = u.hp / u.maxHp;
+        u.maxHp = Math.round((u.maxHp / oldMul) * newMul); u.hp = Math.max(1, u.maxHp * ratio);
+        u.speed = (u.speed ?? UNITS[u.kind].speed) - (was ? GEAR[was].spd || 0 : 0) + (GEAR[best].spd || 0);
+      }
+    }
+    return changed;
+  }
+  // soldiers idle near an Armoury swap up; Medicine lets idle soldiers mend
+  updateGear(dt) {
+    this._refitT = (this._refitT || 0) - dt;
+    const refit = this._refitT <= 0; if (refit) this._refitT = REFIT.every;
+    const arm = refit ? this.buildings.filter((b) => b.kind === 'armoury' && b.built >= 1 && b.hp > 0) : [];
+    for (const u of this.units) {
+      if (u.hp <= 0) continue;
+      if (u.inside) {   // a garrison in a keep or barracks is fitted from the stockpile, if the house has an armoury
+        if (refit && arm.some((b) => b.team === u.team)) { const h = this.byId.get(u.inside); if (h && h.type === 'building' && (h.kind === 'keep' || h.kind === 'barracks')) this.equip(u); }
+        continue;
+      }
+      if (u.task.type !== 'idle') continue;
+      if (refit && arm.length && arm.some((b) => b.team === u.team && Math.hypot(b.x - u.x, b.y - u.y) <= REFIT.r)) this.equip(u);
+      if (u.hp < u.maxHp && this.powerOf(u) > 0 && this.hasTech(u.team, 'medicine') && this.time - (u.engagedT ?? -1e9) > MEDICINE.quiet) u.hp = Math.min(u.maxHp, u.hp + MEDICINE.heal * dt);
+    }
+  }
   // ---- pulling down a building of your own: those inside step out; a third of the cost comes back (all but a fifth while it is still a site)
   demolish(team, id) {
     const b = this.byId.get(id);
@@ -654,6 +762,7 @@ export class Game {
     if (p.leaderless) d *= KING.leaderless;
     if (p.broke) d *= BROKE.fight;
     d *= this.charMul(u, null);
+    d += this.gearOf(u, 'weapon')?.dmg || 0;
     const forge = this.hasBuilding(u.team, 'forge'), arms = p.arms || 0;
     if (forge && (u.kind === 'footman' || u.kind === 'knight')) d += 3 + arms * 1.5;
     if (forge && u.kind === 'bowman') d += 2 + arms;
@@ -833,7 +942,7 @@ export class Game {
           b.drills.shift();
           const st = UNITS[q.kind], ratio = u.hp / u.maxHp, was = u.kind;
           u.kind = q.kind; u.drilling = false;
-          u.maxHp = Math.round(st.hp * (u.hpMul || 1)); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0);
+          u.maxHp = Math.round(st.hp * (u.hpMul || 1)); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0); u.gear = null; this.equip(u);
           if (b.team === PLAYER) this.log(PLAYER, `${u.name || (was === 'serf' ? 'A serf' : 'A recruit')} is drilled into a ${st.label.toLowerCase()}.`, 'good');
         }
       }
@@ -986,7 +1095,7 @@ export class Game {
     const node = b.nodeIds.map((id) => this.resources[id]).find((n) => n.amount > 0);
     if (!node) return;
     const p = this.players[b.team];
-    const take = Math.min(node.amount, MINE_RATE[node.kind] * c.n * c.power * dt * (p.sci >= 1 ? 1.1 : 1));
+    const take = Math.min(node.amount, MINE_RATE[node.kind] * c.n * c.power * dt * (this.hasTech(p.team, 'husbandry') ? 1.1 : 1));
     node.amount -= take;
     if (node.kind === 'gold') this.earn(b.team, 'mining', take * this.haulOf(b)); else p[node.kind] += take * this.haulOf(b);
     b._dig = (b._dig || 0) + take;
@@ -1027,6 +1136,7 @@ export class Game {
     const s = BUILDINGS[kind]; if (!s) return [];
     const miss = s.requires.filter((r) => !this.hasBuilding(team, r)).map((r) => BUILDINGS[r].label);
     if (s.requiresAny && !s.requiresAny.some((r) => this.hasBuilding(team, r))) miss.push(s.requiresAny.map((r) => BUILDINGS[r].label).join(' or '));
+    if (s.tech && !this.hasTech(team, s.tech)) miss.push(`${TECH[s.tech].label} (research)`);
     return miss;
   }
   // ore deposits (not yet dug out) within `r` tiles of a point
@@ -1134,7 +1244,8 @@ export class Game {
     this.pay(team, s.cost);
     const b = this.addBuilding(kind, team, tx, ty, false);
     const pl = this.players[team];
-    if (pl.sci >= 2) { b.maxHp *= 1.15; b.hp *= 1.15; } // Masonry
+    if (this.hasTech(pl.team, 'masonry')) { b.maxHp *= 1.15; b.hp *= 1.15; } // Masonry
+    if ((kind === 'keep' || kind === 'tower') && this.hasTech(pl.team, 'engineering')) { b.maxHp *= 1.25; b.hp *= 1.25; } // Engineering
     if (s.onDeposit) { b.nodeIds = this.depositsUnder(tx, ty, s.size).map((n) => n.id); b.nodeIds.forEach((id) => { this.resources[id].covered = true; }); b.ore = this.resources[b.nodeIds[0]].kind; }
     this.recomputeWalk();
     // shove anyone standing in the footprint out of it, and re-route walkers whose route crosses it
@@ -1926,11 +2037,8 @@ export class Game {
         p.armsT += dt;
         if (p.armsT >= 14) { p.armsT = 0; p.steel -= ARMS_STEEL; p.arms++; this.log(p.team === PLAYER ? PLAYER : -1, `${p.name}'s forges turn out better arms (level ${p.arms}).`, p.team === PLAYER ? 'good' : 'info'); }
       } else p.armsT = 0;
-      // academy: silver -> science
-      if (p.sci < 3 && p.silver >= SCI_SILVER && this.hasBuilding(p.team, 'academy')) {
-        p.sciT += dt;
-        if (p.sciT >= 16) { p.sciT = 0; p.silver -= SCI_SILVER; p.sci++; this.log(p.team === PLAYER ? PLAYER : -1, `${p.name}'s academy masters ${SCIENCE[p.sci - 1]}.`, p.team === PLAYER ? 'good' : 'info'); }
-      } else p.sciT = 0;
+      // the science division: academies make learning, which pays for the research under way
+      this.updateScience(p, dt);
     }
     // villages: a ware from the stockpile keeps a village content while a market, tavern or temple stands near it
     for (const v of this.villages) {
@@ -1959,7 +2067,7 @@ export class Game {
     this.updateVillages(dt);
     this.updateWanderers(dt);
     this.updateSally(dt);
-    this.updateUnits(dt); this.separate(dt); this.autoCamels(dt);
+    this.updateUnits(dt); this.updateGear(dt); this.separate(dt); this.autoCamels(dt);
     this.updateProjectiles(dt);
     if (this.aiOn) updateAI(this, dt);
     this.cleanup();
@@ -1974,7 +2082,7 @@ export class Game {
       if (b.built < 1) continue;
       const p = this.players[b.team];
       switch (b.kind) {
-        case 'farm': p.food += 0.8 * dt * (FARM_SOIL[this.terrain[Math.floor(b.y) * this.W + Math.floor(b.x)]] || 0.9) * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (p.sci >= 1 ? 1.15 : 1); break;
+        case 'farm': p.food += 0.8 * dt * (FARM_SOIL[this.terrain[Math.floor(b.y) * this.W + Math.floor(b.x)]] || 0.9) * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (this.hasTech(p.team, 'husbandry') ? 1.15 : 1); break;
         case 'foundry': this.smelt(b, p, dt); break;
         case 'mine': this.tickMine(b, dt); break;
         case 'keep': this.tickKeep(b, dt); break;
@@ -1989,6 +2097,7 @@ export class Game {
           break;
         }
         case 'tower': this.towerFire(b, dt); break;
+        case 'armoury': this.tickArmoury(b, dt); break;
         default: break;
       }
       if (b.queue.length) {
@@ -1997,7 +2106,7 @@ export class Game {
         if (q.t >= UNITS[q.kind].time) {
           b.queue.shift();
           const u = this.addUnit(q.kind, b.team, b.x + (Math.random() - 0.5) * 1.2, b.ty + b.size + 0.7);
-          u.from = b.id;
+          u.from = b.id; this.equip(u);
           if (b.rally) {
             const node = b.rally.nodeId != null ? this.resources[b.rally.nodeId] : null;
             if (node && node.amount > 0 && u.kind === 'serf') this.cmdGather([u], node);
@@ -2016,7 +2125,7 @@ export class Game {
     b.cooldown -= dt;
     if (b.cooldown > 0) return;
     const s = BUILDINGS.tower;
-    let best = null, bd = s.range;
+    let best = null, bd = s.range + (this.hasTech(b.team, 'engineering') ? 2 : 0);
     for (const u of this.units) {
       if (u.hp <= 0 || u.inside || !this.isEnemy(b.team, u.team)) continue;
       const d = Math.hypot(u.x - b.x, u.y - b.y);
@@ -2242,7 +2351,7 @@ export class Game {
       if (u.far === 'greek') { for (const o of this.units) if (o.team === u.team && o.hp > 0 && o.hp < o.maxHp && !o.inside && o.kind !== 'camel' && Math.hypot(o.x - u.x, o.y - u.y) < PERK.healR) o.hp = Math.min(o.maxHp, o.hp + PERK.heal * dt); }
       if (u._brink && u.hp > u.maxHp * 0.5) { u._brink = false; this.earnDeed(u, 'survivor'); }
       if (u.kind === 'scholar' && u.task.type === 'idle') {
-        for (const o of this.units) if (o.team === u.team && o.hp > 0 && o.hp < o.maxHp && Math.hypot(o.x - u.x, o.y - u.y) < 3.5) o.hp = Math.min(o.maxHp, o.hp + 1.6 * dt);
+        for (const o of this.units) if (o.team === u.team && o.hp > 0 && o.hp < o.maxHp && Math.hypot(o.x - u.x, o.y - u.y) < 3.5) o.hp = Math.min(o.maxHp, o.hp + 1.6 * (this.hasTech(u.team, 'medicine') ? 2 : 1) * dt);
       }
     }
   }
@@ -2261,7 +2370,7 @@ export class Game {
       if (ok) this.cmdEnter([u], home);
       return;
     }
-    const t = this.closestEnemy(u, u.kind === 'king' ? 4.5 : Math.max(6.5, s.range + 2), u.team);
+    const t = this.closestEnemy(u, u.kind === 'king' ? 4.5 : Math.max(6.5, this.rangeOf(u) + 2), u.team);
     if (t) { u.task = { type: 'attack', targetId: t.id }; u.repathT = 0; }
   }
 
@@ -2272,7 +2381,7 @@ export class Game {
     if (t.type === 'village') { if (t.owner === u.team || (t.owner >= 0 && !this.isEnemy(u.team, t.owner))) { u.task = { type: 'idle' }; u.path = []; return; } }
     else if (!this.isEnemy(u.team, t.team)) { u.task = { type: 'idle' }; u.path = []; return; }
     const d = distTo(u.x, u.y, t);
-    if (d > s.range + 0.15) {
+    if (d > this.rangeOf(u) + 0.15) {
       if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, t);
       if (!this.follow(u, dt) && !u.path.length) u.repathT = Math.min(u.repathT, 0.3);
       return;
@@ -2280,7 +2389,7 @@ export class Game {
     u.path = [];
     u.face = t.x >= u.x ? 1 : -1;
     if (u.cooldown > 0) return;
-    u.cooldown = s.cd;
+    u.cooldown = this.cdOf(u);
     let dmg = s.dmg;
     const arms = this.players[u.team].arms || 0;
     dmg += u.dmgAdd || 0;
@@ -2289,6 +2398,7 @@ export class Game {
     if (this.players[u.team].leaderless) dmg *= KING.leaderless;
     if (this.players[u.team].broke) dmg *= BROKE.fight;
     dmg *= this.charMul(u, t);
+    { const w = this.gearOf(u, 'weapon'); if (w) { dmg += w.dmg || 0; if (w.vsHorse && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || t.kind === 'ram')) dmg *= 1 + w.vsHorse; } }   // the kit from the armoury
     if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
@@ -2389,7 +2499,7 @@ export class Game {
   // fighting power of one unit: health times damage per second, 1.0 for a rookie footman; archers count double for fighting from range
   powerOf(u) {
     const s = UNITS[u.kind]; if (!s || !s.dmg || u.kind === 'serf' || u.kind === 'camel' || u.kind === 'spy' || u.kind === 'scholar') return 0;
-    return (u.maxHp * (((s.dmg + (u.dmgAdd || 0)) * (1 + RANK_BONUS.dmg * (u.rank || 0))) / s.cd)) / 818 * (s.range > 1.6 ? 2 : 1);
+    return (u.maxHp * (((s.dmg + (u.dmgAdd || 0) + (this.gearOf(u, 'weapon')?.dmg || 0)) * (1 + RANK_BONUS.dmg * (u.rank || 0))) / this.cdOf(u))) / 818 * (s.range > 1.6 ? 2 : 1);
   }
   // everyone a house could field, garrisoned or marching
   forcesOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && this.powerOf(u) > 0); }
@@ -2486,7 +2596,7 @@ export class Game {
       return;
     }
     u.path = [];
-    const take = Math.min(GATHER_RATE[res] * dt * (this.players[u.team].sci >= 1 ? 1.1 : 1), node.amount, CARRY_CAP - (u.carry?.amount || 0));
+    const take = Math.min(GATHER_RATE[res] * dt * (this.hasTech(u.team, 'husbandry') ? 1.1 : 1), node.amount, CARRY_CAP - (u.carry?.amount || 0));
     node.amount -= take;
     if (!u.carry) u.carry = { kind: res, amount: 0 };
     u.carry.amount += take;
@@ -2723,7 +2833,7 @@ export class Game {
   snapshot() {
     return {
       time: this.time, seed: this.seed, outcome: this.outcome, rel: this.rel,
-      players: this.players.map((p) => { const o = { team: p.team, name: p.name, alive: p.alive, arms: p.arms, sci: p.sci }; for (const k of ALL_GOODS) o[k] = (p[k] || 0) | 0; return o; }),
+      players: this.players.map((p) => { const o = { team: p.team, name: p.name, alive: p.alive, arms: p.arms, sci: p.sci, tech: Object.keys(p.tech || {}), research: p.research, gear: p.gear || {} }; for (const k of ALL_GOODS) o[k] = (p[k] || 0) | 0; return o; }),
       known: this.known, offers: this.offers,
       units: this.units.map((u) => ({ id: u.id, k: u.kind, t: u.team, x: +u.x.toFixed(2), y: +u.y.toFixed(2), hp: u.hp | 0 })),
       buildings: this.buildings.map((b) => ({ id: b.id, k: b.kind, t: b.team, tx: b.tx, ty: b.ty, hp: b.hp | 0, built: +b.built.toFixed(2), nodeIds: b.nodeIds })),
