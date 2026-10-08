@@ -574,4 +574,10 @@ test('gaps: with an armoury standing, the forge leaves steel for kit', () => {
   p.steel = 14; run(g, 20); assert.equal(p.arms, 1, 'above the reserve it still makes arms'); assert.equal(p.steel, 8);
 });
 
+test('gaps: a rival house shows the doctrine its people play by', () => {
+  const g = mk(); g.known[0][1] = g.known[1][0] = true;
+  assert.ok(['granary', 'legion', 'hold', 'hearth', 'raid'].includes(intel(g, 1).doctrine), 'doctrine: ' + intel(g, 1).doctrine);
+  assert.equal(intel(g, PLAYER).doctrine, null, 'not shown for your own house');
+});
+
 console.log(`${passed} passed`);

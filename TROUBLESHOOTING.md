@@ -132,3 +132,7 @@ The game is now **Auld World** (was Seven Holds). Title, header, README, package
 - Pulling down an Armoury lost the goods already paid for kit in its queue; they are now refunded with the building's share.
 - The forge ate every 6 steel for arms levels, starving the Armoury of steel for swords, lances, crossbows and plate. With an Armoury standing the forge leaves `FORGE_RESERVE` (8) steel.
 - The Council's Learning stat for a rival was a bare number with an old tooltip; it now reads N/9 and names the techs for partners, allies and spied houses. Spy reports add the research under way and the kit in store.
+
+## T-042 - Doctrine invisible; stale difficulty table (fixed 2026-10-08, hourly run 8)
+- The Grok pass gave each people an AI doctrine (granary, legion, hold, hearth, raid) but nothing showed it; the Council card now says "plays the <doctrine>" with what it means.
+- README: "You lose when your last village and keep fall" (now the royal line), the difficulty table had pre-Grok Hard numbers, a "First war" timer that is now only the earliest war, and a "Fortune to win" column for a win that no longer exists. Rewritten, with a doctrine table.

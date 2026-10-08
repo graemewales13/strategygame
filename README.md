@@ -204,14 +204,26 @@ Build **Village** (needs a keep or a mine, 100 grain, 150 timber, 30 coin, 30 s)
 
 ### Ways to win and lose
 - **Conquest is the only win:** the royal line of every rival house must end (king and two heirs). Wealth and village share never win.
-- You lose when your last village and keep fall.
+- You lose when the last of your royal line dies.
 The first five buildings are the game: mine, market, keep, barracks, tavern. The rest unlock after them.
 
-| Tier | Your purse | Rival income | Rival army cap | First war | Fortune to win |
+| Tier | Your purse | Rival income | Rival army cap | Earliest war of their own | How strong a case for war they need |
 |---|---|---|---|---|---|
-| Easy | x1.5 | x0.8 | 14 | 20 min | 4000 |
-| Mid | x1.0 | x1.0 | 22 | 14 min | 6000 |
-| Hard | x0.9 | x1.1 | 32 | 10 min | 10000 |
+| Easy | x1.5 | x0.8 | 14 | 12 min | strong (0.65) |
+| Mid | x1.0 | x1.0 | 22 | 8.4 min | middling (0.5) |
+| Hard | x0.9 | x1.15 (and they think faster) | 36 | 4.8 min | weak (0.34) |
+
+After the earliest time a house goes to war only when its reading of a neighbour calls for it (see "War and peace"); the bar is raised or lowered a little by its people's doctrine.
+
+**Each people plays its own way** (when the rival is not copying the player's learned playbook). The Council card shows it:
+
+| People | Doctrine | Plays |
+|---|---|---|
+| Egyptians | granary | farms, temple and market first; a smaller army, more bow; slow to war |
+| Romans | legion | barracks, towers and a keep first; the largest foot line |
+| Scots | hold | archery and towers; mostly bowmen; two spies; a little slow to war |
+| British | hearth | market, mill and cottages; a balanced army; slow to war |
+| Mongols | raid | stables and archery early; horse and bow; two spies; quick to war |
 
 Set it in the Skirmish panel or with `?diff=easy|mid|hard`. `tools/play.js [min] [seeds] [houses] [style] [tier]` (styles econ, trader, conquer, rush, turtle; `QUIET=1` for one line per run) is how the tiers were compared.
 
