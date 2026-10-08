@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, LEARNING, TECH, TECH_KEYS, MEDICINE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -686,6 +686,8 @@ export class Game {
     if (!b || b.type !== 'building' || b.team !== team || b.hp <= 0) return false;
     const back = b.built >= 1 ? 0.3 : 0.8, p = this.players[team], cost = BUILDINGS[b.kind]?.cost || {};
     for (const k in cost) if (cost[k]) p[k] = (p[k] || 0) + Math.floor(cost[k] * back);
+    for (const q of b.craft || []) for (const k in GEAR[q.item].cost) p[k] = (p[k] || 0) + GEAR[q.item].cost[k];   // kit ordered but not made: its goods come back
+    b.craft = [];
     this.ejectAll(b); b.hp = 0; this._stance = {};
     if (team === PLAYER) this.log(PLAYER, `Your ${BUILDINGS[b.kind].label.toLowerCase()} is pulled down (${Math.round(back * 100)}% of its cost recovered).`, 'info');
     this.cleanup();
@@ -2033,7 +2035,7 @@ export class Game {
         p.rateT = 0;
       }
       // forge: steel -> arms levels
-      if (p.arms < 3 && p.steel >= ARMS_STEEL && this.hasBuilding(p.team, 'forge')) {
+      if (p.arms < 3 && p.steel >= ARMS_STEEL + (this.hasBuilding(p.team, 'armoury') ? FORGE_RESERVE : 0) && this.hasBuilding(p.team, 'forge')) {   // with an armoury, the forge leaves it steel for kit
         p.armsT += dt;
         if (p.armsT >= 14) { p.armsT = 0; p.steel -= ARMS_STEEL; p.arms++; this.log(p.team === PLAYER ? PLAYER : -1, `${p.name}'s forges turn out better arms (level ${p.arms}).`, p.team === PLAYER ? 'good' : 'info'); }
       } else p.armsT = 0;

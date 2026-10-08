@@ -552,4 +552,26 @@ test('science: Medicine mends idle soldiers', () => {
   assert.ok(u.hp > hp0 + 2, `mends with Medicine ${hp0} -> ${u.hp}`);
 });
 
+test('gaps: pulling down an armoury gives back the goods for kit not yet made; spies learn a rival\'s research and kit', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  Object.assign(p, { wood: 500, iron: 20, gold: 500, stone: 100 }); p.tech.masonry = p.tech.metallurgy = true;
+  const arm = g.addBuilding('armoury', PLAYER, h.tx - 9, h.ty + 6, true);
+  g.craft(PLAYER, arm.id, 'mail'); g.craft(PLAYER, arm.id, 'mail');
+  const iron = p.iron; g.demolish(PLAYER, arm.id);
+  assert.equal(p.iron - iron, 8, 'both mail orders refunded');
+  const q = g.players[1]; q.research = 'fletching'; q.gear = { spear: 3 };
+  g.known[0][1] = g.known[1][0] = true; g.spyIntel[PLAYER + '>1'] = g.time;
+  const s = intel(g, 1).secrets;
+  assert.equal(s.research, 'Fletching'); assert.ok(s.kit.some((k) => /3 spears/.test(k)));
+  assert.ok(intel(g, 1).techs, 'a spied house\'s techs are known');
+});
+
+test('gaps: with an armoury standing, the forge leaves steel for kit', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  g.addBuilding('forge', PLAYER, h.tx + 9, h.ty + 6, true); g.addBuilding('armoury', PLAYER, h.tx - 9, h.ty + 6, true);
+  p.steel = 10; run(g, 20);
+  assert.equal(p.arms, 0, 'the forge does not eat the armoury\'s steel'); assert.equal(p.steel, 10);
+  p.steel = 14; run(g, 20); assert.equal(p.arms, 1, 'above the reserve it still makes arms'); assert.equal(p.steel, 8);
+});
+
 console.log(`${passed} passed`);

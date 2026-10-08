@@ -451,7 +451,7 @@ export class UI {
       + stat('Power', `${i.power}${me ? '' : ` <small>(you ${mine.power})</small>`}`, 'Health × damage of every fighter, ranks and king included. A rookie footman is 1.0.')
       + stat('Money', `${i.moneyExact ? '' : '≈ '}${i.moneyShown}`, i.moneyExact ? 'Their purse, shown because you trade or are allied.' : 'Their purse, guessed. Trade or ally to see it exactly.')
       + stat('Influence', `${i.influence}${i.leaning ? ` <small>(${i.leaning} leaning)</small>` : ''}`, 'How hard their keeps, markets, temples and mines lean on villages they do not hold; villages leaning their way.')
-      + stat('Learning', `${i.sci} · arms ${i.arms}`, 'Science level and arms level.')
+      + stat('Learning', `${i.sci}/${TECH_KEYS.length} · arms ${i.arms}`, `Technologies known (of ${TECH_KEYS.length}) and the forge's arms level.${i.techs ? `<br>Known: ${i.techs.join(', ') || 'none'}` : '<br>Trade, ally or spy on them to learn which.'}`)
       + `</div>`;
     if (me) return html;
     const rels = [];
@@ -467,7 +467,7 @@ export class UI {
     if (i.secrets) {
       const s = i.secrets, mix = Object.entries(s.mix).map(([k, n]) => `${n} ${UNITS[k].label.toLowerCase()}${n === 1 ? '' : 's'}`).join(', ') || 'no soldiers';
       const plan = s.war != null ? `means war on <b>${s.war === PLAYER ? 'you' : esc(HOUSES[s.war].short)}</b>` : s.warIn ? `not ready for war (about ${Math.ceil(s.warIn / 60)} min)` : 'no war planned';
-      html += `<div class="dline" data-tip="${encodeURIComponent('<b>Spy report</b><br>Your spy inside one of their villages sends word. It fades 45 s after the spy leaves or is caught; a caught spy angers their lord.')}">🕵 <b>Spy report:</b> ${mix}${s.captains.length ? ` · captains ${s.captains.map(esc).join(', ')}` : ''}${s.far.length ? ` · far-landers ${s.far.map(esc).join(', ')}` : ''} · ${plan}${s.village ? ` · marching on <b>${esc(s.village)}</b>` : ''}</div>`;
+      html += `<div class="dline" data-tip="${encodeURIComponent('<b>Spy report</b><br>Your spy inside one of their villages sends word. It fades 45 s after the spy leaves or is caught; a caught spy angers their lord.')}">🕵 <b>Spy report:</b> ${mix}${s.captains.length ? ` · captains ${s.captains.map(esc).join(', ')}` : ''}${s.far.length ? ` · far-landers ${s.far.map(esc).join(', ')}` : ''} · ${plan}${s.village ? ` · marching on <b>${esc(s.village)}</b>` : ''}${s.research ? ` · studying ${esc(s.research)}` : ''}${s.kit?.length ? ` · kit in store: ${s.kit.map(esc).join(', ')}` : ''}</div>`;
     } else if (i.known) html += `<div class="dline" style="opacity:.7">Put a spy inside one of their villages to learn their army, captains and plans.</div>`;
     const known = true, wait = Math.ceil(g.parleyIn(PLAYER, t)), pend = g.offers.some((o) => o.from === PLAYER && o.to === t);
     const btn = (state, label, why) => `<button class="dbtn ${rel === state ? 'cur' : ''} ${state === 'war' ? 'warbtn' : ''}" data-act="treaty" data-team="${t}" data-state="${state}" ${rel === state || why ? 'disabled' : ''} title="${esc(why || '')}">${label}</button>`;

@@ -103,6 +103,7 @@ export const MINE_MAX_WORKERS = 4;
 export const MINE_JOBS = { r: 16, share: 0.3, campShare: 0.6, keep: 6, campKeep: 4, pull: 0.12, ownBonus: 1.5, freeBonus: 1.0, refresh: 2 };
 export const SMELT = { steel: { in: { iron: 2, coal: 1 }, time: 7 }, ware: { in: { copper: 2, coal: 1 }, time: 8 } };
 export const ARMS_STEEL = 6;   // steel per forge arms level (max 3)
+export const FORGE_RESERVE = 8;   // with an armoury standing, the forge leaves this much steel for swords, lances, crossbows and plate
 export const SCI_SILVER = 6;   // silver per science level (max 3)
 export const SCIENCE = ['Husbandry', 'Masonry', 'Drill']; // (legacy names of the first three techs; see TECH)
 // ---- science. The Academy is the house's science division: every academy makes LEARNING (a little on its own, more with scholars beside it,

@@ -126,3 +126,9 @@ The game is now **Auld World** (was Seven Holds). Title, header, README, package
 ## T-040 - Carry-over between matches; stale forfeit text (fixed 2026-10-08)
 - `Game.losses` (war weariness) and `Game.spyIntel` (spy reports) were created lazily and never cleared by `reset()`, so a new match inherited the last one's war losses and spy reports; a save also dropped them. `reset()` now clears both (and the `_stance` cache); `serialize()`/`restore()` keep them.
 - After the royal-line rule replaced forfeits, the top bar still counted down "forfeits in N s", and the first-match objective and the hold-bar tooltip described the old win. They now speak of the royal line; `checkForfeit` is gone.
+
+## T-041 - Science and armoury loose ends (fixed 2026-10-08, hourly run 5)
+- README step 6 still said the Academy turns silver into science levels; it now points to the research tree.
+- Pulling down an Armoury lost the goods already paid for kit in its queue; they are now refunded with the building's share.
+- The forge ate every 6 steel for arms levels, starving the Armoury of steel for swords, lances, crossbows and plate. With an Armoury standing the forge leaves `FORGE_RESERVE` (8) steel.
+- The Council's Learning stat for a rival was a bare number with an old tooltip; it now reads N/9 and names the techs for partners, allies and spied houses. Spy reports add the research under way and the kit in store.

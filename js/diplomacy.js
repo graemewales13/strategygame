@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -424,7 +424,7 @@ export function intel(g, t, viewer = PLAYER) {
     opinion: Math.round(o), attitude: attitudeLabel(o), why: (g.whyOp[t + '>' + viewer] || []).slice(0, 3),
     allies: alliesOf(g, t), enemies: enemiesOf(g, t),
     secrets: spied ? secretsOf(g, t) : null,
-    heirs: p.heirs ?? 2, fugitive: !g.seatOf(t),
+    heirs: p.heirs ?? 2, fugitive: !g.seatOf(t), techs: partner ? Object.keys(p.tech || {}).map((k) => TECH[k]?.label).filter(Boolean) : null,
     stance: t === viewer ? null : stance(g, t, viewer),
   };
 }
@@ -443,5 +443,7 @@ export function secretsOf(g, t) {
     war: p.planWar != null && g.players[p.planWar]?.alive ? p.planWar : null,
     warIn: p.warIn ?? null,
     village: pv && pv.owner !== t ? pv.name : null,
+    research: p.research ? TECH[p.research]?.label : null,
+    kit: Object.entries(p.gear || {}).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${GEAR[k].label.toLowerCase()}`),
   };
 }
