@@ -195,6 +195,9 @@ export const FREE_RATE = 0.4;     // multiplier on LOYALTY_RATE while the villag
 export const TOWN_RANGE = 4;
 export const SPY_RATE = 1.7;     // loyalty/sec while a spy is inside
 export const SPY_CATCH = 0.004;  // base catch chance per second, plus protection/16000
+// A spy inside a village a rival house holds reports on that house (purse, army, captains, far-landers, plans) for `fresh` seconds after leaving;
+// a spy caught in a held village costs you `caught` opinion with its lord.
+export const SPY_INTEL = { fresh: 45, caught: -12 };
 // difficulty tiers. playerMul scales the player's starting purse and stores; aiMul scales every coin an AI house earns;
 // armyCap and warAfter govern how big and how soon rival armies come; think slows or quickens their decisions;
 // wealth is the fortune (coin plus goods at market value) that wins the game when held for WEALTH_HOLD seconds.

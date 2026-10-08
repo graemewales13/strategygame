@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -307,7 +307,8 @@ export function intel(g, t, viewer = PLAYER) {
   const p = g.players[t], st = g.standings().find((s) => s.team === t), k = g.kingOf(t), pr = p.persona || {};
   const rank = ranking(g).find((r) => r.team === t);
   const infl = g.influenceMap();
-  const partner = t === viewer || g.rel[viewer][t] === 'trade' || g.rel[viewer][t] === 'alliance';
+  const spied = t !== viewer && !!g.spiedOn?.(viewer, t);
+  const partner = t === viewer || g.rel[viewer][t] === 'trade' || g.rel[viewer][t] === 'alliance' || spied;
   const fuzz = (n) => (n < 100 ? Math.round(n / 10) * 10 : Math.round(n / 50) * 50);
   const o = t === viewer ? 0 : op(g, t, viewer);
   return {
@@ -318,5 +319,23 @@ export function intel(g, t, viewer = PLAYER) {
     influence: Math.round(infl.pull[t] * 10), leaning: infl.leaning[t],
     opinion: Math.round(o), attitude: attitudeLabel(o), why: (g.whyOp[t + '>' + viewer] || []).slice(0, 3),
     allies: alliesOf(g, t), enemies: enemiesOf(g, t),
+    secrets: spied ? secretsOf(g, t) : null,
+  };
+}
+// what a spy inside one of their villages learns of a house: its army by kind, its captains and far-landers by name, and its plans
+export function secretsOf(g, t) {
+  const p = g.players[t], mix = {}, captains = [], far = [];
+  for (const u of g.units) {
+    if (u.team !== t || u.hp <= 0) continue;
+    if (g.powerOf(u) > 0 && u.kind !== 'king') mix[u.kind] = (mix[u.kind] || 0) + 1;
+    if (u.captain) captains.push(u.name || UNITS[u.kind].label);
+    if (u.far && FARLANDS[u.far]) far.push(`${u.name} (${FARLANDS[u.far].label})`);
+  }
+  const pv = p.planVillage != null ? g.byId.get(p.planVillage) : null;
+  return {
+    mix, captains, far,
+    war: p.planWar != null && g.players[p.planWar]?.alive ? p.planWar : null,
+    warIn: p.warIn ?? null,
+    village: pv && pv.owner !== t ? pv.name : null,
   };
 }

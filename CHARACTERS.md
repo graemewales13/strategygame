@@ -81,4 +81,4 @@ Each people has its own name pool (`FAR_NAMES` in `names.js`). Rival AIs hire th
 2. **Stances** (AoE II): hold ground, defend, or pursue, per unit or group. The "no running from a fight" and sally rules already cover part of this.
 3. **Injuries** (Battle Brothers): a fighter who nearly dies may come back with a lasting wound, a counterweight to Death-cheater.
 4. **Unique unit per people** (AoE II): for example a Mongol horse archer or a Roman legionary, trained only by that house.
-5. **Rival character intel through spies**: a spy inside a rival town reveals their captains and best soldiers by name.
+5. ~~**Rival character intel through spies**~~: done 2026-10-08 (spy reports on the Council card: purse, army, captains, far-landers, plans).

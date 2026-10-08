@@ -378,4 +378,25 @@ test('ai: a rival lacking an ore that no village can dig founds a mining camp be
   assert.equal(v.kind, 'mine', 'and becomes a mining camp');
 });
 
+test('espionage: a spy inside a rival village reports their army, captains, far-landers and plans; a caught spy angers their lord', () => {
+  const g = mk(); const v = g.villages.find((x) => x.owner === 1); assert.ok(v, 'house 1 holds its home village');
+  g.known[PLAYER][1] = g.known[1][PLAYER] = true;
+  assert.equal(intel(g, 1).secrets, null, 'no spy, no report');
+  const c = g.addUnit('footman', 1, v.x + 3, v.y + 3); c.rank = 3; c.captain = true;
+  const f = g.addUnit('footman', 1, v.x + 4, v.y + 3); f.far = 'norse'; f.name = 'Hallvard Wave-Reader';
+  g.players[1].planWar = PLAYER;
+  const spy = g.addUnit('spy', PLAYER, v.x + 1, v.y + 1);
+  g.cmdInfiltrate([spy], v);
+  const catchRate = Math.random; Math.random = () => 0.99;   // the spy is not caught while he settles in
+  run(g, 4); Math.random = catchRate;
+  const i = intel(g, 1);
+  assert.ok(i.secrets, 'the spy reports'); assert.ok(i.moneyExact, 'and their purse is known exactly');
+  assert.ok(i.secrets.mix.footman >= 2); assert.ok(i.secrets.captains.includes(c.name)); assert.ok(i.secrets.far.some((x) => /Hallvard/.test(x)));
+  assert.equal(i.secrets.war, PLAYER, 'their plan of war is known');
+  const op0 = g.opinion[1][PLAYER];
+  Math.random = () => 0; g.doInfiltrate(spy, 0.5); Math.random = catchRate;
+  assert.equal(spy.hp, 0, 'caught'); assert.ok(g.opinion[1][PLAYER] < op0, 'their lord thinks less of us');
+  g.time += 60; assert.equal(intel(g, 1).secrets, null, 'the report fades once the spy is gone');
+});
+
 console.log(`${passed} passed`);

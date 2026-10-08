@@ -180,11 +180,12 @@ function think(game, team, p) {
   if (readyArmy.length >= need && t > firstAt) {
     const strength = readyArmy.reduce((n, u) => n + UNITS[u.kind].hp, 0);
     const v = nearestVillage(game, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => u.kind === 'ram') ? 400 : 0), 42);
-    if (v) game.cmdAttack(readyArmy.filter((u) => u.kind !== 'spy'), v);
+    if (v) { game.cmdAttack(readyArmy.filter((u) => u.kind !== 'spy'), v); p.planVillage = v.id; }
   }
 
   // 6. war: late, and only with a real army
   const warAfter = pb?.warAt ? clamp(lerp(game.diff.warAfter, pb.warAt, wb), 240, 1800) : game.diff.warAfter;
+  p.warIn = Math.max(0, Math.round(warAfter - t));
   if (t > warAfter && army.length >= 9) {
     let target = null, bd = 1e9;
     for (const q of game.players) {
@@ -196,6 +197,7 @@ function think(game, team, p) {
       const d = Math.hypot(s.x - seat.x, s.y - seat.y) + (game.rel[team][q.team] === 'trade' ? 500 : 0) + game.opinion[team][q.team] * 1.2 - (game.rel[team][q.team] === 'war' ? 300 : 0); // trade partners and friends are the last to be attacked; a house already at war is finished first
       if (d < bd) { bd = d; target = q; }
     }
+    p.planWar = target ? target.team : null;
     if (target) {
       if (game.rel[team][target.team] !== 'war') game.setRelation(team, target.team, 'war');
       const ready = army.filter((u) => u.task.type === 'idle');
