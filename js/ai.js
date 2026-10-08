@@ -37,9 +37,19 @@ function think(game, team, p) {
   const serfs = game.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0);
   const t = game.time;
 
-  // 0. the king keeps to his own hearth: he fights what comes to him and walks home after
-  const king = game.kingOf(team);
+  // 0. the king keeps to his own hearth: he fights what comes to him and walks home after. His line is the house: when foes come near and he
+  // is hurt, outnumbered or the last of the line, he shelters in the nearest keep, and steps out again once it is quiet and he is whole.
+  const king = game.kingOf(team), lastOfLine = (p.heirs ?? KING.heirs) <= 0;
   if (king && !king.inside) {
+    const foe = game.closestEnemy(king, 10, team), keep = foe && game.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0 && b.garrison.length < 8).sort((a, c) => Math.hypot(a.x - king.x, a.y - king.y) - Math.hypot(c.x - king.x, c.y - king.y))[0];
+    const foes = foe ? game.units.filter((u) => u.hp > 0 && !u.inside && game.isEnemy(team, u.team) && game.powerOf(u) > 0 && Math.hypot(u.x - king.x, u.y - king.y) < 10).length : 0;
+    const guards = foe ? game.units.filter((u) => u.team === team && u.hp > 0 && !u.inside && u !== king && game.powerOf(u) > 0 && Math.hypot(u.x - king.x, u.y - king.y) < 10).length : 0;
+    if (keep && (lastOfLine || king.hp < king.maxHp * 0.6 || foes > guards + 1) && king.task.type !== 'enter') game.cmdEnter([king], keep);
+  } else if (king && king.inside) {
+    const home = game.byId.get(king.inside);
+    if (home && home.type === 'building' && king.hp >= king.maxHp * 0.95 && !game.closestEnemy(home, 14, team) && !lastOfLine) game.eject(king, home);
+  }
+  if (king && !king.inside && king.task.type !== 'enter') {
     const dh = Math.hypot(king.x - seat.x, king.y - seat.y);
     if ((king.task.type === 'idle' && dh > 7) || (king.task.type === 'attack' && dh > KING.leash) || (king.hp < king.maxHp * 0.4 && dh > 4)) game.cmdMove([king], seat.x + 0.4, seat.y + 4.2);
   }
@@ -208,9 +218,7 @@ function think(game, team, p) {
     if (target) {
       const ready = army.filter((u) => u.task.type === 'idle');
       if (ready.length >= 7) {
-        const foe = game.buildings.filter((b) => b.team === target.team && b.hp > 0)
-          .sort((a, c) => (c.kind === 'keep' ? 1 : 0) - (a.kind === 'keep' ? 1 : 0) || Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
-        const goal = foe || game.seatOf(target.team);   // a house with only a village left is finished there
+        const goal = huntGoal(game, team, target.team, seat, ready);
         if (goal) game.cmdAttack(ready, goal);
       }
     }
@@ -220,6 +228,20 @@ function think(game, team, p) {
   }
 }
 
+// Where a war is won: at the enemy's crown. An exposed king (seen, outside walls, within reach of our army) is the first target; a king behind
+// walls makes his keep the target; then their keeps and nearest buildings, then their seat; a house with none of those is ended by running
+// its fugitive king down (he is seen by all), or failing that by its last fighters.
+export function huntGoal(game, team, foeTeam, seat, ready) {
+  const k = game.kingOf(foeTeam), cx = ready.reduce((a, u) => a + u.x, 0) / Math.max(1, ready.length), cy = ready.reduce((a, u) => a + u.y, 0) / Math.max(1, ready.length);
+  if (k && !k.inside && game.canSee(team, k.x, k.y) && (Math.hypot(k.x - cx, k.y - cy) < 45 || !game.seatOf(foeTeam))) return k;
+  if (k && k.inside) { const h = game.byId.get(k.inside); if (h && h.hp > 0) return h; }
+  const foe = game.buildings.filter((b) => b.team === foeTeam && b.hp > 0)
+    .sort((a, c) => (c.kind === 'keep' ? 1 : 0) - (a.kind === 'keep' ? 1 : 0) || Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
+  if (foe) return foe;
+  const s = game.seatOf(foeTeam); if (s) return s;   // a house with only a village left is finished there
+  if (k && !k.inside) return k;
+  return game.units.find((u) => u.team === foeTeam && u.hp > 0 && !u.inside && game.powerOf(u) > 0) || null;
+}
 const HIRE_WORTH = { veteran: 2, keen: 1.6, brawny: 1.5, fleet: 1, green: 0.6 };
 // nearest unmined deposit inside our territory (or beside a village of ours), preferring ores we do not already dig
 export function pickDeposit(game, team, seat) {

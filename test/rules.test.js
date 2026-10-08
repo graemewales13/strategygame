@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury } from '../js/ai.js';
+import { treasury, huntGoal, updateAI } from '../js/ai.js';
 import { deliberate as dip_deliberate, intel, stance } from '../js/diplomacy.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING } from '../js/config.js';
 
@@ -447,6 +447,31 @@ test('stance: a keep over a rival village, soldiers in its land and weakness mak
   g.rel[a][b] = g.rel[b][a] = 'trade'; g.relSince[a][b] = g.relSince[b][a] = g.time - 1000; g.time += 10; g._stance = {};
   assert.ok(stance(g, a, b).ties > hot.ties, 'trade is a tie');
   const st = stance(g, a, b); assert.ok(['means war', 'wary', 'friendly', 'at ease'].includes(st.mood));
+});
+
+test('ai: a war is won at the crown - exposed kings first, then the keep he hides in, and a fugitive king is run down', () => {
+  const g = mk(); g.fogOn = false; g.rel[1][PLAYER] = g.rel[PLAYER][1] = 'war';
+  const seat = g.seatOf(1), k = g.kingOf(PLAYER);
+  const army = [0, 1, 2].map((i) => g.addUnit('footman', 1, k.x + 6 + i, k.y));
+  assert.equal(huntGoal(g, 1, PLAYER, seat, army), k, 'the exposed king is the target');
+  const keep = g.addBuilding('keep', PLAYER, Math.round(k.x) + 2, Math.round(k.y) + 2, true); g.recomputeWalk();
+  k.inside = keep.id; keep.garrison.push(k.id);
+  assert.equal(huntGoal(g, 1, PLAYER, seat, army), keep, 'a king behind walls makes his keep the target');
+  k.inside = null; keep.garrison = []; keep.hp = 0; g.cleanup();
+  for (const v of g.villagesOf(PLAYER)) { v.owner = -1; v.lean = -1; v.loyalty = 0; }
+  for (const b of g.buildings) if (b.team === PLAYER) b.hp = 0; g.cleanup();
+  k.x += 80;   // far from the army: still hunted, he has no seat
+  assert.equal(huntGoal(g, 1, PLAYER, seat, army), k, 'a house without a seat is ended by running its king down');
+});
+
+test('ai: a king shelters in his keep when foes come near, always when he is the last of his line', () => {
+  const g = new Game({ seed: 8, houses: 3, ai: true }); const t = 1, p = g.players[t], seat = g.seatOf(t), k = g.kingOf(t);
+  g.rel[0][1] = g.rel[1][0] = 'war'; p.heirs = 0;
+  const keep = g.addBuilding('keep', t, Math.round(k.x) + 3, Math.round(k.y) - 1, true); g.recomputeWalk();
+  g.addUnit('scout', PLAYER, k.x + 4, k.y + 2);
+  for (let i = 0; i < 40 && !k.inside; i++) g.tick(0.25);
+  assert.equal(k.inside, keep.id, 'the last of the line is safe behind walls');
+  void seat; void updateAI;
 });
 
 console.log(`${passed} passed`);
