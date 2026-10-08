@@ -8,32 +8,30 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=muzctimk">
+<link rel="stylesheet" href="style.css?v=muzghdh4">
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muzctimk",
-    "./js/art.js": "./js/art.js?v=muzctimk",
-    "./js/audio.js": "./js/audio.js?v=muzctimk",
-    "./js/config.js": "./js/config.js?v=muzctimk",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=muzctimk",
-    "./js/entities.js": "./js/entities.js?v=muzctimk",
-    "./js/game.js": "./js/game.js?v=muzctimk",
-    "./js/gfx.js": "./js/gfx.js?v=muzctimk",
-    "./js/learn.js": "./js/learn.js?v=muzctimk",
-    "./js/main.js": "./js/main.js?v=muzctimk",
-    "./js/map.js": "./js/map.js?v=muzctimk",
-    "./js/models3d.js": "./js/models3d.js?v=muzctimk",
-    "./js/names.js": "./js/names.js?v=muzctimk",
-    "./js/net.js": "./js/net.js?v=muzctimk",
-    "./js/objectives.js": "./js/objectives.js?v=muzctimk",
-    "./js/recorder.js": "./js/recorder.js?v=muzctimk",
-    "./js/render.js": "./js/render.js?v=muzctimk",
-    "./js/render3d.js": "./js/render3d.js?v=muzctimk",
-    "./js/save.js": "./js/save.js?v=muzctimk",
-    "./js/terrain.js": "./js/terrain.js?v=muzctimk",
-    "./js/trainui.js": "./js/trainui.js?v=muzctimk",
-    "./js/ui.js": "./js/ui.js?v=muzctimk"
+    "./js/ai.js": "./js/ai.js?v=muzghdh4",
+    "./js/art.js": "./js/art.js?v=muzghdh4",
+    "./js/audio.js": "./js/audio.js?v=muzghdh4",
+    "./js/config.js": "./js/config.js?v=muzghdh4",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=muzghdh4",
+    "./js/entities.js": "./js/entities.js?v=muzghdh4",
+    "./js/game.js": "./js/game.js?v=muzghdh4",
+    "./js/gfx.js": "./js/gfx.js?v=muzghdh4",
+    "./js/learn.js": "./js/learn.js?v=muzghdh4",
+    "./js/main.js": "./js/main.js?v=muzghdh4",
+    "./js/map.js": "./js/map.js?v=muzghdh4",
+    "./js/names.js": "./js/names.js?v=muzghdh4",
+    "./js/net.js": "./js/net.js?v=muzghdh4",
+    "./js/objectives.js": "./js/objectives.js?v=muzghdh4",
+    "./js/recorder.js": "./js/recorder.js?v=muzghdh4",
+    "./js/render.js": "./js/render.js?v=muzghdh4",
+    "./js/save.js": "./js/save.js?v=muzghdh4",
+    "./js/terrain.js": "./js/terrain.js?v=muzghdh4",
+    "./js/trainui.js": "./js/trainui.js?v=muzghdh4",
+    "./js/ui.js": "./js/ui.js?v=muzghdh4"
   }
 }
 </script>
@@ -41,7 +39,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muzctimk';
+window.__BUILD = 'muzghdh4';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -69,7 +67,7 @@ document.addEventListener('pointerdown', function (e) {
 document.addEventListener('keydown', function () { if (!window.__boot.ready) { window.__boot.pending = true; var h = document.querySelector('.splashhint'); if (h) h.textContent = 'Loading the valley...'; } }, true);
 </script>
 </head>
-<body class="titleview">
+<body>
 <div id="app">
   <header id="topbar">
     <div id="brand"><canvas id="brandCrest" width="36" height="40"></canvas><span>Auld World</span></div>
@@ -87,7 +85,6 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
       <span id="clock">0:00</span>
       <button id="btnSpeed" title="Game speed">1x</button>
       <button id="btnSound" title="Sound on / off">Sound on</button>
-      <button id="btnView" title="View">3D</button>
       <button id="btnCouncil" title="The Council of Houses: stats, treaties, letters (C)">Council</button>
       <button id="btnMap" title="Campaign map (M / Tab)">Map</button>
       <button id="btnMenu" title="Menu (Esc)">Menu</button>
@@ -114,28 +111,17 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
   </footer>
 
   <!-- Splash and main menu (painted art; the labels are in the picture, the buttons are hotspots over it) -->
-  <div id="splash" class="screen splash">
-    <div class="splashcard">
-      <div class="eyebrow">A game of five houses</div>
-      <h1 class="bigtitle">Auld World</h1>
-      <div class="rule"><i></i></div>
-      <div class="splashhint">Click anywhere to begin</div>
-    </div>
-    <div class="buildtag" id="splashBuild"></div>
-  </div>
-  <script>try { document.getElementById("splashBuild").textContent = "build " + window.__BUILD + " \u00b7 branch grok"; } catch (e) {}</script>
+  <div id="splash" class="screen splash"><div class="splashimg"><div class="splashhint">Click anywhere to begin</div><div class="buildtag" id="splashBuild"></div></div></div>
+  <script>try { document.getElementById("splashBuild").textContent = "build " + window.__BUILD + " · branch grok"; } catch (e) {}</script>
   <div id="mainmenu" class="screen hidden">
-    <nav class="mmnav">
-      <div class="eyebrow">A game of five houses</div>
-      <h1 class="mmtitle">Auld World</h1>
-      <div class="rule"><i></i></div>
-      <button class="mbtn" id="hContinue">Continue</button>
-      <button class="mbtn" id="hNew">New Game</button>
-      <button class="mbtn" id="hMap">Campaign</button>
-      <button class="mbtn" id="hSkirmish">Skirmish</button>
-      <button class="mbtn" id="hOptions">Options</button>
-      <button class="mbtn" id="hQuit">Quit</button>
-    </nav>
+    <div class="mmimg" id="mmimg">
+      <button class="hot" id="hContinue" style="top:27.9%" aria-label="Continue"></button>
+      <button class="hot" id="hNew" style="top:36.5%" aria-label="New Game"></button>
+      <button class="hot" id="hMap" style="top:45.1%" aria-label="Campaign"></button>
+      <button class="hot" id="hSkirmish" style="top:53.7%" aria-label="Skirmish"></button>
+      <button class="hot" id="hOptions" style="top:62.4%" aria-label="Options"></button>
+      <button class="hot" id="hQuit" style="top:71.0%" aria-label="Quit"></button>
+    </div>
     <div id="savebar"><span id="sbInfo"></span><button id="sbSave">Save game (F5)</button><button id="sbLoad">Load saved game (F9)</button><button id="sbAuto">Load autosave</button></div>
   </div>
 

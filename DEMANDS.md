@@ -50,7 +50,8 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - Full markets spill into warehouses (`WAREHOUSE_CAP`), which refill the shelf; goods can be moved on by camel routes or sold.
 
 ## Title screens, crowds, defence, the throne
-- The splash and title menu are clean type over a live, slowly drifting view of the valley (no painted pictures, no black bars); the HUD is hidden while they show and `game.titleView` lifts fog for the view only. Keep `#hContinue/#hNew/#hMap/#hSkirmish/#hOptions/#hQuit` ids as real buttons.
+- The splash and title menu are the painted pictures (`assets/menu/`), with the menu buttons as hotspots over the art. The owner rejected the "clean type over a live valley" title look (reverted 2026-10-08): do not bring it back. Keep `#hContinue/#hNew/#hMap/#hSkirmish/#hOptions/#hQuit` ids as real buttons.
+- The game is 2D only. The owner rejected the Three.js 3D view (reverted 2026-10-08): do not reintroduce it.
 - Units keep room (`Game.separate`): a marching group is never stacked into one body.
 - Idle soldiers within `DEFEND_R` (5) squares of a building, unit or village under attack turn on the attacker (`rallyDefenders`).
 - A king is always appointed: an heir is crowned `KING.heir` (2 s) after a king falls, and a house with no king and no heir timer is given one.

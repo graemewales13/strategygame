@@ -67,9 +67,6 @@ Every match you play is recorded in your browser (menu > **AI training**: on by 
 - `node tools/arena.js [minutes] [seeds] [houses] [file]` is the measure of "well trained": headless matches where one house plays by the playbook and the rest by the built-in habits, against a control where nobody does, reporting the change in relative power.
 - `RECORD=dir node tools/play.js ...` records the scripted test player the same way a human is recorded (for testing the pipeline).
 
-## The 3D view
-The game opens in 3D when the browser has WebGL (otherwise it falls back to the 2D view by itself). Buttons: the **3D/2D** chip in the top bar switches (reloads the page), or add `?3d=0` / `?3d=1` to the address. Camera: WASD/arrows/edge scroll pan relative to the view, wheel zooms, `[` and `]` turn the camera, `\` resets it, hold the **middle mouse button** and drag to turn and tilt. Everything else (selecting, commands, building, Council) is unchanged: `render3d.js` implements the same `Renderer` contract (`toScreen`/`toWorld`/`pick`/`viewPoly`/...) and draws selection boxes, health bars, rank pips and names on the 2D canvas above the WebGL one. The models are procedural placeholders you can swap for glTF later (see the header of `models3d.js`). Three.js is vendored in `vendor/` (r0.186, MIT); no network needed.
-
 ## Rulers, ratings and the Council
 - **Every house has a king** (Pharaoh, Imperator, King, Khan or High King by people), a named character with a temper: *warlike, mercantile, honourable or cunning*. Yours begins at your home village; **K** selects him. Soldiers within 8 tiles of him hit 10% harder and learn faster, and villages he stands among lean toward his house. He is not counted as population, army or a pay-roll soldier. If he falls, villages lose loyalty, soldiers fight at 85% until an **heir** rises after 90 s, and the slayer is famed. Keep him in a keep to heal.
 - **No running from a fight.** A soldier (or king) who has traded blows with a foe still within 3.5 tiles cannot break off: move, garrison and work orders turn into fighting on until the foe is dead. Serfs, scouts, spies and camels may still run. **Garrisons sally:** when foes come near a garrisoned keep, tower, barracks or village (or something in its town is hit), the soldiers inside march out and fight; afterwards they look round the town, fight any other threat, and only then walk back in.
@@ -96,9 +93,7 @@ js/
   game.js         the host: ONE Game object ticks all state; intents in, state out
   ai.js           rival houses (hall first, then cottages, barracks, keep ...)
   net.js          intent/snapshot seam: LocalHost now, SocketClient stub for later
-  render.js       isometric (2:1) canvas drawing only; reads state, never changes it (the classic 2D view; also the base class of the 3D one)
-  render3d.js     3D view on Three.js (vendor/): terrain relief, water, instanced trees, fog, orbit camera, picking. Same contract as render.js
-  models3d.js     procedural low-poly buildings, villages, units, trees and ore (boxes/cones baked into a few geometries; team colours via materials)
+  render.js       isometric (2:1) canvas drawing only; reads state, never changes it
   terrain.js      painted terrain chunks (soft river banks, trails, fords) and the smoothed fog layer, drawn isometrically
   art.js          loads the painted sprites in assets/world/ and recolours banners and unit trim per house
   assets/ui/      portraits, building icons and menu backdrop cropped from the concept boards

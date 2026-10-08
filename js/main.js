@@ -20,27 +20,7 @@ const pendingClick = () => window.__boot && window.__boot.pending;
 await Promise.race([loadArt(), new Promise((r) => setTimeout(r, 10000))]);   // a slow image must not hold the game hostage
 const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people });
 const host = new LocalHost(game);
-let renderer;
-let pref = null; try { pref = localStorage.getItem('auld3d'); } catch {}
-const want3d = params.get('3d') ? params.get('3d') === '1' : pref !== '0';   // 3D by default; falls back to the 2D view if WebGL is missing
-if (want3d) {
-  try {
-    const { Renderer3D } = await import('./render3d.js');
-    renderer = new Renderer3D(document.getElementById('game'), game);
-    window.__is3d = true;
-  } catch (e) { console.error('[auld-world] 3D view unavailable, using 2D', e); document.getElementById('gl3d')?.remove(); renderer = null; }
-}
-if (!renderer) renderer = new Renderer(document.getElementById('game'), game);
-const viewBtn = document.getElementById('btnView');
-if (viewBtn) {
-  viewBtn.textContent = window.__is3d ? '3D' : '2D';
-  viewBtn.title = window.__is3d ? 'Switch to the classic 2D view (restarts the page)' : 'Switch to the 3D view (restarts the page)';
-  viewBtn.onclick = () => {
-    if (game.time > 5 && !confirm('Switching the view reloads the page and your current match is lost. Save first (menu > Save). Switch now?')) return;
-    try { localStorage.setItem('auld3d', window.__is3d ? '0' : '1'); } catch {}
-    const q = new URLSearchParams(location.search); q.set('3d', window.__is3d ? '0' : '1'); location.search = q.toString();
-  };
-}
+const renderer = new Renderer(document.getElementById('game'), game);
 // the rivals learn from the player: every match is recorded, and the playbook is re-learned between matches (never mid-match)
 let store = null; try { store = localStorage; } catch {}
 const recorder = new Recorder(store);
@@ -103,24 +83,10 @@ let lastReport = '';
 window.addEventListener('error', (ev) => reportError('script', ev.error || new Error(ev.message)));
 window.addEventListener('unhandledrejection', (ev) => reportError('promise', ev.reason instanceof Error ? ev.reason : new Error(String(ev.reason))));
 
-let last = performance.now(), titleT = 0;
+let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
-  // splash and title menu: the valley drifts slowly behind the type (3D turns around the hall, 2D sways); it is restored the moment a match begins
-  const title = ui.menuOpen && !ui.started && !ui.campaignOpen;
-  document.body.classList.toggle('titleview', title);
-  if (title !== !!game.titleView) {
-    game.titleView = title; document.body.classList.toggle('titleview', title); window.dispatchEvent(new Event('resize'));   // the HUD hides and the valley fills the window
-    if (!title) { titleT = 0; if (renderer.is3d) renderer.yaw = Math.PI / 4; centerOnHall(); }
-  }
-  if (title) {
-    titleT += dt; const s = game.seatOf(0);
-    if (s) {
-      if (renderer.is3d) { renderer.yaw = Math.PI / 4 + titleT * 0.045; renderer.cam.zoom = 0.8; renderer.centerOn(s.x, s.y); }
-      else { renderer.cam.zoom = 0.9; renderer.centerOn(s.x + Math.sin(titleT * 0.09) * 14, s.y + Math.cos(titleT * 0.07) * 10); }
-    }
-  }
   if (!ui.menuOpen && !ui.paused) {
     let sim = dt * ui.speed;
     try { while (sim > 1e-6) { const s = Math.min(0.05, sim); game.tick(s); sim -= s; } } catch (e) { reportError('simulation', e); }
