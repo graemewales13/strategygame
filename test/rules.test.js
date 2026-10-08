@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
+import { treasury } from '../js/ai.js';
 import { deliberate as dip_deliberate, intel } from '../js/diplomacy.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS } from '../js/config.js';
 
@@ -360,6 +361,21 @@ test('villages: serfs may found a village with only a mine; founded beside ore i
   assert.ok(far.kind === 'mine' || g.depositsNear(far.x, far.y, 10).length === 0, 'away from ore it is an ordinary village');
   run(g, 3);
   assert.ok((mine._crew?.n || 0) >= 1, `the camp's folk dig at once (${mine._crew?.n})`);
+});
+
+test('ai: a rival lacking an ore that no village can dig founds a mining camp beside it', () => {
+  const g = mk(); const t = 1, seat = g.seatOf(t), p = g.players[t];
+  Object.assign(p, { food: 2000, wood: 2000, gold: 2000, stone: 300 });
+  g.addBuilding('keep', t, Math.round(seat.x) + 6, Math.round(seat.y) + 6, true); g.recomputeWalk();
+  const lone = g.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && n.amount > 40 && !(g.minePower(t, n.x, n.y) > 0) && Math.hypot(n.x - seat.x, n.y - seat.y) < 70);
+  assert.ok(lone.length, 'the test valley has out-of-reach ore');
+  g.time = 400; p.campT = 0; p.foundT = 999;
+  treasury(g, t, p, seat, []);
+  const site = g.buildings.find((b) => b.team === t && b.kind === 'village');
+  assert.ok(site, 'a village site is placed');
+  assert.ok(g.depositsNear(site.x, site.y, 10).some((n) => lone.includes(n)), 'beside the ore it lacked');
+  const v = g.foundVillage(site);
+  assert.equal(v.kind, 'mine', 'and becomes a mining camp');
 });
 
 console.log(`${passed} passed`);

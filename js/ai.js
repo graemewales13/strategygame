@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -156,7 +156,8 @@ function think(game, team, p) {
   const keepB = game.buildings.find((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0);
   const tav2 = game.buildings.find((b) => b.team === team && b.kind === 'tavern' && b.built >= 1 && b.hp > 0 && b.roster);
   if (tav2 && keepB && p.gold > 170 && army.length < armyCap) {
-    const i = tav2.roster.findIndex((w) => game.canAfford(team, w.cost));
+    let i = -1, best = 0;   // the most fighter for the coin: a far-lander's gift is worth the most, a green lad the least
+    tav2.roster.forEach((w, k) => { if (!w || !game.canAfford(team, w.cost)) return; const v = (w.far ? 3 : HIRE_WORTH[w.trait] || 1) / (w.cost.gold + 15); if (v > best) { best = v; i = k; } });
     if (i >= 0) game.hire(team, tav2.id, i);
   }
   // an Elite soldier with coin to spare behind him is given command
@@ -211,13 +212,14 @@ function think(game, team, p) {
   }
 }
 
-// nearest unmined deposit inside our territory, preferring ores we do not already dig
+const HIRE_WORTH = { veteran: 2, keen: 1.6, brawny: 1.5, fleet: 1, green: 0.6 };
+// nearest unmined deposit inside our territory (or beside a village of ours), preferring ores we do not already dig
 export function pickDeposit(game, team, seat) {
   const order = ['gold', 'stone', 'iron', 'coal', 'copper', 'silver'];
   const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine').map((b) => b.ore));
   for (const ore of order) {
     if (have.has(ore)) continue;
-    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < (ore === 'stone' ? 16 : ore === 'gold' ? 36 : 30) && game.minePower(team, n.x, n.y) > 0).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
+    const cands = game.resources.filter((n) => n.kind === ore && n.amount > 0 && !n.covered && (Math.hypot(n.x - seat.x, n.y - seat.y) < (ore === 'stone' ? 16 : ore === 'gold' ? 36 : 30) || game.villages.some((v) => v.owner === team && v.founded && Math.hypot(v.x - n.x, v.y - n.y) <= FOUND.campR + 2)) && game.minePower(team, n.x, n.y) > 0).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y));
     for (const n of cands) if (game.mineSpot(team, n)) return n;
   }
   return null;
@@ -245,10 +247,11 @@ function nearestVillage(game, seat, pred, maxD) {
 const MIN_GAP = { keep: 3, barracks: 3, archery: 3, stable: 3, market: 3, temple: 3, academy: 3, tower: 2, workshop: 2, forge: 2, foundry: 2, tavern: 2, mill: 2, warehouse: 2, cottage: 2, farm: 1, mine: 1 };
 const MIL = ['barracks', 'archery', 'stable', 'tower', 'workshop'];
 const rectGap = (tx, ty, s, o) => Math.max(0, Math.max(tx - (o.tx + o.size), o.tx - (tx + s), ty - (o.ty + o.size), o.ty - (ty + s)));
-export function findSpot(game, team, seat, kind) {
+export function findSpot(game, team, seat, kind, at = null) {
   const s = BUILDINGS[kind].size;
   let ax = seat.x, ay = seat.y, rmin = 4, rmax = 13;
-  if (kind === 'keep') {
+  if (at) { ax = at.x; ay = at.y; rmin = at.rmin ?? 2; rmax = at.rmax ?? 7; }
+  else if (kind === 'keep') {
     const v = nearestVillage(game, seat, (x) => x.owner !== team, 60);
     if (v) {
       const d = Math.hypot(v.x - seat.x, v.y - seat.y) || 1;
@@ -306,7 +309,7 @@ export function findSpot(game, team, seat, kind) {
 
 // ---- the treasurer: dig gold, sell what the stockpile does not need, run camels to the best buyer, draft villagers, found villages
 const KEEP = { stone: 120, iron: 70, coal: 70, copper: 35, silver: 30, steel: 24, ware: 3, food: 220, wood: 260 };
-function treasury(game, team, p, seat, serfs) {
+export function treasury(game, team, p, seat, serfs) {
   const markets = game.marketsOf(team);
   const mk = markets[0];
   p.sellT = (p.sellT ?? 10) - 1.5; p.routeT = (p.routeT ?? 30) - 1.5; p.draftT = (p.draftT ?? 20) - 1.5; p.foundT = (p.foundT ?? 150) - 1.5;
@@ -351,6 +354,23 @@ function treasury(game, team, p, seat, serfs) {
     const want = 5 + Math.min(11, Math.floor(game.time / 55));
     const v = held.slice().sort((a, b) => b.pop - a.pop)[0];
     if (serfs.length < want + 4 && v && v.pop >= 6 && p.food > 90) game.draft(team, v.id, 2, 'serf');
+  }
+  // ore we lack lies where no village can lend miners: found a mining camp beside it, then the mine follows
+  { const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.hp > 0).map((b) => b.ore));   // a camp of ours stands by ore we do not dig yet: raise its mine (beyond the build order's three)
+    for (const v of game.villages) {
+      if (v.owner !== team || !v.founded || v.kind !== 'mine' || !game.canAfford(team, BUILDINGS.mine.cost)) continue;
+      const n = game.depositsNear(v.x, v.y, FOUND.campR + 2).find((x) => !have.has(x.kind) && !x.covered && game.minePower(team, x.x, x.y) > 0 && game.mineSpot(team, x));
+      if (n && game.place(team, 'mine', 0, 0, null, n.id)) { have.add(n.kind); break; }
+    }
+  }
+  p.campT = (p.campT ?? 240) - 1.5;
+  if (p.campT <= 0 && game.time > 300 && !game.missingFor(team, 'village').length && !game.buildings.some((b) => b.team === team && b.kind === 'village' && b.built < 1) && game.canAfford(team, BUILDINGS.village.cost) && p.wood > 220) {
+    p.campT = 150;
+    const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.hp > 0).map((b) => b.ore));
+    const ore = game.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && !have.has(n.kind) && n.amount > 40 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < 70 && !(game.minePower(team, n.x, n.y) > 0))
+      .sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
+    const spot = ore && findSpot(game, team, seat, 'village', { x: ore.x + 0.5, y: ore.y + 0.5, rmin: 3, rmax: FOUND.campR - 3 });
+    if (spot && game.place(team, 'village', spot[0], spot[1])) return;
   }
   if (p.foundT <= 0 && game.time > 240 && held.length < 2 && !game.buildings.some((b) => b.team === team && b.kind === 'village' && b.built < 1) && game.canAfford(team, BUILDINGS.village.cost) && p.wood > 260) {
     p.foundT = 120;
