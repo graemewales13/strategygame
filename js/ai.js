@@ -221,7 +221,7 @@ function think(game, team, p) {
       const kind = army.filter((x) => x.kind === 'bowman').length < army.filter((x) => x.kind === 'footman').length / 2 ? 'bowman' : 'footman';
       if (game.drill(team, keepB.id, u.id, kind)) break;
     }
-    if (keepB.garrison.length && !keepB.drills.length) game.leave(team, keepB.id);
+    for (const id of keepB.garrison.slice()) { const u = game.byId.get(id); if (u && u.kind !== 'recruit' && u.kind !== 'king' && !u.drilling) game.eject(u, keepB); }   // drilled soldiers step out; recruits wait their turn inside
   }
 
   // 5. contest villages

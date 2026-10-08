@@ -121,6 +121,7 @@ export class Renderer {
       items.push({ o: u, k: 3, z: u.x + u.y + 0.2 });
     }
     for (const w of g.wanderers || []) if (isVis(w.x, w.y) && w.x > x0 && w.x < x1 && w.y > y0 && w.y < y1) items.push({ o: w, k: 5, z: w.x + w.y + 0.2 });
+    this.orderAround(items);
     items.sort((a, b) => a.z - b.z);
     for (const it of items) {
       const e = it.o;
@@ -453,6 +454,33 @@ export class Renderer {
     if (v.garrison?.length && v.owner === PLAYER) this.badge(ctx, m[0] + W / 2 + 12, top - 6, v.garrison.length, HOUSES[PLAYER], z);
     if (ui?.isSelected(v)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, v.tx - 0.2, v.ty - 0.2, v.size + 0.4, v.size + 0.4); ctx.stroke(); ctx.setLineDash([]); }
     if (z > 0.7) { ctx.font = `${Math.round(11 * z + 2)}px Georgia, serif`; ctx.textAlign = 'center'; const [lx, ly] = this.toScreen(v.tx + v.size, v.ty + v.size); ctx.fillStyle = '#000'; ctx.fillText(v.name, lx + 1, ly + 15); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, lx, ly + 14); ctx.font = `${Math.round(9 * z + 2)}px Georgia, serif`; ctx.fillStyle = v.hunger ? '#e0866a' : '#cdbb8a'; ctx.fillText(`${Math.floor(v.pop)} folk`, lx, ly + 14 + 12 * z); }
+  }
+
+  // Draw order beside big footprints. A building is keyed by its front corner, which is right for things in front of it and wrong for things
+  // at its sides: someone standing just east of its back corner would be drawn first and vanish behind its walls. Anything within a tile and a
+  // half of a building or village footprint is put in front of it if it stands past its east or south edge, and behind it otherwise.
+  orderAround(items) {
+    const cell = 8, grid = new Map();
+    for (const it of items) {
+      if (it.k !== 1 && it.k !== 2) continue;
+      const f = it.o;
+      for (let gx = Math.floor((f.tx - 2) / cell); gx <= Math.floor((f.tx + f.size + 2) / cell); gx++) for (let gy = Math.floor((f.ty - 2) / cell); gy <= Math.floor((f.ty + f.size + 2) / cell); gy++) {
+        const key = gx * 100000 + gy, l = grid.get(key); if (l) l.push(it); else grid.set(key, [it]);
+      }
+    }
+    if (!grid.size) return;
+    for (const it of items) {
+      if (it.k === 1 || it.k === 2) continue;
+      const o = it.o, x = it.k === 0 ? o.x + 0.5 : o.x, y = it.k === 0 ? o.y + 0.5 : o.y;
+      const near = grid.get(Math.floor(x / cell) * 100000 + Math.floor(y / cell)); if (!near) continue;
+      for (const f of near) {
+        const b = f.o;
+        if (x < b.tx - 1.5 || x > b.tx + b.size + 1.5 || y < b.ty - 1.5 || y > b.ty + b.size + 1.5) continue;
+        const front = x >= b.tx + b.size || y >= b.ty + b.size;
+        if (front && it.z <= f.z) it.z = f.z + 0.01;
+        else if (!front && it.z >= f.z) it.z = f.z - 0.01;
+      }
+    }
   }
 
   // ---------------------------------------------------------------- buildings

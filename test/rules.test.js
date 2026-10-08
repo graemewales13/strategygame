@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI } from '../js/ai.js';
+import { Renderer } from '../js/render.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING } from '../js/config.js';
 
@@ -578,6 +579,48 @@ test('gaps: a rival house shows the doctrine its people play by', () => {
   const g = mk(); g.known[0][1] = g.known[1][0] = true;
   assert.ok(['granary', 'legion', 'hold', 'hearth', 'raid'].includes(intel(g, 1).doctrine), 'doctrine: ' + intel(g, 1).doctrine);
   assert.equal(intel(g, PLAYER).doctrine, null, 'not shown for your own house');
+});
+
+test('placement: a small building cannot sit flush against a big one, nor any building against a village', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); Object.assign(g.players[PLAYER], { food: 9999, wood: 9999, gold: 9999, stone: 999 }); g.fogOn = false;
+  const keep = g.addBuilding('keep', PLAYER, h.tx + 10, h.ty - 12, true); g.recomputeWalk();
+  assert.equal(g.canPlace(PLAYER, 'cottage', keep.tx + keep.size, keep.ty + 1).ok, false, 'flush against the keep\'s east side');
+  assert.equal(g.canPlace(PLAYER, 'cottage', keep.tx + 1, keep.ty + keep.size).ok, false, 'flush against its south side');
+  const v = g.villages.find((x) => x.owner < 0);
+  const r = g.canPlace(PLAYER, 'cottage', v.tx + v.size, v.ty);
+  assert.equal(r.ok, false); 
+});
+
+test('movement: nobody is left inside a footprint or pushed onto water; people leaving a building spread out', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); g.fogOn = false;
+  const u = g.addUnit('footman', PLAYER, h.x + 12.5, h.y - 9.5);
+  const b = g.addBuilding('barracks', PLAYER, Math.floor(u.x) - 1, Math.floor(u.y) - 1, true); g.recomputeWalk();
+  run(g, 0.5); assert.equal(g.walk[Math.floor(u.y) * g.W + Math.floor(u.x)], 1, 'a building raised over him: he steps off');
+  let wt = -1; for (let i = 0; i < g.W * g.H && wt < 0; i++) if (g.terrain[i] === 2 && g.walk[i + 1] && g.walk[i + 2]) wt = i;
+  if (wt >= 0) {
+    const wx = wt % g.W, wy = Math.floor(wt / g.W), crowd = [0, 1, 2, 3, 4, 5].map(() => g.addUnit('serf', PLAYER, wx + 1.15, wy + 0.5));
+    run(g, 3); assert.ok(crowd.every((c) => g.walk[Math.floor(c.y) * g.W + Math.floor(c.x)] === 1), 'the crowd never shoves anyone into the water');
+  }
+  const k = g.addBuilding('keep', PLAYER, h.tx + 14, h.ty + 10, true); g.recomputeWalk();
+  const men = [0, 1, 2, 3, 4, 5].map(() => g.addUnit('footman', PLAYER, k.x, k.y)); men.forEach((m) => { m.inside = k.id; k.garrison.push(m.id); });
+  g.leave(PLAYER, k.id);
+  let close = 0; for (let i = 0; i < men.length; i++) for (let j = i + 1; j < men.length; j++) if (Math.hypot(men[i].x - men[j].x, men[i].y - men[j].y) < 0.3) close++;
+  assert.ok(close <= 1, `six step out of a keep without piling up (${close} pairs on top of each other)`); void b;
+});
+
+test('placement: bushes and deposits under a village are part of it, not gathered', () => {
+  const g = mk(); const v = g.villages[0];
+  const n = g.resources.find((r) => r.kind === 'berry') || g.resources[0]; const ox = n.x, oy = n.y; n.x = v.tx + 1; n.y = v.ty + 1; g.resAt[n.y * g.W + n.x] = g.resources.indexOf(n);
+  g.recomputeWalk(); assert.equal(n.covered, true); assert.equal(g.cmdGather([g.addUnit('serf', PLAYER, v.x, v.y + 3)], n), false); void ox; void oy;
+});
+
+test('draw order: someone beside a building\'s east or south side is drawn in front of it, someone behind it behind', () => {
+  const b = { tx: 10, ty: 10, size: 3 }, bz = b.tx + b.ty + b.size * 2 - 1;
+  const east = { o: { x: 13.4, y: 10.4 }, k: 3, z: 13.4 + 10.4 + 0.2 }, behind = { o: { x: 11.5, y: 9.3 }, k: 3, z: 0 }, tree = { o: { x: 10, y: 13 }, k: 0, z: 10 + 13 + 1 };
+  behind.z = bz + 3;   // even if its own key would put it in front
+  const items = [{ o: b, k: 2, z: bz }, east, behind, tree];
+  Renderer.prototype.orderAround.call({}, items);
+  assert.ok(east.z > bz, 'east of the back corner: in front'); assert.ok(behind.z < bz, 'north of it: behind'); assert.ok(tree.z > bz, 'a tree off its south side: in front');
 });
 
 console.log(`${passed} passed`);

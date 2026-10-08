@@ -136,3 +136,22 @@ The game is now **Auld World** (was Seven Holds). Title, header, README, package
 ## T-042 - Doctrine invisible; stale difficulty table (fixed 2026-10-08, hourly run 8)
 - The Grok pass gave each people an AI doctrine (granary, legion, hold, hearth, raid) but nothing showed it; the Council card now says "plays the <doctrine>" with what it means.
 - README: "You lose when your last village and keep fall" (now the royal line), the difficulty table had pre-Grok Hard numbers, a "First war" timer that is now only the earliest war, and a "Fortune to win" column for a win that no longer exists. Rewritten, with a doctrine table.
+
+## T-043 - Placement, overlap and movement audit (fixed 2026-10-08)
+Measured with a headless audit (AI playing every seat, 20-minute matches, seeds 3/11/21, sampled every 5 s while the match was live):
+
+| Measure | Before | After |
+|---|---|---|
+| Buildings flush against a village (mine, armoury) | 0-2 per match | 0 |
+| Unit-samples standing on a building or village footprint | 59-471 | 0 |
+| Unit-samples on water or rock | 147-576 | 0 |
+| Idle pairs stacked within 0.45 tiles | 21-146 | 0-4 (momentary) |
+
+Causes and fixes:
+- `canPlace` looked for neighbours within the *new* building's size + 2 tiles, so a small building could be put flush against the east or south side of a big one. It now uses the larger footprint. Buildings (and mines, and founded villages) also keep the `BUILD_GAP` lane from villages, whose art spreads past their footprint.
+- Crowd separation (`separate`) only refused tiles under buildings, so crowds at the water's edge shoved people into water and onto rock; its slide-along-the-wall fallback had been commented out by accident. It now uses `walk` and slides.
+- A building raised over a standing unit trapped it inside the footprint. `rescueStranded` steps any idle unit on unwalkable ground to the nearest open tile; units whose route crosses a new site re-plan.
+- Bushes, trees and deposits under a village footprint were gathered by serfs standing inside the village (and drawn under its art): they are now covered. Serfs stop panning gold a mine has been raised over.
+- Everyone leaving a building was put on one tile; AI keeps also emptied every turn and refilled (recruits in, one drilled, all out). Units now step out onto the least crowded open tiles round the front of the building, and AI keeps let out only drilled soldiers.
+- Draw order: buildings are keyed by their front corner, so a person or tree just east or south of a building's back corner was drawn first and swallowed by its walls. `Renderer.orderAround` puts anything within 1.5 tiles past a footprint's east or south edge in front of it, and anything else near it behind.
+- (Diagnosis note: "stuck" serfs in the first audit were frozen after the match had ended; ticks stop on `outcome`. The audit now stops at the outcome and lets an AI play the player's seat.)

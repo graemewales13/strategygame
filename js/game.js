@@ -155,6 +155,9 @@ export class Game {
     };
     for (const b of this.buildings) if (b.hp > 0) mark(b);
     for (const v of this.villages) mark(v);
+    for (const v of this.villages) for (let y = v.ty; y < v.ty + v.size; y++) for (let x = v.tx; x < v.tx + v.size; x++) {   // a bush or tree inside a village's footprint is part of the village
+      const r = x >= 0 && y >= 0 && x < W && y < H ? this.resAt?.[y * W + x] : -1; if (r >= 0 && this.resources[r]) this.resources[r].covered = true;   // (no mine can stand inside a village either)
+    }
     for (let i = 0; i < W * H; i++) walk[i] = terrain[i] !== T_WATER && terrain[i] !== T_ROCK && !block[i] ? 1 : 0;
   }
 
@@ -564,8 +567,19 @@ export class Game {
     u.inside = null; u.task = { type: 'idle' }; u.path = [];
     if (t) { t.garrison = t.garrison.filter((id) => id !== u.id); }
     const ref = t || u;
+    if (t && t.tx != null) {   // the ring of open tiles round the footprint, front (south and east) first, and the least crowded of them
+      const ring = [];
+      for (let y = t.ty - 1; y <= t.ty + t.size; y++) for (let x = t.tx - 1; x <= t.tx + t.size; x++) {
+        if (x >= t.tx && x < t.tx + t.size && y >= t.ty && y < t.ty + t.size) continue;
+        if (x < 0 || y < 0 || x >= this.W || y >= this.H || this.walk[y * this.W + x] !== 1) continue;
+        let crowd = 0; for (const o of this.units) if (o !== u && o.hp > 0 && !o.inside && Math.abs(o.x - x - 0.5) < 1 && Math.abs(o.y - y - 0.5) < 1) crowd++;
+        ring.push({ x, y, score: crowd * 3 - (x >= t.tx + t.size || y >= t.ty + t.size ? 1 : 0) + Math.random() * 0.5 });
+      }
+      ring.sort((a, b) => a.score - b.score);
+      if (ring.length) { u.x = ring[0].x + 0.5 + (Math.random() - 0.5) * 0.5; u.y = ring[0].y + 0.5 + (Math.random() - 0.5) * 0.5; return; }
+    }
     const n = this.nearestWalkable(Math.floor(ref.x), Math.floor((ref.ty ?? ref.y) + (ref.size || 0) + 0.5), 8);
-    if (n) { u.x = n[0] + 0.5 + (Math.random() - 0.5) * 0.4; u.y = n[1] + 0.5; }
+    if (n) { u.x = n[0] + 0.5 + (Math.random() - 0.5) * 0.5; u.y = n[1] + 0.5 + (Math.random() - 0.5) * 0.5; }
   }
   leave(team, id) {
     const t = this.byId.get(id);
@@ -1019,7 +1033,7 @@ export class Game {
     return true;
   }
   cmdGather(units, node) {
-    if (!node || node.amount <= 0) return false;
+    if (!node || node.amount <= 0 || (node.covered && !this.buildings.some((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(node.id)))) return false;   // covered by a village: out of reach (a mine's deposit is handled below)
     if (MINEABLE.includes(node.kind)) {
       const mine = this.buildings.find((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(node.id));
       const t = units[0]?.team;
@@ -1161,10 +1175,18 @@ export class Game {
         if (!(s.onDeposit && MINEABLE.includes(n.kind))) return { ok: false, reason: 'Blocked by resources' };
       }
     }
+    if (kind === 'mine' || kind === 'village') {   // a mine and a village never stand flush against each other (the village's art spreads past its footprint)
+      for (const v of this.villages) if (Math.max(tx - (v.tx + v.size), v.tx - (tx + s.size), ty - (v.ty + v.size), v.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to a village: leave a gap' };
+      if (kind === 'village') for (const o of this.buildings) if (o.hp > 0 && o.kind === 'mine' && Math.max(tx - (o.tx + o.size), o.tx - (tx + s.size), ty - (o.ty + o.size), o.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to a mine: leave a gap' };
+    }
     if (kind !== 'mine') {   // leave a lane between buildings: tall sprites would otherwise pile onto one another
       for (const o of this.buildings) {
-        if (o.hp <= 0 || o.kind === 'mine' || Math.abs(o.tx - tx) > s.size + 2 || Math.abs(o.ty - ty) > s.size + 2) continue;
+        if (o.hp <= 0 || o.kind === 'mine' || Math.abs(o.tx - tx) > Math.max(s.size, o.size) + 2 || Math.abs(o.ty - ty) > Math.max(s.size, o.size) + 2) continue;   // (the larger footprint decides how far to look)
         if (Math.max(tx - (o.tx + o.size), o.tx - (tx + s.size), ty - (o.ty + o.size), o.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to another building: leave a gap' };
+      }
+      for (const v of this.villages) {   // a village's art spreads past its footprint: keep the same lane from it
+        if (Math.abs(v.tx - tx) > Math.max(s.size, v.size) + 2 || Math.abs(v.ty - ty) > Math.max(s.size, v.size) + 2) continue;
+        if (Math.max(tx - (v.tx + v.size), v.tx - (tx + s.size), ty - (v.ty + v.size), v.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to a village: leave a gap' };
       }
     }
     if (this.wallsOff(tx, ty, s.size)) return { ok: false, reason: 'Would wall off a pocket of ground' };
@@ -1245,6 +1267,7 @@ export class Game {
     const s = BUILDINGS[kind];
     this.pay(team, s.cost);
     const b = this.addBuilding(kind, team, tx, ty, false);
+    for (const o of this.units) if (o.path?.some(([px, py]) => px >= tx && px < tx + s.size && py >= ty && py < ty + s.size)) o.repathT = 0;   // a route through the new site is planned again
     const pl = this.players[team];
     if (this.hasTech(pl.team, 'masonry')) { b.maxHp *= 1.15; b.hp *= 1.15; } // Masonry
     if ((kind === 'keep' || kind === 'tower') && this.hasTech(pl.team, 'engineering')) { b.maxHp *= 1.25; b.hp *= 1.25; } // Engineering
@@ -2306,6 +2329,7 @@ export class Game {
 
   // Folk keep a little room: units that overlap are eased apart (never into blocked ground), so a marching group is a column of people, not one body.
   separate(dt) {
+    this.rescueStranded();
     const R = 1.0, W = this.W, cells = new Map(), live = [];
     for (const u of this.units) if (u.hp > 0 && !u.inside) { live.push(u); const k = Math.floor(u.x) * 4096 + Math.floor(u.y); const c = cells.get(k); if (c) c.push(u); else cells.set(k, [u]); }
     const k = Math.min(1, 7 * dt);
@@ -2324,11 +2348,22 @@ export class Game {
       if (!px && !py) continue;
       const m = Math.hypot(px, py), cap = 0.3, f = m > cap ? cap / m : 1;
       const nx = u.x + px * f * k, ny = u.y + py * f * k;
-      const free = (x, y) => { const a = Math.floor(x), b = Math.floor(y); return a >= 0 && b >= 0 && a < W && b < this.H && !this.block[b * W + a]; };
-      if (free(nx, ny) || !free(u.x, u.y)) { u.x = nx; u.y = ny; }   // (a unit stuck on blocked ground may step anywhere to get out) else if (free(nx, u.y)) u.x = nx; else if (free(u.x, ny)) u.y = ny;   // slide along walls
+      const free = (x, y) => { const a = Math.floor(x), b = Math.floor(y); return a >= 0 && b >= 0 && a < W && b < this.H && this.walk[b * W + a] === 1; };
+      if (free(nx, ny) || !free(u.x, u.y)) { u.x = nx; u.y = ny; }   // (a unit already on bad ground may step anywhere to get out)
+      else if (free(nx, u.y)) u.x = nx; else if (free(u.x, ny)) u.y = ny;   // pressed against water, rock or a wall: slide along italls
     }
   }
 
+  // anyone standing still where nobody can stand (a building raised over them, a village grown round them, a push onto water) steps off
+  rescueStranded() {
+    for (const u of this.units) {
+      if (u.hp <= 0 || u.inside || u.hidden || u.path.length) continue;
+      const tx = Math.floor(u.x), ty = Math.floor(u.y);
+      if (this.walk[ty * this.W + tx] === 1) continue;
+      const n = this.nearestWalkable(tx, ty, 6, u.x, u.y); if (!n) continue;
+      u.x = n[0] + 0.5; u.y = n[1] + 0.5;
+    }
+  }
   updateUnits(dt) {
     for (const u of this.units) {
       if (u.hp <= 0) continue;
@@ -2576,6 +2611,7 @@ export class Game {
 
   doGather(u, dt) {
     let node = this.resources[u.task.nodeId];
+    if (node && node.covered) node = null;   // a mine (or a village) stands on it now
     if (!node || node.amount <= 0) {
       const res = node ? NODE_RES[node.kind] : u.carry?.kind;
       const next = res ? this.nearestNode(u.x, u.y, res, 14, u.team) : null;
