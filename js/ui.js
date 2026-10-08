@@ -309,8 +309,8 @@ export class UI {
       case 'place': {
         const chk = g.canPlace(PLAYER, d.kind, -999, -999);
         const s = BUILDINGS[d.kind];
-        const miss = s.requires.find((r) => !g.hasBuilding(PLAYER, r));
-        if (miss) return this.toast(`${s.label} needs a ${BUILDINGS[miss].label}.`, 'warn');
+        const miss = g.missingFor(PLAYER, d.kind)[0];
+        if (miss) return this.toast(`${s.label} needs a ${miss}.`, 'warn');
         if (!g.canAfford(PLAYER, s.cost)) return this.toast('Not enough goods.', 'warn');
         this.placing = d.kind; $('game').classList.add('placing');
         const [wx, wy] = this.r.toWorld(this.mouse.x, this.mouse.y); this.hoverTX = Math.round(wx - s.size / 2); this.hoverTY = Math.round(wy - s.size / 2);
@@ -686,7 +686,7 @@ export class UI {
       const v = g.byId.get(s.id); if (!v) { this.clearSel(); return; }
       const k = VILLAGE_KINDS[v.kind], lord = v.owner >= 0 ? HOUSES[v.owner].name : 'Independent';
       const tr = k.tribute;
-      html = `<div class="seltitle">${esc(v.name)} <small style="color:#cdbb8a;font-size:12px">${v.founded ? 'Village' : k.label}</small></div><div class="selsub">${v.founded ? 'Founded by your house. Its folk till, pay tax and can be drafted.' : esc(k.blurb)}${v.owner === PLAYER ? ` Tax <b>+${(v.pop * TAX * (v.loyalty / 100)).toFixed(2)}</b> coin/s.` : ''}</div>
+      html = `<div class="seltitle">${esc(v.name)} <small style="color:#cdbb8a;font-size:12px">${v.founded ? (v.kind === 'mine' ? 'Mining camp' : 'Village') : k.label}</small></div><div class="selsub">${v.founded ? (v.kind === 'mine' ? 'Founded by your house beside ore. Its folk work the mines within 16 tiles at camp rates, pay tax and can be drafted.' : 'Founded by your house. Its folk till, pay tax and can be drafted.') : esc(k.blurb)}${v.owner === PLAYER ? ` Tax <b>+${(v.pop * TAX * (v.loyalty / 100)).toFixed(2)}</b> coin/s.` : ''}</div>
         <div class="stat"><label>Lord</label><span>${esc(lord)}</span></div>
         <div class="stat"><label>Loyalty</label><div class="meter"><i class="loy" style="width:${v.loyalty}%"></i></div><span class="v">${v.loyalty | 0}</span></div>
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
@@ -717,7 +717,7 @@ export class UI {
     const locked = [];
     for (const kind of BUILD_ORDER_UI) {
       const s = BUILDINGS[kind];
-      const miss = s.requires.filter((r) => !g.hasBuilding(PLAYER, r)).map((r) => BUILDINGS[r].label);
+      const miss = g.missingFor(PLAYER, kind);
       if (miss.length) { locked.push(`${s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery')} (${miss.join(' + ')})`); continue; }   // not unlocked yet: hidden
       const afford = g.canAfford(PLAYER, s.cost);
       const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s`;

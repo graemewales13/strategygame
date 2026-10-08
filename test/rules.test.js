@@ -346,4 +346,20 @@ test('characters: a unit trained in a building is on that building\'s muster rol
   assert.ok(g.units.some((u) => u.from === b.id && u.kind === 'footman'), 'the footman remembers his barracks');
 });
 
+test('villages: serfs may found a village with only a mine; founded beside ore it is a mining camp that works the mine at once', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); Object.assign(g.players[PLAYER], { food: 999, wood: 999, gold: 999 });
+  const ore = g.resources.filter((n) => ['iron', 'copper', 'coal', 'silver', 'stone'].includes(n.kind)).sort((a, b) => Math.hypot(b.x - h.x, b.y - h.y) - Math.hypot(a.x - h.x, a.y - h.y))[0];
+  assert.ok(g.missingFor(PLAYER, 'village').length, 'no keep and no mine: locked');
+  const mine = g.addBuilding('mine', PLAYER, ore.x - 1, ore.y - 1, true);
+  if (mine.nodeIds === undefined) mine.nodeIds = [ore.id];
+  assert.deepEqual(g.missingFor(PLAYER, 'village'), [], 'a mine is enough to found a village');
+  const site = g.addBuilding('village', PLAYER, Math.round(ore.x + 4), Math.round(ore.y + 2), true);
+  const v = g.foundVillage(site);
+  assert.equal(v.kind, 'mine', 'founded beside ore it is a mining camp'); assert.ok(v.pop >= 8);
+  const far = g.foundVillage(g.addBuilding('village', PLAYER, 3, 3, true));
+  assert.ok(far.kind === 'mine' || g.depositsNear(far.x, far.y, 10).length === 0, 'away from ore it is an ordinary village');
+  run(g, 3);
+  assert.ok((mine._crew?.n || 0) >= 1, `the camp's folk dig at once (${mine._crew?.n})`);
+});
+
 console.log(`${passed} passed`);

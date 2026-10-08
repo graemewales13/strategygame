@@ -60,7 +60,7 @@ function think(game, team, p) {
       for (const [kind, n] of blendPlan(PLAN, pb)) {
         if (kind === 'mine' && p.noMine) continue;
         if (count(game, team, kind) >= n) continue;
-        if (BUILDINGS[kind].requires.some((r) => !game.hasBuilding(team, r))) continue;
+        if (game.missingFor(team, kind).length) continue;
         next = kind;
         break;
       }

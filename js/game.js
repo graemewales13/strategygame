@@ -732,11 +732,12 @@ export class Game {
     const team = b.team, list = FOUNDED[HOUSES[team].faction] || FOUNDED.british, used = new Set(this.villages.map((v) => v.name));
     const name = list.find((n) => !used.has(n)) || `${list[0]} ${this.villages.length}`;
     b.hp = 0; b.founded = true;
-    const v = this.addVillage({ kind: 'hamlet', name, tx: b.tx, ty: b.ty });
+    const ore = this.depositsNear(b.x, b.y, FOUND.campR), camp = ore.length > 0;   // raised beside ore: a mining camp, its folk dig from the first day
+    const v = this.addVillage({ kind: camp ? 'mine' : 'hamlet', name, tx: b.tx, ty: b.ty });
     v.owner = team; v.lean = team; v.loyalty = FOUND.loyalty; v.founded = true;
-    v.pop = FOUND.pop; v.popMax = FOUND.max; v.stores = { food: 70, wood: 10, gold: 10 };
+    v.pop = camp ? FOUND.campPop : FOUND.pop; v.popMax = FOUND.max; v.stores = { food: 70, wood: 10, gold: 10 };
     v.protection = v.maxProtection = 260; v.hp = v.maxHp = 260;
-    if (team === PLAYER) this.log(PLAYER, `${name} is founded. Its folk will grow to ${FOUND.max}: draft them as serfs, miners or soldiers.`, 'good');
+    if (team === PLAYER) this.log(PLAYER, camp ? `${name} is founded as a mining camp beside ${[...new Set(ore.map((n) => GOOD_LABEL[n.kind].toLowerCase()))].join(', ')}: raise a mine on the deposit and its folk will dig.` : `${name} is founded. Its folk will grow to ${FOUND.max}: draft them as serfs, miners or soldiers.`, 'good');
     return v;
   }
   // villagers leave a village you hold to work (serf), dig (mine) or fight (soldier)
@@ -1001,10 +1002,19 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ building, training, trade, relations
+  // labels of what a house still lacks before it may raise `kind` (all of `requires`, and one of `requiresAny`)
+  missingFor(team, kind) {
+    const s = BUILDINGS[kind]; if (!s) return [];
+    const miss = s.requires.filter((r) => !this.hasBuilding(team, r)).map((r) => BUILDINGS[r].label);
+    if (s.requiresAny && !s.requiresAny.some((r) => this.hasBuilding(team, r))) miss.push(s.requiresAny.map((r) => BUILDINGS[r].label).join(' or '));
+    return miss;
+  }
+  // ore deposits (not yet dug out) within `r` tiles of a point
+  depositsNear(x, y, r) { return this.resources.filter((n) => MINEABLE.includes(n.kind) && n.amount > 0 && Math.hypot(n.x - x, n.y - y) <= r); }
   canPlace(team, kind, tx, ty) {
     const s = BUILDINGS[kind];
     if (!s || !s.cost) return { ok: false, reason: 'Unknown building' };
-    for (const req of s.requires) if (!this.hasBuilding(team, req)) return { ok: false, reason: `Needs a ${BUILDINGS[req].label}` };
+    { const miss = this.missingFor(team, kind); if (miss.length) return { ok: false, reason: `Needs a ${miss[0]}` }; }
     if (kind === 'village' && this.villages.filter((v) => v.owner === team && v.founded).length + this.buildings.filter((b) => b.team === team && b.kind === 'village' && b.hp > 0).length >= FOUND.limit) return { ok: false, reason: `A house may found only ${FOUND.limit} villages: win the rest` };
     if (!this.canAfford(team, s.cost)) return { ok: false, reason: 'Not enough goods' };
     const { W, H } = this;
@@ -1167,7 +1177,7 @@ export class Game {
   // ---- districts: the community around a market (see LINKS in config). Cached for two seconds.
   linkOfBuilding(kind) { for (const k in LINKS) if (LINKS[k].blds.includes(kind)) return k; return null; }
   linkOfVillage(v) {
-    if (v.founded) return 'homes';
+    if (v.founded) return v.kind === 'mine' ? 'supply' : 'homes';
     for (const k in LINKS) if (LINKS[k].towns.includes(v.kind)) return k;
     return null;
   }

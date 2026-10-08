@@ -718,7 +718,7 @@ test('village: a founded village grows to 50, drafts serfs, miners and soldiers;
   const b = g.place(0, 'village', site[0], site[1]);
   assert.ok(b, 'placed'); run(g, 70);
   const v = g.villages.find((x) => x.owner === 0 && x.founded && x.home !== 0);
-  assert.ok(v, 'village founded'); assert.equal(v.popMax, 50); assert.ok(v.pop >= 4 && v.pop < 9, 'starts small: ' + v.pop);
+  assert.ok(v, 'village founded'); assert.equal(v.popMax, 50); assert.ok(v.pop >= 4 && v.pop < (v.kind === 'mine' ? 13 : 9), 'starts small: ' + v.pop);   // beside ore it is a mining camp of 8
   assert.ok(!g.buildings.includes(b), 'the site becomes the village');
   v.pop = 30; v.stores.food = 90;
   assert.equal(g.draft(0, v.id, 3, 'serf'), 3); assert.equal(Math.round(v.pop), 27);

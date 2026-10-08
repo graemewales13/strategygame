@@ -70,3 +70,4 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 ## Characters and views
 - People are characters, not counters: every fighter keeps a service record and earns deeds; far-landers (peoples with no house on the board) turn up in taverns with gifts of their homeland; Elite soldiers can be made captains. See `CHARACTERS.md`.
 - A click must show what matters about the thing clicked: a training building lists its muster roll (each soldier, clickable), a group lists each person, a rival unit or building shows their house, standing, opinion and ruler with a Council button. Never reveal a rival garrison under fog.
+- Serfs can found villages to reach ore far from any village: a village needs a keep or a mine, and founded beside a deposit it is a mining camp that works the mines at once.

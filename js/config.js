@@ -146,7 +146,7 @@ export const BUILDINGS = {
   stable:    { label: 'Stable',        size: 3, hp: 740,  sight: 6,  pop: 0, cost: { food: 0, wood: 160, gold: 50 }, time: 24, requires: ['keep', 'barracks'], info: 'Trains knights.' },
   mine:      { label: 'Mine',          size: 2, hp: 420,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 10 },  time: 14, requires: [], onDeposit: true, info: 'Raised on a mineral deposit. Villagers from villages within 16 tiles dig for it (no village, no workers); your own villages dig harder and warm to you. Ore flows into your stockpile.' },
   foundry:   { label: 'Foundry',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 140, gold: 40, stone: 25 }, time: 22, requires: ['mine'], info: 'Smelts iron+coal into steel, copper+coal into fine ware. Needs a mine first.' },
-  village:   { label: 'Village',       size: 3, hp: 400,  sight: 7,  pop: 0, cost: { food: 100, wood: 150, gold: 30 }, time: 30, requires: ['keep'], info: 'Found a village of your own: it starts with a few settlers and grows to 50 folk. Its people pay tax, till fields, house your population, and can be drafted as serfs or soldiers.' },
+  village:   { label: 'Village',       size: 3, hp: 400,  sight: 7,  pop: 0, cost: { food: 100, wood: 150, gold: 30 }, time: 30, requires: [], requiresAny: ['keep', 'mine'], info: 'Found a village of your own (needs a keep or a mine). Founded within 10 tiles of an ore deposit it becomes a mining camp whose folk work the mines nearby at once. Otherwise: it starts with a few settlers and grows to 50 folk. Its people pay tax, till fields, house your population, and can be drafted as serfs or soldiers.' },
   tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['barracks'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
 // basic buildings first; the rest unlock as their requirements are built (market -> cottage -> farm -> mill, mine -> warehouse, barracks -> archery ...)
@@ -220,7 +220,7 @@ export const SETTLE_FOOD = 20;
 // every house begins in a home village of this many folk (cap FOUND.max); there is no hall
 export const HOME_POP = 30;
 export const INFLUENCE_HOME = { r: 14, w: 0.5, guard: true };   // a village you hold leans on its neighbours a little
-export const FOUND = { limit: 3, pop: 4, max: 50, grow: 22, loyalty: 82 };   // a founded village: folk at the start, cap, seconds per newcomer while fed
+export const FOUND = { limit: 3, pop: 4, max: 50, grow: 22, loyalty: 82, campR: 10, campPop: 8 };   // campR: ore this close makes a founded village a mining camp of campPop folk   // a founded village: folk at the start, cap, seconds per newcomer while fed
 export const DRAFT = { minLeft: 2, mineFood: 10, soldierFood: 25, perCall: 5 };
 export const SACK = { stores: 0.8, serfs: 0.15, soldiers: 0.2, killed: 0.2 };   // share of the village's goods you carry off; share of survivors who join you as serfs or soldiers   // grain to send for one settler (a serf) from a held village
 export const VILLAGE_KINDS = {
