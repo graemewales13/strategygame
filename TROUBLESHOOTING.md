@@ -155,3 +155,8 @@ Causes and fixes:
 - Everyone leaving a building was put on one tile; AI keeps also emptied every turn and refilled (recruits in, one drilled, all out). Units now step out onto the least crowded open tiles round the front of the building, and AI keeps let out only drilled soldiers.
 - Draw order: buildings are keyed by their front corner, so a person or tree just east or south of a building's back corner was drawn first and swallowed by its walls. `Renderer.orderAround` puts anything within 1.5 tiles past a footprint's east or south edge in front of it, and anything else near it behind.
 - (Diagnosis note: "stuck" serfs in the first audit were frozen after the match had ended; ticks stop on `outcome`. The audit now stops at the outcome and lets an AI play the player's seat.)
+
+## T-044 - Unanswerable ultimatum; stale first-match guide (fixed 2026-10-08, hourly run 9)
+- An ultimatum always asked at least 40 coin, so a player with less could not Accept: the only outcome was war. The price is now never more than the player holds; with nothing to give, accepting means bending the knee.
+- The first-match guide said rivals march after about ten minutes of peace (war now comes from each house's reading of you), and had no step for the Academy and Armoury. Fixed, with a new "Study and arm" step.
+- Checked and sound: a save taken 18 minutes into a busy AI match keeps research, kit, crafting queues, heirs, ultimatums and war losses, and plays on after loading.

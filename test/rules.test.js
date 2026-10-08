@@ -623,4 +623,15 @@ test('draw order: someone beside a building\'s east or south side is drawn in fr
   assert.ok(east.z > bz, 'east of the back corner: in front'); assert.ok(behind.z < bz, 'north of it: behind'); assert.ok(tree.z > bz, 'a tree off its south side: in front');
 });
 
+test('gaps: an ultimatum never asks more than you hold, so it can always be answered', () => {
+  const fake = (g) => { g._stance['1>0'] = { at: g.time, war: 0.9, peace: 0, threat: 0.8, temptation: 0.5, ties: 0, reasons: [{ kind: 'threat', w: 0.8, text: 'x', you: 'your army gathers too close' }] }; };
+  for (const purse of [0, 25, 1000]) {
+    const g = mk(); g.known[0][1] = g.known[1][0] = true; g.players[PLAYER].gold = purse; fake(g);
+    pressWar(g, 1, PLAYER); const o = g.offers.find((x) => x.from === 1 && x.kind === 'tribute');
+    assert.ok(o.amount <= purse, `asks ${o.amount} of a purse of ${purse}`);
+    assert.ok(g.respondOffer(PLAYER, 1, true, o.id), 'and paying it works'); fake(g);
+    assert.equal(pressWar(g, 1, PLAYER), false); assert.notEqual(g.rel[1][0], 'war');
+  }
+});
+
 console.log(`${passed} passed`);

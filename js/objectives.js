@@ -26,8 +26,10 @@ export const OBJECTIVES = [
     done: (g) => g.units.some((u) => u.team === PLAYER && u.kind === 'camel' && u.route && u.route.stops.length) || g.players[PLAYER].trips > 0 },
   { id: 'village', title: 'Win a village', hint: 'Station soldiers or a keep beside an independent village, or send a spy, until its loyalty turns. You can also sack it.',
     done: (g) => heldVillages(g) >= 1 },
-  { id: 'army', title: 'Raise an army', hint: 'Drill eight soldiers. Rivals march after about ten minutes of peace.',
+  { id: 'army', title: 'Raise an army', hint: 'Drill eight soldiers. A neighbour goes to war when it fears you or thinks you weak: open the Council (C) to see how each house reads you.',
     done: (g) => soldiers(g) >= 8 },
+  { id: 'arms', title: 'Study and arm', hint: 'Raise an Academy and choose research (Masonry, then Metallurgy). Metallurgy unlocks the Armoury: order spears and mail there, and your soldiers take them up.',
+    done: (g) => mine(g, 'armoury') || g.units.some((u) => u.team === PLAYER && u.hp > 0 && u.gear) },
   { id: 'conquer', title: 'Rule the valley', hint: 'A house falls when the last of its royal line dies (a king and two heirs). Kill every rival line, and guard your own. Press T for standings.',
     done: () => false },
 ];

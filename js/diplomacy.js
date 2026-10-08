@@ -298,8 +298,8 @@ export function pressWar(g, team, b) {
   const u = p.ultimatum, said = top ? top.you : 'you stand in our way';
   if (!u || u.to !== b) {
     if (p.appeased?.[b] != null && g.time - p.appeased[b] < 300) return false;   // they paid: the peace is kept a while
-    const amount = Math.max(40, Math.min(300, Math.round((g.players[b].gold * 0.25) / 10) * 10));
-    const o = writeLetter(g, team, b, 'tribute', { amount, text: `${leaderName(g, team)} of ${nameOf(g, team)}: "${said[0].toUpperCase() + said.slice(1)}. Send ${amount} coin to keep the peace, or it is war."` });
+    const purse = Math.floor(g.players[b].gold || 0), amount = Math.min(Math.floor(purse / 10) * 10, Math.max(40, Math.min(300, Math.round((purse * 0.25) / 10) * 10)));   // never more than they hold, so Accept always works
+    const o = writeLetter(g, team, b, 'tribute', { amount, text: `${leaderName(g, team)} of ${nameOf(g, team)}: "${said[0].toUpperCase() + said.slice(1)}. ${amount ? `Send ${amount} coin to keep the peace` : 'You have nothing to give: bend the knee and swear to keep the peace'}, or it is war."` });
     p.ultimatum = { to: b, at: g.time, id: o.id };
     return false;
   }
