@@ -634,4 +634,14 @@ test('gaps: an ultimatum never asks more than you hold, so it can always be answ
   }
 });
 
+test('gaps: a ranked recruit drilled into a soldier keeps the health his rank, deeds and the Drill research give', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  Object.assign(p, { food: 999, wood: 999, gold: 999 }); p.tech.drill = true;
+  const k = g.addBuilding('keep', PLAYER, h.tx + 10, h.ty - 12, true); g.recomputeWalk();
+  const u = g.addUnit('recruit', PLAYER, k.x, k.y + 3); u.rank = 2; g.earnDeed(u, 'survivor');
+  const fresh = g.addUnit('footman', PLAYER, k.x + 3, k.y + 3);
+  u.inside = k.id; k.garrison.push(u.id); g.drill(PLAYER, k.id, u.id, 'footman'); run(g, 20);
+  assert.equal(u.kind, 'footman'); assert.ok(u.maxHp > fresh.maxHp * 1.25, `a veteran footman ${u.maxHp} vs a fresh one ${fresh.maxHp}`);
+});
+
 console.log(`${passed} passed`);

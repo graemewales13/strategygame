@@ -160,3 +160,6 @@ Causes and fixes:
 - An ultimatum always asked at least 40 coin, so a player with less could not Accept: the only outcome was war. The price is now never more than the player holds; with nothing to give, accepting means bending the knee.
 - The first-match guide said rivals march after about ten minutes of peace (war now comes from each house's reading of you), and had no step for the Academy and Armoury. Fixed, with a new "Study and arm" step.
 - Checked and sound: a save taken 18 minutes into a busy AI match keeps research, kit, crafting queues, heirs, ultimatums and war losses, and plays on after loading.
+
+## T-045 - Drilling threw away earned health (fixed 2026-10-08, hourly run 11)
+- Drilling a recruit into a soldier (and sending one out as a spy) set health from the kind's base only, dropping rank, deeds and the Drill research: a Veteran Death-cheater became a 90-hp footman, weaker than a fresh 103-hp one. `Game.maxHpFor(u)` now rebuilds full health from kind, trait, rank, deeds and Drill; kit is added on top by `equip()`.

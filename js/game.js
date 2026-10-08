@@ -658,6 +658,13 @@ export class Game {
     q.t += dt;
     if (q.t >= GEAR[q.item].time) { b.craft.shift(); const p = this.players[b.team]; (p.gear ||= {})[q.item] = (p.gear[q.item] || 0) + 1; }
   }
+  // a person's full health from scratch (for a change of kind): their kind, trait, rank, deeds and the Drill research; kit is added by equip()
+  maxHpFor(u) {
+    let hp = UNITS[u.kind].hp * (u.hpMul || 1) * (1 + RANK_BONUS.hp * (u.rank || 0));
+    if (this.hasTech(u.team, 'drill') && u.kind !== 'serf' && u.kind !== 'camel') hp *= 1.15;
+    for (const d of u.deeds || []) hp *= 1 + (DEEDS[d]?.hp || 0);
+    return Math.round(hp);
+  }
   gearOf(u, slot) { const k = u.gear?.[slot]; return k ? GEAR[k] : null; }
   rangeOf(u) { return UNITS[u.kind].range + (this.gearOf(u, 'weapon')?.range || 0); }
   cdOf(u) { return UNITS[u.kind].cd + (this.gearOf(u, 'weapon')?.cd || 0); }
@@ -812,7 +819,7 @@ export class Game {
       if (!this.canAfford(team, fee)) { if (team === PLAYER) this.log(team, `A spy costs ${SPY_FEE} coin.`, 'warn'); break; }
       this.pay(team, fee);
       const st = UNITS.spy, ratio = u.hp / u.maxHp;
-      u.kind = 'spy'; u.maxHp = Math.round(st.hp * (u.hpMul || 1)); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0);
+      u.kind = 'spy'; u.gear = null; u.maxHp = this.maxHpFor(u); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0);
       if (u.inside) { const t = this.byId.get(u.inside); if (t) this.eject(u, t); }
       n++;
     }
@@ -958,7 +965,7 @@ export class Game {
           b.drills.shift();
           const st = UNITS[q.kind], ratio = u.hp / u.maxHp, was = u.kind;
           u.kind = q.kind; u.drilling = false;
-          u.maxHp = Math.round(st.hp * (u.hpMul || 1)); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0); u.gear = null; this.equip(u);
+          u.gear = null; u.maxHp = this.maxHpFor(u); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0); this.equip(u);
           if (b.team === PLAYER) this.log(PLAYER, `${u.name || (was === 'serf' ? 'A serf' : 'A recruit')} is drilled into a ${st.label.toLowerCase()}.`, 'good');
         }
       }
