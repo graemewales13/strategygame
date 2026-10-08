@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -56,7 +56,8 @@ function think(game, team, p) {
 
   // 1. serfs first: drafted from the home village (or trained at a keep)
   const pb = pbOf(game, p), wb = pb ? pb.conf : 0;   // what the recorded player did, and how far we trust it
-  let serfWant = 5 + Math.min(11, Math.floor(t / 55));
+  const doc = DOCTRINE[HOUSES[team]?.faction] || DOCTRINE.british;
+  let serfWant = 5 + Math.min(11, Math.floor(t / 55)) + (doc.serf || 0);
   if (pb?.serf?.length) serfWant = Math.round(clamp(lerp(serfWant, curveAt(pb.serf, pb.step, t), wb), 4, 18));
   if (serfs.length + queued(game, team, 'serf') < serfWant) {
     const keepT = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && UNITS.serf.from.includes(b.kind) && b.queue.length < 2);
@@ -77,6 +78,13 @@ function think(game, team, p) {
         if (game.missingFor(team, kind).length) continue;
         next = kind;
         break;
+      }
+      // a people's own buildings come a few slots early, never ahead of the first mine or keep they still lack
+      if (next && next !== 'mine' && next !== 'keep') {
+        const nextAt = PLAN.findIndex(([k]) => k === next);
+        const early = (doc.bias || []).find((kind) => count(game, team, kind) < 1 && !game.missingFor(team, kind).length);
+        const earlyAt = early ? PLAN.findIndex(([k]) => k === early) : -1;
+        if (early && earlyAt > nextAt && earlyAt - nextAt <= 6) next = early;
       }
     }
     if (next === 'keep' && p.noMine && p.stone < 40) p.stone += 40; // no seam within reach: a stone caravan arrives
@@ -136,7 +144,7 @@ function think(game, team, p) {
   const rich = Math.max(0, Math.floor((p.gold - 250) / 45));   // a full purse buys men; a thin one holds the line it can pay for
   let base = 3 + Math.floor(t / 65);
   if (pb?.army?.length) base = Math.max(3, Math.round(lerp(base, curveAt(pb.army, pb.step, t), wb)));
-  const armyCap = Math.min(game.diff.armyCap, Math.min(base, payable) + rich);
+  const armyCap = Math.round(Math.min(game.diff.armyCap, Math.min(base, payable) + rich) * (doc.armyMul || 1));
   const queuedMil = game.buildings.filter((b) => b.team === team).reduce((n, b) => n + b.queue.filter((q) => q.kind !== 'serf').length, 0);
   if (army.length + queuedMil < armyCap) {
     const picks = [];
@@ -146,9 +154,16 @@ function think(game, team, p) {
       for (const k of order) picks.push(k);
       if (!picks.includes('footman')) picks.push('footman');
     } else {
-      if (game.hasBuilding(team, 'stable') && army.length % 4 === 3) picks.push('knight');
-      if (game.hasBuilding(team, 'archery') && army.length % 3 === 2) picks.push('bowman');
-      picks.push('footman');
+      const have = (k) => army.filter((u) => u.kind === k).length + queued(game, team, k);
+      const total = Math.max(1, army.length + queuedMil);
+      const mix = doc.mix || { footman: 0.6, bowman: 0.25, knight: 0.15 };
+      const order = ['knight', 'bowman', 'footman'].filter((k) => mix[k]).sort((a, b) => (mix[b] - have(b) / total) - (mix[a] - have(a) / total));
+      for (const k of order) {
+        if (k === 'knight' && !game.hasBuilding(team, 'stable')) continue;
+        if (k === 'bowman' && !game.hasBuilding(team, 'archery')) continue;
+        picks.push(k);
+      }
+      if (!picks.includes('footman')) picks.push('footman');
     }
     if (game.hasBuilding(team, 'workshop') && army.filter((u) => u.kind === 'ram').length < 2 && army.length >= 6) picks.unshift('ram');
     for (const kind of picks) {
@@ -156,7 +171,7 @@ function think(game, team, p) {
       if (b && b.queue.length < 3 && game.train(team, b.id, kind)) break;
     }
   }
-  if (game.hasBuilding(team, 'tavern') && !game.units.some((u) => u.team === team && u.kind === 'spy' && u.hp > 0) && queued(game, team, 'spy') === 0) {
+  if (game.hasBuilding(team, 'tavern') && game.units.filter((u) => u.team === team && u.kind === 'spy' && u.hp > 0).length + queued(game, team, 'spy') < (doc.spies || 1)) {
     const tav = game.buildings.find((b) => b.team === team && b.kind === 'tavern' && b.built >= 1 && b.hp > 0);
     if (tav) game.train(team, tav.id, 'spy');
   }
@@ -209,7 +224,7 @@ function think(game, team, p) {
       if (!q.alive || q.team === team || !game.known[team][q.team] || !game.seatOf(q.team)) continue;
       if (game.rel[team][q.team] === 'alliance') continue;   // oaths are kept (until a leader's temper breaks them)
       const st = stance(game, team, q.team), war = game.rel[team][q.team] === 'war';
-      if (!war && (st.war < game.diff.warBar || t <= earliest || army.length < 7 || game.time - game.relSince[team][q.team] < 240)) continue;   // a peace just made is kept a while
+      if (!war && (st.war < game.diff.warBar + (doc.war || 0) || t <= earliest || army.length < 7 || game.time - game.relSince[team][q.team] < 240)) continue;   // a peace just made is kept a while
       const score = (war ? 1 : 0) + st.war + st.temptation * 0.5;
       if (score > bd) { bd = score; target = q; }
     }

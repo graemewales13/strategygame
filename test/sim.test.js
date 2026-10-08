@@ -334,7 +334,7 @@ test('tavern: roster of random wanderers; hiring spends gold and adds a recruit 
   assert.equal(tv.roster.length, 3);
   const w = tv.roster[1], gold0 = p.gold;
   const u = g.applyIntent({ type: 'hire', team: PLAYER, buildingId: tv.id, index: 1 });
-  assert.ok(u && u.kind === 'recruit' && u.name === w.name && u.trait === w.trait);
+  assert.ok(u && u.kind === 'recruit' && u.name === w.name && (w.far ? u.far === w.far : u.trait === w.trait));
   assert.equal(p.gold, gold0 - w.cost.gold);
   assert.notEqual(tv.roster[1], w, 'slot refreshed');
 });

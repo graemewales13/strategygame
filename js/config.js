@@ -205,7 +205,17 @@ export const SPY_INTEL = { fresh: 45, caught: -12 };
 export const DIFFICULTY = {
   easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, warBar: 0.65, think: 1.5, wealth: 4000 },
   mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.0,  armyCap: 22, warAfter: 840,  warBar: 0.5, think: 1.15, wealth: 6000 },
-  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.1, armyCap: 32, warAfter: 600,  warBar: 0.4, think: 1.0, wealth: 10000 },
+  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.15, armyCap: 36, warAfter: 480,  warBar: 0.34, think: 0.85, wealth: 10000 },
+};
+// A house that is not copying the player plays to its people. bias buildings are raised a few slots early.
+// armyMul scales the force they will pay. mix is the share of foot, bow and horse they drill toward.
+// war is added to the difficulty war bar (positive waits longer). serf is added to the serf target. spies is how many they keep.
+export const DOCTRINE = {
+  egyptians: { label: 'granary', bias: ['farm', 'temple', 'market'], armyMul: 0.85, mix: { footman: 0.5, bowman: 0.35, knight: 0.15 }, war: 0.08, serf: 2, spies: 1 },
+  romans:    { label: 'legion',  bias: ['barracks', 'tower', 'keep'], armyMul: 1.15, mix: { footman: 0.7, bowman: 0.15, knight: 0.15 }, war: 0, serf: 0, spies: 1 },
+  scottish:  { label: 'hold',    bias: ['archery', 'tower', 'tavern'], armyMul: 1.0, mix: { footman: 0.3, bowman: 0.55, knight: 0.15 }, war: 0.04, serf: 0, spies: 2 },
+  british:   { label: 'hearth',  bias: ['market', 'mill', 'cottage'], armyMul: 0.9, mix: { footman: 0.45, bowman: 0.35, knight: 0.2 }, war: 0.06, serf: 1, spies: 1 },
+  mongols:   { label: 'raid',    bias: ['stable', 'archery', 'barracks'], armyMul: 1.25, mix: { footman: 0.2, bowman: 0.4, knight: 0.4 }, war: -0.08, serf: -1, spies: 2 },
 };
 export const FORFEIT_AFTER = 45;   // legacy, unused: houses no longer forfeit; a house falls only with the last of its royal line
 export const WEALTH_HOLD = 90;   // legacy, unused: wealth no longer wins
