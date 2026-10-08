@@ -38,6 +38,7 @@ export class Game {
   set fogOn(v) { this._fog = v; }
   reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order } = {}) {
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
+    this.losses = {}; this.spyIntel = {}; this._stance = {};   // nothing of the last match's wars or spies carries over
     this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
     this.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, houses));
     this.fogOn = fog;
@@ -433,6 +434,7 @@ export class Game {
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
       case 'hire': return this.hire(team, it.buildingId, it.index);
+      case 'demolish': return this.demolish(team, it.buildingId);
       case 'captain': return this.appoint(team, it.unitId);
       case 'levy': return this.setLevy(team, it.buildingId, it.villageId);
       case 'settle': return this.settle(team, it.villageId);
@@ -570,6 +572,17 @@ export class Game {
   }
   ejectAll(t) { for (const uid of t.garrison.slice()) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; }
 
+  // ---- pulling down a building of your own: those inside step out; a third of the cost comes back (all but a fifth while it is still a site)
+  demolish(team, id) {
+    const b = this.byId.get(id);
+    if (!b || b.type !== 'building' || b.team !== team || b.hp <= 0) return false;
+    const back = b.built >= 1 ? 0.3 : 0.8, p = this.players[team], cost = BUILDINGS[b.kind]?.cost || {};
+    for (const k in cost) if (cost[k]) p[k] = (p[k] || 0) + Math.floor(cost[k] * back);
+    this.ejectAll(b); b.hp = 0; this._stance = {};
+    if (team === PLAYER) this.log(PLAYER, `Your ${BUILDINGS[b.kind].label.toLowerCase()} is pulled down (${Math.round(back * 100)}% of its cost recovered).`, 'info');
+    this.cleanup();
+    return true;
+  }
   // ---- tavern: random wanderers for hire; keep: levy villagers and drill soldiers ----------------------------
   rollWanderer(roster = []) {
     if (Math.random() < FARLAND_CHANCE && !roster.some((w) => w && w.far)) {   // a traveller from a land with no house in the valley
@@ -2665,21 +2678,12 @@ export class Game {
     for (const k of ALL_GOODS) if (k !== 'gold' && k !== 'food' && k !== 'wood') w += ((p[k] || 0) * RES_VALUE[k]) / RES_VALUE.gold;
     return w;
   }
-  // Victory is conquest only: every rival house must fall or forfeit. Wealth and village share no longer win the game (they still count in the standings).
+  // Victory is conquest only: the royal line of every rival house must end. Wealth and village share no longer win the game (they still count in the standings).
   checkEnd(dt) {
     const living = this.players.filter((p) => p.alive).map((p) => p.team);
     if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', kind: 'fallen', reason: 'The last of your royal line is dead.' }; return; }
     this.rivalsLeft = living.length - 1;
     if (living.length === 1) this.outcome = { result: 'victory', kind: 'conquest', reason: 'The last king of every rival house is dead.' };
-  }
-  // A house that has lost its home village and has no soldiers left cannot fight on: after FORFEIT_AFTER seconds it forfeits and its holdings go free.
-  checkForfeit(dt) {
-    for (const p of this.players) {
-      if (!p.alive || p.team === PLAYER) continue;
-      const crippled = !this.villages.some((v) => v.home === p.team && v.owner === p.team) && this.militaryOf(p.team).length === 0;
-      p.crippledT = crippled ? (p.crippledT || 0) + dt : 0;
-      if (p.crippledT >= FORFEIT_AFTER) { this.forfeits = (this.forfeits || 0) + 1; this.log(PLAYER, `${p.name} has lost its home and its army, and forfeits.`, 'good'); this.eliminate(p.team); }
-    }
   }
 
   // ------------------------------------------------------------------ save / load
@@ -2690,7 +2694,7 @@ export class Game {
     const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
     return {
       v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
-      time: this.time, nextId: this.nextId, outcome: this.outcome, forfeits: this.forfeits || 0,
+      time: this.time, nextId: this.nextId, outcome: this.outcome, forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {},
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
@@ -2702,7 +2706,7 @@ export class Game {
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
     if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
     this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder });
-    this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0;
+    this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this._stance = {};
     this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;
     this.alertT = d.alertT; this.winHold = d.winHold; this.richHold = d.richHold; this.named = d.named.map((x) => new Set(x));

@@ -122,3 +122,7 @@ The game is now **Auld World** (was Seven Holds). Title, header, README, package
 ## T-042 - Stacked people, idle camels
 - `separate()` now keeps a full tile (R=1.0), parts exactly-stacked pairs in opposite directions, slides along walls, and lets a unit stuck on blocked ground step out (before, a unit on a blocked tile never moved, so a group there stayed one body).
 - `autoCamels()` puts every idle camel back to work (own route, all own markets, or partner markets); `u.parked` marks camels the player stopped or moved by hand. Test helper reminder: `run(g, secs)` takes the game first; `run(secs)` silently does nothing.
+
+## T-040 - Carry-over between matches; stale forfeit text (fixed 2026-10-08)
+- `Game.losses` (war weariness) and `Game.spyIntel` (spy reports) were created lazily and never cleared by `reset()`, so a new match inherited the last one's war losses and spy reports; a save also dropped them. `reset()` now clears both (and the `_stance` cache); `serialize()`/`restore()` keep them.
+- After the royal-line rule replaced forfeits, the top bar still counted down "forfeits in N s", and the first-match objective and the hold-bar tooltip described the old win. They now speak of the royal line; `checkForfeit` is gone.

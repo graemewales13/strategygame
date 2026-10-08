@@ -8,30 +8,30 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=muzotpya">
+<link rel="stylesheet" href="style.css?v=muzpcl1i">
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=muzotpya",
-    "./js/art.js": "./js/art.js?v=muzotpya",
-    "./js/audio.js": "./js/audio.js?v=muzotpya",
-    "./js/config.js": "./js/config.js?v=muzotpya",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=muzotpya",
-    "./js/entities.js": "./js/entities.js?v=muzotpya",
-    "./js/game.js": "./js/game.js?v=muzotpya",
-    "./js/gfx.js": "./js/gfx.js?v=muzotpya",
-    "./js/learn.js": "./js/learn.js?v=muzotpya",
-    "./js/main.js": "./js/main.js?v=muzotpya",
-    "./js/map.js": "./js/map.js?v=muzotpya",
-    "./js/names.js": "./js/names.js?v=muzotpya",
-    "./js/net.js": "./js/net.js?v=muzotpya",
-    "./js/objectives.js": "./js/objectives.js?v=muzotpya",
-    "./js/recorder.js": "./js/recorder.js?v=muzotpya",
-    "./js/render.js": "./js/render.js?v=muzotpya",
-    "./js/save.js": "./js/save.js?v=muzotpya",
-    "./js/terrain.js": "./js/terrain.js?v=muzotpya",
-    "./js/trainui.js": "./js/trainui.js?v=muzotpya",
-    "./js/ui.js": "./js/ui.js?v=muzotpya"
+    "./js/ai.js": "./js/ai.js?v=muzpcl1i",
+    "./js/art.js": "./js/art.js?v=muzpcl1i",
+    "./js/audio.js": "./js/audio.js?v=muzpcl1i",
+    "./js/config.js": "./js/config.js?v=muzpcl1i",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=muzpcl1i",
+    "./js/entities.js": "./js/entities.js?v=muzpcl1i",
+    "./js/game.js": "./js/game.js?v=muzpcl1i",
+    "./js/gfx.js": "./js/gfx.js?v=muzpcl1i",
+    "./js/learn.js": "./js/learn.js?v=muzpcl1i",
+    "./js/main.js": "./js/main.js?v=muzpcl1i",
+    "./js/map.js": "./js/map.js?v=muzpcl1i",
+    "./js/names.js": "./js/names.js?v=muzpcl1i",
+    "./js/net.js": "./js/net.js?v=muzpcl1i",
+    "./js/objectives.js": "./js/objectives.js?v=muzpcl1i",
+    "./js/recorder.js": "./js/recorder.js?v=muzpcl1i",
+    "./js/render.js": "./js/render.js?v=muzpcl1i",
+    "./js/save.js": "./js/save.js?v=muzpcl1i",
+    "./js/terrain.js": "./js/terrain.js?v=muzpcl1i",
+    "./js/trainui.js": "./js/trainui.js?v=muzpcl1i",
+    "./js/ui.js": "./js/ui.js?v=muzpcl1i"
   }
 }
 </script>
@@ -39,7 +39,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'muzotpya';
+window.__BUILD = 'muzpcl1i';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -80,7 +80,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     <div id="stock" title="Stockpile: ore from your mines, smelted goods, arms and science"></div>
     <div id="houses"></div>
     <div id="standings" class="hidden"></div>
-    <div id="holdbar" title="Win by conquest: every rival house must fall or forfeit"></div>
+    <div id="holdbar" title="Win by conquest: the last king of every rival house must die"></div>
     <div id="clockwrap">
       <span id="clock">0:00</span>
       <button id="btnSpeed" title="Game speed">1x</button>

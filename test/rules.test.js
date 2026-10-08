@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI } from '../js/ai.js';
-import { deliberate as dip_deliberate, intel, stance } from '../js/diplomacy.js';
+import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING } from '../js/config.js';
 
 let _s = 777;
@@ -472,6 +472,40 @@ test('ai: a king shelters in his keep when foes come near, always when he is the
   for (let i = 0; i < 40 && !k.inside; i++) g.tick(0.25);
   assert.equal(k.inside, keep.id, 'the last of the line is safe behind walls');
   void seat; void updateAI;
+});
+
+test('gaps: a new match forgets the last one\'s war losses and spy reports; a save keeps them', () => {
+  const g = mk(); g.losses['0>1'] = 9; g.spyIntel['0>1'] = g.time;
+  const data = JSON.parse(JSON.stringify(g.serialize()));
+  g.reset({ seed: 9, houses: 3, ai: false });
+  assert.deepEqual(g.losses, {}); assert.deepEqual(g.spyIntel, {});
+  g.restore(data); assert.equal(g.losses['0>1'], 9, 'restored with the save');
+});
+
+test('gaps: an ultimatum is a letter - pay and the peace holds; refuse and it is war', () => {
+  const fake = (g) => { g._stance['1>0'] = { at: g.time, war: 0.9, peace: 0, threat: 0.8, temptation: 0.5, ties: 0, reasons: [{ kind: 'threat', w: 0.8, text: 'x', you: '6 of your soldiers stand in our land' }] }; };
+  const g = mk(); g.known[0][1] = g.known[1][0] = true; g.players[PLAYER].gold = 500;
+  fake(g); assert.equal(pressWar(g, 1, PLAYER), false, 'no war yet: an ultimatum first');
+  const o = g.offers.find((x) => x.from === 1 && x.to === PLAYER && x.kind === 'tribute');
+  assert.ok(o && /Your|your/.test(o.text) && !/You sways/.test(o.text), 'a letter that speaks to you: ' + (o && o.text));
+  assert.ok(g.respondOffer(PLAYER, 1, true, o.id), 'paid'); fake(g);
+  assert.equal(pressWar(g, 1, PLAYER), false); assert.notEqual(g.rel[1][0], 'war', 'paying keeps the peace');
+  g.time += 400; g.players[1].appeased = {}; g.players[1].ultimatum = null; fake(g);
+  pressWar(g, 1, PLAYER); const o2 = g.offers.find((x) => x.from === 1 && x.kind === 'tribute');
+  g.respondOffer(PLAYER, 1, false, o2.id); fake(g);
+  assert.equal(pressWar(g, 1, PLAYER), true); assert.equal(g.rel[1][0], 'war', 'refusing is war');
+});
+
+test('gaps: you can pull down a building of your own (a third back) or cancel a site (four fifths back)', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  const b = g.addBuilding('barracks', PLAYER, h.tx + 9, h.ty - 9, true), u = g.addUnit('footman', PLAYER, b.x, b.y);
+  g.cmdEnter([u], b); u.inside = b.id; b.garrison.push(u.id);
+  const w0 = p.wood; assert.ok(g.applyIntent({ team: PLAYER, type: 'demolish', buildingId: b.id }));
+  assert.ok(!g.buildings.includes(b), 'gone'); assert.equal(p.wood - w0, Math.floor(140 * 0.3)); assert.equal(u.inside, null, 'those inside step out');
+  const site = g.addBuilding('market', PLAYER, h.tx - 9, h.ty + 9, false); site.built = 0.2;
+  const w1 = p.wood; g.demolish(PLAYER, site.id); assert.equal(p.wood - w1, Math.floor(120 * 0.8));
+  const foe = g.buildings.find((x) => x.team === 1) || g.addBuilding('barracks', 1, 5, 5, true);
+  assert.equal(g.demolish(PLAYER, foe.id), false, 'not someone else\'s');
 });
 
 console.log(`${passed} passed`);

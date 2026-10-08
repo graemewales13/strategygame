@@ -207,7 +207,7 @@ export const DIFFICULTY = {
   mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.0,  armyCap: 22, warAfter: 840,  warBar: 0.5, think: 1.15, wealth: 6000 },
   hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.1, armyCap: 32, warAfter: 600,  warBar: 0.4, think: 1.0, wealth: 10000 },
 };
-export const FORFEIT_AFTER = 45;   // seconds a house with no home village and no soldiers holds out before it forfeits
+export const FORFEIT_AFTER = 45;   // legacy, unused: houses no longer forfeit; a house falls only with the last of its royal line
 export const WEALTH_HOLD = 90;   // legacy, unused: wealth no longer wins
 export const VILLAGE_WIN_SHARE = 0.7; // hold this share of villages ...
 export const LAND_LOYALTY = 55;     // only villages at least this loyal count toward the land win: a sacked village must be won over

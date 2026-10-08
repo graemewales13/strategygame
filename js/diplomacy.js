@@ -35,7 +35,7 @@ export function stance(g, a, b) {
 }
 function readStance(g, a, b) {
   const pr = pers(g, a), rel = g.rel[a][b], o = op(g, a, b), sa = strength(g, a), sb = strength(g, b), R = [];
-  const why = (kind, w, text) => { if (w >= 0.12) R.push({ kind, w, text }); };
+  const why = (kind, w, text, you = text) => { if (w >= 0.12) R.push({ kind, w, text, you }); };   // `you`: the same reason said to their face
   const A = placesOf(g, a), B = placesOf(g, b);
   let d = 1e9, nearB = null;
   for (const x of A) for (const y of B) { const dd = Math.hypot(x.x - y.x, x.y - y.y); if (dd < d) { d = dd; nearB = y; } }
@@ -52,9 +52,9 @@ function readStance(g, a, b) {
   }
   const army = clamp01(foePow / Math.max(2, g.powerOfTeam(a) * 0.6));
   const over = clamp01((sb / sa - 1) / 1.5) * prox;
-  why('threat', enc, `${nameOf(g, b)} sways ${encV ? encV.v.name : 'our villages'} with buildings at its door`);
-  why('threat', army, `${foeN} of ${nameOf(g, b)}'s soldiers stand in our land`);
-  why('threat', over, `${nameOf(g, b)}'s army outmatches ours, and close by`);
+  why('threat', enc, `${nameOf(g, b)} sways ${encV ? encV.v.name : 'our villages'} with buildings at its door`, `your buildings at its door sway our village of ${encV ? encV.v.name : 'ours'}`);
+  why('threat', army, `${foeN} of ${nameOf(g, b)}'s soldiers stand in our land`, `${foeN} of your soldiers stand in our land`);
+  why('threat', over, `${nameOf(g, b)}'s army outmatches ours, and close by`, 'your army gathers too close to our borders');
   const threat = clamp01(0.45 * enc + 0.45 * army + 0.3 * over);
   // temptation
   const weak = clamp01((sa / sb - 1.1) / 1.4), busy = enemiesOf(g, b).some((x) => x !== a) ? 0.3 : 0, headless = g.kingOf(b) ? 0 : 0.2, broke = g.players[b].broke ? 0.15 : 0;
@@ -64,15 +64,17 @@ function readStance(g, a, b) {
     const guard = g.garrisonWeight(v); if (guard < 2) { prize += 0.18; if (!prizeV) prizeV = v; }
   }
   prize = Math.min(0.45, prize);
-  why('temptation', weak * prox, `${nameOf(g, b)} is weaker than us`);
-  why('temptation', busy * prox, `${nameOf(g, b)} is already at war with ${enemiesOf(g, b).filter((x) => x !== a).map((x) => nameOf(g, x)).join(' and ')}`);
-  why('temptation', headless * prox, `${nameOf(g, b)}'s throne is empty`);
-  why('temptation', broke * prox, `${nameOf(g, b)}'s treasury is empty`);
-  why('temptation', prize * prox, `${prizeV ? prizeV.name : 'a village of theirs'} lies close and poorly guarded`);
+  why('temptation', weak * prox, `${nameOf(g, b)} is weaker than us`, 'you are weak, and the weak pay for their peace');
+  why('temptation', busy * prox, `${nameOf(g, b)} is already at war with ${enemiesOf(g, b).filter((x) => x !== a).map((x) => nameOf(g, x)).join(' and ')}`, 'your wars leave your borders bare');
+  why('temptation', headless * prox, `${nameOf(g, b)}'s throne is empty`, 'your throne stands empty');
+  why('temptation', broke * prox, `${nameOf(g, b)}'s treasury is empty`, 'your treasury is empty and your soldiers unpaid');
+  why('temptation', prize * prox, `${prizeV ? prizeV.name : 'a village of theirs'} lies close and poorly guarded`, `${prizeV ? prizeV.name : 'your village'} lies close to us and poorly guarded`);
   const temptation = clamp01((0.6 * weak + busy + headless + broke + prize) * prox);
   // ties
   const shared = sharedEnemies(g, a, b), settledNow = g.time - g.relSince[a][b] < 240 && rel !== 'war';
-  const tie = { trade: rel === 'trade' ? 0.35 : 0, ally: rel === 'alliance' ? 0.8 : 0, common: 0.25 * shared.length, good: o > 0 ? (o / 100) * 0.6 : 0, far: (1 - prox) * 0.6, fresh: settledNow ? 0.5 : 0 };
+  const paid = g.players[a].appeased?.[b], appeased = paid != null && g.time - paid < 300 ? 0.6 : 0;
+  const tie = { appeased, trade: rel === 'trade' ? 0.35 : 0, ally: rel === 'alliance' ? 0.8 : 0, common: 0.25 * shared.length, good: o > 0 ? (o / 100) * 0.6 : 0, far: (1 - prox) * 0.6, fresh: settledNow ? 0.5 : 0 };
+  why('ties', tie.appeased, 'they paid us to keep the peace');
   why('ties', tie.ally, 'we are sworn allies');
   why('ties', tie.trade, 'our caravans trade');
   why('ties', tie.common, `we share an enemy in ${shared.map((x) => nameOf(g, x)).join(' and ')}`);
@@ -81,7 +83,7 @@ function readStance(g, a, b) {
   why('ties', tie.fresh, 'a peace newly made');
   const ties = Math.min(1.5, Object.values(tie).reduce((x, y) => x + y, 0));
   const grudge = clamp01(-o / 100);
-  why('grudge', grudge, (g.whyOp[a + '>' + b] || []).find((w) => w.d < 0)?.why ? `they ${(g.whyOp[a + '>' + b] || []).find((w) => w.d < 0).why}` : 'old grievances');
+  { const w = (g.whyOp[a + '>' + b] || []).find((x) => x.d < 0)?.why; why('grudge', grudge, w ? `they ${w}` : 'old grievances', w ? `you ${w}` : 'you have wronged us'); }
   // weariness
   let weariness = 0, peace = 0;
   if (rel === 'war') {
@@ -208,7 +210,7 @@ export function exec(g, kind, from, to, ctx = {}) {   // `from` asked, `to` agre
   switch (kind) {
     case 'alliance': g.setRelation(from, to, 'alliance'); shift(g, to, from, 6, 'sealed our alliance'); shift(g, from, to, 6, 'sealed our alliance'); break;
     case 'joinwar': { const T = ctx.target; if (g.rel[to][T] !== 'war') g.setRelation(to, T, 'war'); shift(g, from, to, 12, `joined our war on ${nameOf(g, T)}`); shift(g, to, from, 6, 'asked and was heard'); break; }
-    case 'tribute': g.players[to].gold -= ctx.amount; g.earn(from, 'tribute', ctx.amount); shift(g, to, from, -6, 'took tribute'); shift(g, from, to, 5, 'paid tribute'); break;
+    case 'tribute': g.players[to].gold -= ctx.amount; g.earn(from, 'tribute', ctx.amount); (g.players[from].appeased ||= {})[to] = g.time; g._stance = {}; shift(g, to, from, -6, 'took tribute'); shift(g, from, to, 5, 'paid tribute'); break;
     case 'aid': g.players[to].gold -= ctx.amount; g.earn(from, 'tribute', ctx.amount); shift(g, from, to, 15, 'sent aid'); shift(g, to, from, 4, 'a friend in need'); break;
   }
 }
@@ -293,16 +295,21 @@ export function pressWar(g, team, b) {
     record(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)} declares war on ${nameOf(g, b)}: ${text}.`, 'note');
     return true;
   }
-  const u = p.ultimatum;
+  const u = p.ultimatum, said = top ? top.you : 'you stand in our way';
   if (!u || u.to !== b) {
-    p.ultimatum = { to: b, at: g.time };
-    notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "${text.replace(nameOf(g, b) + "'s", 'Your').replace(nameOf(g, b), 'You')}. You have until the next bell to make it right, or it is war."`);
+    if (p.appeased?.[b] != null && g.time - p.appeased[b] < 300) return false;   // they paid: the peace is kept a while
+    const amount = Math.max(40, Math.min(300, Math.round((g.players[b].gold * 0.25) / 10) * 10));
+    const o = writeLetter(g, team, b, 'tribute', { amount, text: `${leaderName(g, team)} of ${nameOf(g, team)}: "${said[0].toUpperCase() + said.slice(1)}. Send ${amount} coin to keep the peace, or it is war."` });
+    p.ultimatum = { to: b, at: g.time, id: o.id };
     return false;
   }
-  if (g.time - u.at < STANCE.ultimatum) return false;
+  const answered = !g.offers.some((o) => o.id === u.id);
+  if (p.appeased?.[b] != null && p.appeased[b] >= u.at) { p.ultimatum = null; notice(g, team, b, 'note', `${leaderName(g, team)} of ${nameOf(g, team)}: "Wisely done. The peace holds."`); return false; }
+  if (!answered && g.time - u.at < STANCE.ultimatum) return false;
+  g.offers = g.offers.filter((o) => o.id !== u.id);
   p.ultimatum = null;
   if (s.war < 0.4) { notice(g, team, b, 'note', `${leaderName(g, team)} of ${nameOf(g, team)}: "So be it. For now we keep the peace."`); return false; }
-  notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "You did nothing. This is war."`);
+  notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "${answered ? 'You refuse me' : 'You did nothing'}. This is war."`);
   g.setRelation(team, b, 'war');
   return true;
 }
@@ -381,7 +388,7 @@ export function deliberate(g, team) {
       notice(g, team, b, 'note', `${leaderName(g, team)} of ${nameOf(g, team)} sends you ${amt} coin: "A token of friendship between our houses."`);
     } else if (rel !== 'war' && rel !== 'alliance' && cooled(g, team, b, 'letter') && stance(g, team, b).war >= 0.3) {
       const s = stance(g, team, b), r = s.reasons.find((x) => x.kind === 'threat' || x.kind === 'grudge');
-      if (r) { stamp(g, team, b, 'letter'); notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "${r.text.replace(nameOf(g, b) + "'s", 'Your').replace(nameOf(g, b), 'You')}. Mend it, or answer to my spears."`); }
+      if (r) { stamp(g, team, b, 'letter'); notice(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)}: "${r.you[0].toUpperCase() + r.you.slice(1)}. Mend it, or answer to my spears."`); }
     }
   }
   void waiting;

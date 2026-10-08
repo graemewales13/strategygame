@@ -400,6 +400,12 @@ export class UI {
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'gsel': this.gsel = +d.id; break;
+      case 'demolish': {   // two clicks: the first arms it
+        const b = this.selEntity(); if (!b) break;
+        if (this.demoArm === b.id && performance.now() - this.demoT < 4000) { this.demoArm = null; this.host.send({ type: 'demolish', buildingId: b.id }); this.clearSel(); }
+        else { this.demoArm = b.id; this.demoT = performance.now(); this.toast(`Click Pull down again to pull down this ${BUILDINGS[b.kind].label.toLowerCase()}.`, 'warn'); }
+        break;
+      }
       case 'captain': { const u = this.selUnits()[0]; if (u) this.host.send({ type: 'captain', unitId: u.id }); break; }
       case 'selroll': { const b = this.selEntity(); if (b) { const r = this.rollOf(b).filter((u) => !u.inside); if (r.length) this.setUnits(r); } break; }
       case 'drill': {
@@ -619,8 +625,8 @@ export class UI {
       $('houses').querySelectorAll('canvas[data-crest]').forEach((c) => { const x = c.getContext('2d'); x.clearRect(0, 0, 22, 24); drawCrest(x, 11, 12, 20, +c.dataset.crest); });
     }
     const left = g.players.filter((x) => x.alive && x.team !== PLAYER);
-    const crip = left.filter((x) => (x.crippledT || 0) > 0);
-    $('holdbar').innerHTML = left.length ? `Rivals left <b>${left.length}</b>${crip.length ? ' · ' + crip.map((x) => esc(HOUSES[x.team].short) + ' forfeits ' + Math.max(0, Math.ceil(FORFEIT_AFTER - x.crippledT)) + 's').join(', ') : ''}` : 'Every rival has fallen.';
+    const frail = left.filter((x) => (x.heirs ?? 2) <= 0 || !g.seatOf(x.team));   // houses near their end: the last of the line, or a fugitive king
+    $('holdbar').innerHTML = left.length ? `Rivals left <b>${left.length}</b>${frail.length ? ' · ' + frail.map((x) => esc(HOUSES[x.team].short) + ((x.heirs ?? 2) <= 0 ? ' last of the line' : '') + (!g.seatOf(x.team) ? ' (fugitive)' : '')).join(', ') : ''}` : 'Every rival has fallen.';
     document.querySelectorAll('.res').forEach((el) => { const r = el.dataset.res; if (r) el.classList.toggle('low', p[r] < 20); });
   }
 
@@ -810,6 +816,7 @@ export class UI {
   characterRows(u) {
     const g = this.game, far = u.far ? FARLANDS[u.far] : null; let h = '';
     if (far) h += `<div class="stat"><label>Gift</label><span data-tip="${encodeURIComponent(`<b>${far.perk}</b><br>${far.tip}`)}"><b>${esc(far.perk)}</b>: ${esc(far.tip)}</span></div>`;
+    if (u.kind === 'king') { const hp = g.players[u.team], n = hp.heirs ?? 2; h += `<div class="stat"><label>Line</label><span>${n ? `${n} heir${n === 1 ? '' : 's'} after him` : '<b style="color:#e0866a">the last of the line: if he dies, the house falls</b>'}${g.seatOf(u.team) ? '' : ' · a fugitive: every house can see him'}</span></div>`; }
     if (u.captain) h += `<div class="stat"><label>Command</label><span>Captain: soldiers within ${CAPTAIN.aura} tiles +${Math.round(CAPTAIN.dmg * 100)}% damage, +${Math.round(CAPTAIN.xp * 100)}% experience</span></div>`;
     if (u.deeds?.length) h += `<div class="chips">${u.deeds.map((d) => `<span class="chip" data-tip="${encodeURIComponent(`<b>${DEEDS[d].label}</b><br>${DEEDS[d].tip}`)}">${esc(DEEDS[d].label)}</span>`).join('')}</div>`;
     if (u.kind !== 'camel' && u.kind !== 'serf') {
@@ -961,7 +968,7 @@ export class UI {
         html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>keep, tower, barracks</b> or a village you hold to go <b>inside</b>. Attacking a house at peace declares war.</div>`;
       }
     } else if (ent && ent.type === 'building' && ent.team === PLAYER) {
-      if (ent.built < 1) html = `<div class="hint">Under construction. Select serfs and right-click this building to help raise it.</div>`;
+      if (ent.built < 1) html = `<div class="hint">Under construction. Select serfs and right-click this building to help raise it.</div><div class="cgrid" style="margin-top:6px">${this.btn('demolish', { glyph: '✕', name: 'Cancel site', sub: '80% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Cancel the site</b><br>Click twice. Four fifths of the cost comes back.' })}</div>`;
       else {
         html += this.trainGrid(ent);
         if (ent.kind === 'market') html += this.marketPanel(ent);
@@ -976,6 +983,7 @@ export class UI {
         if (ent.kind === 'keep') html += this.buildGrid();
         if (!html) html = `<div class="hint">${esc(BUILDINGS[ent.kind].info)}</div>`;
         else if (Object.values(UNITS).some((u) => u.from.includes(ent.kind))) html += `<div class="hint">Right-click the field to set a <b>rally point</b>; on a resource, new serfs gather it.</div>`;
+        html += `<div class="cgrid" style="margin-top:6px">${this.btn('demolish', { glyph: '⚒', name: 'Pull down', sub: '30% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Pull down</b><br>Click twice. Those inside step out and a third of its cost comes back. A keep or temple pulled down stops swaying the villages around it.' })}</div>`;
       }
     } else if (ent && ent.type === 'village') {
       html = this.villageActs(ent) + this.tradeBoard(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (a keep with soldiers inside, plus a temple, tavern or market near it) or a <b>spy</b>. Independent villages also trade with your camels.'}</div>`;

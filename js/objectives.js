@@ -28,7 +28,7 @@ export const OBJECTIVES = [
     done: (g) => heldVillages(g) >= 1 },
   { id: 'army', title: 'Raise an army', hint: 'Drill eight soldiers. Rivals march after about ten minutes of peace.',
     done: (g) => soldiers(g) >= 8 },
-  { id: 'conquer', title: 'Rule the valley', hint: 'Every rival house must fall or forfeit (no home village and no soldiers for 45 s). Press T for standings.',
+  { id: 'conquer', title: 'Rule the valley', hint: 'A house falls when the last of its royal line dies (a king and two heirs). Kill every rival line, and guard your own. Press T for standings.',
     done: () => false },
 ];
 
