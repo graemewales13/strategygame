@@ -749,7 +749,12 @@ export class Game {
     n = Math.max(1, Math.min(n | 0 || 1, Math.floor(v.pop) - DRAFT.minLeft));
     if (Math.floor(v.pop) - DRAFT.minLeft < 1) return say(`${v.name} is too small to spare anyone.`);
     if (role === 'mine') return say('Mines are worked by the folk of nearby villages. Raise a mine within reach of a village.');
-    const soldier = role === 'soldier', foodEach = soldier ? DRAFT.soldierFood : role === 'mine' ? DRAFT.mineFood : SETTLE_FOOD, goldEach = soldier && this.hasBuilding(team, 'barracks') ? UNITS.footman.cost.gold : 0;
+    const soldier = role === 'soldier', foodEach = soldier ? DRAFT.soldierFood : role === 'mine' ? DRAFT.mineFood : SETTLE_FOOD, goldEach = 0;
+    if (soldier) {   // villagers are armed one at a time and fight as villagers do; soldiers proper come from a barracks or a keep's drill
+      const wait = (v.armAt ?? -1e9) + DRAFT.armEvery - this.time;
+      if (wait > 0) return say(`${v.name} can arm another villager in ${Math.ceil(wait)}s.`);
+      n = 1; v.armAt = this.time;
+    }
     let made = 0;
     for (let i = 0; i < n; i++) {
       if (p.food < foodEach) { say(`The road needs ${foodEach} grain a head.`); break; }
@@ -757,10 +762,10 @@ export class Game {
       if (this.popUsed(team) + 1 > this.popCap(team) + 1) { say('Population capped: raise cottages.'); break; }
       p.food -= foodEach; p.gold -= goldEach; v.pop -= 1;
       const x = v.x - 1.2 + i * 0.7, y = v.ty + v.size + 0.7;
-      const u = this.addUnit(soldier ? (goldEach ? 'footman' : 'recruit') : 'serf', team, x, y);
+      const u = this.addUnit(soldier ? 'recruit' : 'serf', team, x, y);
       u.origin = v.name; made++;
     }
-    if (made && team === PLAYER) this.log(team, `${made} ${soldier ? 'men take up spears' : role === 'mine' ? 'miners leave' : 'settlers leave'} ${v.name} (${Math.floor(v.pop)} folk remain).`, 'info');
+    if (made && team === PLAYER) this.log(team, `${made} ${soldier ? 'villager takes up a spear (no match for a soldier: drill them in a keep)' : role === 'mine' ? 'miners leave' : 'settlers leave'} ${v.name} (${Math.floor(v.pop)} folk remain).`, 'info');
     return made;
   }
   // the spoils of a sack: most of the stores, and survivors who take service
@@ -2397,7 +2402,14 @@ export class Game {
     const foe = by && by.hp > 0 && by.type === 'unit' ? by : this.closestEnemy(t, 12, team);
     if (!foe) return;
     for (const u of this.units) {
-      if (u.team !== team || u.hp <= 0 || u.inside || u.task.type !== 'idle' || u.kind === 'king' || this.powerOf(u) <= 0) continue;
+      if (u.team !== team || u.hp <= 0 || u.inside || u.kind === 'king') continue;
+      if (u.kind === 'serf') {   // serfs fight back at serf strength: the one struck (unless carrying goods home or marching), and idle serfs beside it
+        const struck = u === t && (u.task.type === 'idle' || u.task.type === 'gather' || u.task.type === 'build');
+        if (!struck && !(u.task.type === 'idle' && distTo(u.x, u.y, t) <= 2.5)) continue;
+        if (foe.type !== 'unit') continue;
+        u.task = { type: 'attack', targetId: foe.id }; u.path = []; u.repathT = 0; continue;
+      }
+      if (u.task.type !== 'idle' || this.powerOf(u) <= 0) continue;
       if (distTo(u.x, u.y, t) > DEFEND_R) continue;
       u.task = { type: 'attack', targetId: foe.id }; u.path = []; u.repathT = 0;
     }

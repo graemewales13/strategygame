@@ -399,4 +399,15 @@ test('espionage: a spy inside a rival village reports their army, captains, far-
   g.time += 60; assert.equal(intel(g, 1).secrets, null, 'the report fades once the spy is gone');
 });
 
+test('villagers: serfs and armed villagers fight at 10-30% of a footman, and serfs fight back when struck', () => {
+  const pw = (k) => (UNITS[k].hp * UNITS[k].dmg) / UNITS[k].cd, foot = pw('footman');
+  for (const k of ['serf', 'recruit']) { const r = pw(k) / foot; assert.ok(r >= 0.1 && r <= 0.3, `${k} fights at ${Math.round(r * 100)}% of a footman`); }
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war';
+  const h = g.seatOf(PLAYER), s = g.addUnit('serf', PLAYER, h.x + 5, h.y + 5), by = g.addUnit('serf', PLAYER, h.x + 6, h.y + 5), far = g.addUnit('serf', PLAYER, h.x + 15, h.y + 5);
+  const raider = g.addUnit('scout', 1, h.x + 5.8, h.y + 5);
+  g.damage(s, 3, 1, raider);
+  assert.equal(s.task.type, 'attack', 'the struck serf fights back'); assert.equal(by.task.type, 'attack', 'and the idle serf beside him');
+  assert.equal(far.task.type, 'idle', 'serfs further off keep out of it');
+});
+
 console.log(`${passed} passed`);

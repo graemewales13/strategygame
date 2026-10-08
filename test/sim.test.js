@@ -724,10 +724,12 @@ test('village: a founded village grows to 50, drafts serfs, miners and soldiers;
   assert.equal(g.draft(0, v.id, 3, 'serf'), 3); assert.equal(Math.round(v.pop), 27);
   assert.equal(g.draft(0, v.id, 2, 'mine'), 0, 'miners are not drafted: the village works nearby mines itself');
   g.addBuilding('barracks', 0, h.tx + 6, h.ty - 6, true);
-  assert.equal(g.draft(0, v.id, 4, 'soldier'), 4);
-  assert.ok(g.units.filter((u) => u.kind === 'footman' && u.origin === v.name).length === 4, 'footmen from the village');
+  assert.equal(g.draft(0, v.id, 4, 'soldier'), 1, 'a village arms one villager at a time');
+  assert.equal(g.draft(0, v.id, 1, 'soldier'), 0, 'and must wait before arming another');
+  assert.ok(g.units.some((u) => u.kind === 'recruit' && u.origin === v.name) && !g.units.some((u) => u.kind === 'footman' && u.origin === v.name), 'an armed villager, never a footman, even with a barracks');
+  for (let i = 0; i < 4; i++) { const f = g.addUnit('footman', 0, h.x + 2 + i, h.y + 4); f.origin = 'test'; }
   // soldiers raise a keep
-  const kp = g.place(0, 'keep', h.tx + 8, h.ty + 8, g.units.filter((u) => u.kind === 'footman').map((u) => u.id));
+  const kp = g.place(0, 'keep', h.tx + 8, h.ty + 8, g.units.filter((u) => u.kind === 'footman' && u.origin === 'test').map((u) => u.id));
   if (kp) { run(g, 5); assert.ok(g.units.some((u) => u.kind === 'footman' && u.task.type === 'build'), 'soldiers build'); }
   v.pop = 1; assert.equal(g.draft(0, v.id, 1, 'serf'), 0, 'the village is never emptied');
   run(g, 600); const v2 = g.villages.find((x) => x.founded && x.home !== 0); assert.ok(v2.pop > 10, 'it grows: ' + v2.pop);

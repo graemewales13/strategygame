@@ -122,7 +122,7 @@ export const UNITS = {
   knight:  { label: 'Knight',  hp: 150, speed: 3.9, dmg: 16, range: 1,   cd: 1.2,  sight: 7,  cost: { food: 80, wood: 0, gold: 80 },  time: 22, from: ['stable'],       bld: 0.5, vil: 1.0, info: 'Heavy cavalry. Forge adds +3 damage.' },
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
-  recruit: { label: 'Recruit', hp: 60,  speed: 2.6, dmg: 6,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
+  recruit: { label: 'Recruit', hp: 55,  speed: 2.6, dmg: 5,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
   camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click markets (yours or a treaty partner\'s) and it loops between them for ever, hauling goods both ways.' },
   king:    { label: 'King',    hp: 240, speed: 3.0, dmg: 14, range: 1,   cd: 1.0,  sight: 9,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.5, vil: 1.2, art: 'knight', info: 'The ruler of a house. Rallies soldiers, sways villages by his presence, and must not fall.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
@@ -224,7 +224,7 @@ export const SETTLE_FOOD = 20;
 export const HOME_POP = 30;
 export const INFLUENCE_HOME = { r: 14, w: 0.5, guard: true };   // a village you hold leans on its neighbours a little
 export const FOUND = { limit: 3, pop: 4, max: 50, grow: 22, loyalty: 82, campR: 10, campPop: 8 };   // campR: ore this close makes a founded village a mining camp of campPop folk   // a founded village: folk at the start, cap, seconds per newcomer while fed
-export const DRAFT = { minLeft: 2, mineFood: 10, soldierFood: 25, perCall: 5 };
+export const DRAFT = { minLeft: 2, mineFood: 10, soldierFood: 25, perCall: 5, armEvery: 20 };   // armEvery: seconds between villagers a village can arm (one at a time)
 export const SACK = { stores: 0.8, serfs: 0.15, soldiers: 0.2, killed: 0.2 };   // share of the village's goods you carry off; share of survivors who join you as serfs or soldiers   // grain to send for one settler (a serf) from a held village
 export const VILLAGE_KINDS = {
   hamlet:   { label: 'Hamlet',         folk: ['farmers', 'herders'],            protection: 220, loyalty: 26, tribute: { food: 0.8,  wood: 0.15, gold: 0.02 }, stores: { food: 80, wood: 20, gold: 8 },  blurb: 'Farmers and herders. Easy to turn, pays grain.' },

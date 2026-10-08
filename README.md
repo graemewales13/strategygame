@@ -21,7 +21,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 ## How to play
 
 1. **Gather.** Drag-select your three serfs, right-click timber, berries or gold. They carry goods to your village.
-2. **Grow.** Select your village (**H**). Draft serfs and soldiers from its folk. At first you may raise only a mine, market, foundry, tavern, keep and barracks; cottage (needs a market), farm, mill, archery, tower, academy and the rest unlock as you build. There is no territory circle: build anywhere you have scouted. Distance changes the *community* around a site instead (see "Rules in one page").
+2. **Grow.** Select your village (**H**). Draft serfs from its folk, or arm a villager now and then (one every 20 s, a recruit at about a quarter of a footman's strength: real soldiers come from a barracks or a keep's drill). Serfs fight back when struck, at about an eighth of a footman. At first you may raise only a mine, market, foundry, tavern, keep and barracks; cottage (needs a market), farm, mill, archery, tower, academy and the rest unlock as you build. There is no territory circle: build anywhere you have scouted. Distance changes the *community* around a site instead (see "Rules in one page").
 3. **Take villages.** Fourteen independent villages sit in the gaps. Three ways to win one:
    - **Pillage.** Soldiers fight it until its *protection* hits zero. It submits to you with middling loyalty. The folk fight back, hillforts hardest: bring rams.
    - **Influence.** A hall, keep, tower, tavern, temple or academy near a village slowly raises its *loyalty*. Past 72 it comes over without a sack. Scholars beside an academy amplify it.
@@ -163,10 +163,10 @@ Start: a home village of **30 folk**, **three serfs**, 300 grain, 480 timber, **
 | Income | digging or panning gold (0.6–0.7/s a serf; seams are finite), **selling the stockpile at a market** (60% of worth, each sale lowers the price, it recovers), caravans on routes (profit over worth), market consumers, taverns, **village tax** (0.011/s per villager), village tribute, sacks |
 | Upkeep | **army pay**: footman 0.05, bowman 0.065, knight 0.12 coin/s each beyond the first four (household guard). An empty purse for 20 s: soldiers hit at 70% and one deserts every 30 s |
 | Up-front | footman 15c, bowman 30c, knight 80c, keep 150c, barracks 40c, village 30c plus timber and grain |
-| Manpower | hall 6 + cottage 5 + keep 8 + half of the folk of every village you hold. Serfs 50 grain / 8 s. Villages feed more: **draft** serfs (20 grain) or soldiers (25) |
+| Manpower | hall 6 + cottage 5 + keep 8 + half of the folk of every village you hold. Serfs 50 grain / 8 s. Villages feed more: **draft** serfs (20 grain) or arm a villager (25, one per village every 20 s) |
 
 ## Villages you found
-Build **Village** (needs a keep, 100 grain, 150 timber, 30 coin, 30 s). When serfs finish it, it becomes a living village of 4 settlers that grows (one every 22 s while fed; it tills its own fields) to **50**. Villages are always 1x1 tiles, drawn with the supplied art (hamlet, then farmland past 15 folk, then a market town past 35). Select it: **Serfs ×5**, **Soldiers ×5** (footmen if you have a barracks and coin, else recruits). Never emptied below 2 folk.
+Build **Village** (needs a keep or a mine, 100 grain, 150 timber, 30 coin, 30 s). When serfs finish it, it becomes a living village of 4 settlers that grows (one every 22 s while fed; it tills its own fields) to **50**. Villages are always 1x1 tiles, drawn with the supplied art (hamlet, then farmland past 15 folk, then a market town past 35). Select it: **Serfs ×5**, **Soldiers ×5** (footmen if you have a barracks and coin, else recruits). Never emptied below 2 folk.
 **Sack**: when soldiers take a village by force you carry off 80% of its stores (coin included); a fifth of the folk die, and of the survivors 15% become serfs and 20% soldiers (40% in a hillfort or inn) as long as you have room. Winning by influence or a spy brings no loot.
 **Castles**: serfs and soldiers can raise a keep beside a village (soldiers at 60% speed); a keep garrisons up to **8** soldiers.
 **Names**: every unit is named from its people's pool (`js/names.js`), shown in the selection panel and over selected units.
