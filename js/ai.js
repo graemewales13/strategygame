@@ -41,10 +41,13 @@ function think(game, team, p) {
   // is hurt, outnumbered or the last of the line, he shelters in the nearest keep, and steps out again once it is quiet and he is whole.
   const king = game.kingOf(team), lastOfLine = (p.heirs ?? KING.heirs) <= 0;
   if (king && !king.inside) {
-    const foe = game.closestEnemy(king, 10, team), keep = foe && game.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0 && b.garrison.length < 8).sort((a, c) => Math.hypot(a.x - king.x, a.y - king.y) - Math.hypot(c.x - king.x, c.y - king.y))[0];
+    const foe = game.closestEnemy(king, 10, team), keep = foe && game.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0 && (b.garrison.length < 8 || b.garrison.some((id) => game.byId.get(id)?.kind === 'recruit'))).sort((a, c) => Math.hypot(a.x - king.x, a.y - king.y) - Math.hypot(c.x - king.x, c.y - king.y))[0];
     const foes = foe ? game.units.filter((u) => u.hp > 0 && !u.inside && game.isEnemy(team, u.team) && game.powerOf(u) > 0 && Math.hypot(u.x - king.x, u.y - king.y) < 10).length : 0;
     const guards = foe ? game.units.filter((u) => u.team === team && u.hp > 0 && !u.inside && u !== king && game.powerOf(u) > 0 && Math.hypot(u.x - king.x, u.y - king.y) < 10).length : 0;
-    if (keep && (lastOfLine || king.hp < king.maxHp * 0.6 || foes > guards + 1) && king.task.type !== 'enter') game.cmdEnter([king], keep);
+    if (keep && (lastOfLine || king.hp < king.maxHp * 0.6 || foes > guards + 1) && king.task.type !== 'enter') {
+      if (keep.garrison.length >= 8) { const r = keep.garrison.map((id) => game.byId.get(id)).find((u) => u && u.kind === 'recruit' && !u.drilling) || keep.garrison.map((id) => game.byId.get(id)).find((u) => u && u.kind === 'recruit'); if (r) { if (r.drilling) { keep.drills = keep.drills.filter((q) => q.uid !== r.id); r.drilling = false; } game.eject(r, keep); } }   // a full keep makes room for its king
+      game.cmdEnter([king], keep);
+    }
   } else if (king && king.inside) {
     const home = game.byId.get(king.inside);
     if (home && home.type === 'building' && king.hp >= king.maxHp * 0.95 && !game.closestEnemy(home, 14, team) && !lastOfLine) game.eject(king, home);

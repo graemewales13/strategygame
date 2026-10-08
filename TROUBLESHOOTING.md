@@ -163,3 +163,7 @@ Causes and fixes:
 
 ## T-045 - Drilling threw away earned health (fixed 2026-10-08, hourly run 11)
 - Drilling a recruit into a soldier (and sending one out as a spy) set health from the kind's base only, dropping rank, deeds and the Drill research: a Veteran Death-cheater became a 90-hp footman, weaker than a fresh 103-hp one. `Game.maxHpFor(u)` now rebuilds full health from kind, trait, rank, deeds and Drill; kit is added on top by `equip()`.
+
+## T-046 - A rival king could not shelter in a keep full of recruits (fixed 2026-10-09, hourly run 12)
+- Rival keeps hold recruits waiting to be drilled (up to the keep's 8); the king's shelter rule needed fewer than 8 inside, so a keep full of recruits left the last of the line in the open. Now a full keep lets one recruit out (cancelling its drill if need be) and the king goes in.
+- Tried first and reverted: capping recruits at 6 and turning them out when the house could not pay for drills. It changed how many soldiers rivals train and broke the playbook test in `test/learn.test.js` (a tiny-army playbook ended with more trained soldiers than a big-army one), so the narrower fix was kept.

@@ -644,4 +644,14 @@ test('gaps: a ranked recruit drilled into a soldier keeps the health his rank, d
   assert.equal(u.kind, 'footman'); assert.ok(u.maxHp > fresh.maxHp * 1.25, `a veteran footman ${u.maxHp} vs a fresh one ${fresh.maxHp}`);
 });
 
+test('gaps: a rival king finds room in a keep full of recruits', () => {
+  const g = new Game({ seed: 8, houses: 3, ai: true }); const t = 1, p = g.players[t], k = g.kingOf(t);
+  g.rel[0][1] = g.rel[1][0] = 'war'; p.heirs = 0;
+  const keep = g.addBuilding('keep', t, Math.round(k.x) + 3, Math.round(k.y) - 1, true); g.recomputeWalk();
+  for (let i = 0; i < 8; i++) { const r = g.addUnit('recruit', t, keep.x, keep.y); r.inside = keep.id; keep.garrison.push(r.id); }
+  g.addUnit('scout', PLAYER, k.x + 4, k.y + 2);
+  for (let i = 0; i < 40 && !k.inside; i++) g.tick(0.25);
+  assert.equal(k.inside, keep.id, 'a recruit steps out and the last of the line goes in');
+});
+
 console.log(`${passed} passed`);
