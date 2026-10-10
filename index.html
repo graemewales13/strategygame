@@ -8,13 +8,39 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mv0639qq">
+<link rel="stylesheet" href="style.css?v=mv2yt354">
 
+<script type="importmap">
+{
+  "imports": {
+    "./js/ai.js": "./js/ai.js?v=mv2yt354",
+    "./js/art.js": "./js/art.js?v=mv2yt354",
+    "./js/audio.js": "./js/audio.js?v=mv2yt354",
+    "./js/config.js": "./js/config.js?v=mv2yt354",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mv2yt354",
+    "./js/entities.js": "./js/entities.js?v=mv2yt354",
+    "./js/game.js": "./js/game.js?v=mv2yt354",
+    "./js/gfx.js": "./js/gfx.js?v=mv2yt354",
+    "./js/learn.js": "./js/learn.js?v=mv2yt354",
+    "./js/main.js": "./js/main.js?v=mv2yt354",
+    "./js/map.js": "./js/map.js?v=mv2yt354",
+    "./js/names.js": "./js/names.js?v=mv2yt354",
+    "./js/net.js": "./js/net.js?v=mv2yt354",
+    "./js/objectives.js": "./js/objectives.js?v=mv2yt354",
+    "./js/recorder.js": "./js/recorder.js?v=mv2yt354",
+    "./js/render.js": "./js/render.js?v=mv2yt354",
+    "./js/save.js": "./js/save.js?v=mv2yt354",
+    "./js/terrain.js": "./js/terrain.js?v=mv2yt354",
+    "./js/trainui.js": "./js/trainui.js?v=mv2yt354",
+    "./js/ui.js": "./js/ui.js?v=mv2yt354"
+  }
+}
+</script>
 <script>
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mv0639qq';
+window.__BUILD = 'mv2yt354';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -159,7 +185,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
       <div class="chead"><h2>Campaign Map</h2><span>Click a point to travel there · Esc or M returns to the field</span></div>
       <div class="cbody"><canvas id="campaignCanvas" width="880" height="660"></canvas><div id="cTip" class="hidden"></div></div>
       <div class="legend">
-        <span><i class="sw disc"></i>House hall / keep</span><span><i class="sw vil"></i>Village (tan = independent)</span><span><i class="sw gold"></i>Gold mine</span><span><i class="sw tree"></i>Timber</span><span><i class="sw berry"></i>Berries</span><span><i class="sw fog"></i>Unseen</span><span><i class="sw cam"></i>Camera</span>
+        <span><i class="sw disc"></i>House seat / keep</span><span><i class="sw vil"></i>Village (tan = independent)</span><span><i class="sw gold"></i>Gold mine</span><span><i class="sw tree"></i>Timber</span><span><i class="sw berry"></i>Berries</span><span><i class="sw fog"></i>Unseen</span><span><i class="sw cam"></i>Camera</span>
       </div>
     </div>
   </div>

@@ -167,3 +167,11 @@ Causes and fixes:
 ## T-046 - A rival king could not shelter in a keep full of recruits (fixed 2026-10-09, hourly run 12)
 - Rival keeps hold recruits waiting to be drilled (up to the keep's 8); the king's shelter rule needed fewer than 8 inside, so a keep full of recruits left the last of the line in the open. Now a full keep lets one recruit out (cancelling its drill if need be) and the king goes in.
 - Tried first and reverted: capping recruits at 6 and turning them out when the house could not pay for drills. It changed how many soldiers rivals train and broke the playbook test in `test/learn.test.js` (a tiny-army playbook ended with more trained soldiers than a big-army one), so the narrower fix was kept.
+
+## T-047 - Gap hunt after the full re-check (fixed 2026-10-10)
+- The Council's Army stat, the standings table and your home panel counted only soldiers outside buildings (`militaryOf`), though the tooltip says "in the field and garrisons": a full keep made a house look weaker. They now use `soldiersOf` (garrisons included).
+- A unit on a plain move order walked straight through a building site placed across its route (only tasks with a target re-planned). Marches now re-plan to where they were going.
+- Rival barracks, archery ranges and towers were meant to face the nearest rival, but `findSpot` looked for a building of kind `hall`, which no longer exists, so they never did. It now uses the rival houses' seats.
+- A rival mine could stand for good with nobody to dig (its villages' folk all busy at other mines, and the house at its limit of three founded villages). Mines now track `idleT`; a rival founds a camp beside an unstaffed mine if it can, and pulls it down after three idle minutes if not.
+- README and the map legend still spoke of halls in ten places; houses start in a home village. Fixed.
+- Looked at and left: rivals hoarding grain, timber and coin past minute 13 is their army cap being reached, not a bug (a serf rebalance was tried and reverted: grain comes from farms and tribute, and the change broke the playbook test).

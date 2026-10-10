@@ -656,7 +656,7 @@ export class UI {
     const s = this.sel;
     if (s.type === 'none') {
       const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length;
-      const army = g.militaryOf(PLAYER).length;
+      const army = g.soldiersOf(PLAYER).length;
       const vs = g.villagesOf(PLAYER).length;
       html = `<div class="seltitle">${esc(HOUSES[PLAYER].name)}</div><div class="selsub">${esc(HOUSES[PLAYER].motto)}</div>
         <div class="stat"><label>Serfs</label><span>${serfs}</span></div><div class="stat"><label>Soldiers</label><span>${army}</span></div><div class="stat"><label>Villages</label><span>${vs} of ${g.villages.length}</span></div>

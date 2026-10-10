@@ -193,6 +193,8 @@ export class Game {
       || this.villages.find((v) => v.owner === team);
   }
   villagesOf(team) { return this.villages.filter((v) => v.owner === team); }
+  // every soldier a house has, in the field or inside its buildings (what the panels count; militaryOf is those free to march)
+  soldiersOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king'); }
   militaryOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king' && !u.inside); }
   // does `viewer` have a spy's fresh report on house `t`?
   spiedOn(viewer, t) { const at = this.spyIntel?.[viewer + '>' + t]; return at != null && this.time - at <= SPY_INTEL.fresh; }
@@ -1089,6 +1091,7 @@ export class Game {
       }
       const n = MINE_MAX_WORKERS - need, power = n ? list.reduce((s, c) => s + c.n * (c.own ? MINE_JOBS.ownBonus : MINE_JOBS.freeBonus), 0) / n : 0;
       b._crew = { n, list, power, villages: near.length };
+      b.idleT = n > 0 ? 0 : (b.idleT || 0) + MINE_JOBS.refresh;   // how long it has stood with nobody to dig (the AI founds a camp beside it)
     }
     this._crewV = this.villages.length;
   }
@@ -1274,7 +1277,10 @@ export class Game {
     const s = BUILDINGS[kind];
     this.pay(team, s.cost);
     const b = this.addBuilding(kind, team, tx, ty, false);
-    for (const o of this.units) if (o.path?.some(([px, py]) => px >= tx && px < tx + s.size && py >= ty && py < ty + s.size)) o.repathT = 0;   // a route through the new site is planned again
+    for (const o of this.units) if (o.path?.some(([px, py]) => px >= tx && px < tx + s.size && py >= ty && py < ty + s.size)) {   // a route through the new site is planned again
+      o.repathT = 0;
+      if (o.task.type === 'move') { const [ex, ey] = o.path[o.path.length - 1]; if (!this.setPath(o, ex, ey)) o.path = []; }   // a plain march has no target to re-plan toward: re-plan to where it was going
+    }
     const pl = this.players[team];
     if (this.hasTech(pl.team, 'masonry')) { b.maxHp *= 1.15; b.hp *= 1.15; } // Masonry
     if ((kind === 'keep' || kind === 'tower') && this.hasTech(pl.team, 'engineering')) { b.maxHp *= 1.25; b.hp *= 1.25; } // Engineering
@@ -1540,7 +1546,7 @@ export class Game {
         team: i, name: p.name, alive: this.alive(i),
         money: Math.floor(p.gold), wealth: Math.floor(p.gold + goods / RES_VALUE.gold), traded: Math.floor(p.tradeEarned || 0),
         land: held.length, landPop: Math.floor(held.reduce((a, v) => a + v.pop, 0)),
-        pop: this.popUsed(i), army: this.militaryOf(i).length, arms: p.arms || 0, sci: p.sci || 0,
+        pop: this.popUsed(i), army: this.soldiersOf(i).length, arms: p.arms || 0, sci: p.sci || 0,
         loyalty: held.length ? Math.round(held.reduce((a, v) => a + v.loyalty, 0) / held.length) : 0,
       };
     });

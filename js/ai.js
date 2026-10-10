@@ -336,7 +336,7 @@ export function findSpot(game, team, seat, kind, at = null) {
   if (kind === 'cottage' || kind === 'farm' || kind === 'warehouse') rmax += 8;   // a crowded hall pushes homes outward rather than stalling
   // the nearest rival seat: soldiers' buildings face it
   let foe = null, fd = 1e9;
-  for (const o of game.buildings) if (o.team !== team && o.kind === 'hall' && o.hp > 0) { const d = Math.hypot(o.x - seat.x, o.y - seat.y); if (d < fd) { fd = d; foe = o; } }
+  for (const q of game.players) { if (!q.alive || q.team === team) continue; const o = game.seatOf(q.team); if (!o) continue; const d = Math.hypot(o.x - seat.x, o.y - seat.y); if (d < fd) { fd = d; foe = o; } }   // (houses have no hall: their seat is a home village or keep)
   const fa = foe ? Math.atan2(foe.y - seat.y, foe.x - seat.x) : 0;
   const near = [];   // everything a new footprint could crowd
   for (const b of game.buildings) if (b.hp > 0 && Math.abs(b.x - ax) < rmax + 14 && Math.abs(b.y - ay) < rmax + 14) near.push(b);
@@ -434,13 +434,18 @@ export function treasury(game, team, p, seat, serfs) {
       if (n && game.place(team, 'mine', 0, 0, null, n.id)) { have.add(n.kind); break; }
     }
   }
+  { const dead = game.buildings.find((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && (b.idleT || 0) > 180);   // three minutes with nobody to dig and no camp to be had: pull it down and take a third back
+    if (dead) game.demolish(team, dead.id); }
   p.campT = (p.campT ?? 240) - 1.5;
   if (p.campT <= 0 && game.time > 300 && !game.missingFor(team, 'village').length && !game.buildings.some((b) => b.team === team && b.kind === 'village' && b.built < 1) && game.canAfford(team, BUILDINGS.village.cost) && p.wood > 220) {
     p.campT = 150;
     const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.hp > 0).map((b) => b.ore));
     const ore = game.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && !have.has(n.kind) && n.amount > 40 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < 70 && !(game.minePower(team, n.x, n.y) > 0))
       .sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
-    const spot = ore && findSpot(game, team, seat, 'village', { x: ore.x + 0.5, y: ore.y + 0.5, rmin: 3, rmax: FOUND.campR - 3 });
+    // a mine of ours that has stood a minute with nobody to dig (its villages' folk are all at other mines) needs a camp of its own first
+    const idleMine = game.buildings.find((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && (b.idleT || 0) > 60 && !game.villages.some((v) => v.owner === team && v.founded && Math.hypot(v.x - b.x, v.y - b.y) <= FOUND.campR + 2));
+    const at = idleMine ? { x: idleMine.x, y: idleMine.y } : ore ? { x: ore.x + 0.5, y: ore.y + 0.5 } : null;
+    const spot = at && findSpot(game, team, seat, 'village', { x: at.x, y: at.y, rmin: 3, rmax: FOUND.campR - 3 });
     if (spot && game.place(team, 'village', spot[0], spot[1])) return;
   }
   if (p.foundT <= 0 && game.time > 240 && held.length < 2 && !game.buildings.some((b) => b.team === team && b.kind === 'village' && b.built < 1) && game.canAfford(team, BUILDINGS.village.cost) && p.wood > 260) {

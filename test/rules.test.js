@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING } from '../js/config.js';
@@ -652,6 +652,29 @@ test('gaps: a rival king finds room in a keep full of recruits', () => {
   g.addUnit('scout', PLAYER, k.x + 4, k.y + 2);
   for (let i = 0; i < 40 && !k.inside; i++) g.tick(0.25);
   assert.equal(k.inside, keep.id, 'a recruit steps out and the last of the line goes in');
+});
+
+test('gaps: panels count garrisoned soldiers; a march re-plans round a new site; rival barracks face the nearest rival seat', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); g.fogOn = false; Object.assign(g.players[PLAYER], { food: 9999, wood: 9999, gold: 9999, stone: 999 });
+  const k = g.addBuilding('keep', PLAYER, h.tx + 12, h.ty - 12, true); g.recomputeWalk();
+  const a = g.addUnit('footman', PLAYER, k.x, k.y + 4), b = g.addUnit('footman', PLAYER, k.x + 1, k.y + 4); b.inside = k.id; k.garrison.push(b.id);
+  assert.equal(g.standings().find((s) => s.team === PLAYER).army, 2, 'the soldier in the keep is counted');
+  const m = g.addUnit('footman', PLAYER, h.x + 20, h.y + 4); g.cmdMove([m], h.x + 34, h.y + 4); run(g, 0.2);
+  const mid = m.path[Math.floor(m.path.length / 2)];
+  g.place(PLAYER, 'cottage', mid[0] - 1, mid[1] - 1, null);
+  assert.ok(!m.path.some(([px, py]) => g.block[Math.floor(py) * g.W + Math.floor(px)]), 'the march no longer runs through the site'); void a;
+  const seat = g.seatOf(1), foe = g.seatOf(PLAYER), angs = [];
+  for (let i = 0; i < 12; i++) { const sp = findSpot(g, 1, seat, 'barracks'); if (sp) angs.push(Math.cos(Math.atan2(sp[1] + 1.5 - seat.y, sp[0] + 1.5 - seat.x) - Math.atan2(foe.y - seat.y, foe.x - seat.x))); }
+  assert.ok(angs.reduce((x, y) => x + y, 0) / angs.length > 0, 'barracks lean toward the nearest rival');
+});
+
+test('gaps: a rival does not leave a mine standing that nobody can dig', () => {
+  const g = mk(); const t = 1, seat = g.seatOf(t), p = g.players[t];
+  const ore = g.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && !(g.minePower(t, n.x, n.y) > 0)).sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
+  const m = g.addBuilding('mine', t, ore.x - 1, ore.y - 1, true); m.nodeIds = [ore.id]; m.ore = ore.kind; g.recomputeWalk();
+  g.refreshCrews(); assert.equal(m._crew.n, 0, 'no village in reach');
+  m.idleT = 200; p.campT = 999; g.time = 400; treasury(g, t, p, seat, []);
+  assert.ok(!g.buildings.includes(m), 'pulled down');
 });
 
 console.log(`${passed} passed`);
