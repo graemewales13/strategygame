@@ -192,3 +192,13 @@ Causes and fixes:
 - The first-match guide's "Raise an army" step counted `militaryOf` (soldiers outside buildings), so eight soldiers drilled and kept in a keep did not count: the same gap T-047 fixed for the Council. It now counts `soldiersOf`.
 - Checked and left: the boot test logs about 35 "404" lines; they are the optional art the game looks for (plain soldiers per people, building states) and were there before. Backlog T29 (art manifest).
 
+
+## T-051 - Online groundwork: what to check when a match falls out of step (2026-10-11)
+- Lockstep needs every copy to compute the same thing. A desync report (status chip "out of step", relay log `DESYNC`) means some rule read something that differs per machine. Usual suspects:
+  - `Math.random` in the simulation (use `game.rnd`/`game.roll`)
+  - a rule that tests `PLAYER` instead of `game.isHuman(team)`
+  - per-machine data reaching the rules (the learned playbook: online, every copy uses the host's, sent in the start config)
+  - the board size (read at page load; a client with another size reloads with the room's)
+  - an order applied outside its turn (always `net.send`, never `game.applyIntent`, while online)
+- To find the first difference: `node test/net.test.js` runs two clients in one process. Compare `stateHash` per turn, then diff `game.serialize()` at the first differing turn.
+- Fixed while building it: the lobby's text-escaping helper was declared after its first use at load (temporal dead zone), so the lobby stayed empty; the splash stayed over a started match.

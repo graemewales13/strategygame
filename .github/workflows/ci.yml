@@ -27,3 +27,10 @@ jobs:
           node tools/ui-smoke.cjs | tee smoke.txt
           ! grep -q "errors \[$" smoke.txt || true
           grep -q "errors \[\]" smoke.txt
+      - name: Two browsers play one online match through the relay
+        run: |
+          node relay.js 8124 &
+          sleep 2
+          node tools/mp-smoke.cjs | tee mp.txt
+          grep -q "page errors: \[\]" mp.txt
+          ! grep -q '"desync":true' mp.txt
