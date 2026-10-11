@@ -34,6 +34,8 @@ Seeing every soldier individually belongs on the barracks (the muster roll) and 
 
 These are peoples with no house in the valley. Now and then (30% a slot, never two at once) one sits in a tavern. They cost more than local wanderers, start Trained, and keep their gift when drilled into a soldier.
 
+Each has a painted portrait (`assets/shared/ui/portraits/<key>.png`), shown on the tavern's hire button and on their unit panel. Kings show their people's ruler portrait (also on the Council), captains carry a standard dyed in their house colour, deeds show as painted badges, and a fugitive king wears a hooded-crown mark that every house can see.
+
 | Who | From | Gift |
 |---|---|---|
 | Norse sea-wolf | the Northern Fjords | **Berserker**: up to +60% damage as they near death |

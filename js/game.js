@@ -25,6 +25,10 @@ const SPIRAL = (() => {
 })();
 
 const SOLDIER = new Set(['footman', 'bowman', 'knight', 'king']);
+const RENDER_ONLY = new Set(['_lt', '_lx', '_ly', '_dx', '_dy', '_sg', '_fx']);   // per-frame fields render.js keeps on units (not saved)
+const ENTITY = new Set(['unit', 'building', 'village']);
+const mix32 = (a) => { let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };   // mulberry32 output step
+
 export class Game {
   constructor(opts = {}) {
     this.events = [];
@@ -45,7 +49,7 @@ export class Game {
     this.aiOn = ai;
     this.seed = seed ?? Math.floor(Math.random() * 1e9) + 1;
     this.people = people; this.peopleOrder = setPeoples(order || seatPeoples(people, this.seed));   // which nation sits in which seat
-    { let a = (this.seed ^ 0x9e3779b9) >>> 0; this.rnd = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; this.named = []; }
+    this.rndA = (this.seed ^ 0x9e3779b9) >>> 0; this.rollA = (this.seed ^ 0x85ebca6b) >>> 0; this.named = [];
     const map = createMap(this.seed, this.houses);
     this.map = map;
     this.W = map.w;
@@ -123,9 +127,16 @@ export class Game {
     this.events.push({ t: this.time, team, text, kind });
   }
 
+  // Seeded chance, its state saved with the game, so the same seed and the same orders always play out the same (T05). `rnd` names people
+  // and sets tempers; `roll` is everything else the simulation leaves to chance (spawn jitter, spy catches, wanderers, rival whims).
+  // Nothing in the simulation may use Math.random.
+  rnd() { this.rndA = (this.rndA + 0x6d2b79f5) >>> 0; return mix32(this.rndA); }
+  roll() { this.rollA = (this.rollA + 0x6d2b79f5) >>> 0; return mix32(this.rollA); }
+
   addUnit(kind, team, x, y) {
     const u = makeUnit(this.nid(), kind, team, x, y);
-    { const set = (this.named[team] ||= new Set()); u.name = pickName(HOUSES[team]?.faction, set, this.rnd); set.add(u.name); }
+    u.aggroT = this.roll() * 0.5;
+    { const set = (this.named[team] ||= new Set()); u.name = pickName(HOUSES[team]?.faction, set, () => this.rnd()); set.add(u.name); }
     if (this.hasTech(team, 'drill') && kind !== 'serf' && kind !== 'camel') { u.maxHp = Math.round(u.maxHp * 1.15); u.hp = u.maxHp; } // Drill
     if (kind === 'ram' && this.hasTech(team, 'mechanics')) { u.maxHp = Math.round(u.maxHp * 1.3); u.hp = u.maxHp; } // Mechanics
     u.born = this.time || 0; u.kills = 0;   // service record: when they joined and how many foes they have felled
@@ -578,13 +589,13 @@ export class Game {
         if (x >= t.tx && x < t.tx + t.size && y >= t.ty && y < t.ty + t.size) continue;
         if (x < 0 || y < 0 || x >= this.W || y >= this.H || this.walk[y * this.W + x] !== 1) continue;
         let crowd = 0; for (const o of this.units) if (o !== u && o.hp > 0 && !o.inside && Math.abs(o.x - x - 0.5) < 1 && Math.abs(o.y - y - 0.5) < 1) crowd++;
-        ring.push({ x, y, score: crowd * 3 - (x >= t.tx + t.size || y >= t.ty + t.size ? 1 : 0) + Math.random() * 0.5 });
+        ring.push({ x, y, score: crowd * 3 - (x >= t.tx + t.size || y >= t.ty + t.size ? 1 : 0) + this.roll() * 0.5 });
       }
       ring.sort((a, b) => a.score - b.score);
-      if (ring.length) { u.x = ring[0].x + 0.5 + (Math.random() - 0.5) * 0.5; u.y = ring[0].y + 0.5 + (Math.random() - 0.5) * 0.5; return; }
+      if (ring.length) { u.x = ring[0].x + 0.5 + (this.roll() - 0.5) * 0.5; u.y = ring[0].y + 0.5 + (this.roll() - 0.5) * 0.5; return; }
     }
     const n = this.nearestWalkable(Math.floor(ref.x), Math.floor((ref.ty ?? ref.y) + (ref.size || 0) + 0.5), 8);
-    if (n) { u.x = n[0] + 0.5 + (Math.random() - 0.5) * 0.5; u.y = n[1] + 0.5 + (Math.random() - 0.5) * 0.5; }
+    if (n) { u.x = n[0] + 0.5 + (this.roll() - 0.5) * 0.5; u.y = n[1] + 0.5 + (this.roll() - 0.5) * 0.5; }
   }
   leave(team, id) {
     const t = this.byId.get(id);
@@ -721,14 +732,14 @@ export class Game {
   }
   // ---- tavern: random wanderers for hire; keep: levy villagers and drill soldiers ----------------------------
   rollWanderer(roster = []) {
-    if (Math.random() < FARLAND_CHANCE && !roster.some((w) => w && w.far)) {   // a traveller from a land with no house in the valley
-      const keys = Object.keys(FARLANDS), far = keys[Math.floor(Math.random() * keys.length)], f = FARLANDS[far], pool = FAR_NAMES[far];
-      const name = `${pool.first[Math.floor(Math.random() * pool.first.length)]} ${pool.by[Math.floor(Math.random() * pool.by.length)]}`;
+    if (this.roll() < FARLAND_CHANCE && !roster.some((w) => w && w.far)) {   // a traveller from a land with no house in the valley
+      const keys = Object.keys(FARLANDS), far = keys[Math.floor(this.roll() * keys.length)], f = FARLANDS[far], pool = FAR_NAMES[far];
+      const name = `${pool.first[Math.floor(this.roll() * pool.first.length)]} ${pool.by[Math.floor(this.roll() * pool.by.length)]}`;
       return { name, trait: 'veteran', far, cost: { food: 20, wood: 0, gold: f.cost } };
     }
     const keys = Object.keys(TRAITS);
-    const trait = keys[Math.floor(Math.random() * keys.length)], t = TRAITS[trait];
-    const name = WANDERER_NAMES[Math.floor(Math.random() * WANDERER_NAMES.length)];
+    const trait = keys[Math.floor(this.roll() * keys.length)], t = TRAITS[trait];
+    const name = WANDERER_NAMES[Math.floor(this.roll() * WANDERER_NAMES.length)];
     return { name, trait, cost: { food: 15, wood: 0, gold: t.cost } };
   }
   newRoster() { const r = []; for (let i = 0; i < TAVERN_ROSTER; i++) r.push(this.rollWanderer(r)); return r; }
@@ -739,7 +750,7 @@ export class Game {
     if (!this.canAfford(team, w.cost)) return say('Not enough goods to hire.');
     if (this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');
     this.pay(team, w.cost);
-    const u = this.addUnit('recruit', team, b.x + (Math.random() - 0.5) * 1.2, b.ty + b.size + 0.7);
+    const u = this.addUnit('recruit', team, b.x + (this.roll() - 0.5) * 1.2, b.ty + b.size + 0.7);
     this.applyTrait(u, w.trait, w.far); u.name = w.name; u.from = b.id;
     b.roster[index] = null; b.roster[index] = this.rollWanderer(b.roster);
     if (b.rally) this.cmdMove([u], b.rally.x, b.rally.y);
@@ -835,7 +846,7 @@ export class Game {
     if (v.pop < WANDER.minPop && !(v.hunger && v.pop >= 3)) return;
     const cands = this.villages.filter((o) => o !== v && o.pop < o.popMax - 1 && Math.hypot(o.x - v.x, o.y - v.y) <= WANDER.range)
       .sort((a, b) => ((b.stores.food || 0) - Math.hypot(b.x - v.x, b.y - v.y) * 0.8) - ((a.stores.food || 0) - Math.hypot(a.x - v.x, a.y - v.y) * 0.8));
-    const to = cands[Math.floor(Math.random() * Math.min(3, cands.length))];
+    const to = cands[Math.floor(this.roll() * Math.min(3, cands.length))];
     if (!to) return;
     const path = this.findPath(Math.floor(v.x), v.ty + v.size, Math.floor(to.x), to.ty + to.size);
     if (!path || !path.length) return;
@@ -874,7 +885,7 @@ export class Game {
     if (p.food < SETTLE_FOOD) return say(`Settlers need ${SETTLE_FOOD} grain for the road.`);
     if (this.popUsed(team) + 1 > this.popCap(team) + 0) return say('Population capped: raise cottages.');
     p.food -= SETTLE_FOOD; v.pop -= 1;
-    const u = this.addUnit('serf', team, v.x - 0.5 + (Math.random() - 0.5), v.ty + v.size + 0.7);
+    const u = this.addUnit('serf', team, v.x - 0.5 + (this.roll() - 0.5), v.ty + v.size + 0.7);
     u.origin = v.name;
     if (team === PLAYER) this.log(team, `${shortName(u.name)} leaves ${v.name} as a settler (${Math.floor(v.pop)} folk remain).`, 'info');
     return true;
@@ -2189,7 +2200,7 @@ export class Game {
         q.t += dt;
         if (q.t >= UNITS[q.kind].time) {
           b.queue.shift();
-          const u = this.addUnit(q.kind, b.team, b.x + (Math.random() - 0.5) * 1.2, b.ty + b.size + 0.7);
+          const u = this.addUnit(q.kind, b.team, b.x + (this.roll() - 0.5) * 1.2, b.ty + b.size + 0.7);
           u.from = b.id; this.equip(u);
           if (b.rally) {
             const node = b.rally.nodeId != null ? this.resources[b.rally.nodeId] : null;
@@ -2287,8 +2298,8 @@ export class Game {
         v.mT = (v.mT || 0) + dt; v.militia = v.militia || 0;
         if (v.mT >= MILITIA.rampEvery) { v.mT = 0; if (v.militia < want) v.militia++; else if (v.militia > want) v.militia--; }
         if (v.news?.length) { for (const w of v.news) w.t -= dt; v.news = v.news.filter((w) => w.t > 0); }
-        v.wanderT = (v.wanderT ?? (WANDER.every[0] + Math.random() * (WANDER.every[1] - WANDER.every[0]))) - dt * (v.hunger ? 3 : 1);
-        if (v.wanderT <= 0) { v.wanderT = WANDER.every[0] + Math.random() * (WANDER.every[1] - WANDER.every[0]); this.sendWanderers(v); }
+        v.wanderT = (v.wanderT ?? (WANDER.every[0] + this.roll() * (WANDER.every[1] - WANDER.every[0]))) - dt * (v.hunger ? 3 : 1);
+        if (v.wanderT <= 0) { v.wanderT = WANDER.every[0] + this.roll() * (WANDER.every[1] - WANDER.every[0]); this.sendWanderers(v); }
       }
       if (v.hitT > 0) v.hitT -= dt;
       else if (v.protection < v.maxProtection) v.protection = Math.min(v.maxProtection, v.protection + 1.5 * dt);
@@ -2631,6 +2642,7 @@ export class Game {
       if (t.kind === 'king') this.kingFalls(t, byTeam, by);
       if (by) this.award(by, t.type === 'building' ? XP.killBuilding : XP.kill * (1 + XP.killRankMul * (t.rank || 0))); this.sfx(t.type === 'building' ? 'crumble' : 'death', t.x, t.y);
       if (this.sfxOn && this.fx.length < 30) this.fx.push({ x: t.x, y: t.y, kind: t.type === 'building' ? 'collapse' : 'poof', size: t.size || 1, born: this.time });
+      if (this.sfxOn && t.type === 'building' && t.built >= 1 && t.team >= 0) this.fx.push({ x: t.x, y: t.y, tx: t.tx, ty: t.ty, size: t.size, kind: 'ruin', ruin: t.kind, team: t.team, born: this.time });   // drawn only where the people have ruin art
       if (t.type === 'building') {
         if (t.team === PLAYER) this.log(PLAYER, `Your ${BUILDINGS[t.kind].label} is destroyed!`, 'bad');
         else if (byTeam === PLAYER) this.log(PLAYER, `${HOUSES[t.team].short} ${BUILDINGS[t.kind].label} destroyed.`, 'good');
@@ -2796,7 +2808,7 @@ export class Game {
     if (v.owner === u.team) { v.loyalty = Math.min(100, v.loyalty + SPY_RATE * 0.4 * dt); return; }
     if (v.owner >= 0) (this.spyIntel ||= {})[u.team + '>' + v.owner] = this.time;   // inside a rival's village: word of their house reaches us
     // Spies can be caught: sturdier villages watch harder
-    if (Math.random() < (SPY_CATCH + v.protection / 16000) * dt) {
+    if (this.roll() < (SPY_CATCH + v.protection / 16000) * dt) {
       u.hp = 0;
       this.log(u.team === PLAYER || v.owner === PLAYER ? PLAYER : -1, u.team === PLAYER ? `Your spy was caught in ${v.name}!` : `A spy of ${HOUSES[u.team].short} was caught in ${v.name}.`, u.team === PLAYER ? 'bad' : 'good');
       if (v.owner >= 0 && v.owner !== u.team) this.opinionShift(v.owner, u.team, SPY_INTEL.caught, 'sent spies among us');   // the lord of the village hears of it
@@ -2907,15 +2919,22 @@ export class Game {
   // A save keeps the seed (the map is regenerated, identically) plus everything that changes during play. Entities hold ids, never
   // references to each other, so plain JSON round-trips them. Fields starting with "_" are caches and are rebuilt.
   serialize() {
-    const clean = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)));
+    // Everything the simulation keeps is saved, its '_' timers and caches too (a load then plays on exactly as if never saved, T05); only the
+    // renderer's own '_' fields are left out, and a link to a unit, building or village inside a cache is saved as its id ({ $ref }).
+    const clean = (o) => JSON.parse(JSON.stringify(o, function (k, v) {
+      if (k[0] === '_' && (RENDER_ONLY.has(k) || typeof v === 'function' || ArrayBuffer.isView(v))) return undefined;
+      if (v && typeof v === 'object' && this !== o && ENTITY.has(v.type) && typeof v.id === 'number') return { $ref: v.id };
+      return v;
+    }));
     const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
     return {
       v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
-      time: this.time, nextId: this.nextId, outcome: this.outcome, forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {},
+      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {},
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
-      resAmt: this.resources.map((r) => r.amount), seen: this.seen.map(rle),
+      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle),
+      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl }),
     };
   }
   restore(d) {
@@ -2927,12 +2946,20 @@ export class Game {
     this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;
     this.alertT = d.alertT; this.winHold = d.winHold; this.richHold = d.richHold; this.named = d.named.map((x) => new Set(x));
-    { let a = ((this.seed ^ 0x9e3779b9) + Math.floor(this.time * 1000)) >>> 0; this.rnd = () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+    if (d.rndA != null) { this.rndA = d.rndA >>> 0; this.rollA = d.rollA >>> 0; }   // older saves: reseed from the clock
+    else { this.rndA = ((this.seed ^ 0x9e3779b9) + Math.floor(this.time * 1000)) >>> 0; this.rollA = ((this.seed ^ 0x85ebca6b) + Math.floor(this.time * 1000)) >>> 0; }
     d.resAmt.forEach((a, i) => { if (this.resources[i]) this.resources[i].amount = a; });
-    this.seen = d.seen.map((r) => { const a = new Uint8Array(this.W * this.H); let p = 0; for (let i = 0; i < r.length; i += 2) { a.fill(r[i], p, p + r[i + 1]); p += r[i + 1]; } return a; });
+    for (const id of [...(d.resCov || []), ...this.buildings.flatMap((b) => b.nodeIds || [])]) if (this.resources[id]) this.resources[id].covered = true;   // deposits under a building or village stay out of reach (T-049)
+    const unrle = (r) => { const a = new Uint8Array(this.W * this.H); let p = 0; for (let i = 0; i < r.length; i += 2) { a.fill(r[i], p, p + r[i + 1]); p += r[i + 1]; } return a; };
+    this.seen = d.seen.map(unrle);
     this.byId = new Map(); for (const e of [...this.units, ...this.buildings, ...this.villages]) this.byId.set(e.id, e);
+    // links saved as { $ref: id } inside '_' caches point back at the live unit, building or village
+    const deref = (x) => { if (!x || typeof x !== 'object') return x; if (x.$ref != null && Object.keys(x).length === 1) return this.byId.get(x.$ref) || null; for (const k in x) x[k] = deref(x[k]); return x; };
+    for (const e of [...this.units, ...this.buildings, ...this.villages]) for (const k in e) if (k[0] === '_') e[k] = deref(e[k]);
     this.floaters = []; this.fx = []; this.events.length = 0;
-    this.recomputeWalk(); this.visT = 0; this.updateVisibility(true);
+    this.recomputeWalk();
+    if (d.vis && d.timers) { this.vis = d.vis.map(unrle); Object.assign(this, deref(d.timers)); }   // fog and timers exactly as saved
+    else { this.visT = 0; this.updateVisibility(true); }
     return this;
   }
 

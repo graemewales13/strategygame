@@ -1,5 +1,6 @@
 // Headless sim tests: `npm test` or `node test/sim.test.js`. No dependencies.
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { Game } from '../js/game.js';
 import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE, ROUTE_STOPS } from '../js/config.js';
 
@@ -913,4 +914,25 @@ test('mines: rival villagers never work your mine, and a village cannot lend the
   v.owner = -1; v.lean = -1; v.pop = 10;   // spare = floor((10 - 6) * 0.3) = 1
   const m2 = freshMine(g, PLAYER, v.x - 4, v.y - 3), m3 = freshMine(g, PLAYER, v.x + 5, v.y - 4); g.refreshCrews();
   assert.equal(g.minersOf(m) + g.minersOf(m2) + g.minersOf(m3), 1, 'one spare pair of hands, shared out once');
+});
+
+// T05: the simulation must not depend on Math.random or on being saved and loaded. Two matches from one seed, every house under the AI,
+// with Math.random giving different numbers each time, end in the same state; so does one saved and restored half way.
+test('determinism: same seed and orders give the same state after 6 minutes, also across a save and load', () => {
+  const hash = (g) => { const d = g.serialize(); delete d.saved; return createHash('sha1').update(JSON.stringify(d)).digest('hex'); };
+  const mkAll = () => { const g = new Game({ seed: 4242, houses: 4, fog: false, ai: true }); g.players.forEach((p) => { p.ai = true; }); return g; };
+  const keep = Math.random; let k = 99;
+  try {
+    const states = [];
+    for (const salt of [1, 2]) {
+      k = salt * 1e6; Math.random = () => ((k = (k * 1664525 + 1013904223) >>> 0) / 4294967296);   // a different stream each run
+      const g = mkAll(); run(g, 180, 0.1); run(g, 180, 0.1); states.push(hash(g));   // (two halves: run() steps in float, so 360 at once may tick once more)
+    }
+    assert.equal(states[0], states[1], 'two runs of one seed diverged: something in the sim still uses Math.random');
+    const a = mkAll(); run(a, 180, 0.1);
+    const b = new Game({ seed: 1, houses: 4, fog: false, ai: true }); b.restore(JSON.parse(JSON.stringify(a.serialize())));
+    run(a, 180, 0.1); run(b, 180, 0.1);
+    assert.equal(hash(b), hash(a), 'a match saved and loaded at 3:00 played on differently from the one never saved');
+    assert.equal(hash(a), states[0], 'saving (without loading) changed the match');
+  } finally { Math.random = keep; }
 });

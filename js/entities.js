@@ -8,7 +8,7 @@ export function makeUnit(id, kind, team, x, y) {
     id, type: 'unit', kind, team, x, y,
     hp: s.hp, maxHp: s.hp,
     path: [], pathGoal: null, task: { type: 'idle' },
-    cooldown: 0, aggroT: Math.random() * 0.5, repathT: 0,
+    cooldown: 0, aggroT: 0, repathT: 0,
     carry: null, // { kind, amount }
     face: 1, anim: 0,
     inside: null, buildQ: [], cargo: null, home: null, hpMul: 1, dmgAdd: 0, spdAdd: 0, name: null, trait: null, xp: 0, rank: 0,

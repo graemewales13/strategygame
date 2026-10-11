@@ -5,7 +5,7 @@ import {
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, factionSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, armedKey, factionSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -21,6 +21,7 @@ const FMUL = { mine: 1.15, keep: 1.0, cottage: 1.0, farm: 1.05, mill: 1.0, wareh
 const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fortified', abbey: 'farm', inn: 'fishing', farm: 'farm' };
 const VWIDE = { '1tile': 3.4 };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
+const RUIN_LIFE = 30;   // seconds a fallen building's painted ruin lies where it stood, fading over the last third
 const USCALE = { recruit: 44, serf: 40, scout: 46, footman: 45, bowman: 45, knight: 58, king: 62, spy: 46, scholar: 48 }; // drawn height at zoom 1
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
@@ -121,6 +122,7 @@ export class Renderer {
       items.push({ o: u, k: 3, z: u.x + u.y + 0.2 });
     }
     for (const w of g.wanderers || []) if (isVis(w.x, w.y) && w.x > x0 && w.x < x1 && w.y > y0 && w.y < y1) items.push({ o: w, k: 5, z: w.x + w.y + 0.2 });
+    for (const f of g.fx || []) if (f.kind === 'ruin' && g.time - f.born < RUIN_LIFE && isSeen(f.x, f.y) && f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) items.push({ o: f, k: 6, z: f.tx + f.ty + f.size * 2 - 1.5 });
     this.orderAround(items);
     items.sort((a, b) => a.z - b.z);
     for (const it of items) {
@@ -130,6 +132,7 @@ export class Renderer {
       else if (it.k === 2) this.building(ctx, e, e.team !== PLAYER && !isVis(e.x, e.y), ui, t, z);
       else if (it.k === 3) this.unit(ctx, e, ui, t, z);
       else if (it.k === 5) this.wanderer(ctx, e, t, z);
+      else if (it.k === 6) this.ruin(ctx, e, g, z);
       else this.prop(ctx, e, z);
     }
     for (const u of g.units) u.hidden = false; // re-set each tick by infiltrators
@@ -483,11 +486,22 @@ export class Renderer {
     }
   }
 
+  // a fallen building's painted ruin, where its people have one; it fades, and goes at once if something is raised on the spot
+  ruin(ctx, f, g, z) {
+    const img = factionSprite(HOUSES[f.team]?.faction, f.ruin + '_ruin'); if (!img) return;
+    if (g.buildings.some((b) => b.hp > 0 && b.tx < f.tx + f.size && b.tx + b.size > f.tx && b.ty < f.ty + f.size && b.ty + b.size > f.ty)) return;
+    const [bx, by] = this.toScreen(f.tx + f.size, f.ty + f.size), w = f.size * 2 * HW * z * (FMUL[f.ruin] || 1), h = (img.height / img.width) * w;
+    const age = g.time - f.born;
+    ctx.globalAlpha = Math.max(0, Math.min(1, age / 1.5, (RUIN_LIFE - age) / (RUIN_LIFE / 3)));
+    ctx.drawImage(img, bx - w / 2, by - h + f.size * HH * z * 0.34, w, h);
+    ctx.globalAlpha = 1;
+  }
   // ---------------------------------------------------------------- buildings
   building(ctx, b, dim, ui, t, z) {
     const f = HOUSES[b.team], prog = b.built, [name, mul] = BSPR[b.kind] || ['cottage', 1];
     const own = b.kind === 'village' ? null : b.kind === 'mine' ? paintedMine(f.faction, b.ore || 'stone') : factionSprite(f.faction, b.kind);   // the people's own painted building
-    const c = own || (b.kind === 'mine' ? mineSprite(b.ore || 'stone', b.team) : b.kind === 'village' && VIMG['1tile'].hamlet ? VIMG['1tile'].hamlet : tinted(name, b.team, 'banner'));
+    const raising = prog < 1 && own ? factionSprite(f.faction, b.kind + '_build') : null;   // painted building site, where there is one
+    const c = raising || own || (b.kind === 'mine' ? mineSprite(b.ore || 'stone', b.team) : b.kind === 'village' && VIMG['1tile'].hamlet ? VIMG['1tile'].hamlet : tinted(name, b.team, 'banner'));
     const [bx, by] = this.toScreen(b.tx + b.size, b.ty + b.size);            // bottom corner of the footprint
     let w = b.size * 2 * HW * z * (own ? (FMUL[b.kind] || 1) : b.kind === 'village' ? 1.1 : mul), h = c ? (c.height / c.width) * w : 0;
     if (own && h > b.size * 2 * HW * z * 1.3) { h = b.size * 2 * HW * z * 1.3; w = (c.width / c.height) * h; }   // tall towers stay slim
@@ -499,7 +513,7 @@ export class Renderer {
     ctx.save();
     if (dim) ctx.globalAlpha = 0.8;
     if (c) {
-      if (prog < 1) {
+      if (prog < 1 && !raising) {
         const r = 0.2 + 0.8 * prog;
         ctx.beginPath(); ctx.rect(bx - w / 2 - 2, dy + h * (1 - r), w + 4, h * r + 2); ctx.clip();
         ctx.globalAlpha *= 0.94;
@@ -514,7 +528,8 @@ export class Renderer {
     } else if (prog < 1 && gfx.q >= 1) {   // builders raise dust at the foot of the works
       for (let i = 0; i < 3; i++) { const ph = (t * 1.2 + i / 3 + b.id * 0.2) % 1; ctx.fillStyle = `rgba(200,180,140,${0.35 * (1 - ph)})`; ctx.beginPath(); ctx.ellipse(bx + (i - 1) * w * 0.22, by - 4 * z - ph * 10 * z, (3 + ph * 5) * z, (2 + ph * 2.5) * z, 0, 0, 7); ctx.fill(); }
     }
-    if (prog < 1) {
+    if (prog < 1 && raising) this.bar(ctx, bx - w * 0.3, by + 6 * z, w * 0.6, 5, prog, '#e2c15e');
+    else if (prog < 1) {
       const top = dy + h * (1 - (0.2 + 0.8 * prog)) + 2, bot = by - 2 * z;
       ctx.strokeStyle = '#7a5c30'; ctx.lineWidth = Math.max(2, 3 * z);
       for (const k of [-0.34, 0, 0.34]) { ctx.beginPath(); ctx.moveTo(bx + k * w, bot - Math.abs(k) * w * 0.28); ctx.lineTo(bx + k * w, top - Math.abs(k) * 4); ctx.stroke(); }
@@ -547,9 +562,9 @@ export class Renderer {
   effects(ctx, g, t, z, isVis) {
     const fx = g.fx; if (!fx || !fx.length) return;
     for (let i = fx.length - 1; i >= 0; i--) {
-      const f = fx[i], age = g.time - f.born, life = f.kind === 'collapse' ? 3 : f.kind === 'rank' ? 1.4 : 1.1;
+      const f = fx[i], age = g.time - f.born, life = f.kind === 'ruin' ? RUIN_LIFE : f.kind === 'collapse' ? 3 : f.kind === 'rank' ? 1.4 : 1.1;
       if (age > life) { fx.splice(i, 1); continue; }
-      if (age < 0 || !isVis(f.x, f.y)) continue;
+      if (age < 0 || f.kind === 'ruin' || !isVis(f.x, f.y)) continue;   // ruins are drawn with the ground items
       if (f.kind === 'rank') {   // a gold ring rising off a promoted soldier
         const [rx, ry] = this.toScreen(f.x, f.y), kk = age / life;
         ctx.strokeStyle = `rgba(255,226,122,${0.9 * (1 - kk)})`; ctx.lineWidth = 2.5 * z; ctx.beginPath(); ctx.ellipse(rx, ry - kk * 26 * z, (8 + kk * 14) * z, (4 + kk * 7) * z, 0, 0, 7); ctx.stroke();
@@ -648,11 +663,15 @@ export class Renderer {
     const striking = st.dmg > 0 && u.cooldown > st.cd - 0.25;
     const working = !moving && (u.task.type === 'gather' || u.task.type === 'build' || u.task.type === 'mine');
     let c, w, h;
-    let rightArt = false;   // the painted animals look right; the older art looks left
+    let rightArt = false, full = false;   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
     if (u.kind === 'ram') { const s2 = SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
     else if (u.kind === 'camel') { const fac = HOUSES[u.team].faction, s2 = fac === 'mongols' ? SIMG.bactrian : fac === 'romans' ? SIMG.donkey : SIMG.dromedary; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }
     else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light); w = (c ? c.width / c.height : 1) * 40 * z; }
-    else { c = tinted(st.art || u.kind, u.team, 'trim', false, light); const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh; }
+    else {
+      const fu = FUNIT[HOUSES[u.team]?.faction], ak = armedKey(u), armed = (ak && fu?.[ak]) || fu?.[u.kind];   // painted with the Armoury kit he carries, or his people's own plain figure
+      if (armed) { c = armed; rightArt = true; full = true; } else c = tinted(st.art || u.kind, u.team, 'trim', false, light);
+      const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh;
+    }
     if (!c) return;
     h = (c.height / c.width) * w;
     const bob = moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
@@ -665,7 +684,7 @@ export class Renderer {
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
     ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
     ctx.scale((flip !== rightArt) ? -sxScale : sxScale, 1);
-    const foot = u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
+    const foot = full ? 0.985 : u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
     const top = -h * foot - bob;
     if (u.kind === 'camel' && rightArt && gfx.q >= 1) this.camelBody(ctx, c, w, h, top, moving, u, t, z);
     else ctx.drawImage(c, -w / 2, top, w, h);
@@ -676,10 +695,22 @@ export class Renderer {
     if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
     if (u.name && (ui?.isSelected(u) || z >= 1.15) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
     if (u.kind === 'king') this.crownAt(ctx, sx, sy - h * foot - 2 - bob, z, HOUSES[u.team].accent);
+    if (u.kind === 'king' && u.team >= 0 && !this.game.seatOf(u.team)) this.mark(ctx, 'fugitive', sx, sy - h * foot - 10 * z - bob, 16 * z);   // a fugitive king, seen by all
+    if (u.captain) { const mx = sx - Math.max(20, w * 0.7) / 2 - 4 * z, my = sy - h * foot - bob; if (!this.mark(ctx, 'captain', mx, my, 18 * z, HOUSES[u.team].primary)) { ctx.strokeStyle = '#2a1c0e'; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.moveTo(mx, my + 14 * z); ctx.lineTo(mx, my - 6 * z); ctx.stroke(); this.pennant(ctx, mx, my - 6 * z, z * 0.7, t, HOUSES[u.team].primary, HOUSES[u.team].accent, u.id); } }
     if (u.rank > 0) this.chevrons(ctx, sx + (u.hp < u.maxHp || ui?.isSelected(u) ? Math.max(20, w * 0.7) / 2 + 6 * z : 0), sy - h * foot - 6 - bob, u.rank, z, u.kind === 'king');
     if (u.hp < u.maxHp || ui?.isSelected(u)) { const bw = Math.max(20, w * 0.7); this.bar(ctx, sx - bw / 2, sy - h * foot - 8 - bob, bw, 3, u.hp / u.maxHp, this.hpColor(u.hp / u.maxHp)); }
   }
 
+  // a painted mark (assets/shared/ui/marks) centred on x, bottom at y, `s` px tall; false when the art is missing
+  mark(ctx, key, x, y, s, tint) {
+    let img = UIART.marks[key]; if (!img) return false;
+    if (tint) {   // neutral cloth dyed in the house colour (multiply keeps the painting, the alpha keeps the shape)
+      const k = key + tint, m = (this._marks ||= new Map());
+      if (!m.has(k)) { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0); x.globalCompositeOperation = 'multiply'; x.fillStyle = tint; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'destination-in'; x.drawImage(img, 0, 0); m.set(k, c); }
+      img = m.get(k);
+    }
+    const w = (img.width / img.height) * s; ctx.drawImage(img, x - w / 2, y - s, w, s); return true;
+  }
   // a small gold crown over a ruler's head, set with a stone in his house colour
   crownAt(ctx, x, y, z, gem) {
     const w = 7 * z, h = 5.5 * z;

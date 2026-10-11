@@ -4,7 +4,7 @@ What the game has, what players of strategy games expect in 2026, and the work b
 
 This file is reviewed daily (see "Daily review" at the end). Each task has an ID, a priority, the reason it matters, a done-when line, a rough size and a status. Sizes: **S** is one session, **M** is a few, **L** needs outside help (art, audio, a server, a store account).
 
-## What the game has today (`grok`, 2026-10-10)
+## What the game has today (`grok`, 2026-10-11)
 
 - **Core.** Real-time strategy on a seeded isometric valley of 160, 320 or 400 tiles, with five climates, rivers and fords. Three to five houses, each one of five peoples with its own doctrine. Easy, Mid and Hard difficulty.
 - **Economy.** Serfs, mines worked by village folk, mining camps, foundry, forge, markets with shelves and warehouses, camel trade routes, districts that reward compact towns, and village population, tax and tribute.
@@ -15,7 +15,8 @@ This file is reviewed daily (see "Daily review" at the end). Each task has an ID
 - **Science and arms.** Academy research tree (nine technologies) and the Armoury, which makes kit that soldiers carry.
 - **Orders.** Attack-move (F or Ctrl+right-click) and four stances (Aggressive, Defensive, Hold ground, No attack), used by the AI too.
 - **AI.** Learns from the player's recorded play. Each people has its own doctrine. It plays for the crown and uses research, armouries, camps and captains.
-- **Tooling.** Save and load with autosave; synthesised sound; a guided first match; CI with browser click-through tests; headless soak, arena and placement audits.
+- **Art.** Painted per-people buildings (the armoury with raising and ruin states), soldiers drawn with the kit they carry, portraits for far-landers and rulers, kit, research and deed icons.
+- **Tooling.** Save and load with autosave (a loaded match plays on exactly as before: the simulation is seeded); synthesised sound; a guided first match; CI with browser click-through tests; headless soak, arena and placement audits.
 
 ## What strategy players expect: the market in brief
 
@@ -53,7 +54,7 @@ Priority: **P0** is needed before anyone outside plays it, **P1** before a publi
 | T02 | **Waypoints and formations** (Shift-queued moves; line, box and loose formations) | Standard since AoE II; keeps armies readable | Shift-right-click queues moves; a formation button; groups march at the slowest member's speed | M | todo |
 | T03 | **Hotkey grid and key rebinding** | Competitive and accessibility baseline | Every command has a key; an Options screen to rebind, saved locally | M | todo |
 | T04 | **Interactive tutorial mission** on a scripted map, beyond the objectives panel | The first 10 minutes decide whether a player stays | A short tutorial map that teaches gather, build, train, influence, war and the royal line, with checks; skippable | M | todo |
-| T05 | **Deterministic simulation** (all randomness through the seeded `game.rnd`) | Needed for replays (T11), lockstep multiplayer (T15) and fair daily challenges (T08) | Same seed and same intents give an identical state hash after 30 minutes, in a test | M | todo (2026-10-11 count: 16 `Math.random` calls left in game.js, 4 in ai.js, 1 in names.js) |
+| T05 | **Deterministic simulation** (all randomness through the seeded `game.rnd`) | Needed for replays (T11), lockstep multiplayer (T15) and fair daily challenges (T08) | Same seed and same intents give an identical state hash after 30 minutes, in a test | M | **mostly done 2026-10-11**: no `Math.random` left in the sim (game.js, ai.js, entities.js; names use the seeded `rnd`, everything else the seeded `roll`), both streams, fog and every timer saved, so a load plays on identically; `test/sim.test.js` checks two runs and a save/load at 6 minutes with 4 AI houses. Left: a 30-minute check on the full board with player intents, and a per-tick state hash to catch drift early (cheap, do it with T11) |
 | T06 | **Readable combat feedback**: damage numbers optional, attacked-unit flash, minimap pings, rally lines | Players must see what is happening | Each shows in game; an Options toggle for numbers | S | todo |
 
 ### P1: what makes a demo memorable
@@ -61,6 +62,7 @@ Priority: **P0** is needed before anyone outside plays it, **P1** before a publi
 | ID | Task | Why | Done when | Size | Status |
 |---|---|---|---|---|---|
 | T26 | **Rivals go to war with each other.** In the 2026-10-11 soak (4 AI houses, 15 minutes, seeds 2 and 3) there were 0 wars between AI houses, while they hoarded over 3000 grain, timber and coin | A valley where the rivals only trade looks dead to a watching player; AoE and Total War AIs fight each other. Linked to T12 (what to spend the hoard on) | Soak shows at least one AI-vs-AI war by minute 15 on most seeds, with reasons on the Council; `test/learn.test.js` still green | S | todo |
+| T27 | **One look per army.** The armed soldiers are full-length per-people figures; the plain ones are older shared three-quarter crops, so a mixed army looks like two games | The owner's rule is "do not change the look"; mixing two styles in one army is the most visible art flaw today | ARTREQUIREMENTS priority 5 delivered; the renderer already picks it up; a screenshot check | S (code done) + art | waiting on art |
 | T07 | **Seasons and weather.** Winter slows walking and stops farms, autumn harvest, spring floods fords; ties into the existing climates | Manor Lords and Northgard show seasons create planning and drama | A visible season cycle; food and movement rules per season; the AI stockpiles before winter; tests | M | todo |
 | T08 | **Daily seeded challenge and local leaderboard.** The same map for everyone each day; score by time to conquest | Cheap replayability; streamers love a shared seed | A Daily button; seed from the date; best results kept in local storage (online later, T17) | S | todo |
 | T09 | **Random events with choices**, character-driven: bandits, plague, a far-land embassy, a defecting captain, a festival, a heir's coming of age | Crusader Kings-style stories; uses our characters | An event card with two or three choices every few minutes; outcomes change opinion, loyalty or stock; the AI gets events too | M | todo |
@@ -78,7 +80,7 @@ Priority: **P0** is needed before anyone outside plays it, **P1** before a publi
 | T16 | **Accessibility and localisation**: colour-blind team palettes, UI scale, subtitles for letters, a string table | Wider audience; store requirements | Options for each; all UI strings in one table | M | todo |
 | T17 | **Online leaderboards and opt-in telemetry** for balance | Live balance needs data | Opt-in only; a privacy note; dashboard of win rates per people and tier | L | todo |
 | T18 | **Performance on Huge maps and weak machines**: simulation in a worker thread, profiling | The soak shows slow ticks above 40 ms on busy turns | Huge map at 60 fps on a mid laptop; no tick over 33 ms in the soak | M | todo |
-| T19 | **Art delivery and wiring** per `ARTREQUIREMENTS.md`: armoury, kit icons, portraits, construction and ruin states | Store screenshots and trailer | Each delivered asset wired, with fallbacks kept | L | waiting on art |
+| T19 | **Art delivery and wiring** per `ARTREQUIREMENTS.md`: armoury, kit icons, portraits, construction and ruin states | Store screenshots and trailer | Each delivered asset wired, with fallbacks kept | L | priorities 1-4 delivered and wired 2026-10-11; waiting on priority 5 (plain soldiers per people, so an army has one look) and 6 (raising and ruin states for every building) |
 | T20 | **Real audio**: recorded effects and a composed score per people | Synth sound is serviceable only | Delivered and wired; volume sliders still work | L | waiting on audio |
 | T21 | **Store page kit**: trailer capture mode (hide UI, free camera), screenshots, short description | Needed to sell | A photo mode; ten screenshots; a 60-second capture | S | todo |
 
@@ -113,5 +115,6 @@ Each day the review agent:
 
 Newest first.
 
+- 2026-10-11 (second run): Reviewed the backlog, Grok's art drop and the last two commits. **Art**: all 82 files from 8b7d6f1 were on a pink ground (armouries drew as pink rectangles); keyed, trimmed and defringed with a new `tools/chromakey.py`, then wired: armoury raising and ruin states, armed soldiers drawn with their kit, kit and research icons on the Armoury, Academy, queue, stockpile and unit panel, far-lander and ruler portraits (tavern, unit panel, Council), deed badges, the captain standard dyed per house, the fugitive crown; `tools/art-smoke.cjs` screenshots it all. ARTREQUIREMENTS now has a status table and asks for priority 5 (plain soldiers per people) and 6 (raising and ruin states for every building). **T05 mostly done**: no `Math.random` left in the simulation, both seeded streams, fog and all timers saved, and a test proves two runs of a seed and a saved-and-loaded match end identical. Gaps fixed (T-049): a load forgot which deposits lay under a mine or village (serfs dug under mines again) and dropped every timer; stale README armoury text; the spy test stubbed `Math.random`. Backlog: added **T27** (one look per army, waiting on art); T05 and T19 statuses updated. Next: T26 (rivals fight each other: still 0 AI-vs-AI wars in today's soak) or T06 (combat feedback); T08 (daily seeded challenge) is now unblocked and small.
 - 2026-10-11: Reviewed the backlog against the game and the soak. **T01 done**: attack-move (F, the Attack-move button, or Ctrl+right-click; fights every foe on the way, then walks on) and four stances per soldier (Aggressive, Defensive with an 8-tile leash, Hold ground, No attack), shown on the unit panel and command card, saved with the game; rival houses keep their home guard Defensive at peace and send war hosts out Aggressive. Four new rules tests and a browser click-through (`tools/stance-smoke.cjs`). Gaps fixed (T-048): minimap right-click threw, and the chaos soak crashed at 0:00 on every seed. Backlog: added **T26** (P1: AI houses never fought each other in the 15-minute soak); noted the `Math.random` calls still to route for T05. Next: T05 (determinism), then T06 (combat feedback) or T26.
 - 2026-10-10: Backlog written. Next up: T01 (attack-move and stances), then T05 (determinism), which unlocks T08, T11 and T15.

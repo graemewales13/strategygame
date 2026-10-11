@@ -388,14 +388,14 @@ test('espionage: a spy inside a rival village reports their army, captains, far-
   g.players[1].planWar = PLAYER;
   const spy = g.addUnit('spy', PLAYER, v.x + 1, v.y + 1);
   g.cmdInfiltrate([spy], v);
-  const catchRate = Math.random; Math.random = () => 0.99;   // the spy is not caught while he settles in
-  run(g, 4); Math.random = catchRate;
+  g.roll = () => 0.99;   // the spy is not caught while he settles in (the sim's chance is the game's own seeded roll)
+  run(g, 4); delete g.roll;
   const i = intel(g, 1);
   assert.ok(i.secrets, 'the spy reports'); assert.ok(i.moneyExact, 'and their purse is known exactly');
   assert.ok(i.secrets.mix.footman >= 2); assert.ok(i.secrets.captains.includes(c.name)); assert.ok(i.secrets.far.some((x) => /Hallvard/.test(x)));
   assert.equal(i.secrets.war, PLAYER, 'their plan of war is known');
   const op0 = g.opinion[1][PLAYER];
-  Math.random = () => 0; g.doInfiltrate(spy, 0.5); Math.random = catchRate;
+  g.roll = () => 0; g.doInfiltrate(spy, 0.5); delete g.roll;
   assert.equal(spy.hp, 0, 'caught'); assert.ok(g.opinion[1][PLAYER] < op0, 'their lord thinks less of us');
   g.time += 60; assert.equal(intel(g, 1).secrets, null, 'the report fades once the spy is gone');
 });

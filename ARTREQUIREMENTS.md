@@ -2,18 +2,45 @@
 
 What the game needs painted next, in priority order. Every request follows the **Seven Holds Art Instruction Set**: paste the style bible and negatives, then one faction kit, then the prompt given here. Sizes, angle, lighting, QA and the file-naming rules are the ones in that document. Nothing below changes the look.
 
-Written 2026-10-08 for the `grok` branch.
+Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 were delivered by Grok (commit 8b7d6f1) and are now keyed, trimmed and wired. The next requests are priority 5 onward.
+
+## Status at a glance
+
+| Priority | What | Status |
+|---|---|---|
+| 1 | Armoury, complete, `_build` and `_ruin`, five peoples | **Delivered and wired** 2026-10-11. The raising state shows while it is built; the ruin lies where one fell for 30 s |
+| 2 | Kit icons (7) and research icons (9) | **Delivered and wired**: Armoury and Academy buttons, the Armoury queue, the stockpile bar, the unit panel's Kit row |
+| 3 | Armed soldiers, six per people (30) | **Delivered and wired**: a soldier carrying that kit is drawn with it, same height, feet on the ground |
+| 4 | Far-lander portraits (8), ruler portraits (5), captain standard, deed badges (6), fugitive mark | **Delivered and wired**: tavern roster and unit panel; Council cards and the king's panel; over captains (dyed in the house colour); deed chips; over a fugitive king and on the Council |
+| 5 | Plain soldiers repainted per people, full length | **Requested** (below). Picked up automatically when delivered |
+| 6 | Raising and ruin states for every other building | **Requested** (below). Needs one line of wiring each |
 
 ## How the game uses delivered art
 
 | What | Drop it at | Picked up |
 |---|---|---|
 | A faction building | `assets/factions/<faction>/buildings/<key>.png` | Automatically, on the next load (the key must be in `FACTION_BUILDINGS` in `js/config.js`; `armoury` already is) |
-| A faction unit | `assets/factions/<faction>/units/<role>.png` | Needs wiring: tell Claude when delivered |
-| Icons (kit, research, deeds) | `assets/shared/ui/<group>/<key>.png` | Needs wiring: tell Claude when delivered |
-| Portraits | `assets/shared/ui/portraits/<key>.png` | Needs wiring: tell Claude when delivered |
+| A building's raising or ruined state | `assets/factions/<faction>/buildings/<key>_build.png`, `<key>_ruin.png` | Automatically for the armoury; other buildings need their key added to `STATED` in `js/art.js` |
+| An armed soldier | `assets/factions/<faction>/units/<role>_<kit>.png` (the six keys in priority 3) | Automatically |
+| A plain soldier in the new style | `assets/factions/<faction>/units/<role>.png` for `footman`, `bowman`, `knight`, `scout`, `recruit`, `spy`, `scholar` | Automatically (priority 5) |
+| Icons (kit, research) | `assets/shared/ui/gear/<key>.png`, `assets/shared/ui/tech/<key>.png` | Automatically (keys are `GEAR` and `TECH` in `js/config.js`) |
+| Marks (deeds, captain, fugitive) | `assets/shared/ui/marks/<key>.png` (deed keys are `DEEDS` in `js/config.js`) | Automatically |
+| Portraits | `assets/shared/ui/portraits/<key>.png` (far-land keys are `FARLANDS`; rulers are `pharaoh`, `imperator`, `king`, `khan`, `highking`) | Automatically |
 
-Until a file exists the game falls back to a stand-in: the forge sprite for the armoury, a text glyph for icons. Missing files never break the game.
+Until a file exists the game falls back to a stand-in: the forge sprite for the armoury, the old shared figure for a soldier, a text glyph for icons, no mark. Missing files never break the game.
+
+### Preparing a drop (Claude does this; listed so anyone can)
+
+Art painted on a flat #FF00FF ground is turned into game sprites with:
+
+```text
+python3 tools/chromakey.py --max 480 assets/factions/*/buildings/<new>.png    # buildings: key, trim, cap the longest side
+python3 tools/chromakey.py <unit, icon, mark and portrait files>               # key and trim with a 4 px margin
+python3 tools/defringe.py <the same files>                                      # any pink fringe left on edges
+node tools/art-smoke.cjs logs/art-smoke.png                                     # with the repo served on :8123: a screenshot of it all in game
+```
+
+Check that every corner pixel is transparent. Units must look right or straight out (the game mirrors them to walk left).
 
 `<faction>` in this game is one of `egyptians`, `romans`, `scottish`, `british`, `mongols`. The Norse (`vikings` folder) are not a house. Their art is still useful for the Norse far-lander in taverns.
 
@@ -109,6 +136,32 @@ This makes 6 variants for each of the 5 factions, 30 in all. Deliver: `assets/fa
 
 Deliver portraits to `assets/shared/ui/portraits/<key>.png` and markers and badges to `assets/shared/ui/marks/<key>.png`.
 
+## Priority 5: plain soldiers in the same style (new 2026-10-11)
+
+The armed soldiers of priority 3 are painted full length, lit and in each people's dress. The plain soldiers they stand beside are older, darker three-quarter figures shared by every house and recoloured, so an army mixes two looks. Paint the plain soldiers per people to match priority 3 exactly (Human unit template, 256x256 on #FF00FF, full length, feet at the bottom, looking right or straight out, same scale as the armed poses):
+
+| File key | Subject |
+|---|---|
+| `footman` | the people's ordinary foot soldier with the plain issue weapon (no spear or sword from the Armoury), shield, no armour beyond a cap |
+| `bowman` | a short-bow archer in plain dress, quiver at the hip |
+| `knight` | the people's horseman with a plain sword, mail-less, small shield |
+| `scout` | a light rider or runner in travelling clothes, no armour |
+| `recruit` | a hired wanderer or levied villager: work clothes, a club or a farm tool |
+| `spy` | a hooded figure in a plain cloak, face shadowed, a small knife |
+| `scholar` | a robed scholar with a book or scroll and satchel |
+
+Prompt (Human unit template, filled):
+
+```text
+{FACTION_NAME} {ROLE}, full length, standing, three-quarter view looking right. {SUBJECT}. Faction details: {people line from the faction kit}. Trim in {ACCENT_COLOUR}. Flat #FF00FF background, no shadow, 256x256, feet at the bottom edge less 8 px.
+```
+
+Deliver: `assets/factions/<faction>/units/<file key>.png` (7 per people, 35 in all). Accent colours and faction details as in the Armoury table above.
+
+## Priority 6: raising and ruined states for every building
+
+The renderer now shows a painted building site while a building is raised and leaves its painted ruin for 30 s where it fell. Only the armoury has them. Paint `_build` and `_ruin` for the rest, most-built first: `barracks`, `keep`, `market`, `mine`, `cottage`, `farm`, `forge`, `foundry`, `tower`, `academy`, `tavern`, `temple`, `archery`, `stable`, `mill`, `warehouse`, `workshop`. Same framing and size as the complete building, Building template with `{STATE}` set to "under construction: timber scaffolding, half-raised walls, a stack of materials" or "ruined: fallen roof, broken walls, scattered goods, no fire".
+
 ## Gaps in the instruction set itself
 
 1. **No Scottish kit.** The game's houses are Egyptians, Romans, **Scots**, British and Mongols. The instruction set has Vikings in the Scots' place. Paste this kit for the Scots:
@@ -135,7 +188,9 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
    - spy, scholar and ram singles
    - action button icons
 
-   These still count. Schedule them after priorities 1-2 above.
+   These still count; the construction and ruin states are now priority 6.
+4. **Facing.** The old shared unit art looks left; the new per-people figures look right. The game handles both (it mirrors), but keep every new figure looking right or straight out.
+5. **Captain standard** is painted with neutral cloth and the game dyes it per house. Keep any future marks that carry house colour neutral (white or pale grey cloth).
 
 ## Acceptance
 
@@ -145,4 +200,4 @@ Use the QA checklist from the instruction set. Also:
 - **Icons:** each must read at 32 px on a dark wood button.
 - **Variant soldiers:** they must stand at the same height and foot position as the plain unit, so they can be swapped in place.
 
-Send the five Armoury images and the seven kit icons first. Claude will wire the icons and check the Armoury in game before the rest are made.
+- **Plain soldiers (priority 5):** set beside the armed pose of the same role, the two must read as the same man before and after the Armoury.

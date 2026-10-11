@@ -2,7 +2,7 @@
 import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js';
 import { progress } from './objectives.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
-import { camelSprite, FIMG, SIMG } from './art.js';
+import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
@@ -19,7 +19,11 @@ const artUrl = (kind0, team = PLAYER, kind = kind0 === 'king' ? 'knight' : kind0
 let _camel = null;
 function camelURL() { try { return (_camel ||= camelSprite(0).toDataURL()); } catch { return null; } }
 const icon = (kind, fallback) => { const u = artUrl(kind); return u ? `<img src="${u}" alt="" draggable="false">` : fallback; };
-const portrait = (kind, accent, team = PLAYER) => artUrl(kind, team) ? `<img class="portrait" src="${artUrl(kind, team)}" alt="" draggable="false" style="border-color:${accent}">` : '';
+const portrait = (kind, accent, team = PLAYER, src = artUrl(kind, team)) => src ? `<img class="portrait" src="${src}" alt="" draggable="false" style="border-color:${accent}">` : '';
+// painted UI art (kit, research, marks, portraits) as an inline <img>, or the fallback text while the file is missing
+const uiImg = (group, key, fallback = '', cls = 'ico') => { const u = uiArt(group, key); return u ? `<img class="${cls}" src="${u}" alt="" draggable="false">` : fallback; };
+// the face for a person: a far-lander's own portrait, a ruler's portrait for a king, else the unit art
+const faceOf = (u) => (u.far && uiArt('portraits', u.far)) || (u.kind === 'king' && uiArt('portraits', RULER_ART[HOUSES[u.team]?.faction])) || null;
 const GLYPH = {
   cottage: '⌂', farm: '≋', mill: '✢', warehouse: '▣', market: '⚖', barracks: '⚔', archery: '➶', stable: '♞', tower: '♜',
   mine: '⛏', foundry: '♨', forge: '⚒', workshop: '⚙', tavern: '⚱', academy: '✎', temple: '✝', keep: '♚', armoury: '⛨',
@@ -455,7 +459,7 @@ export class UI {
     const ranks = RANKS[L.rank]?.label || '';
     const stat = (label, val, tip) => `<div class="hs" ${tip ? `data-tip="${encodeURIComponent(tip)}"` : ''}><label>${label}</label><b>${val}</b></div>`;
     const mine = intel(g, PLAYER);
-    let html = `<div class="hleader" data-tip="${encodeURIComponent(`<b>${esc(L.temper || '')}</b><br>${tempTip}`)}">♔ <b>${lead}</b>${L.alive ? ` <span class="rk">${'▲'.repeat(L.rank)} ${ranks}</span>` : ''}${L.temper ? ` <span class="tmp ${L.temper}">${L.temper}</span>` : ''} <small data-tip="${encodeURIComponent('<b>The royal line</b><br>When a king falls the next heir is crowned. When the last of the line dies, the house falls.')}">${i.heirs > 0 ? `· ${i.heirs} heir${i.heirs === 1 ? '' : 's'}` : '· <b style="color:#e0866a">last of the line</b>'}${i.fugitive ? ' · <b style="color:#e0866a">fugitive, seat lost</b>' : ''}</small>${i.doctrine ? ` <small data-tip="${encodeURIComponent(`<b>Doctrine: ${i.doctrine}</b><br>${DOC_TIP[i.doctrine] || ''}<br><span class='info'>How this people plays when it is not copying what it has learned from you.</span>`)}">· plays the ${esc(i.doctrine)}</small>` : ''}</div>`;
+    let html = `<div class="hleader" data-tip="${encodeURIComponent(`<b>${esc(L.temper || '')}</b><br>${tempTip}`)}">${compact ? '' : uiImg('portraits', RULER_ART[HOUSES[t].faction], '', 'rport')}♔ <b>${lead}</b>${L.alive ? ` <span class="rk">${'▲'.repeat(L.rank)} ${ranks}</span>` : ''}${L.temper ? ` <span class="tmp ${L.temper}">${L.temper}</span>` : ''} <small data-tip="${encodeURIComponent('<b>The royal line</b><br>When a king falls the next heir is crowned. When the last of the line dies, the house falls.')}">${i.heirs > 0 ? `· ${i.heirs} heir${i.heirs === 1 ? '' : 's'}` : '· <b style="color:#e0866a">last of the line</b>'}${i.fugitive ? ` · ${uiImg('marks', 'fugitive')}<b style="color:#e0866a">fugitive, seat lost</b>` : ''}</small>${i.doctrine ? ` <small data-tip="${encodeURIComponent(`<b>Doctrine: ${i.doctrine}</b><br>${DOC_TIP[i.doctrine] || ''}<br><span class='info'>How this people plays when it is not copying what it has learned from you.</span>`)}">· plays the ${esc(i.doctrine)}</small>` : ''}</div>`;
     html += `<div class="hstats">`
       + stat('Rank', `#${i.rank}`, `Composite of wealth, villages, folk, power, learning and arms.<br>Score ${i.score}`)
       + stat('Villages', `${i.land}${me ? '' : ` <small>(you ${mine.land})</small>`}`, `${i.landPop} folk live in them.`)
@@ -622,7 +626,7 @@ export class UI {
       }
       if (p.arms) parts.push(`<span class="sk lv" data-tip="${encodeURIComponent(`<b>Arms level ${p.arms}</b><br>Forges feed on steel: ${ARMS_STEEL} steel per level.`)}">⚔ ${p.arms}</span>`);
       if (p.tech && (Object.keys(p.tech).length || p.research)) parts.push(`<span class="sk lv" data-tip="${encodeURIComponent(`<b>Science: ${Object.keys(p.tech).map((k) => TECH[k].label).join(', ') || 'nothing yet'}</b><br>${p.research ? `Researching ${TECH[p.research].label}: ${Math.floor(p.learning || 0)}/${TECH[p.research].cost.learning} learning.` : 'No research under way: select an Academy.'}`)}">✎ ${Object.keys(p.tech).length}${p.research ? '…' : ''}</span>`);
-      for (const k of GEAR_KEYS) if (p.gear?.[k] > 0) parts.push(`<span class="sk" data-tip="${encodeURIComponent(`<b>${GEAR[k].label}</b> in store<br>${GEAR[k].info}<br><span class='info'>For ${GEAR[k].for.join(', ')}s. Taken up at training, or when idle near an Armoury.</span>`)}">⛨ ${esc(GEAR[k].label)} <b>${p.gear[k]}</b></span>`);
+      for (const k of GEAR_KEYS) if (p.gear?.[k] > 0) parts.push(`<span class="sk" data-tip="${encodeURIComponent(`<b>${GEAR[k].label}</b> in store<br>${GEAR[k].info}<br><span class='info'>For ${GEAR[k].for.join(', ')}s. Taken up at training, or when idle near an Armoury.</span>`)}">${uiImg('gear', k, '⛨')} ${esc(GEAR[k].label)} <b>${p.gear[k]}</b></span>`);
       const html = parts.join('');
       if (html !== this.sigStock) { this.sigStock = html; $('stock').innerHTML = html; }
     }
@@ -679,7 +683,7 @@ export class UI {
       if (us.length === 1) {
         const u = us[0], st = UNITS[u.kind], mine = u.team === PLAYER, far = u.far ? FARLANDS[u.far] : null;
         const who = far ? `${esc(far.label)} from ${esc(far.land)}<br>` : u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : '';
-        html = `${portrait(u.kind, HOUSES[u.team].accent)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${u.captain ? 'Captain · ' : ''}${esc(u.title || st.label)} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${who}${esc(st.info)}</div>
+        html = `${portrait(u.kind, HOUSES[u.team].accent, u.team, faceOf(u) || undefined)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${u.captain ? 'Captain · ' : ''}${esc(u.title || st.label)} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${who}${esc(st.info)}</div>
           ${mine ? `<div class="stat"><label>Can</label><span>${esc(ABILITIES[u.kind] || '')}</span></div>` : this.foeRow(u.team)}
           <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(u.hp / u.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(u.hp)}/${u.maxHp}</span></div>
           <div class="stat"><label>Damage</label><span>${st.dmg ? g.shownDamage(u).toFixed(0) : '0'}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${(u.speed ?? st.speed).toFixed(1)}</span></div>
@@ -745,7 +749,7 @@ export class UI {
 
   btn(act, o) {
     const tip = encodeURIComponent(o.tip);
-    return `<button class="cbtn ${o.off ? 'off' : ''} ${o.cls || ''}" data-act="${act}" ${Object.entries(o.data || {}).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ')} data-tip="${tip}"><span class="g ${o.art ? 'art' : ''}">${o.art ? icon(o.art, o.glyph) : o.glyph}</span><span class="n">${esc(o.name)}</span>${o.sub ? `<span class="c">${o.sub}</span>` : ''}</button>`;
+    return `<button class="cbtn ${o.off ? 'off' : ''} ${o.cls || ''}" data-act="${act}" ${Object.entries(o.data || {}).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ')} data-tip="${tip}"><span class="g ${o.art || o.img ? 'art' : ''}">${o.img ? `<img src="${o.img}" alt="" draggable="false">` : o.art ? icon(o.art, o.glyph) : o.glyph}</span><span class="n">${esc(o.name)}</span>${o.sub ? `<span class="c">${o.sub}</span>` : ''}</button>`;
   }
   buildGrid() {
     const g = this.game, p = g.players[PLAYER];
@@ -786,7 +790,7 @@ export class UI {
         const t = TECH[k], known = g.hasTech(PLAYER, k), cur = p.research === k, why = g.researchBlock(PLAYER, k);
         const sub = known ? 'known' : cur ? `${Math.min(100, Math.floor(((p.learning || 0) / t.cost.learning) * 100))}%` : `${t.cost.learning}L${t.cost.silver ? ` ${t.cost.silver}si` : ''}`;
         const tip = `<b>${t.label}</b> · tier ${tier}<br>${t.info}<br><span class="cost">${t.cost.learning} learning${t.cost.silver ? ` · ${t.cost.silver} silver` : ''}</span>${t.needs.length ? `<br><span class="info">Needs ${t.needs.map((x) => TECH[x].label).join(' and ')}</span>` : ''}${why && !known && !cur ? `<br><span class="need">${esc(why)}</span>` : ''}`;
-        html += this.btn('research', { glyph: known ? '✓' : cur ? '…' : '✎', name: t.label, sub, off: !known && !cur && !!why, cls: known || cur ? 'on' : '', data: { tech: k }, tip });
+        html += this.btn('research', { glyph: known ? '✓' : cur ? '…' : '✎', img: uiArt('tech', k), name: t.label, sub, off: !known && !cur && !!why, cls: known || cur ? 'on' : '', data: { tech: k }, tip });
       }
       html += `</div>`;
     }
@@ -799,10 +803,10 @@ export class UI {
     for (const k of GEAR_KEYS) {
       const it = GEAR[k], why = g.craftBlock(PLAYER, b, k), locked = !g.hasTech(PLAYER, it.tech);
       const tip = `<b>${it.label}</b> · ${it.slot}<br>${it.info}<br><span class="info">For ${it.for.join(', ')}s.${locked ? ` Research ${TECH[it.tech].label} to make them.` : ''}</span><br><span class="cost">${costText(it.cost, p)}</span> · ${it.time}s<br>In store: ${p.gear?.[k] || 0}`;
-      html += this.btn('craft', { glyph: locked ? '🔒' : '⛨', name: it.label, sub: locked ? TECH[it.tech].label : costShort(it.cost), off: !!why, data: { item: k }, tip });
+      html += this.btn('craft', { glyph: locked ? '🔒' : '⛨', img: uiArt('gear', k), name: it.label, sub: locked ? TECH[it.tech].label : costShort(it.cost), off: !!why, data: { item: k }, tip });
     }
     html += `</div>`;
-    if (b.craft?.length) html += `<div class="qrow">${b.craft.map((q, i) => `<div class="qslot" data-act="uncraft" data-i="${i}" data-tip="${encodeURIComponent(`<b>${GEAR[q.item].label}</b><br>Click to cancel (refund).`)}">⛨${i === 0 ? `<i style="width:${(q.t / GEAR[q.item].time) * 100}%"></i>` : ''}</div>`).join('')}</div>`;
+    if (b.craft?.length) html += `<div class="qrow">${b.craft.map((q, i) => `<div class="qslot" data-act="uncraft" data-i="${i}" data-tip="${encodeURIComponent(`<b>${GEAR[q.item].label}</b><br>Click to cancel (refund).`)}">${uiImg('gear', q.item, '⛨', 'qico')}${i === 0 ? `<i style="width:${(q.t / GEAR[q.item].time) * 100}%"></i>` : ''}</div>`).join('')}</div>`;
     return html + `<div class="hint">Kit goes into your stockpile. New soldiers take the best for their kind; soldiers standing idle within 7 tiles of an Armoury swap up and hand the old kit back.</div>`;
   }
   stanceGrid(us) {
@@ -828,7 +832,7 @@ export class UI {
     let html = `<div class="ctitle">Wanderers for hire (new faces every ${Math.round(120 / 60)} min)</div><div class="cgrid">`;
     b.roster.forEach((w, i) => {
       const far = w.far ? FARLANDS[w.far] : null, t = TRAITS[w.trait], afford = g.canAfford(PLAYER, w.cost);
-      if (far) { html += this.btn('hire', { off: !afford, glyph: '✦', art: 'recruit', name: `${w.name.split(' ')[0]}`, sub: `${far.perk} · ${costShort(w.cost)}`, data: { i }, cls: 'far', tip: `<b>${esc(w.name)}</b><br>${esc(far.label)} from ${esc(far.land)}. A traveller of a people with no house in the valley.<br><b>${far.perk}</b>: ${far.tip}<br><span class="info">Starts Trained. Keeps the gift when drilled into a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>` }); return; }
+      if (far) { html += this.btn('hire', { off: !afford, glyph: '✦', art: 'recruit', img: uiArt('portraits', w.far), name: `${w.name.split(' ')[0]}`, sub: `${far.perk} · ${costShort(w.cost)}`, data: { i }, cls: 'far', tip: `<b>${esc(w.name)}</b><br>${esc(far.label)} from ${esc(far.land)}. A traveller of a people with no house in the valley.<br><b>${far.perk}</b>: ${far.tip}<br><span class="info">Starts Trained. Keeps the gift when drilled into a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>` }); return; }
       const tip = `<b>${esc(w.name)}</b> · ${t.label}<br><span class="info">${t.hp > 1 ? `+${Math.round((t.hp - 1) * 100)}% health. ` : ''}${t.dmg ? `+${t.dmg} damage. ` : ''}${t.spd ? `Faster. ` : ''}${w.trait === 'green' ? 'Untrained but cheap.' : ''}Drill them in a keep to make a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>`;
       html += this.btn('hire', { off: !afford, glyph: '☗', art: 'recruit', name: `${w.name}`, sub: `${t.label} · ${costShort(w.cost)}`, data: { i }, tip });
     });
@@ -876,11 +880,11 @@ export class UI {
   characterRows(u) {
     const g = this.game, far = u.far ? FARLANDS[u.far] : null; let h = '';
     if (far) h += `<div class="stat"><label>Gift</label><span data-tip="${encodeURIComponent(`<b>${far.perk}</b><br>${far.tip}`)}"><b>${esc(far.perk)}</b>: ${esc(far.tip)}</span></div>`;
-    if (u.gear && (u.gear.weapon || u.gear.armour)) h += `<div class="stat"><label>Kit</label><span>${[u.gear.weapon, u.gear.armour].filter(Boolean).map((k) => `<span data-tip="${encodeURIComponent(`<b>${GEAR[k].label}</b><br>${GEAR[k].info}`)}">${esc(GEAR[k].label.replace(/s$/, ''))}</span>`).join(' · ')}</span></div>`;
+    if (u.gear && (u.gear.weapon || u.gear.armour)) h += `<div class="stat"><label>Kit</label><span>${[u.gear.weapon, u.gear.armour].filter(Boolean).map((k) => `<span data-tip="${encodeURIComponent(`<b>${GEAR[k].label}</b><br>${GEAR[k].info}`)}">${uiImg('gear', k)}${esc(GEAR[k].label.replace(/s$/, ''))}</span>`).join(' · ')}</span></div>`;
     else if (['footman', 'bowman', 'knight'].includes(u.kind) && u.team === PLAYER) h += `<div class="stat"><label>Kit</label><span style="opacity:.7">plain issue: an Armoury makes better</span></div>`;
-    if (u.kind === 'king') { const hp = g.players[u.team], n = hp.heirs ?? 2; h += `<div class="stat"><label>Line</label><span>${n ? `${n} heir${n === 1 ? '' : 's'} after him` : '<b style="color:#e0866a">the last of the line: if he dies, the house falls</b>'}${g.seatOf(u.team) ? '' : ' · a fugitive: every house can see him'}</span></div>`; }
-    if (u.captain) h += `<div class="stat"><label>Command</label><span>Captain: soldiers within ${CAPTAIN.aura} tiles +${Math.round(CAPTAIN.dmg * 100)}% damage, +${Math.round(CAPTAIN.xp * 100)}% experience</span></div>`;
-    if (u.deeds?.length) h += `<div class="chips">${u.deeds.map((d) => `<span class="chip" data-tip="${encodeURIComponent(`<b>${DEEDS[d].label}</b><br>${DEEDS[d].tip}`)}">${esc(DEEDS[d].label)}</span>`).join('')}</div>`;
+    if (u.kind === 'king') { const hp = g.players[u.team], n = hp.heirs ?? 2; h += `<div class="stat"><label>Line</label><span>${n ? `${n} heir${n === 1 ? '' : 's'} after him` : '<b style="color:#e0866a">the last of the line: if he dies, the house falls</b>'}${g.seatOf(u.team) ? '' : ` · ${uiImg('marks', 'fugitive')}a fugitive: every house can see him`}</span></div>`; }
+    if (u.captain) h += `<div class="stat"><label>Command</label><span>${uiImg('marks', 'captain')}Captain: soldiers within ${CAPTAIN.aura} tiles +${Math.round(CAPTAIN.dmg * 100)}% damage, +${Math.round(CAPTAIN.xp * 100)}% experience</span></div>`;
+    if (u.deeds?.length) h += `<div class="chips">${u.deeds.map((d) => `<span class="chip" data-tip="${encodeURIComponent(`<b>${DEEDS[d].label}</b><br>${DEEDS[d].tip}`)}">${uiImg('marks', d)}${esc(DEEDS[d].label)}</span>`).join('')}</div>`;
     if (u.kind !== 'camel' && u.kind !== 'serf') {
       const from = u.from != null ? g.byId.get(u.from) : null, served = Math.max(0, g.time - (u.born ?? g.time));
       h += `<div class="stat"><label>Record</label><span>${u.kills || 0} kill${u.kills === 1 ? '' : 's'}${u.razed ? ` · ${u.razed} building${u.razed === 1 ? '' : 's'} razed` : ''} · served ${served < 60 ? 'under a minute' : Math.floor(served / 60) + ' min'}${from ? ` · raised at a ${BUILDINGS[from.kind].label.toLowerCase()}` : ''}</span></div>`;

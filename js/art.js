@@ -1,6 +1,6 @@
 // Auld World - painted art. The sprites are cut from the concept boards (assets/world/*) and recoloured per house at load.
 // Nothing here is drawn procedurally except the ram, which the boards do not show.
-import { HOUSES, GOOD_COLOR, FACTIONS, FACTION_BUILDINGS } from './config.js';
+import { HOUSES, GOOD_COLOR, FACTIONS, FACTION_BUILDINGS, GEAR_KEYS, TECH_KEYS, DEEDS, FARLANDS } from './config.js';
 
 const LIST = {
   b: ['hall', 'keep', 'keep_blue', 'cottage', 'cottage_thatch', 'farm', 'mill', 'warehouse', 'market', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower', 'village_cluster'],
@@ -15,6 +15,26 @@ export const VIMG = { '1tile': {}, '4tile': {} };   // independent village art i
 export const VILLAGE_ART_KEYS = ['hamlet', 'farm', 'fishing', 'mining', 'fortified', 'market'];
 const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet'];
 export const factionSprite = (faction, kind) => FIMG[faction]?.[kind] || null;
+// buildings painted in their raising and ruined states too (FIMG[f]['<kind>_build'], FIMG[f]['<kind>_ruin']); others fall back to the clipped sprite
+const STATED = ['armoury'];
+// soldiers painted carrying Armoury kit, per people (FUNIT[f]['footman_spear'] ...). They look right, stand full length, feet on the ground.
+export const FUNIT = {};
+export const ARMED_KEYS = ['footman_spear', 'footman_sword', 'footman_heavy', 'bowman_longbow', 'bowman_crossbow', 'knight_lance'];
+// the plain soldiers repainted per people in the same full-length style (ARTREQUIREMENTS priority 5); used when present, else the old shared art
+export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar'];
+// the variant a soldier's kit calls for, or null for the plain unit: heavy armour shows first on a footman, then the weapon
+export function armedKey(u) {
+  const w = u.gear?.weapon, a = u.gear?.armour;
+  if (u.kind === 'footman') return a === 'plate' ? 'footman_heavy' : w === 'sword' ? 'footman_sword' : w === 'spear' ? 'footman_spear' : a === 'mail' ? 'footman_heavy' : null;
+  if (u.kind === 'bowman') return w === 'crossbow' ? 'bowman_crossbow' : w === 'longbow' ? 'bowman_longbow' : null;
+  if (u.kind === 'knight') return w === 'lance' ? 'knight_lance' : null;
+  return null;
+}
+// shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive). UIART[group][key] = Image.
+export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {} };
+export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking' };
+const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS, portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive'] };
+export const uiArt = (group, key) => UIART[group]?.[key]?.src || null;
 // painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow
 export const TILE_KINDS = ['grass', 'dry', 'sand', 'rock', 'dirt', 'snow'];
 export const TILES = {};
@@ -27,7 +47,14 @@ export function loadArt() {
   for (const [dir, names] of Object.entries(LIST)) for (const n of names) {
     jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { IMG[n] = i; res(); }; i.onerror = () => res(); i.src = `assets/world/${dir}/${n}.png`; }));
   }
-  for (const f of Object.keys(FACTIONS)) { FIMG[f] = {}; for (const k of FACTION_BUILDINGS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { FIMG[f][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/factions/${f}/buildings/${k}.png`; })); }
+  const one = (into, key, src) => jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { into[key] = i; res(); }; i.onerror = () => res(); i.src = src; }));
+  for (const f of Object.keys(FACTIONS)) {
+    FIMG[f] = {}; FUNIT[f] = {};
+    for (const k of FACTION_BUILDINGS) one(FIMG[f], k, `assets/factions/${f}/buildings/${k}.png`);
+    for (const k of STATED) for (const st of ['build', 'ruin']) one(FIMG[f], `${k}_${st}`, `assets/factions/${f}/buildings/${k}_${st}.png`);
+    for (const k of [...ARMED_KEYS, ...PLAIN_KEYS]) one(FUNIT[f], k, `assets/factions/${f}/units/${k}.png`);
+  }
+  for (const [grp, keys] of Object.entries(UI_KEYS)) for (const k of keys) one(UIART[grp], k, `assets/shared/ui/${grp}/${k}.png`);
   for (const sz of ['1tile']) for (const k of VILLAGE_ART_KEYS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { VIMG[sz][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/${sz}/${k}.png`; }));
   for (const n of SHARED) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { SIMG[n.split('/')[1]] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/${n}.png`; }));
   return Promise.all(jobs);

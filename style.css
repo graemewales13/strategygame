@@ -508,3 +508,8 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 /* far-landers in the tavern roster */
 .cbtn.far { border-color: #e8c35a; box-shadow: 0 0 6px rgba(232,195,90,.45) inset; }
 .cbtn.far .g { color: #ffe08a; }
+
+/* painted UI art (assets/shared/ui): small inline icons, armoury queue slots, ruler portraits on the Council card */
+.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; }
+.qslot .qico { width: 26px; height: 26px; object-fit: contain; }
+.rport { float: left; width: 46px; height: 58px; object-fit: cover; object-position: top; border: 1px solid #6d4d27; border-radius: 3px; margin: 0 8px 4px 0; background: #111; }

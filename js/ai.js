@@ -264,7 +264,7 @@ function think(game, team, p) {
     }
   } else {
     // return stragglers home; at peace the home guard stands defensive, so a raider cannot draw it far from the seat
-    for (const u of army) if (u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) > 12) game.cmdMove([u], seat.x + (Math.random() - 0.5) * 4, seat.y + 4);
+    for (const u of army) if (u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) > 12) game.cmdMove([u], seat.x + (game.roll() - 0.5) * 4, seat.y + 4);
     const guard = army.filter((u) => u.stance !== 'defensive' && u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) <= 12);
     if (guard.length) game.setStance(guard, 'defensive');
   }
@@ -346,9 +346,9 @@ export function findSpot(game, team, seat, kind, at = null) {
   const own = near.filter((b) => b.team === team);
   const cands = [];
   for (let r = rmin; r <= rmax; r += 1) {
-    const steps = Math.max(10, Math.floor(r * 3.5)), off = Math.random() * Math.PI * 2;
+    const steps = Math.max(10, Math.floor(r * 3.5)), off = game.roll() * Math.PI * 2;
     for (let a = 0; a < steps; a++) {
-      const ang = off + (a / steps) * Math.PI * 2, rr = r + (Math.random() - 0.5) * 1.4;
+      const ang = off + (a / steps) * Math.PI * 2, rr = r + (game.roll() - 0.5) * 1.4;
       const tx = Math.round(ax + Math.cos(ang) * rr - s / 2), ty = Math.round(ay + Math.sin(ang) * rr - s / 2);
       if (!game.canPlace(team, kind, tx, ty).ok) continue;
       let gap = 99;
@@ -368,7 +368,7 @@ export function findSpot(game, team, seat, kind, at = null) {
   const pref = MIL.includes(kind) ? 8.5 : kind === 'cottage' || kind === 'farm' ? 8 : 6;
   let best = null, bs = -1e9;
   for (const c of pool) {
-    let sc = Math.random() * 1.8;
+    let sc = game.roll() * 1.8;
     if (c.gap > want + 3 && c.gap < 90) sc -= (c.gap - want - 3) * 0.4;   // not stranded in the open
     sc -= Math.abs(c.r - pref) * 0.1;
     if (c.hem > 0.55) sc -= 1.5;   // hemmed in by trees or water
