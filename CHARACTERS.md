@@ -78,7 +78,7 @@ Each people has its own name pool (`FAR_NAMES` in `names.js`). Rival AIs hire th
 ### Worth doing next (not built)
 
 1. **Unit loyalty and bribery** (Seven Kingdoms): soldiers of a far people, or long unpaid, may be bought by a rival's spy. This is the deepest missing system and it fits the spy and loyalty rules already in place.
-2. **Stances** (AoE II): hold ground, defend, or pursue, per unit or group. The "no running from a fight" and sally rules already cover part of this.
+2. ~~**Stances** (AoE II)~~: done 2026-10-11 (Aggressive, Defensive, Hold ground, No attack, plus attack-move; ROADMAP T01). The "no running from a fight" lock still beats a stance.
 3. **Injuries** (Battle Brothers): a fighter who nearly dies may come back with a lasting wound, a counterweight to Death-cheater.
 4. **Unique unit per people** (AoE II): for example a Mongol horse archer or a Roman legionary, trained only by that house.
 5. ~~**Rival character intel through spies**~~: done 2026-10-08 (spy reports on the Council card: purse, army, captains, far-landers, plans).

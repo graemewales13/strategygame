@@ -332,6 +332,11 @@ export const XP = { perDamage: 0.1, kill: 14, killBuilding: 8, killRankMul: 0.5 
 // no running from a fight; garrisons sally out when foes come near their town
 export const BUILD_GAP = 1;   // empty tiles required between a new building and any other
 export const DEFEND_R = 5;   // idle soldiers this close to something under attack go to its defence
+// Unit stances (AoE II style). Aggressive: engage foes in sight and chase them. Defensive: engage, but break off and return when a chase
+// leads more than `leash` tiles from where the fight began. Hold ground: never move to fight, only strike what is in reach. No attack: never
+// start a fight (the 'no running from a fight' lock still holds). A player's order always overrides the stance. Attack-move fights its way to a spot.
+export const STANCES = ['aggressive', 'defensive', 'hold', 'passive'];
+export const STANCE = { leash: 8, label: { aggressive: 'Aggressive', defensive: 'Defensive', hold: 'Hold ground', passive: 'No attack' } };
 export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11, lookR: 9 };
 // The royal line: a house has a king and `heirs` heirs. Each fallen king is followed by the next heir after `heir` seconds; when the last of the
 // line dies the house falls. A king whose house has lost its seat is a fugitive, seen by every house (`fugitiveSight`).

@@ -14,6 +14,8 @@
 //   { type:'cancel', buildingId, index }  { type:'rally', buildingId, x, y, nodeId }
 //   { type:'trade', partner:{type,id}, give, get, amount }
 //   { type:'relation', other, state }     { type:'stop', ids }
+//   { type:'amove', ids, x, y }           // attack-move: fight every foe met on the way
+//   { type:'stance', ids, stance }        // aggressive | defensive | hold | passive
 //   { type:'place', kind:'mine', nodeId }  { type:'mine', ids, buildingId }  { type:'unmine', buildingId }
 //   { type:'respond', from, accept }      // answer a treaty offer
 //   trade: give/get may be any good (grain, timber, coin, stone, copper, iron, coal, silver, steel, ware); camels trade at markets/villages under a treaty

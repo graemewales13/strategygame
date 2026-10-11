@@ -175,3 +175,8 @@ Causes and fixes:
 - A rival mine could stand for good with nobody to dig (its villages' folk all busy at other mines, and the house at its limit of three founded villages). Mines now track `idleT`; a rival founds a camp beside an unstaffed mine if it can, and pulls it down after three idle minutes if not.
 - README and the map legend still spoke of halls in ten places; houses start in a home village. Fixed.
 - Looked at and left: rivals hoarding grain, timber and coin past minute 13 is their army cap being reached, not a bug (a serf rebalance was tried and reverted: grain comes from farms and tribute, and the change broke the playbook test).
+
+## T-048 - Minimap right-click threw; the chaos soak died at 0:00 (fixed 2026-10-11, daily review)
+- Right-clicking the minimap with units selected called `command(x, y)` with world coordinates in the screen-coordinate slots, so the order went out with no spot (`x: undefined`) and `contextCommand` threw inside `nodeAt`. The minimap now passes world coordinates as such (and Ctrl+right-click on it attack-moves); `contextCommand` and `cmdMove` refuse an order with no finite spot.
+- `tools/soak.js ... chaos` crashed on its first intent on every seed: its "any building" picker returned nothing because houses now start in a home village with no buildings. It falls back to a village, and the chaos generator now also sends attack-move and stance orders (including a bad stance).
+

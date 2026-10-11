@@ -43,6 +43,8 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Select / box-select | Left mouse (Shift adds; double-click selects that type on screen) |
 | Move, gather, attack, sack, infiltrate, help build | Right mouse (the host decides from what is under the cursor) |
 | Rally point | Right-click the field with a training building selected |
+| Attack-move | **F** (or the Attack-move button), then click the ground; or **Ctrl+right-click**. Soldiers march there and fight every foe they meet on the way |
+| Stance | Buttons under the soldier's orders: **Aggressive** (default; chase foes in sight), **Defensive** (break off a chase 8 tiles out and come back), **Hold ground** (strike only what is in reach), **No attack** (never start a fight). Your own orders always go |
 | Pan | WASD or arrows (Shift faster), or push the mouse to the screen edge |
 | Zoom | Mouse wheel |
 | Jump camera | Click or drag the minimap; right-click the minimap to send units |
@@ -233,6 +235,7 @@ Set it in the Skirmish panel or with `?diff=easy|mid|hard`. `tools/play.js [min]
 - **Sound**: effects and music with volume and mute in Options (button in the top bar).
 - **Objectives**: a ten-step guide in the top left; hide it in Options.
 - **Economy view**: markets show four pips (supply, works, homes, service). Select a market, or press E, to see its district ring and links.
+- **Stances and attack-move**: per-soldier stances shown on the unit panel; rival houses keep their home guard Defensive at peace and send their war hosts out Aggressive.
 - **Board size**: Options, Board size: Small, Standard or Huge. Changing it reloads the page. A save only loads on the board size it was made at.
 
 See ROADMAP.md for what is still to do.

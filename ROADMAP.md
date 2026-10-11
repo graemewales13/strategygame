@@ -13,6 +13,7 @@ This file is reviewed daily (see "Daily review" at the end). Each task has an ID
 - **Royal line.** A house falls when the last of its king and two heirs dies. A fugitive king can be hunted.
 - **War and peace.** Each house reads every other (threat, temptation, ties, weariness). Ultimatums, letters, alliances, tribute and aid. Spy reports.
 - **Science and arms.** Academy research tree (nine technologies) and the Armoury, which makes kit that soldiers carry.
+- **Orders.** Attack-move (F or Ctrl+right-click) and four stances (Aggressive, Defensive, Hold ground, No attack), used by the AI too.
 - **AI.** Learns from the player's recorded play. Each people has its own doctrine. It plays for the crown and uses research, armouries, camps and captains.
 - **Tooling.** Save and load with autosave; synthesised sound; a guided first match; CI with browser click-through tests; headless soak, arena and placement audits.
 
@@ -48,17 +49,18 @@ Priority: **P0** is needed before anyone outside plays it, **P1** before a publi
 
 | ID | Task | Why | Done when | Size | Status |
 |---|---|---|---|---|---|
-| T01 | **Attack-move and unit stances** (aggressive, defensive, hold ground, no attack) | The most common complaint in any RTS without them; the CHARACTERS backlog asks for stances | A-click attack-moves; a stance per unit or group, shown on the panel; the AI uses them; tests | M | todo |
+| T01 | **Attack-move and unit stances** (aggressive, defensive, hold ground, no attack) | The most common complaint in any RTS without them; the CHARACTERS backlog asks for stances | A-click attack-moves; a stance per unit or group, shown on the panel; the AI uses them; tests | M | done 2026-10-11 (attack-move is **F** or Ctrl+right-click, since A pans the camera; T03 may let players rebind it to A) |
 | T02 | **Waypoints and formations** (Shift-queued moves; line, box and loose formations) | Standard since AoE II; keeps armies readable | Shift-right-click queues moves; a formation button; groups march at the slowest member's speed | M | todo |
 | T03 | **Hotkey grid and key rebinding** | Competitive and accessibility baseline | Every command has a key; an Options screen to rebind, saved locally | M | todo |
 | T04 | **Interactive tutorial mission** on a scripted map, beyond the objectives panel | The first 10 minutes decide whether a player stays | A short tutorial map that teaches gather, build, train, influence, war and the royal line, with checks; skippable | M | todo |
-| T05 | **Deterministic simulation** (all randomness through the seeded `game.rnd`) | Needed for replays (T11), lockstep multiplayer (T15) and fair daily challenges (T08) | Same seed and same intents give an identical state hash after 30 minutes, in a test | M | todo |
+| T05 | **Deterministic simulation** (all randomness through the seeded `game.rnd`) | Needed for replays (T11), lockstep multiplayer (T15) and fair daily challenges (T08) | Same seed and same intents give an identical state hash after 30 minutes, in a test | M | todo (2026-10-11 count: 16 `Math.random` calls left in game.js, 4 in ai.js, 1 in names.js) |
 | T06 | **Readable combat feedback**: damage numbers optional, attacked-unit flash, minimap pings, rally lines | Players must see what is happening | Each shows in game; an Options toggle for numbers | S | todo |
 
 ### P1: what makes a demo memorable
 
 | ID | Task | Why | Done when | Size | Status |
 |---|---|---|---|---|---|
+| T26 | **Rivals go to war with each other.** In the 2026-10-11 soak (4 AI houses, 15 minutes, seeds 2 and 3) there were 0 wars between AI houses, while they hoarded over 3000 grain, timber and coin | A valley where the rivals only trade looks dead to a watching player; AoE and Total War AIs fight each other. Linked to T12 (what to spend the hoard on) | Soak shows at least one AI-vs-AI war by minute 15 on most seeds, with reasons on the Council; `test/learn.test.js` still green | S | todo |
 | T07 | **Seasons and weather.** Winter slows walking and stops farms, autumn harvest, spring floods fords; ties into the existing climates | Manor Lords and Northgard show seasons create planning and drama | A visible season cycle; food and movement rules per season; the AI stockpiles before winter; tests | M | todo |
 | T08 | **Daily seeded challenge and local leaderboard.** The same map for everyone each day; score by time to conquest | Cheap replayability; streamers love a shared seed | A Daily button; seed from the date; best results kept in local storage (online later, T17) | S | todo |
 | T09 | **Random events with choices**, character-driven: bandits, plague, a far-land embassy, a defecting captain, a festival, a heir's coming of age | Crusader Kings-style stories; uses our characters | An event card with two or three choices every few minutes; outcomes change opinion, loyalty or stock; the AI gets events too | M | todo |
@@ -111,4 +113,5 @@ Each day the review agent:
 
 Newest first.
 
+- 2026-10-11: Reviewed the backlog against the game and the soak. **T01 done**: attack-move (F, the Attack-move button, or Ctrl+right-click; fights every foe on the way, then walks on) and four stances per soldier (Aggressive, Defensive with an 8-tile leash, Hold ground, No attack), shown on the unit panel and command card, saved with the game; rival houses keep their home guard Defensive at peace and send war hosts out Aggressive. Four new rules tests and a browser click-through (`tools/stance-smoke.cjs`). Gaps fixed (T-048): minimap right-click threw, and the chaos soak crashed at 0:00 on every seed. Backlog: added **T26** (P1: AI houses never fought each other in the 15-minute soak); noted the `Math.random` calls still to route for T05. Next: T05 (determinism), then T06 (combat feedback) or T26.
 - 2026-10-10: Backlog written. Next up: T01 (attack-move and stances), then T05 (determinism), which unlocks T08, T11 and T15.

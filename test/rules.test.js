@@ -5,7 +5,7 @@ import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -675,6 +675,96 @@ test('gaps: a rival does not leave a mine standing that nobody can dig', () => {
   g.refreshCrews(); assert.equal(m._crew.n, 0, 'no village in reach');
   m.idleT = 200; p.campT = 999; g.time = 400; treasury(g, t, p, seat, []);
   assert.ok(!g.buildings.includes(m), 'pulled down');
+});
+
+// ---- T01: stances and attack-move -----------------------------------------------------------------------
+// an open stretch of ground: a w x 3 band of walkable tiles near the player's seat
+const openBand = (g, w) => {
+  const h = g.seatOf(PLAYER);
+  for (let r = 10; r < 60; r++) for (let a = 0; a < 16; a++) {
+    const x0 = Math.round(h.x + Math.cos(a * Math.PI / 8) * r), y0 = Math.round(h.y + Math.sin(a * Math.PI / 8) * r);
+    let ok = true;
+    for (let dx = 0; dx < w && ok; dx++) for (let dy = -1; dy <= 1 && ok; dy++) { const x = x0 + dx, y = y0 + dy; if (x < 1 || y < 1 || x >= g.W - 1 || y >= g.H - 1 || !g.walk[y * g.W + x] || g.buildingAt(x + 0.5, y + 0.5) || g.villageAt(x + 0.5, y + 0.5)) ok = false; }
+    if (ok) return [x0 + 0.5, y0 + 0.5];
+  }
+  throw new Error('no open ground');
+};
+const quiet = (g) => { for (const u of g.units) if (u.team !== PLAYER) u.stance = 'passive'; for (const u of g.units) if (u.team === PLAYER && u.kind !== 'serf') u.stance = 'passive'; };
+
+test('stances: hold ground strikes only what is in reach; no attack never starts a fight; bad stances are refused', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; quiet(g);
+  const [x, y] = openBand(g, 12);
+  const a = g.addUnit('footman', PLAYER, x, y), foe = g.addUnit('recruit', 1, x + 4, y); foe.stance = 'passive';
+  assert.equal(g.applyIntent({ type: 'stance', team: PLAYER, ids: [a.id], stance: 'hold' }), true);
+  assert.equal(g.applyIntent({ type: 'stance', team: PLAYER, ids: [a.id], stance: 'berserk' }), false);
+  run(g, 3);
+  assert.equal(a.task.type, 'idle', 'a foe four tiles off is left alone');
+  assert.ok(Math.hypot(a.x - x, a.y - y) < 0.6, 'and he did not step off his spot');
+  g.applyIntent({ type: 'stance', team: PLAYER, ids: [a.id], stance: 'passive' });
+  foe.x = x + 0.9; run(g, 2);
+  assert.notEqual(a.task.type, 'attack', 'no attack: even a foe at his elbow is not struck');
+  g.applyIntent({ type: 'stance', team: PLAYER, ids: [a.id], stance: 'hold' }); run(g, 3);
+  assert.ok(foe.hp < foe.maxHp, 'hold ground: a foe in reach is struck');
+  const serf = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
+  assert.equal(g.applyIntent({ type: 'stance', team: PLAYER, ids: [serf.id], stance: 'hold' }), false, 'serfs have no stance');
+  assert.equal(g.applyIntent({ type: 'attack', team: PLAYER, ids: [a.id], targetId: foe.id }) !== false, true);
+  assert.equal(a.task.type, 'attack', "the player's own order overrides the stance");
+});
+
+test('stances: a defensive soldier breaks off a long chase and comes back; an aggressive one keeps on', () => {
+  const chase = (stance) => {
+    const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; quiet(g);
+    const [x, y] = openBand(g, 30);
+    const a = g.addUnit('footman', PLAYER, x, y); a.stance = stance;
+    const foe = g.addUnit('knight', 1, x + 4, y); foe.stance = 'passive';
+    g.cmdMove([foe], x + 28, y);   // the foe rides off before blows are traded, so nothing locks him in the fight
+    run(g, 0.6);
+    assert.equal(a.task.type, 'attack', `${stance}: he takes up the fight`);
+    run(g, 14);
+    return Math.hypot(a.x - x, a.y - y);
+  };
+  const def = chase('defensive'), agg = chase('aggressive');
+  assert.ok(def <= STANCE.leash + 1.5, `defensive came back (${def.toFixed(1)} tiles out)`);
+  assert.ok(agg > STANCE.leash + 4, `aggressive kept chasing (${agg.toFixed(1)} tiles out)`);
+});
+
+test('attack-move: fights every foe met on the way, then walks on to the spot; a plain march does not', () => {
+  const go = (type) => {
+    const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; quiet(g);
+    const [x, y] = openBand(g, 26);
+    const us = [g.addUnit('footman', PLAYER, x, y), g.addUnit('footman', PLAYER, x, y + 0.9)];
+    us.forEach((u) => { u.stance = 'passive'; });   // the order, not the stance, picks the fights
+    const foe = g.addUnit('recruit', 1, x + 10, y + 1); foe.stance = 'passive';
+    assert.equal(g.applyIntent({ type, team: PLAYER, ids: us.map((u) => u.id), x: x + 22, y }), true);
+    if (type === 'amove') assert.equal(us[0].task.type, 'amove');
+    run(g, 25);
+    return { foe, us, g, x, y };
+  };
+  const am = go('amove');
+  assert.ok(am.foe.hp <= 0, 'the foe on the way was cut down');
+  assert.ok(am.us.every((u) => u.hp > 0 && Math.hypot(u.x - (am.x + 22), u.y - am.y) < 3), 'and they went on to the spot');
+  assert.ok(am.us.every((u) => u.task.type === 'idle'));
+  const mv = go('move');
+  assert.ok(mv.foe.hp > 0, 'a plain march walks past');
+  // the order and the stance survive a save
+  const g = am.g, u = am.us[0]; u.stance = 'defensive'; u.task = { type: 'amove', x: am.x, y: am.y }; g.setPath(u, am.x, am.y);
+  const g2 = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  const u2 = g2.byId.get(u.id);
+  assert.equal(u2.stance, 'defensive'); assert.equal(u2.task.type, 'amove');
+  assert.equal(g.applyIntent({ type: 'amove', team: PLAYER, ids: [u.id], x: NaN, y: 3 }), false, 'a bad spot is refused');
+  // T-048: a minimap right-click once sent no spot at all and threw inside nodeAt
+  assert.equal(g.applyIntent({ type: 'context', team: PLAYER, ids: [u.id], x: undefined, y: undefined }), false);
+  assert.equal(g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: undefined, y: 4 }), false);
+});
+
+test('stances: rival houses stand their home guard defensive at peace and send their attacks aggressive', () => {
+  const g = new Game({ seed: 8, houses: 3, ai: true }); const t = 1, seat = g.seatOf(t);
+  const guard = [0, 1, 2].map((i) => g.addUnit('footman', t, seat.x + i, seat.y + 4));
+  g.time = 30; g.players[t].think = 0; updateAI(g, 0.01);
+  assert.ok(guard.every((u) => u.stance === 'defensive'), guard.map((u) => u.stance).join());
+  const army = [0, 1, 2, 3, 4, 5, 6].map((i) => g.addUnit('footman', t, seat.x + i * 0.8, seat.y + 5));
+  g.rel[1][0] = g.rel[0][1] = 'war'; g.known[t][0] = true; g.time = 900; g.players[t].think = 0; updateAI(g, 0.01);
+  assert.ok(army.some((u) => u.stance === 'aggressive' && u.task.type === 'attack'), 'the war host goes out aggressive');
 });
 
 console.log(`${passed} passed`);

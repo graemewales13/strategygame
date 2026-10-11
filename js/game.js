@@ -7,7 +7,7 @@ import {
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
 } from './config.js';
@@ -426,6 +426,8 @@ export class Game {
     const mine = () => (it.ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
     switch (it.type) {
       case 'move': return this.cmdMove(mine(), it.x, it.y);
+      case 'amove': return this.cmdAttackMove(mine(), it.x, it.y);
+      case 'stance': return this.setStance(mine(), it.stance);
       case 'stop': mine().forEach((u) => { u.route = null; u.parked = true; u.task = { type: 'idle' }; u.path = []; }); return true;
       case 'route': return this.cmdRoute(mine(), this.byId.get(it.targetId), it.want);
       case 'stoproute': return this.stopRoute(mine());
@@ -470,6 +472,7 @@ export class Game {
 
   // Right-click: decide what the point means for these units (as the owning player sees it)
   contextCommand(team, ids, x, y, queue = false, want = null) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;   // an order needs a spot on the map
     const all = (ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
     if (!all.length) return false;
     // camels trade: right-click a market or village; anywhere else they just walk
@@ -1001,12 +1004,13 @@ export class Game {
     for (const u of units) {
       if (!this.locked(u)) { free.push(u); continue; }
       const t = this.closestEnemy(u, SALLY.lockR + 1, u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id }; u.path = []; u.repathT = 0; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y } : null) }; u.path = []; u.repathT = 0; }
       if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is locked in combat and cannot break off.`, 'warn');
     }
     return free;
   }
   cmdMove(units, x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     units = this.freeOf(units);
     units.forEach((u, i) => {
       const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)];
@@ -1014,6 +1018,48 @@ export class Game {
       this.setPath(u, x + ox * 0.9, y + oy * 0.9);
     });
     return true;
+  }
+  // Attack-move: march to (x, y), turning on any foe met on the way and walking on once it is dealt with. Those who do not fight just walk.
+  cmdAttackMove(units, x, y) {
+    if (!units.length || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    units = this.freeOf(units);
+    units.forEach((u, i) => {
+      const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)], tx = x + ox * 0.9, ty = y + oy * 0.9;
+      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); return; }
+      u.task = { type: 'amove', x: tx, y: ty }; u.sally = null; u.aggroT = 0;
+      this.setPath(u, tx, ty);
+    });
+    return true;
+  }
+  // who may pick fights of their own (stances and attack-move apply to them)
+  fighter(u) { return u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && this.powerOf(u) > 0; }
+  stanceOf(u) { return STANCES.includes(u.stance) ? u.stance : 'aggressive'; }
+  setStance(units, stance) {
+    if (!STANCES.includes(stance)) return false;
+    units = units.filter((u) => this.fighter(u) || u.kind === 'king');
+    for (const u of units) {
+      u.stance = stance;
+      if (u.task.type === 'attack' && u.task.auto && stance === 'passive') { u.task = { type: 'idle' }; u.path = []; }   // a fight it chose itself is broken off; a fight it was ordered into is not
+    }
+    return units.length > 0;
+  }
+  // how far an idle fighter looks for a fight of its own
+  acquireR(u) { return u.kind === 'king' ? 4.5 : Math.max(6.5, this.rangeOf(u) + 2); }
+  // a fight is over (the foe is dead, gone or no longer a foe): walk on if it was met on an attack-move, else stand
+  endFight(u) {
+    const th = u.task.then;
+    if (th) { u.task = { type: 'amove', x: th.x, y: th.y }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y)) u.task = { type: 'idle' }; return; }
+    u.task = { type: 'idle' }; u.path = [];
+  }
+  doAttackMove(u, dt) {
+    if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); return; }
+    u.aggroT -= dt;
+    if (u.aggroT <= 0) {
+      u.aggroT = 0.45;
+      const t = this.closestEnemy(u, this.acquireR(u), u.team);
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y } }; u.path = []; u.repathT = 0; return; }
+    }
+    if (!this.follow(u, dt)) u.task = { type: 'idle' };
   }
   cmdAttack(units, target) {
     if (!target || !units.length) return false;
@@ -1279,7 +1325,7 @@ export class Game {
     const b = this.addBuilding(kind, team, tx, ty, false);
     for (const o of this.units) if (o.path?.some(([px, py]) => px >= tx && px < tx + s.size && py >= ty && py < ty + s.size)) {   // a route through the new site is planned again
       o.repathT = 0;
-      if (o.task.type === 'move') { const [ex, ey] = o.path[o.path.length - 1]; if (!this.setPath(o, ex, ey)) o.path = []; }   // a plain march has no target to re-plan toward: re-plan to where it was going
+      if (o.task.type === 'move' || o.task.type === 'amove') { const [ex, ey] = o.path[o.path.length - 1]; if (!this.setPath(o, ex, ey)) o.path = []; }   // a plain march has no target to re-plan toward: re-plan to where it was going
     }
     const pl = this.players[team];
     if (this.hasTech(pl.team, 'masonry')) { b.maxHp *= 1.15; b.hp *= 1.15; } // Masonry
@@ -2389,6 +2435,7 @@ export class Game {
       switch (u.task.type) {
         case 'move': if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt)) u.task = { type: 'idle' }; break;
         case 'attack': this.doAttack(u, s, dt); break;
+        case 'amove': this.doAttackMove(u, dt); break;
         case 'gather': this.doGather(u, dt); break;
         case 'mine': u.task = { type: 'idle' }; u.path = []; break;   // old saves: serfs no longer dig, the villagers do
         case 'return': this.doReturn(u, dt); break;
@@ -2420,18 +2467,25 @@ export class Game {
       if (ok) this.cmdEnter([u], home);
       return;
     }
-    const t = this.closestEnemy(u, u.kind === 'king' ? 4.5 : Math.max(6.5, this.rangeOf(u) + 2), u.team);
-    if (t) { u.task = { type: 'attack', targetId: t.id }; u.repathT = 0; }
+    const st = this.stanceOf(u);
+    if (st === 'passive') return;
+    const t = this.closestEnemy(u, st === 'hold' ? this.rangeOf(u) + 0.15 : this.acquireR(u), u.team);
+    if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: [u.x, u.y] }; u.repathT = 0; }
   }
 
   doAttack(u, s, dt) {
     const t = this.byId.get(u.task.targetId);
     const gone = !t || t.hp <= 0 && t.type !== 'village';
-    if (gone) { u.task = { type: 'idle' }; u.path = []; return; }
-    if (t.type === 'village') { if (t.owner === u.team || (t.owner >= 0 && !this.isEnemy(u.team, t.owner))) { u.task = { type: 'idle' }; u.path = []; return; } }
-    else if (!this.isEnemy(u.team, t.team)) { u.task = { type: 'idle' }; u.path = []; return; }
+    if (gone) return this.endFight(u);
+    if (t.type === 'village') { if (t.owner === u.team || (t.owner >= 0 && !this.isEnemy(u.team, t.owner))) return this.endFight(u); }
+    else if (!this.isEnemy(u.team, t.team)) return this.endFight(u);
     const d = distTo(u.x, u.y, t);
     if (d > this.rangeOf(u) + 0.15) {
+      if (u.task.auto && !u.task.then) {   // a fight it picked itself: the stance decides how far it may go
+        const st = this.stanceOf(u), a = u.task.anchor;
+        if (st === 'hold' || st === 'passive') { u.task = { type: 'idle' }; u.path = []; return; }
+        if (st === 'defensive' && a && Math.hypot(u.x - a[0], u.y - a[1]) > STANCE.leash) { u.task = { type: 'move' }; if (!this.setPath(u, a[0], a[1])) u.task = { type: 'idle' }; return; }
+      }
       if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, t);
       if (!this.follow(u, dt) && !u.path.length) u.repathT = Math.min(u.repathT, 0.3);
       return;
@@ -2605,7 +2659,9 @@ export class Game {
       }
       if (u.task.type !== 'idle' || this.powerOf(u) <= 0) continue;
       if (distTo(u.x, u.y, t) > DEFEND_R) continue;
-      u.task = { type: 'attack', targetId: foe.id }; u.path = []; u.repathT = 0;
+      const st = this.stanceOf(u);
+      if (st === 'passive' || (st === 'hold' && distTo(u.x, u.y, foe) > this.rangeOf(u) + 0.15)) continue;
+      u.task = { type: 'attack', targetId: foe.id, auto: true, anchor: [u.x, u.y] }; u.path = []; u.repathT = 0;
     }
   }
 

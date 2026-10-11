@@ -234,7 +234,7 @@ function think(game, team, p) {
   if (readyArmy.length >= need && t > firstAt) {
     const strength = readyArmy.reduce((n, u) => n + UNITS[u.kind].hp, 0);
     const v = nearestVillage(game, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => u.kind === 'ram') ? 400 : 0), 42);
-    if (v) { game.cmdAttack(readyArmy.filter((u) => u.kind !== 'spy'), v); p.planVillage = v.id; }
+    if (v) { const go = readyArmy.filter((u) => u.kind !== 'spy'); game.setStance(go, 'aggressive'); game.cmdAttack(go, v); p.planVillage = v.id; }
   }
 
   // 6. war is chosen, not scheduled: a house fights the one it is at war with, or the one its stance says it means war on (threat, temptation,
@@ -259,12 +259,14 @@ function think(game, team, p) {
       const ready = army.filter((u) => u.task.type === 'idle');
       if (ready.length >= 7) {
         const goal = huntGoal(game, team, target.team, seat, ready);
-        if (goal) game.cmdAttack(ready, goal);
+        if (goal) { game.setStance(ready, 'aggressive'); game.cmdAttack(ready, goal); }
       }
     }
   } else {
-    // return stragglers home
+    // return stragglers home; at peace the home guard stands defensive, so a raider cannot draw it far from the seat
     for (const u of army) if (u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) > 12) game.cmdMove([u], seat.x + (Math.random() - 0.5) * 4, seat.y + 4);
+    const guard = army.filter((u) => u.stance !== 'defensive' && u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) <= 12);
+    if (guard.length) game.setStance(guard, 'defensive');
   }
 }
 

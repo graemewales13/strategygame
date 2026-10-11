@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE,
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
@@ -90,7 +90,7 @@ export class UI {
     const mmPos = (e) => { const b = mm.getBoundingClientRect(); return [((e.clientX - b.left) / b.width) * this.game.W, ((e.clientY - b.top) / b.height) * this.game.H]; };
     mm.addEventListener('mousedown', (e) => {
       const [x, y] = mmPos(e);
-      if (e.button === 2) { this.command(x, y); return; }
+      if (e.button === 2) { this.command(null, null, x, y, e.shiftKey, e.ctrlKey); return; }
       this.r.centerOn(x, y); this.mmDrag = true;
     });
     window.addEventListener('mousemove', (e) => { if (this.mmDrag) { const [x, y] = mmPos(e); this.r.centerOn(Math.max(0, Math.min(this.game.W, x)), Math.max(0, Math.min(this.game.H, y))); } });
@@ -144,10 +144,12 @@ export class UI {
     const [sx, sy] = this.canvasPos(e), [wx, wy] = this.r.toWorld(sx, sy);
     if (e.button === 2) {
       if (this.placing) { this.placing = null; $('game').classList.remove('placing'); return; }
-      this.command(sx, sy, wx, wy, e.shiftKey); return;
+      if (this.amove) { this.setAmove(false); return; }
+      this.command(sx, sy, wx, wy, e.shiftKey, e.ctrlKey); return;
     }
     if (e.button !== 0) return;
     if (this.placing) { this.tryPlace(e.shiftKey); return; }
+    if (this.amove) { this.setAmove(false); this.command(sx, sy, wx, wy, false, true); return; }
     this.drag = { sx, sy, shift: e.shiftKey };
   }
   onMove(e) {
@@ -208,14 +210,21 @@ export class UI {
     if (h && h.type === 'node') { this.sel = { type: 'node', ids: [], id: h.o.id }; return; }
     if (!shift) this.clearSel();
   }
-  command(sx, sy, wx, wy, shift = false) {
+  // Attack-move is armed by F or the button; the next left-click (or Ctrl+right-click at any time) fights its way to the spot
+  setAmove(on) { this.amove = !!on; $('game').classList.toggle('placing', this.amove || !!this.placing); }
+  command(sx, sy, wx, wy, shift = false, fight = false) {
     const g = this.game, units = this.selUnits().filter((u) => u.team === PLAYER);
-    const h = this.r.pick(sx, sy), ho = h ? h.o : null;
+    const h = sx == null ? null : this.r.pick(sx, sy), ho = h ? h.o : null;   // the minimap gives world coordinates only
     const eu = h && h.type === 'unit' ? ho : null, v = h && h.type === 'village' ? ho : null, b = h && h.type === 'building' ? ho : null, n = h && h.type === 'node' ? ho : null;
     if (ho) { wx = ho.x + (ho.type === 'node' ? 0.5 : 0); wy = ho.y + (ho.type === 'node' ? 0.5 : 0); } // act on the thing itself, not the ground behind its sprite
     let color = '#8fe08f';
     if ((eu && eu.team !== PLAYER) || (v && v.owner !== PLAYER) || (b && b.team !== PLAYER)) color = '#e0685a';
     else if (n) color = '#e2c15e';
+    if (units.length && fight && !(eu && eu.team !== PLAYER) && !(v && v.owner !== PLAYER) && !(b && b.team !== PLAYER)) {
+      this.host.send({ type: 'amove', ids: units.map((u) => u.id), x: wx, y: wy });
+      this.pings.push({ x: wx, y: wy, age: 0, color: '#e0685a' });
+      return;
+    }
     if (units.length) {
       this.host.send({ type: 'context', ids: units.map((u) => u.id), x: wx, y: wy, queue: shift, want: this.want });
       this.pings.push({ x: wx, y: wy, age: 0, color });
@@ -249,7 +258,7 @@ export class UI {
     const k = e.key.toLowerCase();
     const tg = e.target;
     if (tg && (tg.tagName === 'TEXTAREA' || (tg.tagName === 'INPUT' && tg.type !== 'checkbox'))) { if (k === 'enter' || k === 'escape') tg.blur?.(); if (k !== 'escape') return; }
-    if (k === 'escape') return this.onEsc();
+    if (k === 'escape') { if (this.amove) return this.setAmove(false); return this.onEsc(); }
     if (k === 'f5') { e.preventDefault(); return void this.saveGame('manual'); }
     if (k === 'f9') { e.preventDefault(); return void this.loadGame('manual'); }
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
@@ -265,6 +274,7 @@ export class UI {
     else if (k === 'p') this.setPaused(!this.paused);
     else if (k === '.') this.selectIdleSerf();
     else if (k === ',') this.selectArmy();
+    else if (k === 'f') { if (this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u))) this.setAmove(!this.amove); }
     else if (k === '+' || k === '=') { this.speed = Math.min(4, this.speed * 2); $('btnSpeed').textContent = this.speed + 'x'; }
     else if (k === '-') { this.speed = Math.max(1, this.speed / 2); $('btnSpeed').textContent = this.speed + 'x'; }
     else if (/^[1-9]$/.test(k)) {
@@ -319,6 +329,8 @@ export class UI {
       case 'train': { const b = this.selEntity(); if (b) this.host.send({ type: 'train', buildingId: b.id, kind: d.kind }); break; }
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
+      case 'amove': this.setAmove(!this.amove); break;
+      case 'stance': this.host.send({ type: 'stance', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id), stance: d.stance }); break;
       case 'kind': this.setUnits(this.selUnits().filter((u) => u.kind === d.kind)); break;
       case 'load': { const u = this.selUnits().find((x) => x.kind === 'camel'); if (u) this.host.send({ type: 'load', unitId: u.id, good: d.good, amount: 20 }); break; }
       case 'unload': { const u = this.selUnits().find((x) => x.kind === 'camel'); if (u) this.host.send({ type: 'unload', unitId: u.id }); break; }
@@ -639,7 +651,8 @@ export class UI {
     const t = u.task;
     switch (t.type) {
       case 'move': return 'Marching';
-      case 'attack': return 'Attacking';
+      case 'amove': return 'Attack-moving';
+      case 'attack': return t.auto ? 'Fighting' : 'Attacking';
       case 'gather': { const n = this.game.resources[t.nodeId]; return n ? `Gathering ${RES_LABEL[NODE_RES[n.kind]].toLowerCase()}` : 'Gathering'; }
       case 'mine': return 'Digging ore';
       case 'return': return 'Carrying goods home';
@@ -672,7 +685,8 @@ export class UI {
           <div class="stat"><label>Damage</label><span>${st.dmg ? g.shownDamage(u).toFixed(0) : '0'}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${(u.speed ?? st.speed).toFixed(1)}</span></div>
           ${g.ranked(u) ? this.rankRow(u) : ''}
           ${this.characterRows(u)}
-          ${mine ? `<div class="stat"><label>Task</label><span>${this.taskText(u)}${u.carry && u.carry.amount > 0.5 ? ` · ${Math.floor(u.carry.amount)} ${u.carry.kind}` : ''}</span></div>` : ''}`;
+          ${mine ? `<div class="stat"><label>Task</label><span>${this.taskText(u)}${u.carry && u.carry.amount > 0.5 ? ` · ${Math.floor(u.carry.amount)} ${u.carry.kind}` : ''}</span></div>` : ''}
+          ${g.fighter(u) || u.kind === 'king' ? `<div class="stat"><label>Stance</label><span>${STANCE.label[g.stanceOf(u)]}</span></div>` : ''}`;
       } else {
         const by = {}; us.forEach((u) => { by[u.kind] = (by[u.kind] || 0) + 1; });
         html = `<div class="seltitle">${us.length} units</div><div class="selsub">Click a type to narrow the selection, or a name to pick one out. Ctrl+1..9 stores a group.</div><div class="chips">${Object.entries(by).map(([k, n]) => `<span class="chip x" data-act="kind" data-kind="${k}">${GLYPH[k]?.length === 1 ? GLYPH[k] : ''} ${UNITS[k].label} × ${n}</span>`).join('')}</div>${this.rollChips(us, 16)}`;
@@ -790,6 +804,17 @@ export class UI {
     html += `</div>`;
     if (b.craft?.length) html += `<div class="qrow">${b.craft.map((q, i) => `<div class="qslot" data-act="uncraft" data-i="${i}" data-tip="${encodeURIComponent(`<b>${GEAR[q.item].label}</b><br>Click to cancel (refund).`)}">⛨${i === 0 ? `<i style="width:${(q.t / GEAR[q.item].time) * 100}%"></i>` : ''}</div>`).join('')}</div>`;
     return html + `<div class="hint">Kit goes into your stockpile. New soldiers take the best for their kind; soldiers standing idle within 7 tiles of an Armoury swap up and hand the old kit back.</div>`;
+  }
+  stanceGrid(us) {
+    const g = this.game, fs = us.filter((u) => g.fighter(u) || u.kind === 'king'), cur = new Set(fs.map((u) => g.stanceOf(u)));
+    const glyph = { aggressive: '⚔', defensive: '⛨', hold: '⚓', passive: '☮' };
+    const tip = {
+      aggressive: '<b>Aggressive</b><br>Engage any foe that comes in sight and chase it down.',
+      defensive: `<b>Defensive</b><br>Engage foes that come near, but break off a chase more than ${STANCE.leash} tiles from where it began and come back.`,
+      hold: '<b>Hold ground</b><br>Never step off the spot to fight: strike only what comes within reach.',
+      passive: '<b>No attack</b><br>Never start a fight (a soldier already locked in combat still cannot run). Your orders still go.',
+    };
+    return `<div class="ctitle">Stance</div><div class="cgrid c4">${STANCES.map((k) => this.btn('stance', { glyph: glyph[k], name: STANCE.label[k], cls: cur.size === 1 && cur.has(k) ? 'on' : '', data: { stance: k }, tip: tip[k] })).join('')}</div>`;
   }
   captainBtn(us) {
     if (us.length !== 1) return '';
@@ -996,13 +1021,14 @@ export class UI {
       if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
       if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
-      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${this.captainBtn(us)}</div>`;
+      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { glyph: '⚔', name: 'Attack-move', sub: 'F', cls: this.amove ? 'on' : '', tip: '<b>Attack-move</b> (F, or Ctrl+right-click)<br>Click the ground: they march there and fight every foe they meet on the way.' }) : ''}${this.captainBtn(us)}</div>`;
+      if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
       if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));
       if (us.some((u) => u.kind === 'recruit')) html += `<div class="ctitle">Role</div><div class="cgrid c4">${this.btn('spy', { glyph: GLYPH.spy, art: 'spy', name: 'Become spy', sub: SPY_FEE + 'c', off: g.players[PLAYER].gold < SPY_FEE, tip: `<b>Become a spy</b><br>${SPY_FEE} coin. Spies right-click an independent or rival village to sway its loyalty (and can be caught).` })}</div><div class="hint">Or right-click a keep to garrison, then drill into a soldier.</div>`;
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click: a deposit with a <b>mine</b> to dig, timber, berries or gold to gather, a building site to build.</div>`;
       if (!us.some((u) => u.kind === 'serf' || u.kind === 'camel' || u.kind === 'recruit')) {
         const sp = us.some((u) => u.kind === 'spy');
-        html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>keep, tower, barracks</b> or a village you hold to go <b>inside</b>. Attacking a house at peace declares war.</div>`;
+        html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>keep, tower, barracks</b> or a village you hold to go <b>inside</b>. Attacking a house at peace declares war. <b>F</b> then a click (or Ctrl+right-click) <b>attack-moves</b>.</div>`;
       }
     } else if (ent && ent.type === 'building' && ent.team === PLAYER) {
       if (ent.built < 1) html = `<div class="hint">Under construction. Select serfs and right-click this building to help raise it.</div><div class="cgrid" style="margin-top:6px">${this.btn('demolish', { glyph: '✕', name: 'Cancel site', sub: '80% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Cancel the site</b><br>Click twice. Four fifths of the cost comes back.' })}</div>`;

@@ -12,7 +12,7 @@ const out = [], say = (s) => { out.push(s); console.log(s); };
 const issues = new Map();   // key -> { n, first, sample }
 let curSeed = 0;
 const flag = (key, t, sample) => { sample = `seed ${curSeed}: ${sample}`; const i = issues.get(key); if (i) i.n++; else issues.set(key, { n: 1, first: t, sample }); };
-const MOVING = new Set(['move', 'gather', 'build', 'mine', 'caravan', 'enter', 'attack', 'infiltrate', 'return']);
+const MOVING = new Set(['move', 'gather', 'build', 'mine', 'caravan', 'enter', 'attack', 'infiltrate', 'return', 'amove']);
 
 for (const seed of seeds) {
   rng = seed * 7919; curSeed = seed;
@@ -25,7 +25,7 @@ for (const seed of seeds) {
   const chaos = () => {
     const mine = g.units.filter((u) => u.team === 0 && u.hp > 0), bl = g.buildings.filter((b) => b.team === 0 && b.hp > 0);
     const ids = () => { const n = 1 + Math.floor(Math.random() * 4), o = []; for (let i = 0; i < n && mine.length; i++) o.push(pick(mine).id); return o; };
-    const anyB = () => pick(g.buildings), anyV = () => pick(g.villages), anyN = () => pick(g.resources);
+    const anyV = () => pick(g.villages), anyB = () => (g.buildings.length ? pick(g.buildings) : anyV()), anyN = () => pick(g.resources);   // houses start in a village with no buildings
     const X = () => Math.random() * g.W, Y = () => Math.random() * g.H;
     const kinds = ['cottage', 'farm', 'mill', 'warehouse', 'market', 'mine', 'foundry', 'barracks', 'tower', 'keep', 'tavern', 'forge', 'academy', 'temple', 'stable', 'archery', 'workshop'];
     const goods = ['food', 'wood', 'gold', 'stone', 'copper', 'iron', 'coal', 'silver', 'steel', 'ware'];
@@ -53,6 +53,8 @@ for (const seed of seeds) {
       () => ({ type: 'relation', other: 1 + Math.floor(Math.random() * (houses - 1)), state: pick(['trade', 'peace', 'war']) }),
       () => ({ type: 'respond', from: 1 + Math.floor(Math.random() * (houses - 1)), accept: Math.random() < 0.7 }),
       () => ({ type: 'stop', ids: ids() }),
+      () => ({ type: 'amove', ids: ids(), x: X(), y: Y() }),
+      () => ({ type: 'stance', ids: ids(), stance: pick(['aggressive', 'defensive', 'hold', 'passive', 'nonsense']) }),
       () => ({ type: 'gather', ids: ids(), nodeId: anyN().id }),
       () => ({ type: 'build', ids: ids(), buildingId: anyB().id }),
     ];
