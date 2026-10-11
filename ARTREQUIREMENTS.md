@@ -2,7 +2,7 @@
 
 What the game needs painted next, in priority order. Every request follows the **Seven Holds Art Instruction Set**: paste the style bible and negatives, then one faction kit, then the prompt given here. Sizes, angle, lighting, QA and the file-naming rules are the ones in that document. Nothing below changes the look.
 
-Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 were delivered by Grok (commit 8b7d6f1) and are now keyed, trimmed and wired. The next requests are priority 5 onward.
+Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 were delivered by Grok (commit 8b7d6f1) and are now keyed, trimmed and wired. The next requests are priority 5 onward. Updated 2026-10-11 (third run): no new art since; every delivered file re-checked (RGBA, transparent corners, no pink left); priority 7 added for the combat-feedback work (T06).
 
 ## Status at a glance
 
@@ -14,6 +14,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 4 | Far-lander portraits (8), ruler portraits (5), captain standard, deed badges (6), fugitive mark | **Delivered and wired**: tavern roster and unit panel; Council cards and the king's panel; over captains (dyed in the house colour); deed chips; over a fugitive king and on the Council |
 | 5 | Plain soldiers repainted per people, full length | **Requested** (below). Picked up automatically when delivered |
 | 6 | Raising and ruin states for every other building | **Requested** (below). Needs one line of wiring each |
+| 7 | War-horn alarm mark for the "under attack" warning | **Requested** (below). Already wired: shown in the warning as soon as the file exists; until then the warning is text only |
 
 ## How the game uses delivered art
 
@@ -24,7 +25,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | An armed soldier | `assets/factions/<faction>/units/<role>_<kit>.png` (the six keys in priority 3) | Automatically |
 | A plain soldier in the new style | `assets/factions/<faction>/units/<role>.png` for `footman`, `bowman`, `knight`, `scout`, `recruit`, `spy`, `scholar` | Automatically (priority 5) |
 | Icons (kit, research) | `assets/shared/ui/gear/<key>.png`, `assets/shared/ui/tech/<key>.png` | Automatically (keys are `GEAR` and `TECH` in `js/config.js`) |
-| Marks (deeds, captain, fugitive) | `assets/shared/ui/marks/<key>.png` (deed keys are `DEEDS` in `js/config.js`) | Automatically |
+| Marks (deeds, captain, fugitive, alarm) | `assets/shared/ui/marks/<key>.png` (deed keys are `DEEDS` in `js/config.js`) | Automatically |
 | Portraits | `assets/shared/ui/portraits/<key>.png` (far-land keys are `FARLANDS`; rulers are `pharaoh`, `imperator`, `king`, `khan`, `highking`) | Automatically |
 
 Until a file exists the game falls back to a stand-in: the forge sprite for the armoury, the old shared figure for a soldier, a text glyph for icons, no mark. Missing files never break the game.
@@ -161,6 +162,22 @@ Deliver: `assets/factions/<faction>/units/<file key>.png` (7 per people, 35 in a
 ## Priority 6: raising and ruined states for every building
 
 The renderer now shows a painted building site while a building is raised and leaves its painted ruin for 30 s where it fell. Only the armoury has them. Paint `_build` and `_ruin` for the rest, most-built first: `barracks`, `keep`, `market`, `mine`, `cottage`, `farm`, `forge`, `foundry`, `tower`, `academy`, `tavern`, `temple`, `archery`, `stable`, `mill`, `warehouse`, `workshop`. Same framing and size as the complete building, Building template with `{STATE}` set to "under construction: timber scaffolding, half-raised walls, a stack of materials" or "ruined: fallen roof, broken walls, scattered goods, no fire".
+
+## Priority 7: the alarm mark (new 2026-10-11, combat feedback T06)
+
+T06 added combat feedback: a pulsing red ring on the minimap where you are being hit, your fighting folk blinking red there, **Space** to jump to the fight, lines from selected soldiers to where they are going, and optional damage numbers. All of that is drawn in code (rings, lines and numbers in the game's own colours) and needs **no painting**. One small painted mark finishes it:
+
+| Key | Size | Subject to paint |
+|---|---|---|
+| `alarm` | 64x64 | a curved ox-horn war horn with a brass mouthpiece and a leather strap, tilted up as if being blown; no faction colour, no text |
+
+Prompt (Goods icon template, filled):
+
+```text
+ALARM MARK, a curved ox-horn war horn with a brass mouthpiece and bands and a plain leather strap, tilted up as if being blown, painted in the same style as the deed badges. Neutral colours only, no faction colour, no text. Flat #FF00FF background, centred, 4 px margin, 256x256 (shown at 22-64 px).
+```
+
+Deliver: `assets/shared/ui/marks/alarm.png` (it is shown in the "...is under attack!" warning at 22 px; it must read on a dark red-bordered panel).
 
 ## Gaps in the instruction set itself
 

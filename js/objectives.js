@@ -6,7 +6,7 @@ const mine = (g, kind) => g.buildings.some((b) => b.team === PLAYER && b.kind ==
 const count = (g, kind) => g.buildings.filter((b) => b.team === PLAYER && b.kind === kind && b.built >= 1 && b.hp > 0).length;
 const anyBuilt = (g) => g.buildings.some((b) => b.team === PLAYER && b.built >= 1 && b.hp > 0 && b.kind !== 'village');
 const serfs = (g) => g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length;
-const soldiers = (g) => g.militaryOf(PLAYER).length;
+const soldiers = (g) => g.soldiersOf(PLAYER).length;   // garrisons count: a keep full of drilled men is an army (T-050)
 const heldVillages = (g) => g.villages.filter((v) => v.owner === PLAYER && v.home !== PLAYER).length;
 
 export const OBJECTIVES = [

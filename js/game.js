@@ -69,6 +69,7 @@ export class Game {
     this.projectiles = [];
     this._crewT = 0;
     this.floaters = []; this.fx = [];   // fx: collapse/poof effects for the renderer (only queued when a UI is attached)
+    this.alerts = [];   // where the player is being hit, for the minimap and the Space key (UI only, like fx)
     this.byId = new Map();
     this.alertT = new Array(this.houses).fill(-99);
     this.winHold = { team: -1, t: 0 }; this.richHold = { team: -1, t: 0 };
@@ -2527,7 +2528,7 @@ export class Game {
     v.protection -= dmg / (1 + 0.2 * this.garrisonWeight(v) + 0.06 * m); v.hitT = 6; v.flash = 0.2;
     if (m > 0) v.pop = Math.max(2, v.pop - MILITIA.loss * Math.min(m, 4));   // militia fall as they fight
     v.loyalty = Math.max(0, v.loyalty - 1.5);
-    this.rallyDefenders(v, u, u.team);
+    this.rallyDefenders(v, u, u.team); this.alertPlayer(v, u.team);
     const loot = Math.min(2, v.stores.gold || 0);
     if (loot) { v.stores.gold -= loot; this.earn(u.team, 'loot', loot * 0.6); }
     // the folk fight back: the sturdier the village, the harder it bites
@@ -2624,6 +2625,7 @@ export class Game {
     const before = t.hp;
     if (t.type === 'unit' && byTeam >= 0) { t.engagedT = this.time; if (by) by.engagedT = this.time; }
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
+    if (this.dmgNums && this.sfxOn && amt >= 0.5 && this.floaters.length < 60 && (t.team === PLAYER || byTeam === PLAYER || !this.fogOn || this.vis[PLAYER][Math.floor(t.y) * this.W + Math.floor(t.x)])) this.floaters.push({ x: t.x, y: t.y - 0.4, text: `-${Math.round(amt)}`, res: t.team === PLAYER ? 'hurt' : 'hit', age: 0 });   // optional damage numbers (Options)
     if (byTeam >= 0 && (t.type === 'building' || t.type === 'unit') && t.hp > 0) this.rallyDefenders(t, by, byTeam);
     if (by) this.award(by, Math.min(amt, before) * XP.perDamage);
     if (t.type === 'unit' && t.hp > 0 && t.hp < t.maxHp * 0.1 && SOLDIER.has(t.kind)) t._brink = true;   // near death: if they live through it, a deed
@@ -2649,10 +2651,17 @@ export class Game {
       }
       return;
     }
-    if (t.team === PLAYER && this.time - this.alertT[PLAYER] > 8 && byTeam !== PLAYER) {
-      this.alertT[PLAYER] = this.time;
-      this.log(PLAYER, `Your ${t.type === 'unit' ? UNITS[t.kind].label : BUILDINGS[t.kind].label} is under attack!`, 'bad'); this.sfx('alarm', t.x, t.y);
-    }
+    this.alertPlayer(t, byTeam);
+  }
+
+  // Something of the player's is struck (a unit, a building or one of their villages): one warning line and alarm every 8 s, and an alert
+  // spot for the minimap and the Space key while a UI is attached (T06).
+  alertPlayer(t, byTeam) {
+    if ((t.type === 'village' ? t.owner : t.team) !== PLAYER || byTeam === PLAYER) return;
+    if (this.sfxOn) { const a = this.alerts.find((p) => Math.hypot(p.x - t.x, p.y - t.y) < 8); if (a) { a.time = this.time; a.x = t.x; a.y = t.y; } else if (this.alerts.length < 12) this.alerts.push({ x: t.x, y: t.y, time: this.time, born: this.time }); }
+    if (this.time - this.alertT[PLAYER] <= 8) return;
+    this.alertT[PLAYER] = this.time;
+    this.log(PLAYER, t.type === 'village' ? `Your village of ${t.name} is under attack!` : `Your ${t.type === 'unit' ? UNITS[t.kind].label : BUILDINGS[t.kind].label} is under attack!`, 'bad'); this.sfx('alarm', t.x, t.y);
   }
 
   // Something of ours is being hit: every idle soldier within DEFEND_R squares of it turns on the attacker (or the nearest foe), so a town is never watched burning.
@@ -2688,6 +2697,7 @@ export class Game {
     this.projectiles = this.projectiles.filter((p) => !p.dead);
     for (const f of this.floaters) f.age += dt;
     this.floaters = this.floaters.filter((f) => f.age < 1.3);
+    if (this.alerts.length) this.alerts = this.alerts.filter((a) => this.time - a.time < 10);
   }
 
   doGather(u, dt) {
@@ -2956,7 +2966,7 @@ export class Game {
     // links saved as { $ref: id } inside '_' caches point back at the live unit, building or village
     const deref = (x) => { if (!x || typeof x !== 'object') return x; if (x.$ref != null && Object.keys(x).length === 1) return this.byId.get(x.$ref) || null; for (const k in x) x[k] = deref(x[k]); return x; };
     for (const e of [...this.units, ...this.buildings, ...this.villages]) for (const k in e) if (k[0] === '_') e[k] = deref(e[k]);
-    this.floaters = []; this.fx = []; this.events.length = 0;
+    this.floaters = []; this.fx = []; this.alerts = []; this.events.length = 0;
     this.recomputeWalk();
     if (d.vis && d.timers) { this.vis = d.vis.map(unrle); Object.assign(this, deref(d.timers)); }   // fog and timers exactly as saved
     else { this.visT = 0; this.updateVisibility(true); }

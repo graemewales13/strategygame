@@ -149,7 +149,7 @@ export class Renderer {
     // floaters
     ctx.font = `bold ${Math.round(13 * Math.max(0.8, z))}px Georgia, serif`;
     ctx.textAlign = 'center';
-    const fcol = { food: '#e58aa3', wood: '#d1a066', gold: GOLD };
+    const fcol = { food: '#e58aa3', wood: '#d1a066', gold: GOLD, hurt: '#ff6a5a', hit: '#f4ecd8' };   // hurt/hit: damage numbers (Options)
     for (const f of g.floaters) {
       const [sx, sy0] = this.toScreen(f.x, f.y), sy = sy0 - 20 * z - f.age * 24 * z;
       ctx.globalAlpha = Math.max(0, 1 - f.age / 1.3);
@@ -164,6 +164,7 @@ export class Renderer {
     this.atmosphere(ctx, g);
     this.econOverlay(ctx, ui, t, z);
     this.routeOverlay(ctx, ui, t, z);
+    this.orderLines(ctx, ui, t, z);
     if (ui?.placing) this.ghost(ctx, g, ui);
     if (ui?.dragBox) {
       const b = ui.dragBox;
@@ -342,6 +343,25 @@ export class Renderer {
   }
   // The economy made visible: each own market wears four pips (supply, works, homes, service: lit when linked). Select a market, or press E,
   // to see its district ring and the lines along which goods and folk flow to it.
+  // where each selected soldier of ours is going (T06): a faint line to a march's end, red for an attack-move or an attack, ending in a mark
+  orderLines(ctx, ui, t, z) {
+    if (!ui || ui.sel?.type !== 'units') return;
+    const g = this.game; let n = 0;
+    ctx.save(); ctx.lineWidth = Math.max(1, 1.4 * z); ctx.setLineDash([5 * z, 5 * z]); ctx.lineDashOffset = -t * 14;
+    for (const id of ui.sel.ids) {
+      const u = g.byId.get(id); if (!u || u.team !== PLAYER || u.hp <= 0 || u.inside != null || u.kind === 'camel') continue;
+      const k = u.task?.type; let to = null;
+      if (k === 'attack') { const e = g.byId.get(u.task.targetId); if (e && e.hp !== 0) to = [e.x, e.y]; }
+      else if ((k === 'move' || k === 'amove') && u.path?.length) to = u.pathGoal || u.path[u.path.length - 1];
+      if (!to || Math.hypot(to[0] - u.x, to[1] - u.y) < 0.8) continue;
+      if (++n > 60) break;
+      const [ax, ay] = this.toScreen(u.x, u.y), [bx, by] = this.toScreen(to[0], to[1]);
+      const col = k === 'move' ? 'rgba(159,224,143,0.55)' : 'rgba(232,104,90,0.65)';
+      ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(bx, by, 4 * z, 2 * z, 0, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
   // the loop of every selected camel: a dashed road through its markets, numbered, with a marching dot toward the next one
   routeOverlay(ctx, ui, t, z) {
     if (!ui || ui.sel?.type !== 'units') return;
@@ -833,9 +853,17 @@ export class Minimap {
       if (b.team !== PLAYER && g.fogOn && !seen[Math.floor(b.y) * g.W + Math.floor(b.x)]) continue;
       ctx.fillStyle = HOUSES[b.team].accent; ctx.fillRect(b.tx * sx, b.ty * sy, Math.max(3, b.size * sx), Math.max(3, b.size * sy));
     }
+    const blink = (g.time * 4) % 1 < 0.5;
     for (const u of g.units) {
       if (u.team !== PLAYER && (!g.fogOn || !vis[Math.floor(u.y) * g.W + Math.floor(u.x)])) continue;
-      ctx.fillStyle = HOUSES[u.team].primary; ctx.fillRect(u.x * sx - 1, u.y * sy - 1, 3, 3);
+      ctx.fillStyle = u.team === PLAYER && blink && g.time - (u.engagedT ?? -99) < 1.5 ? '#ff4a3a' : HOUSES[u.team].primary; ctx.fillRect(u.x * sx - 1, u.y * sy - 1, 3, 3);   // ours in a fight blink red (T06)
+    }
+    // where we are being hit: a pulsing red ring for ten seconds after the last blow (Space jumps there)
+    for (const a of g.alerts || []) {
+      const age = g.time - a.time; if (age > 10) continue;
+      const ph = ((g.time - a.born) * 1.2) % 1;
+      ctx.globalAlpha = Math.max(0, 1 - age / 10) * (1 - ph * 0.6); ctx.strokeStyle = '#ff4a3a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(a.x * sx, a.y * sy, 4 + ph * 12, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
     }
     const q = this.r.viewPoly();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy))); ctx.closePath(); ctx.stroke();

@@ -4,6 +4,7 @@ import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
+import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE } from '../js/config.js';
 
@@ -765,6 +766,37 @@ test('stances: rival houses stand their home guard defensive at peace and send t
   const army = [0, 1, 2, 3, 4, 5, 6].map((i) => g.addUnit('footman', t, seat.x + i * 0.8, seat.y + 5));
   g.rel[1][0] = g.rel[0][1] = 'war'; g.known[t][0] = true; g.time = 900; g.players[t].think = 0; updateAI(g, 0.01);
   assert.ok(army.some((u) => u.stance === 'aggressive' && u.task.type === 'attack'), 'the war host goes out aggressive');
+});
+
+test('combat feedback (T06): a struck village warns its owner; alerts and damage numbers only with a UI; a load clears them', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war';
+  const home = g.seatOf(PLAYER); assert.equal(home.type, 'village', 'the player starts in a home village');
+  const foe = g.addUnit('footman', 1, home.x + 2, home.y + 2); foe.hp = foe.maxHp = 9999;
+  g.events.length = 0; g.hitVillage(foe, home, 5, UNITS.footman);
+  assert.ok(g.events.some((e) => e.team === PLAYER && /village of .* is under attack/.test(e.text)), 'the owner hears the village is attacked');
+  assert.equal(g.alerts.length, 0, 'no alert spots without a UI (headless sim)');
+  const u = g.addUnit('footman', PLAYER, home.x + 4, home.y + 4);
+  g.dmgNums = true; g.damage(u, 7, 1, foe);
+  assert.equal(g.floaters.filter((f) => f.res === 'hurt').length, 0, 'no damage numbers without a UI');
+  g.sfxOn = true; g.damage(u, 7, 1, foe); g.damage(u, 3, 1, foe);
+  assert.equal(g.alerts.length, 1, 'blows near each other share one alert spot');
+  assert.ok(g.floaters.some((f) => f.res === 'hurt' && f.text === '-7'), 'a damage number when chosen');
+  g.dmgNums = false; const n = g.floaters.length; g.damage(u, 2, 1, foe); assert.equal(g.floaters.length, n, 'off by default');
+  const far = g.addUnit('footman', PLAYER, home.x + 40, home.y + 40); g.damage(far, 1, 1, foe);
+  assert.equal(g.alerts.length, 2, 'a blow far away is a second alert');
+  g.damage(foe, 5, PLAYER, u); assert.equal(g.alerts.length, 2, 'our own blows raise no alert');
+  g.rel[0][1] = g.rel[1][0] = 'peace'; run(g, 11); assert.equal(g.alerts.length, 0, 'alerts fade after ten seconds');
+  g.damage(u, 1, 1, foe); const save = g.serialize(); assert.ok(!('alerts' in save));
+  const h = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(save))); assert.deepEqual(h.alerts, []);
+});
+
+test('gaps: the "Raise an army" step counts soldiers garrisoned in a keep (T-050)', () => {
+  const g = mk(), step = OBJECTIVES.find((o) => o.id === 'army'), h = g.seatOf(PLAYER);
+  const k = g.addBuilding('keep', PLAYER, Math.round(h.x - 9), Math.round(h.y), true);
+  const us = Array.from({ length: 8 }, (_, i) => g.addUnit('footman', PLAYER, k.x + (i % 4), k.y + 3 + (i >> 2)));
+  assert.equal(step.done(g), true);
+  for (const u of us) u.inside = k.id;
+  assert.equal(step.done(g), true, 'still an army when inside the keep');
 });
 
 console.log(`${passed} passed`);

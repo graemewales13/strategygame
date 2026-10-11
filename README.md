@@ -54,6 +54,8 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Pause / speed | **P**, **+** / **-** or the speed button |
 | Idle serf / all soldiers | **.** / **,** |
 | Control groups | **Ctrl+1..9** set, **1..9** recall |
+| Under attack | **Space** or **Home** jumps to where you were last hit (press again for the next place); the minimap shows a pulsing red ring there and your fighting folk blink red |
+| Combat feedback | Selected soldiers show a line to where they are going (green: march; red: attack or attack-move). **Damage numbers** over a fight are an Options checkbox, off by default |
 | Cancel placement | Right-click or **Esc** |
 
 ## Camel routes

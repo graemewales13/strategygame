@@ -8,31 +8,31 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mv47vuys">
+<link rel="stylesheet" href="style.css?v=mv4dpe62">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mv47vuys",
-    "./js/art.js": "./js/art.js?v=mv47vuys",
-    "./js/audio.js": "./js/audio.js?v=mv47vuys",
-    "./js/config.js": "./js/config.js?v=mv47vuys",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mv47vuys",
-    "./js/entities.js": "./js/entities.js?v=mv47vuys",
-    "./js/game.js": "./js/game.js?v=mv47vuys",
-    "./js/gfx.js": "./js/gfx.js?v=mv47vuys",
-    "./js/learn.js": "./js/learn.js?v=mv47vuys",
-    "./js/main.js": "./js/main.js?v=mv47vuys",
-    "./js/map.js": "./js/map.js?v=mv47vuys",
-    "./js/names.js": "./js/names.js?v=mv47vuys",
-    "./js/net.js": "./js/net.js?v=mv47vuys",
-    "./js/objectives.js": "./js/objectives.js?v=mv47vuys",
-    "./js/recorder.js": "./js/recorder.js?v=mv47vuys",
-    "./js/render.js": "./js/render.js?v=mv47vuys",
-    "./js/save.js": "./js/save.js?v=mv47vuys",
-    "./js/terrain.js": "./js/terrain.js?v=mv47vuys",
-    "./js/trainui.js": "./js/trainui.js?v=mv47vuys",
-    "./js/ui.js": "./js/ui.js?v=mv47vuys"
+    "./js/ai.js": "./js/ai.js?v=mv4dpe62",
+    "./js/art.js": "./js/art.js?v=mv4dpe62",
+    "./js/audio.js": "./js/audio.js?v=mv4dpe62",
+    "./js/config.js": "./js/config.js?v=mv4dpe62",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mv4dpe62",
+    "./js/entities.js": "./js/entities.js?v=mv4dpe62",
+    "./js/game.js": "./js/game.js?v=mv4dpe62",
+    "./js/gfx.js": "./js/gfx.js?v=mv4dpe62",
+    "./js/learn.js": "./js/learn.js?v=mv4dpe62",
+    "./js/main.js": "./js/main.js?v=mv4dpe62",
+    "./js/map.js": "./js/map.js?v=mv4dpe62",
+    "./js/names.js": "./js/names.js?v=mv4dpe62",
+    "./js/net.js": "./js/net.js?v=mv4dpe62",
+    "./js/objectives.js": "./js/objectives.js?v=mv4dpe62",
+    "./js/recorder.js": "./js/recorder.js?v=mv4dpe62",
+    "./js/render.js": "./js/render.js?v=mv4dpe62",
+    "./js/save.js": "./js/save.js?v=mv4dpe62",
+    "./js/terrain.js": "./js/terrain.js?v=mv4dpe62",
+    "./js/trainui.js": "./js/trainui.js?v=mv4dpe62",
+    "./js/ui.js": "./js/ui.js?v=mv4dpe62"
   }
 }
 </script>
@@ -40,7 +40,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mv47vuys';
+window.__BUILD = 'mv4dpe62';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -155,6 +155,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
           <label class="chk"><input type="checkbox" id="mFog" checked> Fog of war</label>
           <label class="chk"><input type="checkbox" id="mSeedLock"> Keep seed on New Valley</label>
           <label class="chk"><input type="checkbox" id="sObj" checked> Show objectives</label>
+          <label class="chk"><input type="checkbox" id="sDmg"> Damage numbers</label>
         </div>
         <div class="optrow"><span class="seedlabel">Seed</span><input id="mSeed" type="text" inputmode="numeric" spellcheck="false"><button id="mSeedGo" class="small">Roll this seed</button></div>
         <div class="optrow sound"><span class="seedlabel">Sound</span>
@@ -170,7 +171,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
           <div class="trbtns"><button class="small" id="trExport">Export recordings</button><button class="small" id="trImport">Import</button><button class="small" id="trClear">Clear</button><input type="file" id="trFile" accept=".json,application/json" hidden></div>
         </div>
         <button class="big alt" id="mQuit">Quit</button>
-        <p class="tiny">Right-click to move, gather, sack, infiltrate. Drag to select. WASD pans. M opens the campaign map. Esc returns here.</p>
+        <p class="tiny">Right-click to move, gather, sack, infiltrate. Drag to select. WASD pans. M opens the campaign map. Space jumps to where you are under attack. Esc returns here.</p>
       </div>
       <div class="menuright">
         <div class="valewrap"><canvas id="vale" width="440" height="440"></canvas><div class="valecap">The valley · seed <b id="mSeedShow"></b><br><small id="buildTag"></small></div></div>

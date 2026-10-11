@@ -513,3 +513,4 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; }
 .qslot .qico { width: 26px; height: 26px; object-fit: contain; }
 .rport { float: left; width: 46px; height: 58px; object-fit: cover; object-position: top; border: 1px solid #6d4d27; border-radius: 3px; margin: 0 8px 4px 0; background: #111; }
+.toast img.ico { width: 22px; height: 22px; border: 0; vertical-align: -5px; margin-right: 6px; }

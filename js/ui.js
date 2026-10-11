@@ -276,6 +276,7 @@ export class UI {
     else if (k === 'h') this.focusHall();
     else if (k === 'k') this.selectKing();
     else if (k === 'p') this.setPaused(!this.paused);
+    else if (k === ' ' || k === 'home') { e.preventDefault(); this.jumpToAlert(); }
     else if (k === '.') this.selectIdleSerf();
     else if (k === ',') this.selectArmy();
     else if (k === 'f') { if (this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u))) this.setAmove(!this.amove); }
@@ -303,6 +304,13 @@ export class UI {
     const b = k.inside != null ? this.game.byId.get(k.inside) : null;
     if (b) { this.r.centerOn(b.x, b.y); this.sel = { type: b.type, ids: [], id: b.id }; return; }
     this.setUnits([k]); this.r.centerOn(k.x, k.y);
+  }
+  // Space or Home: to where we were last hit (the red rings on the minimap), newest first, then the next one on a second press
+  jumpToAlert() {
+    const al = (this.game.alerts || []).filter((a) => this.game.time - a.time < 10).sort((a, b) => b.time - a.time);
+    if (!al.length) return this.toast('Nothing of yours is under attack.', 'info');
+    this.alertI = this.game.time - (this.alertAt ?? -99) < 3 ? ((this.alertI ?? 0) + 1) % al.length : 0; this.alertAt = this.game.time;
+    const a = al[this.alertI]; this.r.centerOn(a.x, a.y); this.pings.push({ x: a.x, y: a.y, age: 0, color: '#ff4a3a' });
   }
   selectIdleSerf() {
     const idle = this.game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && !u.inside && u.task.type === 'idle');
@@ -577,7 +585,7 @@ export class UI {
     // events -> toasts
     for (const ev of g.events.splice(0)) if (ev.team === PLAYER || ev.team === -1) this.toast(ev.text, ev.kind);
     this.renderObjectives();
-    g.sfxOn = true; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
+    g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     if (this.hudT <= 0) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
@@ -588,6 +596,7 @@ export class UI {
     const box = $('toasts');
     if (box.lastChild && box.lastChild.dataset.t === text) return;
     const el = document.createElement('div'); el.className = `toast ${kind}`; el.textContent = text; el.dataset.t = text;
+    if (kind === 'bad' && /under attack/.test(text) && uiArt('marks', 'alarm')) { const i = document.createElement('img'); i.className = 'ico'; i.src = uiArt('marks', 'alarm'); i.alt = ''; el.prepend(i); }   // the war-horn mark when painted (ARTREQUIREMENTS priority 7)
     box.appendChild(el);
     while (box.children.length > 4) box.firstChild.remove();
     setTimeout(() => el.classList.add('fade'), 3800); setTimeout(() => el.remove(), 4500);
@@ -1129,6 +1138,9 @@ export class UI {
     // objectives: on for new players, off once hidden (remembered)
     try { this.objHidden = localStorage.getItem('auld-world.objectives') === 'off'; } catch { this.objHidden = false; }
     this.objCollapsed = false;
+    // damage numbers over a fight: off unless chosen (remembered)
+    try { this.dmgNums = localStorage.getItem('auld-world.dmgnums') === 'on'; } catch { this.dmgNums = false; }
+    if ($('sDmg')) { $('sDmg').checked = this.dmgNums; $('sDmg').onchange = () => { this.dmgNums = $('sDmg').checked; try { localStorage.setItem('auld-world.dmgnums', this.dmgNums ? 'on' : 'off'); } catch { /* private window */ } }; }
     if ($('sObj')) { $('sObj').checked = !this.objHidden; $('sObj').onchange = () => { this.objHidden = !$('sObj').checked; this.objKey = ''; try { localStorage.setItem('auld-world.objectives', this.objHidden ? 'off' : 'on'); } catch { /* private window */ } }; }
     $('objectives').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-act]'); if (!b) return;
