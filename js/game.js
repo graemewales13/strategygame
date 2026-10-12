@@ -40,7 +40,8 @@ export class Game {
   // title screens show the whole valley under the menu: the view ignores fog until the match begins (never affects the sim)
   get fogOn() { return this._fog && !this.titleView; }
   set fogOn(v) { this._fog = v; }
-  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order } = {}) {
+  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, humans = [0] } = {}) {
+    this.humans = humans.slice();   // the seats people play (the rest are AI); a networked match has several
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
     this.losses = {}; this.spyIntel = {}; this._stance = {};   // nothing of the last match's wars or spies carries over
     this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
@@ -78,7 +79,7 @@ export class Game {
 
     const n = this.houses;
     this.players = Array.from({ length: n }, (_, i) => ({
-      team: i, name: HOUSES[i].name, ...START_RES, ...(i === PLAYER ? Object.fromEntries(Object.entries(START_RES).map(([k, v]) => [k, Math.round(v * this.diff.playerMul)])) : {}), alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, tech: {}, learning: 0, learnRate: 0, research: null, gear: {}, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
+      team: i, name: HOUSES[i].name, ...START_RES, ...(this.humans.includes(i) ? Object.fromEntries(Object.entries(START_RES).map(([k, v]) => [k, Math.round(v * this.diff.playerMul)])) : {}), alive: true, ai: !this.humans.includes(i), think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, tech: {}, learning: 0, learnRate: 0, research: null, gear: {}, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
       acc: {}, inc: {}, spent: 0, wageRate: 0, wageDebt: 0, brokeT: 0, deserterT: 0, earnedTotal: 0,
     }));
     this.known = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
@@ -119,6 +120,7 @@ export class Game {
   }
 
   nid() { return this.nextId++; }
+  isHuman(team) { return (this.humans || [0]).includes(team); }
   log(team, text, kind = 'info') {
     // the same line twice within a few seconds is one line (orders re-issued every tick would otherwise flood the feed)
     this._lastLog ||= new Map();
@@ -1264,7 +1266,7 @@ export class Game {
       if (nodes.some((n) => n.kind !== nodes[0].kind)) return { ok: false, reason: 'Mixed deposits: cover one kind of ore' };
     }
     // no territory: you may build wherever you have scouted (the person at the keyboard; rival houses see the whole valley)
-    if (team === PLAYER && this.fogOn && !this.seen[team][Math.floor(ty + s.size / 2) * W + Math.floor(tx + s.size / 2)]) return { ok: false, reason: 'Unexplored: scout there first' };
+    if (this.isHuman(team) && this.fogOn && !this.seen[team][Math.floor(ty + s.size / 2) * W + Math.floor(tx + s.size / 2)]) return { ok: false, reason: 'Unexplored: scout there first' };
     if (!this.units.some((u) => u.team === team && u.kind === 'serf' && u.hp > 0)) return { ok: false, reason: 'You need a serf to build' };
     return { ok: true };
   }
@@ -1949,12 +1951,12 @@ export class Game {
     const back = this.offers.findIndex((o) => o.from === b && o.to === a && (o.kind || 'treaty') === 'treaty' && o.state === state);
     if (back >= 0) return this.respondOffer(a, b, true, this.offers[back].id);
     if (this.players[b].ai) {
-      if (a === PLAYER && this.time - this.snub[b][a] < 45 && state === 'trade') return this.deny(a, `${B} is still sulking over your last offer (${Math.ceil(45 - (this.time - this.snub[b][a]))}s).`);
+      if (this.isHuman(a) && this.time - this.snub[b][a] < 45 && state === 'trade') return this.deny(a, `${B} is still sulking over your last offer (${Math.ceil(45 - (this.time - this.snub[b][a]))}s).`);
       if (state === 'trade' || state === 'alliance') {
         const j = dip.judge(this, state, a, b);
         if (!j.ok) { if (state === 'alliance') dip.snubbed(this, 'alliance', a, b); else this.snub[b][a] = this.time; return this.deny(a, j.why); }
       }
-      if (state === 'alliance') { dip.exec(this, 'alliance', a, b); if (a === PLAYER) dip.record(this, b, a, 'alliance', `${dip.leaderName(this, b)} of ${HOUSES[b].short} accepts your alliance.`, 'accepted'); return true; }
+      if (state === 'alliance') { dip.exec(this, 'alliance', a, b); if (this.isHuman(a)) dip.record(this, b, a, 'alliance', `${dip.leaderName(this, b)} of ${HOUSES[b].short} accepts your alliance.`, 'accepted'); return true; }
       this.setRelation(a, b, state);
       return true;
     }
@@ -2919,10 +2921,13 @@ export class Game {
   }
   // Victory is conquest only: the royal line of every rival house must end. Wealth and village share no longer win the game (they still count in the standings).
   checkEnd(dt) {
-    const living = this.players.filter((p) => p.alive).map((p) => p.team);
-    if (!this.players[PLAYER].alive) { this.outcome = { result: 'defeat', kind: 'fallen', reason: 'The last of your royal line is dead.' }; return; }
+    const living = this.players.filter((p) => p.alive).map((p) => p.team), humans = this.humans || [0];
+    // one person: the match ends with their line. Several (a networked match): it ends when every person's line is gone or one house is
+    // left, and a person whose house falls watches on. `winner` lets each screen say victory or defeat for its own seat.
+    if (humans.length <= 1 && !this.players[humans[0] ?? 0].alive) { this.outcome = { result: 'defeat', kind: 'fallen', winner: living.length === 1 ? living[0] : null, reason: 'The last of your royal line is dead.' }; return; }
+    if (humans.length > 1 && !humans.some((t) => this.players[t]?.alive)) { this.outcome = { result: 'defeat', kind: 'fallen', winner: living.length === 1 ? living[0] : null, reason: 'Every royal line at the table is dead.' }; return; }
     this.rivalsLeft = living.length - 1;
-    if (living.length === 1) this.outcome = { result: 'victory', kind: 'conquest', reason: 'The last king of every rival house is dead.' };
+    if (living.length === 1) this.outcome = { result: humans.includes(living[0]) ? 'victory' : 'defeat', kind: 'conquest', winner: living[0], reason: 'The last king of every rival house is dead.' };
   }
 
   // ------------------------------------------------------------------ save / load
@@ -2939,7 +2944,7 @@ export class Game {
     const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
     return {
       v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
-      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {},
+      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, humans: this.humans || [0], forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {},
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
@@ -2951,7 +2956,7 @@ export class Game {
     this.titleView = false;
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
     if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
-    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder });
+    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder, humans: d.humans || [0] });
     this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this._stance = {};
     this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;

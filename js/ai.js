@@ -110,7 +110,7 @@ function think(game, team, p) {
   if (mk) {
     if (p.offerT <= 0) {
       p.offerT = 90;
-      for (const q of game.players) if (q.alive && q.team !== team && game.known[team][q.team] && game.rel[team][q.team] === 'peace' && !(q.team === PLAYER && game.offers.some((o) => o.from === team && o.to === PLAYER))) { game.proposeRelation(team, q.team, 'trade'); break; }
+      for (const q of game.players) if (q.alive && q.team !== team && game.known[team][q.team] && game.rel[team][q.team] === 'peace' && !(game.isHuman(q.team) && game.offers.some((o) => o.from === team && o.to === PLAYER))) { game.proposeRelation(team, q.team, 'trade'); break; }
     }
   }
   p.dipT = (p.dipT ?? 18) - 1.5;
