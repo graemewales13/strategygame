@@ -43,6 +43,7 @@ export class UI {
     this.dragBox = null; this.drag = null; this.pings = [];
     this.keys = new Set(); this.mouse = { x: 0, y: 0, in: false };
     this.speed = 1; this.paused = false; this.started = false;
+    this.online = false;   // set by main.js when an online match starts: one shared turn clock, so no pause, speed, saves or mid-match fog changes
     this.menuOpen = true; this.campaignOpen = false; this.endShown = false;
     this.lastClick = { t: 0, id: null };
     this.want = null; this.hudT = 0; this.sigCmd = ''; this.sigSel = ''; this.tradeIdx = 0;
@@ -105,7 +106,7 @@ export class UI {
     $('btnHome').onclick = () => this.focusHall();
     $('btnIdle').onclick = () => this.selectIdleSerf();
     $('btnArmy').onclick = () => this.selectArmy();
-    $('btnSpeed').onclick = () => { this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1; $('btnSpeed').textContent = this.speed + 'x'; };
+    $('btnSpeed').onclick = () => { if (this.offline('Speed')) return; this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1; $('btnSpeed').textContent = this.speed + 'x'; };
     $('eNew').onclick = () => this.newValley();
     $('eStay').onclick = () => $('end').classList.add('hidden');
 
@@ -280,6 +281,7 @@ export class UI {
     else if (k === '.') this.selectIdleSerf();
     else if (k === ',') this.selectArmy();
     else if (k === 'f') { if (this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u))) this.setAmove(!this.amove); }
+    else if ((k === '+' || k === '=' || k === '-') && this.offline('Speed')) { /* online: one clock for all */ }
     else if (k === '+' || k === '=') { this.speed = Math.min(4, this.speed * 2); $('btnSpeed').textContent = this.speed + 'x'; }
     else if (k === '-') { this.speed = Math.max(1, this.speed / 2); $('btnSpeed').textContent = this.speed + 'x'; }
     else if (/^[1-9]$/.test(k)) {
@@ -295,7 +297,9 @@ export class UI {
     if (this.sel.type !== 'none' && false) return this.clearSel();
     this.openMenu();
   }
-  setPaused(p) { this.paused = p; $('pausedBanner').classList.toggle('hidden', !p); }
+  // online, everyone shares the relay's turn clock: say so instead of doing something only this screen would see
+  offline(what) { if (!this.online) return false; this.toast(`${what} is off in an online match: every player shares one clock.`, 'warn'); return true; }
+  setPaused(p) { if (p && this.offline('Pause')) return; this.paused = p; $('pausedBanner').classList.toggle('hidden', !p); }
 
   focusHall() { const s = this.game.seatOf(PLAYER); if (!s) return; this.r.centerOn(s.x, s.y); this.sel = { type: s.type === 'village' ? 'village' : 'building', ids: [], id: s.id }; }
   selectKing() {
@@ -1165,7 +1169,7 @@ export class UI {
     $('mNew').onclick = () => this.newValley();
     $('mMap').onclick = () => { this.closeMenu(true); this.toggleCampaign(); };
     $('mQuit').onclick = () => { $('quit').classList.remove('hidden'); };
-    $('mFog').onchange = (e) => { cfg.fog = e.target.checked; this.game.setFog(cfg.fog); this.mini.t = 0; };
+    $('mFog').onchange = (e) => { if (this.online && this.started) { e.target.checked = this.game.fogOn; this.toast('Fog of war is set for the whole room when an online match starts.', 'warn'); return; } cfg.fog = e.target.checked; this.game.setFog(cfg.fog); this.mini.t = 0; };
     $('mSeedGo').onclick = () => { const v = parseInt($('mSeed').value, 10); if (v > 0) { this.onReroll?.({ seed: v, houses: cfg.houses }); this.started = false; this.refreshMenu(); } };
     refreshSeg();
   }
@@ -1203,6 +1207,7 @@ export class UI {
 
   // ------------------------------------------------------------ save / load
   saveGame(slot = 'manual', quiet = false) {
+    if (this.online) { if (!quiet) this.toast('An online match cannot be saved here: if you drop, reload the page to rejoin it.', 'warn'); return false; }
     const g = this.game;
     if (!this.started || g.outcome) { if (!quiet) this.toast('There is no game in progress to save.', 'warn'); return false; }
     const ok = writeSave(slot, g.serialize());
@@ -1218,6 +1223,7 @@ export class UI {
     return true;
   }
   autoSave() {
+    if (this.online) return;   // an online match lives on the relay (rejoin by reloading), not in this browser's save slots
     if (!this.started || this.game.outcome || this.menuOpen) return;
     if (this.game.time - (this.lastAuto ?? -999) < 90) return;
     this.lastAuto = this.game.time; this.saveGame('auto', true);

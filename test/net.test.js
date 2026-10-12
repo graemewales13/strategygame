@@ -15,7 +15,7 @@ const stepTo = (client, n) => { while (client.next < n && client.turns.has(clien
 
 if (typeof WebSocket === 'undefined') { console.log('  skip  (this Node has no global WebSocket; use Node 22+)'); process.exit(0); }
 
-const relay = await createRelay({ port: 0, turnMs: 4, serveFiles: false, log: () => {} });
+const relay = await createRelay({ port: 0, turnMs: 4, serveFiles: false, log: () => {}, awayMs: 150 });
 const url = `ws://127.0.0.1:${relay.port}/ws`;
 const client = (name, token = null, room = 'valley') => new LockstepClient({ url, room, name, build: 'test-build', token });
 let A, B, C, gA, gB, gC, cfg;
@@ -64,6 +64,24 @@ await test('rejoin: a player who drops comes back to the same seat and replays t
   assert.equal(C.next, T); assert.equal(stateHash(gC), hA, 'the replayed match matches');
 });
 
+await test('away: a player gone a while has their house held by the AI on every copy, and gets it back on rejoining; nobody can fake it', async () => {
+  const D = client('Dee', null, 'away'), E = client('Eli', null, 'away');
+  await D.connect(); await E.connect();
+  const go = Promise.all([new Promise((r) => { D.onStart = r; }), new Promise((r) => { E.onStart = r; })]);
+  D.configure({ houses: 3, seed: 11 }); await sleep(20); D.start(); const [c] = await go;
+  const gD = gameFor(c); D.attach(gD); const gE = gameFor(c); E.attach(gE);
+  E.send({ type: 'seat', relay: true, seat: 0, ai: true });   // Eli tries to hand Dee's house to the AI
+  await until(() => D.latest >= 20); stepTo(D, 20);
+  assert.equal(gD.players[0].ai, false, 'a player cannot fake the relay');
+  E.close(); await until(() => D.latest >= 120); stepTo(D, 120);
+  assert.equal(gD.players[1].ai, true, 'Eli is away: the AI holds his house'); assert.deepEqual(gD.humans, [0]);
+  const F = client('Eli', E.token, 'away'); const back = new Promise((r) => { F.onStart = r; }); await F.connect(); const c2 = await back;
+  const gF = gameFor(c2); F.attach(gF);
+  await until(() => D.latest >= 200 && F.latest >= 200); stepTo(D, 200); stepTo(F, 200);
+  assert.equal(gD.players[1].ai, false, 'back: the house is his again'); assert.equal(stateHash(gF), stateHash(gD), 'and the rejoined copy matches');
+  D.close(); F.close();
+});
+
 await test('desync: a copy that differs is reported to everyone', async () => {
   const T = 420; await until(() => A.latest >= T && C.latest >= T); stepTo(A, T); stepTo(C, T);
   gC.players[1].gold += 7;   // a corrupted copy
@@ -78,6 +96,19 @@ await test('rules: with two people at the table the match goes on when one of th
   assert.equal(g.players[0].alive, false); assert.equal(g.outcome, null, 'still a match for seat 1');
   g.players[1].heirs = 0; g.damage(g.kingOf(1), 1e6, 2, null); g.tick(0.1);
   assert.ok(g.outcome && g.outcome.winner === 2 && g.outcome.result === 'defeat');
+});
+
+await test('lobby: if the host leaves before starting, the next player hosts; a seat left empty goes to the AI', async () => {
+  const H = client('Hal', null, 'hall2'), I = client('Ida', null, 'hall2'), J = client('Jo', null, 'hall2');
+  await H.connect(); await I.connect(); await J.connect();
+  assert.ok(H.isHost && !I.isHost);
+  H.close(); await until(() => I.isHost, 3000);
+  J.close(); await sleep(50);
+  const go = new Promise((r) => { I.onStart = r; });
+  I.configure({ houses: 3 }); await sleep(20); I.start();
+  const c = await go;
+  assert.deepEqual(c.humans, [1], 'only the player still here is human; the empty seats are AI');
+  I.close();
 });
 
 A?.close(); C?.close(); relay.close();

@@ -50,14 +50,16 @@ function sendFrame(socket, op, data) {
 }
 
 // ---- rooms -----------------------------------------------------------------------------------------------------------------------
-export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log = console.log } = {}) {
+export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log = console.log, awayMs = 30000 } = {}) {
   const rooms = new Map();
   const roomOf = (code) => {
     let r = rooms.get(code);
     if (!r) rooms.set(code, (r = { code, members: [], build: null, config: { houses: 4, diff: 'mid', people: 'random', fog: true }, started: false, turn: 0, pending: [], log: [], hashes: new Map(), timer: null }));
     return r;
   };
-  const view = (r, me) => r.members.map((m) => ({ name: m.name, seat: m.seat, host: m === r.members[0], connected: m.conn?.open || false, you: m === me }));
+  // the host is the earliest player still connected: if the first one leaves the lobby, the next can start the match
+  const hostOf = (r) => r.members.find((m) => m.conn?.open) || r.members[0];
+  const view = (r, me) => r.members.map((m) => ({ name: m.name, seat: m.seat, host: m === hostOf(r), connected: m.conn?.open || false, you: m === me }));
   const send = (m, msg) => { if (m.conn?.open) m.conn.send(JSON.stringify(msg)); };
   const lobby = (r) => { for (const m of r.members) send(m, { t: 'lobby', members: view(r, m), config: r.config, started: r.started }); };
   const everyone = (r, msg) => { const text = JSON.stringify(msg); for (const m of r.members) if (m.conn?.open) m.conn.send(text); };
@@ -68,7 +70,7 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
       everyone(r, { t: 'turn', n, intents });
     }, turnMs);
   };
-  const close = (r) => { clearInterval(r.timer); rooms.delete(r.code); log(`[relay] room ${r.code} closed`); };
+  const close = (r) => { clearInterval(r.timer); for (const m of r.members) clearTimeout(m.awayTimer); rooms.delete(r.code); log(`[relay] room ${r.code} closed`); };
 
   function onConnection(conn) {
     let me = null, room = null;
@@ -80,19 +82,19 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
         if (room.build && msg.build && room.build !== msg.build) return conn.send(JSON.stringify({ t: 'error', msg: `This room runs build ${room.build}; you have ${msg.build}. Reload the page so both match.` }));
         room.build ||= msg.build || null;
         me = msg.token && room.members.find((m) => m.token === msg.token);   // a rejoin keeps its seat
-        if (me) { try { me.conn?.close(); } catch {} me.conn = conn; }
+        if (me) { try { me.conn?.close(); } catch {} me.conn = conn; clearTimeout(me.awayTimer); if (me.away) { me.away = false; room.pending.push({ type: 'seat', relay: true, seat: me.seat, team: me.seat, ai: false }); } }
         else {
           const taken = new Set(room.members.map((m) => m.seat));
           let seat = -1; if (!room.started) for (let s = 0; s < MAX_SEATS; s++) if (!taken.has(s)) { seat = s; break; }   // late arrivals watch
           me = { name: String(msg.name || 'Player').slice(0, 24), seat, token: randomBytes(12).toString('hex'), conn };
           room.members.push(me);
         }
-        send(me, { t: 'welcome', seat: me.seat, host: me === room.members[0], token: me.token, room: room.code, members: view(room, me), config: room.config });
+        send(me, { t: 'welcome', seat: me.seat, host: me === hostOf(room), token: me.token, room: room.code, members: view(room, me), config: room.config });
         if (room.started) send(me, { t: 'catchup', config: room.config, turns: room.log, now: room.turn });
         lobby(room); log(`[relay] ${me.name} in ${room.code} (seat ${me.seat})`);
         return;
       }
-      const isHost = me === room.members[0];
+      const isHost = me === hostOf(room);
       switch (msg.t) {
         case 'config':
           if (!isHost || room.started || !msg.config) return;
@@ -100,6 +102,7 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
           lobby(room); break;
         case 'start': {
           if (!isHost || room.started) return;
+          room.members = room.members.filter((m) => m.conn?.open);   // whoever left the lobby gives up their seat: it goes to the AI
           const seats = room.members.filter((m) => m.seat >= 0).map((m) => m.seat).sort((a, b) => a - b);
           room.config.houses = Math.max(room.config.houses || 3, seats.length ? seats[seats.length - 1] + 1 : 3, 3);
           room.config.seed ??= (randomBytes(4).readUInt32BE(0) % 1e9) + 1;
@@ -112,7 +115,8 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
         case 'intent': {
           if (!room.started || me.seat < 0 || !msg.intent || typeof msg.intent.type !== 'string') return;
           if (room.pending.filter((i) => i.team === me.seat).length >= MAX_INTENTS_PER_TURN) return;   // a flood is dropped, not relayed
-          room.pending.push({ ...msg.intent, team: me.seat });   // the seat comes from the connection, never from the message
+          const { relay: _r, ...order } = msg.intent;   // only the relay may hand a seat to the AI
+          room.pending.push({ ...order, team: me.seat });   // the seat comes from the connection, never from the message
           break;
         }
         case 'hash': {
@@ -130,6 +134,10 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
     };
     conn.onclose = () => {
       if (!room || !me) return;
+      if (room.started && me.seat >= 0 && me.conn === conn) {   // gone a while mid-match: the AI holds the house (as an order, so every copy switches together)
+        clearTimeout(me.awayTimer);
+        me.awayTimer = setTimeout(() => { if (!me.conn?.open && rooms.has(room.code)) { me.away = true; room.pending.push({ type: 'seat', relay: true, seat: me.seat, team: me.seat, ai: true }); log(`[relay] ${me.name} is away: the AI holds seat ${me.seat}`); } }, awayMs);
+      }
       lobby(room);
       if (!room.members.some((m) => m.conn?.open)) close(room);   // everybody gone: the room ends
     };
