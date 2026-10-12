@@ -16,7 +16,7 @@ export const VILLAGE_ART_KEYS = ['hamlet', 'farm', 'fishing', 'mining', 'fortifi
 const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet'];
 export const factionSprite = (faction, kind) => FIMG[faction]?.[kind] || null;
 // buildings painted in their raising and ruined states too (FIMG[f]['<kind>_build'], FIMG[f]['<kind>_ruin']); others fall back to the clipped sprite
-const STATED = ['armoury'];
+const STATED = ['armoury', 'barracks', 'keep', 'market', 'mine', 'cottage', 'farm', 'forge', 'foundry', 'tower', 'academy', 'tavern', 'temple', 'archery', 'stable', 'mill', 'warehouse', 'workshop'];
 // soldiers painted carrying Armoury kit, per people (FUNIT[f]['footman_spear'] ...). They look right, stand full length, feet on the ground.
 export const FUNIT = {};
 export const ARMED_KEYS = ['footman_spear', 'footman_sword', 'footman_heavy', 'bowman_longbow', 'bowman_crossbow', 'knight_lance'];

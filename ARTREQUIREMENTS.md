@@ -12,9 +12,9 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 2 | Kit icons (7) and research icons (9) | **Delivered and wired**: Armoury and Academy buttons, the Armoury queue, the stockpile bar, the unit panel's Kit row |
 | 3 | Armed soldiers, six per people (30) | **Delivered and wired**: a soldier carrying that kit is drawn with it, same height, feet on the ground |
 | 4 | Far-lander portraits (8), ruler portraits (5), captain standard, deed badges (6), fugitive mark | **Delivered and wired**: tavern roster and unit panel; Council cards and the king's panel; over captains (dyed in the house colour); deed chips; over a fugitive king and on the Council |
-| 5 | Plain soldiers repainted per people, full length | **Requested** (below). Picked up automatically when delivered |
-| 6 | Raising and ruin states for every other building | **Requested** (below). Needs one line of wiring each |
-| 7 | War-horn alarm mark for the "under attack" warning | **Requested** (below). Already wired: shown in the warning as soon as the file exists; until then the warning is text only |
+| 5 | Plain soldiers repainted per people, full length | **Delivered and wired** 2026-10-12. `PLAIN_KEYS` loads them; they look right |
+| 6 | Raising and ruin states for every other building | **Delivered and wired** 2026-10-12. Every key is in `STATED` in `js/art.js` |
+| 7 | War-horn alarm mark for the "under attack" warning | **Delivered and wired** 2026-10-12 |
 
 ## How the game uses delivered art
 
