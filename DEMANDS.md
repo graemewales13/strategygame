@@ -4,7 +4,8 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 
 ## Identity and look
 - The game is **Auld World** (not Seven Holds). Art is painted, AoE II style, never cartoony.
-- Five peoples only: Egyptians, Romans, British, Mongols, Scottish. No Vikings. *(branch `grok`)*
+- Eight peoples: Egyptians, Romans, British, Mongols, Scottish, Vikings, Byzantines, Persians; up to eight houses a match (owner's rule 2026-10-12, replacing "five peoples, no Vikings"). *(branch `grok`)*
+- **Colours belong to the people, not the seat.** The Scots are always blue, whoever plays them (owner's rule 2026-10-12).
 
 ## Winning and losing
 - **Conquest is the only win.** The royal line of every rival house must end. Trading, wealth or holding villages must never win the game.

@@ -685,7 +685,7 @@ export class Renderer {
     let c, w, h;
     let rightArt = false, full = false;   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
     if (u.kind === 'ram') { const s2 = SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
-    else if (u.kind === 'camel') { const fac = HOUSES[u.team].faction, s2 = fac === 'mongols' ? SIMG.bactrian : fac === 'romans' ? SIMG.donkey : SIMG.dromedary; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }
+    else if (u.kind === 'camel') { const fac = HOUSES[u.team].faction, s2 = fac === 'mongols' ? SIMG.bactrian : fac === 'romans' || fac === 'vikings' || fac === 'byzantines' ? SIMG.donkey : SIMG.dromedary; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }
     else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light); w = (c ? c.width / c.height : 1) * 40 * z; }
     else {
       const fu = FUNIT[HOUSES[u.team]?.faction], ak = armedKey(u), armed = (ak && fu?.[ak]) || fu?.[u.kind];   // painted with the Armoury kit he carries, or his people's own plain figure
@@ -694,15 +694,17 @@ export class Renderer {
     }
     if (!c) return;
     h = (c.height / c.width) * w;
-    const bob = moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
+    const wheeled = u.kind === 'ram';   // a cart on four wheels: it rumbles over the ground instead of bobbing like a walker, and its shadow spans the wheelbase
+    const bob = wheeled ? (moving ? Math.abs(Math.sin(u.anim * 2.1)) * 0.6 * z : 0) : moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
     const lunge = striking ? 5 * z * (u.cooldown > st.cd - 0.12 ? 1 : 0.5) : 0;
-    this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
+    if (wheeled) this.shadowAt(ctx, sx, sy - h * 0.13, w * 0.5, h * 0.17, 0.42);   // (the three-quarter art puts the rear wheels well up the picture)
+    else this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
     if (moving && gfx.q >= 1 && (u.kind === 'camel' || u.kind === 'ram')) this.dust(ctx, sx, sy, u._sg || 1, t, z, u.id);
-    if (gfx.q >= 1 && !ui?.isSelected(u) && u.kind !== 'camel') { ctx.strokeStyle = HOUSES[u.team]?.primary || '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 9 * z, 4.2 * z, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+    if (gfx.q >= 1 && !ui?.isSelected(u) && u.kind !== 'camel') { ctx.strokeStyle = HOUSES[u.team]?.primary || '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); if (wheeled) ctx.ellipse(sx, sy - h * 0.13, w * 0.44, h * 0.15, 0, 0, 7); else ctx.ellipse(sx, sy + 1 * z, 9 * z, 4.2 * z, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
     this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
-    ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
+    ctx.rotate(moving && !wheeled ? Math.sin(u.anim * 0.55) * 0.045 : 0);
     ctx.scale((flip !== rightArt) ? -sxScale : sxScale, 1);
     const foot = full ? 0.985 : u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
     const top = -h * foot - bob;
@@ -799,11 +801,22 @@ export function drawCrest(ctx, cx, cy, s, idx) {
   ctx.fillStyle = h.primary; ctx.fill();
   ctx.lineWidth = Math.max(1.5, s * 0.07); ctx.strokeStyle = '#e2c15e'; ctx.stroke();
   ctx.fillStyle = h.accent; ctx.strokeStyle = h.accent; ctx.lineWidth = Math.max(1.5, s * 0.06);
-  switch (idx) {
-    case 0: ctx.beginPath(); ctx.arc(0, -s * 0.05, s * 0.17, 0, 7); ctx.fill(); for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * s * 0.22, -s * 0.05 + Math.sin(a) * s * 0.22); ctx.lineTo(Math.cos(a) * s * 0.34, -s * 0.05 + Math.sin(a) * s * 0.34); ctx.stroke(); } break;
-    case 1: ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.lineTo(0, s * 0.4); ctx.moveTo(-s * 0.2, -s * 0.1); ctx.lineTo(s * 0.2, -s * 0.1); ctx.stroke(); break;
-    case 2: for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 0.2 + i * s * 0.2); ctx.quadraticCurveTo(-s * 0.15, -s * 0.34 + i * s * 0.2, 0, -s * 0.2 + i * s * 0.2); ctx.quadraticCurveTo(s * 0.15, -s * 0.06 + i * s * 0.2, s * 0.3, -s * 0.2 + i * s * 0.2); ctx.stroke(); } break;
-    case 3: ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.lineTo(s * 0.26, s * 0.0); ctx.lineTo(-s * 0.26, s * 0.0); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(0, -s * 0.2); ctx.lineTo(s * 0.3, s * 0.25); ctx.lineTo(-s * 0.3, s * 0.25); ctx.closePath(); ctx.fill(); break;
+  switch (h.device) {   // each people bears its own device wherever it sits
+    case 'sun': ctx.beginPath(); ctx.arc(0, -s * 0.05, s * 0.17, 0, 7); ctx.fill(); for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * s * 0.22, -s * 0.05 + Math.sin(a) * s * 0.22); ctx.lineTo(Math.cos(a) * s * 0.34, -s * 0.05 + Math.sin(a) * s * 0.34); ctx.stroke(); } break;
+    case 'sword': ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.lineTo(0, s * 0.4); ctx.moveTo(-s * 0.2, -s * 0.1); ctx.lineTo(s * 0.2, -s * 0.1); ctx.stroke(); break;
+    case 'waves': for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 0.2 + i * s * 0.2); ctx.quadraticCurveTo(-s * 0.15, -s * 0.34 + i * s * 0.2, 0, -s * 0.2 + i * s * 0.2); ctx.quadraticCurveTo(s * 0.15, -s * 0.06 + i * s * 0.2, s * 0.3, -s * 0.2 + i * s * 0.2); ctx.stroke(); } break;
+    case 'tree': ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.lineTo(s * 0.26, s * 0.0); ctx.lineTo(-s * 0.26, s * 0.0); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(0, -s * 0.2); ctx.lineTo(s * 0.3, s * 0.25); ctx.lineTo(-s * 0.3, s * 0.25); ctx.closePath(); ctx.fill(); break;
+    case 'ship':   // a longship: hull, dragon prow and stern, square sail
+      ctx.beginPath(); ctx.moveTo(-s * 0.36, s * 0.12); ctx.quadraticCurveTo(0, s * 0.36, s * 0.36, s * 0.12); ctx.lineTo(s * 0.3, s * 0.2); ctx.quadraticCurveTo(0, s * 0.42, -s * 0.3, s * 0.2); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(s * 0.34, s * 0.14); ctx.quadraticCurveTo(s * 0.42, -s * 0.06, s * 0.3, -s * 0.12); ctx.moveTo(-s * 0.34, s * 0.14); ctx.quadraticCurveTo(-s * 0.42, -s * 0.06, -s * 0.3, -s * 0.1); ctx.moveTo(0, s * 0.22); ctx.lineTo(0, -s * 0.42); ctx.stroke();
+      ctx.fillRect(-s * 0.2, -s * 0.36, s * 0.4, s * 0.38); break;
+    case 'crown':   // a closed imperial crown with a cross
+      ctx.beginPath(); ctx.moveTo(-s * 0.3, s * 0.22); ctx.lineTo(-s * 0.3, -s * 0.12); ctx.lineTo(-s * 0.15, s * 0.02); ctx.lineTo(0, -s * 0.2); ctx.lineTo(s * 0.15, s * 0.02); ctx.lineTo(s * 0.3, -s * 0.12); ctx.lineTo(s * 0.3, s * 0.22); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, -s * 0.22); ctx.lineTo(0, -s * 0.44); ctx.moveTo(-s * 0.08, -s * 0.35); ctx.lineTo(s * 0.08, -s * 0.35); ctx.stroke(); break;
+    case 'wings':   // the winged sun
+      ctx.beginPath(); ctx.arc(0, -s * 0.08, s * 0.12, 0, 7); ctx.fill();
+      for (const d of [-1, 1]) for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(d * s * 0.12, -s * 0.1 + i * s * 0.06); ctx.quadraticCurveTo(d * s * 0.3, -s * 0.2 + i * s * 0.08, d * (s * 0.42 - i * s * 0.07), -s * 0.24 + i * s * 0.12); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(-s * 0.1, s * 0.06); ctx.lineTo(0, s * 0.32); ctx.lineTo(s * 0.1, s * 0.06); ctx.closePath(); ctx.fill(); break;
     default: ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.quadraticCurveTo(s * 0.34, -s * 0.05, s * 0.12, s * 0.28); ctx.quadraticCurveTo(0, s * 0.1, -s * 0.12, s * 0.28); ctx.quadraticCurveTo(-s * 0.34, -s * 0.05, 0, -s * 0.42); ctx.fill();
   }
   ctx.restore();

@@ -5,7 +5,7 @@ import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
-  TILE, MAP_SIZES, PLAYER, HOUSES, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
+  TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
@@ -49,6 +49,9 @@ export class UI {
     this.toastSeen = 0;
     const off = document.createElement('div'); off.id = 'offers'; $('field').appendChild(off);
     off.addEventListener('click', (e) => { const b = e.target.closest('button[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
+    // panels are rebuilt several times a second; a rebuild between press and release would lose the click, so they hold still while a button is down
+    document.addEventListener('pointerdown', (e) => { if (e.button === 0 && e.target.closest?.('#offers, #cmdPanel, #selPanel, #council, #diplo, #houses, #topbar')) this.uiHold = true; }, true);
+    document.addEventListener('pointerup', () => { this.uiHold = false; }, true); window.addEventListener('blur', () => { this.uiHold = false; });
     this.bind();
     this.buildMenu();
   }
@@ -414,7 +417,7 @@ export class UI {
       case 'gathernode': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (!n) break; const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - n.x, a.y - n.y) - Math.hypot(c.x - n.x, c.y - n.y)).slice(0, 4); if (!serfs.length) this.toast('No idle serfs.', 'warn'); else this.host.send({ type: 'gather', ids: serfs.map((u) => u.id), nodeId: n.id }); break; }
       case 'treaty': this.treaty(+d.team, d.state); break;
       case 'diploclose': this.diploOpen = null; this.renderDiplo(); break;
-      case 'respond': { const r = this.host.send({ type: 'respond', from: +d.team, accept: d.accept === '1', id: d.id != null ? +d.id : null }); if (!r && d.accept === '1' && g.diploNote) this.toast(g.diploNote, 'warn'); this.sigOffers = ''; this.sigCouncil = ''; break; }
+      case 'respond': { const r = this.host.send({ type: 'respond', from: +d.team, accept: d.accept === '1', id: d.id != null ? +d.id : null }); if (!r && d.accept === '1' && g.diploNote) this.toast(g.diploNote, 'warn'); this.sigOffers = null; this.sigCouncil = null; this.hudT = 0; break; }   // (null, not '': with no offers left the new html is '' and would look unchanged, leaving the answered card on screen)
       case 'gift': this.ask('gift', +d.team, { amount: +d.amount }); break;
       case 'demand': this.ask('demand', +d.team, { amount: +d.amount }); break;
       case 'askaid': this.ask('askaid', +d.team, { amount: +d.amount }); break;
@@ -494,7 +497,7 @@ export class UI {
       const plan = s.war != null ? `means war on <b>${s.war === PLAYER ? 'you' : esc(HOUSES[s.war].short)}</b>` : s.warIn ? `not ready for war (about ${Math.ceil(s.warIn / 60)} min)` : 'no war planned';
       html += `<div class="dline" data-tip="${encodeURIComponent('<b>Spy report</b><br>Your spy inside one of their villages sends word. It fades 45 s after the spy leaves or is caught; a caught spy angers their lord.')}">🕵 <b>Spy report:</b> ${mix}${s.captains.length ? ` · captains ${s.captains.map(esc).join(', ')}` : ''}${s.far.length ? ` · far-landers ${s.far.map(esc).join(', ')}` : ''} · ${plan}${s.village ? ` · marching on <b>${esc(s.village)}</b>` : ''}${s.research ? ` · studying ${esc(s.research)}` : ''}${s.kit?.length ? ` · kit in store: ${s.kit.map(esc).join(', ')}` : ''}</div>`;
     } else if (i.known) html += `<div class="dline" style="opacity:.7">Put a spy inside one of their villages to learn their army, captains and plans.</div>`;
-    const known = true, wait = Math.ceil(g.parleyIn(PLAYER, t)), pend = g.offers.some((o) => o.from === PLAYER && o.to === t);
+    const known = true, wait = Math.ceil(g.parleyIn(PLAYER, t)), pend = g.offers.some((o) => o.from === PLAYER && o.to === t) || (g.asks || []).some((x) => x.from === PLAYER && x.to === t);
     const btn = (state, label, why) => `<button class="dbtn ${rel === state ? 'cur' : ''} ${state === 'war' ? 'warbtn' : ''}" data-act="treaty" data-team="${t}" data-state="${state}" ${rel === state || why ? 'disabled' : ''} title="${esc(why || '')}">${label}</button>`;
     const peaceWhy = rel === 'war' && wait > 0 ? `Parley in ${wait}s` : pend ? 'Offer sent' : '';
     const tradeWhy = rel === 'war' ? 'Make peace first' : rel === 'alliance' ? 'Allies already trade' : pend ? 'Offer sent' : '';
@@ -587,7 +590,8 @@ export class UI {
     this.renderObjectives();
     g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
-    if (this.hudT <= 0) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
+    // (not while a button is held down: a panel rebuilt under the pointer loses the click)
+    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
@@ -610,9 +614,10 @@ export class UI {
       const ok = { treaty: 'Accept', joinwar: `Join the war on ${o.target != null ? esc(HOUSES[o.target].short) : ''}`, tribute: `Pay ${o.amount}c`, aid: `Send ${o.amount}c` }[kind];
       const no = { treaty: 'Decline', joinwar: 'Decline', tribute: 'Refuse', aid: 'Refuse' }[kind];
       const text = o.text || `${esc(HOUSES[o.from].name)} offers ${o.state === 'trade' ? 'a trade treaty' : o.state === 'alliance' ? 'an alliance' : 'peace'}.`;
-      return `<div class="offer ${kind}" style="border-color:${HOUSES[o.from].accent}"><div class="oh"><b style="color:${HOUSES[o.from].accent}">${N}</b><span class="ok">${{ treaty: o.state === 'alliance' ? 'Alliance' : o.state === 'trade' ? 'Trade treaty' : 'Peace', joinwar: 'Call to arms', tribute: 'Demand', aid: 'Plea for aid' }[kind]}</span><small>${left}s</small></div><div class="otext">${esc(text)}</div><div class="row"><button data-act="respond" data-team="${o.from}" data-accept="1" data-id="${o.id}" ${poor ? 'disabled title="Not enough coin"' : ''}>${ok}</button><button data-act="respond" data-team="${o.from}" data-accept="0" data-id="${o.id}">${no}</button><button data-act="council" data-team="${o.from}" title="Open the council to see their strength">Intel</button></div></div>`;
+      return `<div class="offer ${kind}" style="border-color:${HOUSES[o.from].accent}"><div class="oh"><b style="color:${HOUSES[o.from].accent}">${N}</b><span class="ok">${{ treaty: o.state === 'alliance' ? 'Alliance' : o.state === 'trade' ? 'Trade treaty' : 'Peace', joinwar: 'Call to arms', tribute: 'Demand', aid: 'Plea for aid' }[kind]}</span><small class="ocd" data-id="${o.id}"></small></div><div class="otext">${esc(text)}</div><div class="row"><button data-act="respond" data-team="${o.from}" data-accept="1" data-id="${o.id}" ${poor ? 'disabled title="Not enough coin"' : ''}>${ok}</button><button data-act="respond" data-team="${o.from}" data-accept="0" data-id="${o.id}">${no}</button><button data-act="council" data-team="${o.from}" title="Open the council to see their strength">Intel</button></div></div>`;
     }).join('');
     if (html !== this.sigOffers) { this.sigOffers = html; $('offers').innerHTML = html; }
+    for (const el of $('offers').querySelectorAll('.ocd')) { const o = g.offers.find((x) => x.id === +el.dataset.id); const t = o ? `${Math.max(0, Math.ceil((o.expires ?? g.time + 60) - g.time))}s` : ''; if (el.textContent !== t) el.textContent = t; }   // the countdown ticks in place: rebuilding the card would swallow a click
   }
   renderTop() {
     const g = this.game, p = g.players[PLAYER];
@@ -645,18 +650,24 @@ export class UI {
     $('clock').textContent = `${m}:${String(s).padStart(2, '0')}`;
     const counts = new Array(g.houses).fill(0); for (const v of g.villages) if (v.owner >= 0) counts[v.owner]++;
     let html = '';
+    // the rivals, condensed: each house is its crest, a pip for how you stand with it, and the villages it holds; the rest is in the tip
     for (let i = 0; i < g.houses; i++) {
-      const pl = g.players[i], me = i === PLAYER, rel = me ? '' : g.rel[PLAYER][i];
-      const tip = me ? `<b>${esc(pl.name)}</b><br>${esc(HOUSES[i].motto)}` : `<b>${esc(pl.name)}</b> · relation: ${rel}<br>Click for diplomacy: peace, trade treaty or war.<br><span class='info'>${g.known[PLAYER][i] ? 'A trade treaty lets Trading Tents exchange goods.' : 'Not met yet: scout toward them to treat.'}</span>`;
-      html += `<div class="hchip ${me ? 'me' : ''} ${pl.alive ? '' : 'fallen'}" data-house="${i}" data-tip="${encodeURIComponent(tip)}"><canvas width="22" height="24" data-crest="${i}"></canvas><span>${esc(HOUSES[i].short)}</span>${me ? '' : `<span class="rel ${rel}">${g.known[PLAYER][i] ? rel : '?'}</span>`}<span class="vcount">${counts[i]}v</span></div>`;
+      if (i === PLAYER) continue;
+      const pl = g.players[i], met = g.known[PLAYER][i], rel = met ? g.rel[PLAYER][i] : 'unmet';
+      const tip = `<b>${esc(pl.name)}</b> · ${esc(FACTIONS[HOUSES[i].faction]?.label || '')}<br>${pl.alive ? `Relation: <b>${met ? rel : 'not met'}</b> · ${counts[i]} village${counts[i] === 1 ? '' : 's'} · ${(pl.heirs ?? 2) <= 0 ? 'last of the line' : `${pl.heirs ?? 2} heir${(pl.heirs ?? 2) === 1 ? '' : 's'}`}` : 'Fallen.'}<br><span class='info'>${met ? 'Click for diplomacy: peace, trade treaty, alliance or war.' : 'Not met yet: scout toward them to treat.'}</span>`;
+      html += `<div class="hchip rv ${pl.alive ? '' : 'fallen'}" data-house="${i}" data-tip="${encodeURIComponent(tip)}"><canvas width="22" height="24" data-crest="${i}"></canvas><i class="pip ${rel}"></i><span class="vc">${pl.alive ? counts[i] : '†'}</span></div>`;
     }
+    if (this.brandFac !== HOUSES[PLAYER].faction) { this.brandFac = HOUSES[PLAYER].faction; const bc = $('brandCrest').getContext('2d'); bc.clearRect(0, 0, 36, 40); drawCrest(bc, 18, 20, 34, PLAYER); }   // (your people, and so your crest, change between games)
     if (html !== this.sigHouses) {
       this.sigHouses = html; $('houses').innerHTML = html;
       $('houses').querySelectorAll('canvas[data-crest]').forEach((c) => { const x = c.getContext('2d'); x.clearRect(0, 0, 22, 24); drawCrest(x, 11, 12, 20, +c.dataset.crest); });
     }
     const left = g.players.filter((x) => x.alive && x.team !== PLAYER);
     const frail = left.filter((x) => (x.heirs ?? 2) <= 0 || !g.seatOf(x.team));   // houses near their end: the last of the line, or a fugitive king
-    $('holdbar').innerHTML = left.length ? `Rivals left <b>${left.length}</b>${frail.length ? ' · ' + frail.map((x) => esc(HOUSES[x.team].short) + ((x.heirs ?? 2) <= 0 ? ' last of the line' : '') + (!g.seatOf(x.team) ? ' (fugitive)' : '')).join(', ') : ''}` : 'Every rival has fallen.';
+    // (the chips already show who stands; the bar speaks only of a house near its end, or of victory)
+    const hb = left.length ? frail.map((x) => esc(HOUSES[x.team].short) + ((x.heirs ?? 2) <= 0 ? ' last of the line' : '') + (!g.seatOf(x.team) ? ' (fugitive)' : '')).join(', ') : 'Every rival has fallen.';
+    if ($('holdbar').innerHTML !== hb) $('holdbar').innerHTML = hb;
+    $('holdbar').classList.toggle('empty', !hb);
     document.querySelectorAll('.res').forEach((el) => { const r = el.dataset.res; if (r) el.classList.toggle('low', p[r] < 20); });
   }
 
@@ -861,7 +872,7 @@ export class UI {
     const g = this.game; let html = '';
     for (let i = 0; i < g.houses; i++) {
       if (i === PLAYER || !g.alive(i)) continue;
-      const rel = g.rel[PLAYER][i], known = g.known[PLAYER][i], pend = g.offers.some((o) => o.from === PLAYER && o.to === i && o.state === 'trade');
+      const rel = g.rel[PLAYER][i], known = g.known[PLAYER][i], pend = g.offers.some((o) => o.from === PLAYER && o.to === i && o.state === 'trade') || (g.asks || []).some((x) => x.from === PLAYER && x.to === i);
       html += `<div class="treaty"><span class="nm">${esc(HOUSES[i].short)}</span><span class="rel ${rel}">${known ? rel : 'unmet'}</span>${known ? (rel === 'trade' ? `<button data-act="treaty" data-team="${i}" data-state="peace">Cancel</button>` : pend ? '<span class="hint">offer sent</span>' : rel === 'war' ? '<span class="hint">at war</span>' : `<button data-act="treaty" data-team="${i}" data-state="trade">Propose trade</button>`) : '<span class="hint">scout to meet</span>'}</div>`;
     }
     return html;

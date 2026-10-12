@@ -147,6 +147,8 @@ export function createMap(seed, houses = 4) {
   const anchors = r.shuffle([[fx(0.14), fy(0.14)], [fx(0.84), fy(0.84)], [fx(0.84), fy(0.14)], [fx(0.14), fy(0.84)]]);
   anchors.push([Math.floor(W / 2) - 4, Math.floor(H / 2) - 4]);
   if (r() < 0.4) { const j = r.int(0, 3); [anchors[j], anchors[4]] = [anchors[4], anchors[j]]; }
+  // six to eight houses: the four corners and the four edge midpoints, nobody boxed in the middle (five or fewer play as before)
+  if (houses >= 6) anchors.splice(0, anchors.length, ...r.shuffle([[fx(0.14), fy(0.14)], [fx(0.84), fy(0.84)], [fx(0.84), fy(0.14)], [fx(0.14), fy(0.84)], [fx(0.49), fy(0.12)], [fx(0.49), fy(0.86)], [fx(0.12), fy(0.49)], [fx(0.86), fy(0.49)]]));
   const starts = [];
   for (const [ax, ay] of anchors.slice(0, Math.max(3, houses))) {
     const cx = ax + r.int(-6, 6), cy = ay + r.int(-6, 6);

@@ -510,7 +510,21 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .cbtn.far .g { color: #ffe08a; }
 
 /* painted UI art (assets/shared/ui): small inline icons, armoury queue slots, ruler portraits on the Council card */
-.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; }
+img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; }   /* (img only: the top bar's drawn .ico spans keep their 18 px) */
+#resources .ico, .res .ico { flex: none; }
 .qslot .qico { width: 26px; height: 26px; object-fit: contain; }
 .rport { float: left; width: 46px; height: 58px; object-fit: cover; object-position: top; border: 1px solid #6d4d27; border-radius: 3px; margin: 0 8px 4px 0; background: #111; }
 .toast img.ico { width: 22px; height: 22px; border: 0; vertical-align: -5px; margin-right: 6px; }
+
+/* rivals, condensed (eight houses fit): crest, a relation pip and the villages held; name and detail are in the tip */
+#houses { gap: 3px; flex-wrap: nowrap; min-width: 0; }
+.hchip.rv { position: relative; gap: 2px; padding: 1px 5px 1px 2px; }
+.hchip.rv .vc { font-size: 11px; color: var(--ink); min-width: 9px; text-align: center; }
+.hchip.rv .pip { position: absolute; left: 15px; top: 15px; width: 8px; height: 8px; border-radius: 50%; border: 1px solid #1a1209; background: #6d6152; }
+.hchip.rv .pip.peace { background: #9fb7d8; } .hchip.rv .pip.trade { background: #e2c15e; } .hchip.rv .pip.alliance { background: #8fd48a; } .hchip.rv .pip.war { background: #d4574a; box-shadow: 0 0 4px #d4574a; }
+.hchip.rv .pip.unmet { background: #3a2f22; }
+.hchip.rv.fallen { text-decoration: none; }
+#crests { gap: 4px; } .crestcard { min-width: 0; padding: 4px 1px; } .crestcard b { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#holdbar.empty { display: none; }
+.hchip.rv { padding: 1px 3px 1px 1px; border-color: #4f381c; }
+@media (max-width: 1600px) { #brand span { display: none; } }

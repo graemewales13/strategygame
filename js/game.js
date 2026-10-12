@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -42,6 +42,7 @@ export class Game {
   set fogOn(v) { this._fog = v; }
   reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order } = {}) {
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
+    this.asks = [];   // the player's envoys on the road to rival houses: { from, to, state, at }
     this.losses = {}; this.spyIntel = {}; this._stance = {};   // nothing of the last match's wars or spies carries over
     this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
     this.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, houses));
@@ -981,7 +982,7 @@ export class Game {
         if (q.t >= DRILL[q.kind].time) {
           b.drills.shift();
           const st = UNITS[q.kind], ratio = u.hp / u.maxHp, was = u.kind;
-          u.kind = q.kind; u.drilling = false;
+          u.kind = q.kind; u.drilling = false; u.drilledAt = this.time;
           u.gear = null; u.maxHp = this.maxHpFor(u); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0); this.equip(u);
           if (b.team === PLAYER) this.log(PLAYER, `${u.name || (was === 'serf' ? 'A serf' : 'A recruit')} is drilled into a ${st.label.toLowerCase()}.`, 'good');
         }
@@ -1915,7 +1916,7 @@ export class Game {
   // Treaties. Peace/trade need a house you have met; the other side must grant it (AI houses answer at once, a human gets an offer to accept).
   meet(a, b) { this.known[a][b] = this.known[b][a] = 1; }
   // Why the last treaty request was refused, for the interface to show (cleared by whoever reads it).
-  deny(a, text) { this.diploNote = text; if (a === PLAYER) this.log(PLAYER, text, 'warn'); return false; }
+  deny(a, text) { this.diploNote = text; if (a === PLAYER && !this._envoy) this.log(PLAYER, text, 'warn'); return false; }
   // seconds before a house that went to war will hear of peace again
   parleyIn(a, b) { return this.rel[a][b] === 'war' ? Math.max(0, WAR_MIN - (this.time - this.relSince[a][b])) : 0; }
   // would an AI house b take peace from a? Yes once the war has cooled and it is not winning clearly.
@@ -1926,7 +1927,7 @@ export class Game {
     if (dip.stance(this, b, a).peace >= 0.35) return true;                    // weary, or outmatched
     return mine <= theirs * 1.25 || heldB < heldA * 0.7;                       // outgunned, or being outgrown
   }
-  proposeRelation(a, b, state) {
+  proposeRelation(a, b, state, now = false) {
     this.diploNote = '';
     if (!this.alive(b) || a === b) return false;
     const B = this.players[b].name, human = !this.players[b].ai;
@@ -1935,6 +1936,12 @@ export class Game {
     if (state === 'peace' && (this.rel[a][b] === 'trade' || this.rel[a][b] === 'alliance')) { this.setRelation(a, b, 'peace'); return true; } // either side may cancel a treaty
     if (state === 'trade' && this.rel[a][b] === 'alliance') return true;   // allies trade freely
     if (!this.known[a][b]) return this.deny(a, `You have not met ${B} yet. Scout toward them.`);
+    if (a === PLAYER && this.players[b].ai && !now) {   // the player's envoy rides to them; their ruler answers by letter in a few seconds
+      if ((this.asks ||= []).some((x) => x.from === a && x.to === b)) return this.deny(a, `Your envoy is already on the road to ${B}.`);
+      this.asks.push({ from: a, to: b, state, at: this.time + ASK_DELAY.min + this.roll() * (ASK_DELAY.max - ASK_DELAY.min) });
+      this.log(PLAYER, `Your envoy rides to ${B} with the offer of ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : 'peace'}. Their answer will come by letter.`, 'info');
+      return true;
+    }
     if (this.rel[a][b] === 'war') {
       const wait = this.parleyIn(a, b);
       if (wait > 0) return this.deny(a, `${B} will not parley for ${Math.ceil(wait)} more seconds.`);
@@ -1997,6 +2004,16 @@ export class Game {
   }
   // letters left unanswered lapse; ignoring a demand or a call to arms counts as refusing it
   updateDiplomacy(dt) {
+    for (const x of (this.asks || []).filter((q) => this.time >= q.at)) {   // envoys come back with an answer
+      this.asks = this.asks.filter((q) => q !== x);
+      if (!this.alive(x.to) || !this.alive(x.from)) continue;
+      this._envoy = true; const ok = this.proposeRelation(x.from, x.to, x.state, true); this._envoy = false;   // (the refusal comes in the letter, not twice)
+      const who = `${dip.leaderName(this, x.to)} of ${HOUSES[x.to].short}`;
+      const yes = { trade: 'Our markets are open to your caravans, and yours to ours. Let the trade begin.', alliance: 'You have my hand and my word. Our houses stand together.', peace: 'Let the swords rest. There is peace between us.' }[x.state];
+      const text = ok ? `${who}: "${yes}"` : `${who} declines your offer of ${x.state === 'trade' ? 'a trade treaty' : x.state === 'alliance' ? 'an alliance' : 'peace'}: ${this.diploNote || 'no reason given.'}`;
+      if (x.state !== 'alliance' || !ok) dip.record(this, x.to, x.from, x.state, text, ok ? 'accepted' : 'declined');   // (an accepted alliance writes its own letter)
+      this.log(PLAYER, text, ok ? 'good' : 'warn');
+    }
     this._opT -= dt;
     if (this._opT <= 0) { this._opT = dip.DIPLO.opinionEvery; dip.drift(this); }
     for (let i = this.offers.length - 1; i >= 0; i--) {
@@ -2939,7 +2956,7 @@ export class Game {
     const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
     return {
       v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
-      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {},
+      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {}, asks: this.asks || [],
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
@@ -2952,7 +2969,7 @@ export class Game {
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
     if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
     this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder });
-    this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this._stance = {};
+    this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this.asks = d.asks || []; this._stance = {};
     this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;
     this.alertT = d.alertT; this.winHold = d.winHold; this.richHold = d.richHold; this.named = d.named.map((x) => new Set(x));

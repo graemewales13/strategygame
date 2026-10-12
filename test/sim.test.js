@@ -236,13 +236,15 @@ test('mining: a mine near your own village is worked by its folk; ore reaches th
   assert.equal(g.draft(PLAYER, hall.id, 2, 'mine'), 0, 'nor are miners drafted');
 });
 
-test('treaty: unmet houses cannot treaty; AI grants at once; human target gets an offer; peace cancels', () => {
+test('treaty: unmet houses cannot treaty; an AI house answers the envoy by letter; human target gets an offer; peace cancels', () => {
   const g = new Game({ seed: 9, houses: 3, ai: false });
   assert.equal(g.proposeRelation(PLAYER, 1, 'trade'), false);
   g.meet(PLAYER, 1);
   assert.equal(g.proposeRelation(PLAYER, 1, 'trade'), true);
-  assert.equal(g.rel[PLAYER][1], 'trade');
-  g.proposeRelation(PLAYER, 1, 'peace');
+  assert.equal(g.rel[PLAYER][1], 'peace', 'not yet: the envoy is riding');
+  run(g, 9);
+  assert.equal(g.rel[PLAYER][1], 'trade', 'their answer came back yes');
+  g.proposeRelation(PLAYER, 1, 'peace', true);
   assert.equal(g.rel[PLAYER][1], 'peace');
   // AI -> human offer (human side must accept)
   g.players[PLAYER].ai = false; g.players[1].ai = true;
@@ -425,7 +427,7 @@ test('caravan: camel loads at the home market, trades at a treaty partner market
   g.meet(0, 1);
   const send = () => g.applyIntent({ type: 'context', team: 0, ids: [camel.id], x: mb.x, y: mb.y, want: 'coal' });
   send(); assert.notEqual(camel.task.type, 'caravan', 'no treaty');
-  g.proposeRelation(0, 1, 'trade'); assert.equal(g.rel[0][1], 'trade');
+  g.proposeRelation(0, 1, 'trade', true); assert.equal(g.rel[0][1], 'trade');
   const iron1 = b.iron || 0, coal0 = a.coal;
   send(); assert.equal(camel.task.type, 'caravan'); assert.deepEqual(camel.route.stops, [mb.id]);
   run(g, 400);
@@ -624,7 +626,7 @@ test('village folk: a quarter muster when attacked and fall back after; wanderer
 test('routes: a camel loops its markets, earns coin at a partner and keeps going until stopped', () => {
   const g = new Game({ seed: 9, houses: 3, ai: false });
   const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
-  const mb = placeNear(g, 1, 'market'); g.meet(0, 1); g.proposeRelation(0, 1, 'trade');
+  const mb = placeNear(g, 1, 'market'); g.meet(0, 1); g.proposeRelation(0, 1, 'trade', true);
   assert.equal(g.rel[0][1], 'trade');
   const p = g.players[0];
   mk.stock = { iron: 60, coal: 30 }; mb.stock = { gold: 90 };
@@ -662,7 +664,7 @@ test('routes: a camel loops for ever between your own markets, carries goods to 
 test('routes: a camel buys cheap goods from a partner and sells them dear at home, so trade runs both ways', () => {
   const g = new Game({ seed: 9, houses: 3, ai: false });
   const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
-  const mb = placeNear(g, 1, 'market'); g.meet(0, 1); g.proposeRelation(0, 1, 'trade'); assert.equal(g.rel[0][1], 'trade');
+  const mb = placeNear(g, 1, 'market'); g.meet(0, 1); g.proposeRelation(0, 1, 'trade', true); assert.equal(g.rel[0][1], 'trade');
   const p = g.players[0], them = g.players[1];
   mk.stock = {}; mb.stock = { copper: 50, steel: 40 }; them.gold = 400;
   const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);

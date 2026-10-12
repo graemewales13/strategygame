@@ -12,31 +12,42 @@ export const AREA_MUL = (MAP_W * MAP_H) / (112 * 112);   // the board is this ma
 export const VISION_MUL = Math.sqrt(8);               // sight radii grow by this, so the ground revealed as you travel is 8x larger
 export const PLAYER = 0;
 export const MIN_HOUSES = 3;
-export const MAX_HOUSES = 5;
+export const MAX_HOUSES = 8;
 export const DEFAULT_HOUSES = 4;
 
-// Five peoples. Vikings are not a house. Each kit is the building art in assets/factions/<id>/buildings.
+// Eight peoples. Each kit is the building art in assets/factions/<id>/buildings and the soldiers in .../units.
+// kit: false means the people has no painted kit yet: it uses the shared buildings and soldiers, and the game does not ask for its files.
 export const FACTIONS = {
   egyptians: { label: 'Egyptians', blurb: 'Mudbrick halls, dromedary caravans.' },
   romans:    { label: 'Romans',    blurb: 'Colonnades, tile roofs, donkey trains.' },
   british:   { label: 'British',   blurb: 'Timber frames and thatch.' },
   mongols:   { label: 'Mongols',   blurb: 'Gers, banners, Bactrian camels.' },
   scottish:  { label: 'Scottish',  blurb: 'Grey stone, heather thatch, tower houses.' },
+  vikings:   { label: 'Vikings',   blurb: 'Longhouses, carved prows, shield walls.', kit: false },
+  byzantines: { label: 'Byzantines', blurb: 'Golden domes, mosaics, cataphracts.', kit: false },
+  persians:  { label: 'Persians',  blurb: 'Iwan halls, glazed tile, horse archers.', kit: false },
 };
 export const FACTION_BUILDINGS = ['mine', 'keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower', 'armoury'];
-// Each seat has a fixed colour (and heraldic device); the PEOPLE who sit in it (nation, house name, motto) are chosen per game: see setPeoples().
-export const HOUSES = [
-  { faction: 'egyptians', name: 'House Khemet', short: 'Khemet', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', motto: 'The Black Land endures' },
-  { faction: 'romans', name: 'House Aurelius', short: 'Aurelius', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', motto: 'Strength through order' },
-  { faction: 'scottish', name: 'Clan MacAlpin', short: 'MacAlpin', color: 'blue', primary: '#3a6ea8', accent: '#92c6ff', dark: '#1c334d', motto: 'Stand fast' },
-  { faction: 'british', name: 'House Wessex', short: 'Wessex', color: 'green', primary: '#37753f', accent: '#97d17c', dark: '#173a1c', motto: 'Hearth and crown' },
-  { faction: 'mongols', name: 'Khanate Borjigin', short: 'Borjigin', color: 'violet', primary: '#7a4a98', accent: '#cb9ce0', dark: '#30203f', motto: 'Under the eternal sky' },
+// The peoples. Each keeps its colour, sprite hue and crest device wherever it is seated (the Scots are always blue). `hue` is the
+// target hue for tinting cloth in the art (see tinted() in art.js); `device` picks the crest drawn by drawCrest() in render.js.
+const PEOPLE = [
+  { faction: 'egyptians', name: 'House Khemet', short: 'Khemet', color: 'yellow', primary: '#c9a42e', accent: '#f4dc7a', dark: '#5c4510', hue: 46, device: 'sun', motto: 'The Black Land endures' },
+  { faction: 'romans', name: 'House Aurelius', short: 'Aurelius', color: 'red', primary: '#a83a3a', accent: '#ff9078', dark: '#4b1b1b', hue: 2, device: 'sword', motto: 'Strength through order' },
+  { faction: 'scottish', name: 'Clan MacAlpin', short: 'MacAlpin', color: 'blue', primary: '#3a6ea8', accent: '#92c6ff', dark: '#1c334d', hue: 214, device: 'waves', motto: 'Stand fast' },
+  { faction: 'british', name: 'House Wessex', short: 'Wessex', color: 'green', primary: '#37753f', accent: '#97d17c', dark: '#173a1c', hue: 124, device: 'tree', motto: 'Hearth and crown' },
+  { faction: 'mongols', name: 'Khanate Borjigin', short: 'Borjigin', color: 'violet', primary: '#7a4a98', accent: '#cb9ce0', dark: '#30203f', hue: 284, device: 'flame', motto: 'Under the eternal sky' },
+  { faction: 'vikings', name: 'House Ynglings', short: 'Ynglings', color: 'orange', primary: '#c0662a', accent: '#ffb070', dark: '#55290c', hue: 24, device: 'ship', motto: 'The sea remembers' },
+  { faction: 'byzantines', name: 'House Komnenos', short: 'Komnenos', color: 'rose', primary: '#a8366e', accent: '#f08cc0', dark: '#4a142e', hue: 330, device: 'crown', motto: 'By this sign, conquer' },
+  { faction: 'persians', name: 'House Sassan', short: 'Sassan', color: 'teal', primary: '#24857e', accent: '#86e0d4', dark: '#0e3834', hue: 174, device: 'wings', motto: 'Good thoughts, good words, good deeds' },
 ];
-const PEOPLE = HOUSES.map((h) => ({ faction: h.faction, name: h.name, short: h.short, motto: h.motto }));
+// HOUSES[seat]: the people sitting in each seat this game (set by setPeoples). Seat 0 is the player's.
+export const HOUSES = PEOPLE.map((p) => ({ ...p }));
 export const PEOPLE_KEYS = PEOPLE.map((p) => p.faction);
-// Seat the peoples: order[seat] = index into the classic order. Seats keep their colours; nation, name and motto move with the people.
+// Seat the peoples: order[seat] = index into PEOPLE. Everything moves with the people: nation, name, motto, colour and crest.
+// An order from an older save (five peoples) is kept and the newer peoples fill the seats after it.
 export function setPeoples(order) {
-  const o = Array.isArray(order) && order.length === PEOPLE.length && new Set(order).size === PEOPLE.length ? order : PEOPLE.map((_, i) => i);
+  const ok = Array.isArray(order) && order.length <= PEOPLE.length && new Set(order).size === order.length && order.every((k) => Number.isInteger(k) && k >= 0 && k < PEOPLE.length);
+  const o = ok ? [...order, ...PEOPLE.map((_, i) => i).filter((i) => !order.includes(i))] : PEOPLE.map((_, i) => i);
   HOUSES.forEach((h, i) => Object.assign(h, PEOPLE[o[i]]));
   return o;
 }
@@ -249,6 +260,9 @@ export const DOCTRINE = {
   scottish:  { label: 'hold',    bias: ['archery', 'tower', 'tavern'], armyMul: 1.0, mix: { footman: 0.3, bowman: 0.55, knight: 0.15 }, war: 0.04, serf: 0, spies: 2 },
   british:   { label: 'hearth',  bias: ['market', 'mill', 'cottage'], armyMul: 0.9, mix: { footman: 0.45, bowman: 0.35, knight: 0.2 }, war: 0.06, serf: 1, spies: 1 },
   mongols:   { label: 'raid',    bias: ['stable', 'archery', 'barracks'], armyMul: 1.25, mix: { footman: 0.2, bowman: 0.4, knight: 0.4 }, war: -0.08, serf: -1, spies: 2 },
+  vikings:   { label: 'shield wall', bias: ['barracks', 'tavern', 'workshop'], armyMul: 1.15, mix: { footman: 0.65, bowman: 0.25, knight: 0.1 }, war: -0.06, serf: 0, spies: 1 },
+  byzantines: { label: 'theme',   bias: ['academy', 'market', 'tower'], armyMul: 1.0, mix: { footman: 0.35, bowman: 0.3, knight: 0.35 }, war: 0.06, serf: 1, spies: 3 },
+  persians:  { label: 'satrapy',  bias: ['stable', 'market', 'temple'], armyMul: 1.1, mix: { footman: 0.25, bowman: 0.4, knight: 0.35 }, war: 0.02, serf: 1, spies: 2 },
 };
 export const FORFEIT_AFTER = 45;   // legacy, unused: houses no longer forfeit; a house falls only with the last of its royal line
 export const WEALTH_HOLD = 90;   // legacy, unused: wealth no longer wins
@@ -289,7 +303,8 @@ export const VILLAGE_NAMES = {
 
 export const RELATIONS = ['peace', 'trade', 'alliance', 'war'];
 export const DEFAULT_RELATION = 'peace';
-export const WAR_MIN = 60;   // seconds after a declaration before either side will hear of peace
+export const WAR_MIN = 60;
+export const ASK_DELAY = { min: 4, max: 8 };   // seconds before a rival's ruler answers the player's envoy   // seconds after a declaration before either side will hear of peace
 
 export const FOG_REVEAL_MS = 0;
 
@@ -341,7 +356,7 @@ export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11,
 // The royal line: a house has a king and `heirs` heirs. Each fallen king is followed by the next heir after `heir` seconds; when the last of the
 // line dies the house falls. A king whose house has lost its seat is a fugitive, seen by every house (`fugitiveSight`).
 export const KING = { aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 20, heirs: 2, fugitiveSight: 2.5, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
-  titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King' } };
+  titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King', vikings: 'Jarl', byzantines: 'Basileus', persians: 'Shahanshah' } };
 // Leaders have a temper that colours how they treat the other houses (see ai.js diplomacy): aggr, greed, honor and wary are 0..1.
 export const TEMPERS = [
   { key: 'warlike', label: 'Warlike', tip: 'Quick to war, slow to forgive.' },

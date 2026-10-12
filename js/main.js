@@ -1,5 +1,5 @@
 // Auld World - entry point. Single-player: the host (Game) lives in this tab; the client talks to it through net.js.
-import { DEFAULT_HOUSES } from './config.js';
+import { DEFAULT_HOUSES, MIN_HOUSES, MAX_HOUSES, PEOPLE_KEYS } from './config.js';
 import { Game } from './game.js';
 import { LocalHost } from './net.js';
 import { Renderer, Minimap, drawCrest } from './render.js';
@@ -12,7 +12,8 @@ import { initTrainPanel } from './trainui.js';
 const cfg = { houses: DEFAULT_HOUSES, fog: true, diff: 'mid', people: 'random' };
 try { const p = localStorage.getItem('auld.people'); if (p) cfg.people = p; } catch {}
 const params = new URLSearchParams(location.search);
-if (params.get('houses')) cfg.houses = Math.max(3, Math.min(5, +params.get('houses')));
+if (params.get('houses')) cfg.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, +params.get('houses')));
+if (PEOPLE_KEYS.includes(params.get('people'))) cfg.people = params.get('people');
 if (params.get('fog') === '0') cfg.fog = false;
 if (['easy', 'mid', 'hard'].includes(params.get('diff'))) cfg.diff = params.get('diff');
 

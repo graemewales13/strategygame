@@ -15,6 +15,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 5 | Plain soldiers repainted per people, full length | **Delivered and wired** 2026-10-12. `PLAIN_KEYS` loads them; they look right |
 | 6 | Raising and ruin states for every other building | **Delivered and wired** 2026-10-12. Every key is in `STATED` in `js/art.js` |
 | 7 | War-horn alarm mark for the "under attack" warning | **Delivered and wired** 2026-10-12 |
+| 8 | Three new peoples: Vikings, Byzantines, Persians. Full kits, ruler portraits | **Requested** 2026-10-12 (below). Until delivered they use the shared buildings and soldiers, tinted in their colour |
 
 ## How the game uses delivered art
 
@@ -26,7 +27,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | A plain soldier in the new style | `assets/factions/<faction>/units/<role>.png` for `footman`, `bowman`, `knight`, `scout`, `recruit`, `spy`, `scholar` | Automatically (priority 5) |
 | Icons (kit, research) | `assets/shared/ui/gear/<key>.png`, `assets/shared/ui/tech/<key>.png` | Automatically (keys are `GEAR` and `TECH` in `js/config.js`) |
 | Marks (deeds, captain, fugitive, alarm) | `assets/shared/ui/marks/<key>.png` (deed keys are `DEEDS` in `js/config.js`) | Automatically |
-| Portraits | `assets/shared/ui/portraits/<key>.png` (far-land keys are `FARLANDS`; rulers are `pharaoh`, `imperator`, `king`, `khan`, `highking`) | Automatically |
+| Portraits | `assets/shared/ui/portraits/<key>.png` (far-land keys are `FARLANDS`; rulers are `pharaoh`, `imperator`, `king`, `khan`, `highking`, `jarl`, `basileus`, `shahanshah`) | Automatically |
 
 Until a file exists the game falls back to a stand-in: the forge sprite for the armoury, the old shared figure for a soldier, a text glyph for icons, no mark. Missing files never break the game.
 
@@ -209,6 +210,27 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
 4. **Facing.** The old shared unit art looks left; the new per-people figures look right. The game handles both (it mirrors), but keep every new figure looking right or straight out.
 5. **Captain standard** is painted with neutral cloth and the game dyes it per house. Keep any future marks that carry house colour neutral (white or pale grey cloth).
 
+## Priority 8: three new peoples (Vikings, Byzantines, Persians)
+
+Matches now seat up to eight houses. Three new peoples sit beside the first five. Each needs the same kit the others have. Until it arrives, their buildings and soldiers are the shared art tinted in their colour.
+
+**Once a people's kit is in, delete `kit: false` from its entry in `FACTIONS` in `js/config.js`.** The game only asks for a people's files when that flag is gone, so missing files make no 404 noise.
+
+| People (folder) | House | Colour (cloth hue) | Look: paste into the Building and Human unit templates | Do not |
+| --- | --- | --- | --- | --- |
+| Vikings (`vikings`) | House Ynglings | orange #C0662A (hue 24) | turf-roofed longhouses with carved dragon gables, stave timber, round shields hung along the walls; soldiers in wool tunics and mail, round painted shields, Dane axes, spangenhelm helmets | no horned helmets, no fur bikinis |
+| Byzantines (`byzantines`) | House Komnenos | rose #A8366E (hue 330) | brick-and-stone banding, lead domes, gold mosaic over the doors, marble columns; soldiers in lamellar and klivanion, kite shields, cataphracts in scale on armoured horses, Varangian guards with axes | no Gothic spires, no Ottoman minarets |
+| Persians (`persians`) | House Sassan | teal #24857E (hue 174) | iwan arches, glazed blue-green tile, walled gardens with water channels, fire temples; soldiers in quilted coats and mail, tall felt caps, composite bows, clibanarii in full mail on mailed horses | no turbans of later centuries, no flying carpets, no scimitar-and-genie fantasy |
+
+For each people, deliver what the first five have:
+
+- **Buildings**: all 18 keys in `FACTION_BUILDINGS`, complete state, in `assets/factions/<folder>/buildings/<key>.png`. The Vikings' `hall.png` is already there. The armoury needs `_build` and `_ruin` too.
+- **Soldiers**: the six armed keys (priority 3) and the plain keys (priority 5) in `assets/factions/<folder>/units/`. Paint the cloth in the people's own colour from the table, as the first five kits are: these figures are drawn as painted, not re-dyed.
+- **Ruler portraits** (bust, 300x380) in `assets/shared/ui/portraits/`: `jarl.png` (a Jarl with a gold arm-ring and a fur cloak), `basileus.png` (the Basileus in a jewelled loros and crown with pendilia), `shahanshah.png` (the Shahanshah with the winged crown and a beard tied with ribbons).
+- **Pack animals**: none new. Vikings and Byzantines use the donkey and Persians the dromedary.
+
+Crests are drawn in code (a longship, an imperial crown, the winged sun), so no art is needed for them.
+
 ## Acceptance
 
 Use the QA checklist from the instruction set. Also:
@@ -218,3 +240,4 @@ Use the QA checklist from the instruction set. Also:
 - **Variant soldiers:** they must stand at the same height and foot position as the plain unit, so they can be swapped in place.
 
 - **Plain soldiers (priority 5):** set beside the armed pose of the same role, the two must read as the same man before and after the Armoury.
+- **Ram and other wheeled engines:** the game grounds the ram with a shadow spanning the lower 30% of the picture (its wheelbase in three-quarter view) and does not bob it like a walker. A repainted or new engine (a future siege tower or catapult) must keep that framing: three-quarter view, the front wheel touching the bottom edge, all wheels within the lower third, and no empty margin under the wheels. Otherwise it floats above its shadow.

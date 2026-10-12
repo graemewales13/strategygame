@@ -89,12 +89,12 @@ test('crowding: a group sent to one spot ends up spread out, never stacked into 
 
 test('peoples: names fit the nation; the player can pick or be dealt any people; the seating is deterministic and survives a save', () => {
   const g0 = mk(); assert.equal(HOUSES[0].faction, 'egyptians'); assert.match(HOUSES[0].short, /Khemet/);
-  const NAT = { egyptians: /Khemet/, romans: /Aurelius/, scottish: /MacAlpin/, british: /Wessex/, mongols: /Borjigin/ };
+  const NAT = { egyptians: /Khemet/, romans: /Aurelius/, scottish: /MacAlpin/, british: /Wessex/, mongols: /Borjigin/, vikings: /Ynglings/, byzantines: /Komnenos/, persians: /Sassan/ };
   for (const f of Object.keys(NAT)) {
     const g = new Game({ seed: 11, houses: 4, ai: false, people: f });
     assert.equal(HOUSES[0].faction, f, 'the player is ' + f); assert.match(HOUSES[0].name, NAT[f], 'and the house name fits: ' + HOUSES[0].name);
     assert.equal(g.players[0].name, HOUSES[0].name);
-    assert.equal(new Set(HOUSES.map((h) => h.faction)).size, 5, 'every people sits once');
+    assert.equal(new Set(HOUSES.map((h) => h.faction)).size, 8, 'every people sits once');
     assert.ok(HOUSES.every((h) => NAT[h.faction].test(h.name)), 'every house name fits its people');
   }
   const a = new Game({ seed: 5, houses: 3, ai: false, people: 'random' }).peopleOrder.join(), b = new Game({ seed: 5, houses: 3, ai: false, people: 'random' }).peopleOrder.join();
@@ -135,14 +135,37 @@ const meet = (g) => { for (let i = 0; i < g.houses; i++) for (let j = 0; j < g.h
 const boost = (g, team, n) => { for (let i = 0; i < n; i++) { const u = g.addUnit('knight', team, 5 + i * 0.1, 5); u.hp = u.maxHp; } };
 const nice = (g, a, b, v = 50) => { g.opinion[a][b] = v; g.players[a].persona.temper = 'honourable'; };
 
+test('peoples: colour and crest go with the people; eight houses seat well apart; an older five-people save still loads its seating', () => {
+  const g = new Game({ seed: 7, houses: 8, ai: false, people: 'scottish' });
+  assert.equal(g.players.length, 8);
+  assert.equal(HOUSES[0].faction, 'scottish'); assert.equal(HOUSES[0].color, 'blue', 'the Scots are blue in any seat'); assert.equal(HOUSES[0].device, 'waves');
+  assert.equal(new Set(HOUSES.map((h) => h.color)).size, 8, 'eight colours'); assert.equal(new Set(HOUSES.map((h) => h.device)).size, 8, 'eight devices');
+  for (const f of ['vikings', 'byzantines', 'persians']) assert.ok(HOUSES.some((h) => h.faction === f), f + ' sit at the table');
+  let near = 1e9; for (let a = 0; a < 8; a++) for (let b = 0; b < a; b++) near = Math.min(near, Math.hypot(g.seatOf(a).x - g.seatOf(b).x, g.seatOf(a).y - g.seatOf(b).y));
+  assert.ok(near > 60, `the closest two halls are ${near.toFixed(0)} tiles apart`);
+  const h = new Game({ seed: 7, houses: 4, ai: false }); h.restore({ ...JSON.parse(JSON.stringify(h.serialize())), peopleOrder: [4, 3, 2, 1, 0] });
+  assert.equal(HOUSES[0].faction, 'mongols'); assert.equal(HOUSES[0].color, 'violet'); assert.ok(HOUSES[7]?.faction, 'the newer peoples fill the seats after');
+});
+
+test('envoy: a treaty offered to an AI house is answered by letter a few seconds later, not at once', () => {
+  const g = mk(); meet(g); g.time = 200; g.players[1].ai = true; nice(g, 1, PLAYER, 60);
+  assert.equal(g.proposeRelation(PLAYER, 1, 'trade'), true, 'the envoy sets out');
+  assert.notEqual(g.rel[PLAYER][1], 'trade', 'no treaty yet'); assert.equal(g.asks.length, 1);
+  assert.equal(g.proposeRelation(PLAYER, 1, 'trade'), false, 'one envoy at a time'); assert.match(g.diploNote, /already on the road/);
+  const saved = JSON.parse(JSON.stringify(g.serialize())); const h = mk(); h.restore(saved); assert.equal(h.asks.length, 1, 'the envoy survives a save');
+  for (let i = 0; i < 100 && g.asks.length; i++) { g.time += 0.1; g.updateDiplomacy(0.1); }
+  assert.equal(g.asks.length, 0, 'the answer came'); assert.equal(g.rel[PLAYER][1], 'trade', 'and it was yes');
+  assert.ok(g.time >= 204, 'after the ride');
+});
+
 test('diplomacy: a gift warms a rival, and a cold house refuses an alliance until it warms', () => {
   const g = mk(); meet(g); g.time = 200; g.players[PLAYER].gold = 500;
-  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance'), false, 'strangers do not ally'); assert.match(g.diploNote, /friend/);
+  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance', true), false, 'strangers do not ally'); assert.match(g.diploNote, /friend/);
   const before = g.opinion[1][PLAYER];
   assert.equal(g.giveGift(PLAYER, 1, 120), true);
   assert.ok(g.opinion[1][PLAYER] > before + 8, 'the gift warms him');
   g.opinion[1][PLAYER] = 40; g.players[1].persona.temper = 'honourable';
-  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance'), true); assert.equal(g.rel[PLAYER][1], 'alliance');
+  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance', true), true); assert.equal(g.rel[PLAYER][1], 'alliance');
   assert.equal(g.isEnemy(PLAYER, 1), false, 'allies are not enemies');
   const m = g.addBuilding('market', 1, 30, 30, true); assert.equal(g.canDeal(PLAYER, m).ok, true, 'allies trade');
 });

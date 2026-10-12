@@ -6,7 +6,7 @@ This file is reviewed daily (see "Daily review" at the end). Each task has an ID
 
 ## What the game has today (`grok`, 2026-10-11)
 
-- **Core.** Real-time strategy on a seeded isometric valley of 160, 320 or 400 tiles, with five climates, rivers and fords. Three to five houses, each one of five peoples with its own doctrine. Easy, Mid and Hard difficulty.
+- **Core.** Real-time strategy on a seeded isometric valley of 160, 320 or 400 tiles, with five climates, rivers and fords. Three to eight houses, each one of eight peoples with its own doctrine. Easy, Mid and Hard difficulty.
 - **Economy.** Serfs, mines worked by village folk, mining camps, foundry, forge, markets with shelves and warehouses, camel trade routes, districts that reward compact towns, and village population, tax and tribute.
 - **Villages.** Influence, spies and sacking; founded villages and mining camps; drafting and arming villagers.
 - **Characters.** Named people, ranks, deeds, a service record, captains, far-land tavern characters and kings with tempers.

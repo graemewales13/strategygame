@@ -26,6 +26,14 @@ export const NAMES = {
     first: ['Aodh', 'Bridei', 'Calum', 'Drust', 'Eochaid', 'Fergus', 'Gillean', 'Hamish', 'Ishbel', 'Kenneth', 'Lachlan', 'Morag', 'Ness', 'Oighrig', 'Padraig', 'Rhuaidhri', 'Struan', 'Torquil', 'Una', 'Alasdair', 'Brodie', 'Ciaran', 'Dougal', 'Elspeth', 'Fionnlagh', 'Griogair', 'Iain', 'Mairead', 'Niall', 'Somhairle', 'Tavish', 'Cormac'],
     by: ['of the Grey Loch', 'Heather-Wise', 'the Black Isle', 'Cairn-Dweller', 'Stag-Hearted', 'the Kelpie\'s Debt', 'Mist-Piper', 'of the Broken Brae', 'Peat-Smoke', 'the Painted', 'Raven-Crag', 'Thistle-Fist', 'of the Seventh Wave', 'the Standing Stone'],
   },
+  byzantines: {
+    first: ['Alexios', 'Anna', 'Basil', 'Theodora', 'Ioannes', 'Eudokia', 'Manuel', 'Zoe', 'Nikephoros', 'Irene', 'Leo', 'Maria', 'Konstantinos', 'Helena', 'Michael', 'Kassia', 'Romanos', 'Theophano', 'Isaakios', 'Euphrosyne', 'Andronikos', 'Pulcheria', 'Demetrios', 'Sophia', 'Bardas', 'Thekla', 'Georgios', 'Xene', 'Stephanos', 'Agathe', 'Kyrillos', 'Melane'],
+    by: ['Porphyrogenitus', 'of the Golden Horn', 'the Purple-Born', 'Icon-Keeper', 'of the Theodosian Walls', 'the Bulgar-Slayer', 'Greek-Fire', 'of the Hippodrome', 'the Silent Logothete', 'Mosaic-Eyed', 'of the Bosporus', 'the Eunuch\'s Pupil', 'Chain-Warden', 'the Blinded'],
+  },
+  persians: {
+    first: ['Ardashir', 'Shirin', 'Bahram', 'Azadeh', 'Khosrow', 'Parisa', 'Shapur', 'Roxana', 'Hormizd', 'Mandana', 'Narseh', 'Purandokht', 'Yazdegerd', 'Atossa', 'Kavad', 'Farnaz', 'Peroz', 'Gordiya', 'Rostam', 'Tahmina', 'Mehrdad', 'Soudabeh', 'Vahram', 'Anahid', 'Bardiya', 'Golnar', 'Darius', 'Nahid', 'Farhad', 'Ziba', 'Esfandiyar', 'Arya'],
+    by: ['of the Royal Road', 'Fire-Keeper', 'the Immortal', 'of Persepolis', 'Garden-Born', 'the Lion-Seal', 'of the Thousand Pillars', 'Tile-Glazer', 'the Shah\'s Eye', 'Rose-Water', 'of the Salt Desert', 'Arrow-Back', 'the Faithful Satrap', 'Star-Reader'],
+  },
 };
 
 // far-landers who turn up in taverns (see FARLANDS in config.js): peoples with no house in the valley
@@ -64,4 +72,6 @@ export const FOUNDED = {
   british: ['Wulfmere', 'Oakhallow', 'Cadbury Dene', 'Brannock', 'Edgeworth', 'Hartsmoor', 'Penhallow', 'Whitbarrow'],
   mongols: ['Ordu Khulan', 'Gerel Tal', 'Mukhali Nuur', 'Khar Usan', 'Tolui Gol', 'Altan Khoto', 'Naran Ger', 'Bayar Uul'],
   scottish: ['Dun Ciaran', 'Glenmorag', 'Loch Struan', 'Bridei Brae', 'Ben Tavish', 'Kirk Aodh', 'Inver Ness', 'Craig Drust'],
+  byzantines: ['Agia Anna', 'Nikopolis', 'Chrysoupolis', 'Kastro Basil', 'Theodoroupolis', 'Monemvasia', 'Mesembria', 'Pyrgos Leon'],
+  persians: ['Ardashir-Khwarrah', 'Bagh-e Shirin', 'Veh-Shapur', 'Rostamabad', 'Firuzabad', 'Golestan', 'Mehrgerd', 'Kavadabad'],
 };

@@ -32,7 +32,7 @@ export function armedKey(u) {
 }
 // shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm). UIART[group][key] = Image.
 export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {} };
-export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking' };
+export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking', vikings: 'jarl', byzantines: 'basileus', persians: 'shahanshah' };
 const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS, portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm'] };
 export const uiArt = (group, key) => UIART[group]?.[key]?.src || null;
 // painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow
@@ -48,7 +48,7 @@ export function loadArt() {
     jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { IMG[n] = i; res(); }; i.onerror = () => res(); i.src = `assets/world/${dir}/${n}.png`; }));
   }
   const one = (into, key, src) => jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { into[key] = i; res(); }; i.onerror = () => res(); i.src = src; }));
-  for (const f of Object.keys(FACTIONS)) {
+  for (const f of Object.keys(FACTIONS).filter((k) => FACTIONS[k].kit !== false)) {   // (a people without a kit yet uses the shared art)
     FIMG[f] = {}; FUNIT[f] = {};
     for (const k of FACTION_BUILDINGS) one(FIMG[f], k, `assets/factions/${f}/buildings/${k}.png`);
     for (const k of STATED) for (const st of ['build', 'ruin']) one(FIMG[f], `${k}_${st}`, `assets/factions/${f}/buildings/${k}_${st}.png`);
@@ -60,15 +60,16 @@ export function loadArt() {
   return Promise.all(jobs);
 }
 
-// target hue (degrees) per house; the boards' banners are blue, the unit trim is yellow
-const HUE = [46, 2, 214, 124, 284];
+// target hue (degrees) for a seat: its people's own (HOUSES[team].hue). The boards' banners are painted blue, the unit trim yellow.
+const NATIVE_TRIM = 46;
+const hueOf = (team) => (team >= 0 ? HOUSES[team]?.hue ?? null : null);
 function rgb2hsv(r, g, b) { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0; if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; } return [h, mx ? d / mx : 0, mx]; }
 function hsv2rgb(h, s, v) { const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c; let r = 0, g = 0, b = 0; const k = Math.floor(h / 60) % 6; if (k === 0) [r, g, b] = [c, x, 0]; else if (k === 1) [r, g, b] = [x, c, 0]; else if (k === 2) [r, g, b] = [0, c, x]; else if (k === 3) [r, g, b] = [0, x, c]; else if (k === 4) [r, g, b] = [x, 0, c]; else [r, g, b] = [c, 0, x]; return [(r + m) * 255, (g + m) * 255, (b + m) * 255]; }
 
 const cache = new Map();
 // mode: 'banner' recolours blue cloth (buildings); 'trim' recolours yellow cloth (units); team -1 = neutral grey-brown cloth
 export function tinted(name, team, mode, flip = false, light = 1) {
-  const key = `${name}|${team}|${mode}|${flip ? 1 : 0}|${light}`;
+  const key = `${name}|${hueOf(team)}|${mode}|${flip ? 1 : 0}|${light}`;   // (keyed by hue, not seat: peoples change seats between games)
   let c = cache.get(key); if (c) return c;
   const img = IMG[name];
   if (!img) return null;
@@ -76,8 +77,8 @@ export function tinted(name, team, mode, flip = false, light = 1) {
   const x = c.getContext('2d');
   if (flip) { x.translate(c.width, 0); x.scale(-1, 1); }
   x.drawImage(img, 0, 0);
-  if ((mode && (team !== 0 || mode === 'banner')) || light !== 1) {
-    const d = x.getImageData(0, 0, c.width, c.height), p = d.data, target = team >= 0 ? HUE[team] : null;
+  if ((mode && (hueOf(team) !== NATIVE_TRIM || mode === 'banner')) || light !== 1) {
+    const d = x.getImageData(0, 0, c.width, c.height), p = d.data, target = hueOf(team);
     for (let i = 0; i < p.length; i += 4) {
       if (p[i + 3] < 8) continue;
       if (mode) {
@@ -85,7 +86,7 @@ export function tinted(name, team, mode, flip = false, light = 1) {
         const hit = mode === 'banner' ? (h > 190 && h < 262 && s > 0.28 && v > 0.16) : (h > 34 && h < 64 && s > 0.45 && v > 0.22);
         if (hit) {
           if (target == null) { const g = hsv2rgb(38, 0.28, v * 0.95); p[i] = g[0]; p[i + 1] = g[1]; p[i + 2] = g[2]; }
-          else if (!(mode === 'trim' && team === 0)) { const g = hsv2rgb(target, Math.min(1, s * (team === 1 ? 1.05 : 1)), v); p[i] = g[0]; p[i + 1] = g[1]; p[i + 2] = g[2]; }
+          else if (!(mode === 'trim' && target === NATIVE_TRIM)) { const g = hsv2rgb(target, Math.min(1, s * (target === 2 ? 1.05 : 1)), v); p[i] = g[0]; p[i + 1] = g[1]; p[i + 2] = g[2]; }
         }
       }
       if (light !== 1) { p[i] = Math.min(255, p[i] * light); p[i + 1] = Math.min(255, p[i + 1] * light); p[i + 2] = Math.min(255, p[i + 2] * light); }
