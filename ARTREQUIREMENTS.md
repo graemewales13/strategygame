@@ -17,7 +17,8 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 7 | War-horn alarm mark for the "under attack" warning | **Delivered and wired** 2026-10-12 |
 | 8 | Three new peoples: Vikings, Byzantines, Persians. Full kits, ruler portraits | **Part delivered** 2026-10-12: the 18 complete buildings, the three soldiers, and the ruler portraits (`jarl`, `basileus`, `shahanshah`). Still open: raising and ruin states, the six armed variants, serfs, and recruit, scout, spy, scholar. `PARTIAL` in `js/art.js` keeps those on the shared art so nothing 404s |
 | 9 | Soldiers repainted to the character guide: footman, bowman, knight per people (8 peoples, 24) | **Delivered** 2026-10-12. `REPAINT` is empty; these figures replace the stand-ins |
-| 10 | Serfs per people: idle and two work frames (8 peoples, 24) | **Requested** 2026-10-12 (below). Already wired: drawn as soon as the files exist |
+| 10 | Serfs per people: idle and two work frames (8 peoples, 24) | **Requested** 2026-10-12 (below). **The most visible gap left**: every house still works the one shared serf, who is as bulky as a soldier. Wired; the three keys wait in `REPAINT` in `js/art.js` (so nothing 404s) and come out when the files land |
+| 11 | Spies who are easy to miss (Egyptians, Scots, Mongols) | **Requested** 2026-10-12 (below). The delivered spies are pale all over and fail the ghost rule |
 
 ## How the game uses delivered art
 
@@ -353,7 +354,17 @@ The game alternates `serf_work1` and `serf_work2` while a serf gathers, builds o
 {PEOPLE} SERF, a working labourer, full length, three-quarter view looking right, slight build, a little stooped. {SERF cell from the character guide}. Undyed working cloth with one small touch of {COLOUR NAME}. {POSE}. No helmet, no armour, no shield, no weapon. Flat #FF00FF background, no shadow, 256x256, feet at the bottom edge less 8 px.
 ```
 
-Deliver: `assets/factions/<faction>/units/serf.png`, `serf_work1.png`, `serf_work2.png`. They are picked up as soon as they exist.
+Deliver: `assets/factions/<faction>/units/serf.png`, `serf_work1.png`, `serf_work2.png`. Then take `serf`, `serf_work1` and `serf_work2` out of `REPAINT` in `js/art.js` (they wait there so the game does not ask for files that are not painted yet). For the three new peoples also take them out of the `PARTIAL` unit list.
+
+## Priority 11: spies who are easy to miss (3)
+
+The lineup test on 2026-10-12 passed every new soldier, but the Egyptian, Scottish and Mongol spies are cream or pale grey from hood to hem. A spy is the one figure meant to vanish against the ground (character guide: "dark, muted cloak; the colour only as a hidden lining or a thin cord"). Repaint those three to match the Roman and British spies: a dark, dull cloak (umber, charcoal, deep olive), face in shadow, a small knife or satchel, the people's colour only as a lining or cord. Same framing as the delivered spies.
+
+```text
+{PEOPLE} SPY, hooded, full length, three-quarter view looking right, hunched slightly into a dark dull {umber/charcoal/olive} cloak, face in shadow, a small knife at the belt. {People line from the faction kit}. Only a thin cord or lining of {COLOUR NAME}. Not pale, not bright. Flat #FF00FF background, no shadow, 256x256, feet at the bottom edge less 8 px.
+```
+
+Deliver: `assets/factions/{egyptians,scottish,mongols}/units/spy.png`. The scholars' pale robes are true to their people and may stay, but a stole or book cover in the people's colour would help them read as part of the house.
 
 ## Acceptance
 
