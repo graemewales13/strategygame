@@ -167,6 +167,8 @@ Two to five people can play one match over the network. Empty seats are played b
 - No chat or host migration.
 - Nothing is matched over the internet: you run or share the relay.
 
+**Hosting it** (for example on AWS): see `DEPLOY.md`. A `Dockerfile` and `deploy/` (Docker Compose with Caddy for HTTPS) are ready. The relay reads its port from `PORT`, answers `/healthz`, pings to keep connections alive, and shuts down cleanly.
+
 Protocol and message shapes: `js/net.js`. Server: `relay.js`. Tests: `node test/net.test.js` (two clients over real WebSockets: identical state, order stamping, rejoin, desync) and `node tools/mp-smoke.cjs` (two browsers, with the relay on 8124).
 
 ## Not in this slice

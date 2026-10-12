@@ -1,0 +1,5 @@
+# Caddy serves https://$DOMAIN, gets and renews its certificate, and passes everything (pages and the /ws WebSocket) to the relay.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy relay:8080
+}
