@@ -359,8 +359,21 @@ export class Renderer {
       if (++n > 60) break;
       const [ax, ay] = this.toScreen(u.x, u.y), [bx, by] = this.toScreen(to[0], to[1]);
       const col = k === 'move' ? 'rgba(159,224,143,0.55)' : 'rgba(232,104,90,0.65)';
-      ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-      ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(bx, by, 4 * z, 2 * z, 0, 0, 7); ctx.fill();
+      // each leg is a dark under-stroke with the coloured dash on top, so it reads on pale sand and snow as well as grass
+      const leg = (x0, y0, x1, y1, c, r) => {
+        ctx.strokeStyle = 'rgba(20,14,8,0.4)'; ctx.lineWidth = Math.max(2, 3 * z); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+        ctx.strokeStyle = c; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+        ctx.fillStyle = 'rgba(20,14,8,0.4)'; ctx.beginPath(); ctx.ellipse(x1, y1, r * 1.3 * z, r * 0.65 * z, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(x1, y1, r * z, r * 0.5 * z, 0, 0, 7); ctx.fill();
+      };
+      leg(ax, ay, bx, by, col, 4);
+      // the legs still to come (Shift-queued waypoints, T02), each from the end of the last
+      let px = bx, py = by;
+      for (const w of k === 'attack' ? (u.task.then ? [{ x: u.task.then.x, y: u.task.then.y, a: true }, ...(u.task.then.next || [])] : []) : u.task.next || []) {
+        const [cx, cy] = this.toScreen(w.x, w.y);
+        leg(px, py, cx, cy, w.a ? 'rgba(232,104,90,0.6)' : 'rgba(159,224,143,0.55)', 3.5);
+        px = cx; py = cy;
+      }
     }
     ctx.restore();
   }

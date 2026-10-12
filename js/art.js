@@ -23,8 +23,8 @@ export const ARMED_KEYS = ['footman_spear', 'footman_sword', 'footman_heavy', 'b
 // the plain soldiers repainted per people in the same full-length style (ARTREQUIREMENTS priority 5); used when present, else the old shared art
 export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'serf_work1', 'serf_work2', 'king'];
 // the plain soldiers repainted per people (priority 9): helmet, armour, a shield or a drawn bow, the people's colour on the cloth.
-// REPAINT is empty: the set-aside civilian figures have been replaced. Drop a key back in here only if a repaint must be hidden again.
-// Wired but not painted yet, so not asked for (no 404s): each people's serfs (priority 10) and king on the field (priority 12).
+// REPAINT holds keys that are wired but not painted yet, so not asked for (no 404s): each people's serfs (priority 10) and king on the
+// field (priority 12). The priority-9 soldiers are in. Drop a key back in here only if a repaint must be hidden again.
 // Take a key out once its files are in for the first five peoples.
 const REPAINT = new Set(['serf', 'serf_work1', 'serf_work2', 'king']);
 // Vikings, Byzantines and Persians have their buildings and their three soldiers. They do not yet have raising

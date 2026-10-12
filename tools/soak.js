@@ -35,7 +35,7 @@ for (const seed of seeds) {
       () => { const v = anyV(); return { type: 'context', ids: ids(), x: v.x, y: v.y, want: pick(goods) }; },
       () => { const n = anyN(); return { type: 'context', ids: ids(), x: n.x + 0.5, y: n.y + 0.5 }; },
       () => ({ type: 'train', buildingId: (bl.length ? pick(bl) : anyB()).id, kind: pick(['serf', 'footman', 'bowman', 'knight', 'scout', 'camel', 'scholar', 'spy', 'ram']) }),
-      () => { const s = g.seatOf(0), n = anyN(); return { type: 'place', kind: pick(kinds), tx: Math.round(s.tx + (Math.random() - 0.5) * 24), ty: Math.round(s.ty + (Math.random() - 0.5) * 24), ids: ids(), nodeId: Math.random() < 0.4 ? n.id : null }; },
+      () => { const s = g.seatOf(0) || { tx: g.W / 2, ty: g.H / 2 }, n = anyN();  /* a house can lose its seat and play on */ return { type: 'place', kind: pick(kinds), tx: Math.round(s.tx + (Math.random() - 0.5) * 24), ty: Math.round(s.ty + (Math.random() - 0.5) * 24), ids: ids(), nodeId: Math.random() < 0.4 ? n.id : null }; },
       () => ({ type: 'load', unitId: pick(mine.length ? mine : g.units).id, good: pick(goods), amount: Math.floor(Math.random() * 60) - 5 }),
       () => ({ type: 'unload', unitId: pick(mine.length ? mine : g.units).id }),
       () => ({ type: 'role', ids: ids(), role: pick(['spy', 'knight']) }),
@@ -53,7 +53,8 @@ for (const seed of seeds) {
       () => ({ type: 'relation', other: 1 + Math.floor(Math.random() * (houses - 1)), state: pick(['trade', 'peace', 'war']) }),
       () => ({ type: 'respond', from: 1 + Math.floor(Math.random() * (houses - 1)), accept: Math.random() < 0.7 }),
       () => ({ type: 'stop', ids: ids() }),
-      () => ({ type: 'amove', ids: ids(), x: X(), y: Y() }),
+      () => ({ type: 'amove', ids: ids(), x: X(), y: Y(), queue: Math.random() < 0.3 }),
+      () => ({ type: 'move', ids: ids(), x: X(), y: Y(), queue: Math.random() < 0.5 }),   // (Shift-queued waypoints, T02)
       () => ({ type: 'stance', ids: ids(), stance: pick(['aggressive', 'defensive', 'hold', 'passive', 'nonsense']) }),
       () => ({ type: 'gather', ids: ids(), nodeId: anyN().id }),
       () => ({ type: 'build', ids: ids(), buildingId: anyB().id }),

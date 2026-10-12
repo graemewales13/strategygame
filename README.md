@@ -42,6 +42,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 |---|---|
 | Select / box-select | Left mouse (Shift adds; double-click selects that type on screen) |
 | Move, gather, attack, sack, infiltrate, help build | Right mouse (the host decides from what is under the cursor) |
+| Waypoints | **Shift+right-click** the ground adds a leg to a march (up to 12); **Shift** with attack-move (F or Ctrl+right-click) adds an attack-move leg. Soldiers sent together march at the pace of the slowest among them |
 | Rally point | Right-click the field with a training building selected |
 | Attack-move | **F** (or the Attack-move button), then click the ground; or **Ctrl+right-click**. Soldiers march there and fight every foe they meet on the way |
 | Stance | Buttons under the soldier's orders: **Aggressive** (default; chase foes in sight), **Defensive** (break off a chase 8 tiles out and come back), **Hold ground** (strike only what is in reach), **No attack** (never start a fight). Your own orders always go |
@@ -55,7 +56,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Idle serf / all soldiers | **.** / **,** |
 | Control groups | **Ctrl+1..9** set, **1..9** recall |
 | Under attack | **Space** or **Home** jumps to where you were last hit (press again for the next place); the minimap shows a pulsing red ring there and your fighting folk blink red |
-| Combat feedback | Selected soldiers show a line to where they are going (green: march; red: attack or attack-move). **Damage numbers** over a fight are an Options checkbox, off by default |
+| Combat feedback | Selected soldiers show a line to where they are going (green: march; red: attack or attack-move), and on through any queued waypoints. **Damage numbers** over a fight are an Options checkbox, off by default |
 | Cancel placement | Right-click or **Esc** |
 
 ## Camel routes

@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
 } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -415,6 +415,7 @@ export class Game {
   follow(u, dt) {
     if (!u.path.length) return false;
     let step = u.speed ?? UNITS[u.kind].speed;
+    if (u.task.pace && (u.task.type === 'move' || u.task.type === 'amove')) step = Math.min(step, u.task.pace);   // marching with a slower group (T02)
     if (u.kind === 'camel' && this._aura?.caravan.length && this.auraNear('caravan', u, PERK.caravanR)) step *= PERK.caravan;
     const tileIdx = Math.floor(u.y) * this.W + Math.floor(u.x);
     step *= (1 / GROUND_COST[this.terrain[tileIdx]]) * dt;
@@ -438,8 +439,8 @@ export class Game {
     if (this.outcome || !this.alive(team)) return null;
     const mine = () => (it.ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
     switch (it.type) {
-      case 'move': return this.cmdMove(mine(), it.x, it.y);
-      case 'amove': return this.cmdAttackMove(mine(), it.x, it.y);
+      case 'move': return this.cmdMove(mine(), it.x, it.y, !!it.queue);
+      case 'amove': return this.cmdAttackMove(mine(), it.x, it.y, !!it.queue);
       case 'stance': return this.setStance(mine(), it.stance);
       case 'stop': mine().forEach((u) => { u.route = null; u.parked = true; u.task = { type: 'idle' }; u.path = []; }); return true;
       case 'route': return this.cmdRoute(mine(), this.byId.get(it.targetId), it.want);
@@ -509,20 +510,20 @@ export class Game {
       if (spies.length) this.cmdInfiltrate(spies, v);
       if (rest.length) this.cmdAttack(rest, v);
       const others = units.filter((u) => u.kind === 'serf' || u.kind === 'scholar');
-      if (others.length) this.cmdMove(others, x, y);
+      if (others.length) this.cmdMove(others, x, y, queue);
       return true;
     }
     const b = this.buildingAt(x, y);
     if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) return this.cmdAttack(units, b);
     if (b && b.team === team && b.built < 1) {
       const serfs = units.filter((u) => BUILDERS[u.kind]);
-      if (serfs.length) { this.cmdBuild(serfs, b, queue); const rest = units.filter((u) => !BUILDERS[u.kind]); if (rest.length) this.cmdMove(rest, x, y); return true; }
+      if (serfs.length) { this.cmdBuild(serfs, b, queue); const rest = units.filter((u) => !BUILDERS[u.kind]); if (rest.length) this.cmdMove(rest, x, y, queue); return true; }
     }
     if (b && b.team === team && b.kind === 'mine') {
       const serfs = units.filter((u) => u.kind === 'serf');
       if (serfs.length) this.cmdMine(serfs, b);
       const rest = units.filter((u) => u.kind !== 'serf');
-      if (rest.length) this.cmdMove(rest, x, y);
+      if (rest.length) this.cmdMove(rest, x, y, queue);
       return true;
     }
     if (b && b.team === team && b.built >= 1) {
@@ -530,7 +531,7 @@ export class Game {
       if (carriers.length) carriers.forEach((u) => { u.task = { type: 'return', resume: null }; this.setPathToEntity(u, b); });
       const rest = units.filter((u) => !carriers.includes(u));
       if (rest.length && GARRISON[b.kind]) this.cmdEnter(rest, b);
-      else if (rest.length) this.cmdMove(rest, x, y);
+      else if (rest.length) this.cmdMove(rest, x, y, queue);
       return true;
     }
     const node = this.nodeAt(x, y);
@@ -538,10 +539,10 @@ export class Game {
       const serfs = units.filter((u) => u.kind === 'serf');
       if (serfs.length) this.cmdGather(serfs, node);
       const rest = units.filter((u) => u.kind !== 'serf');
-      if (rest.length) this.cmdMove(rest, x, y);
+      if (rest.length) this.cmdMove(rest, x, y, queue);
       return true;
     }
-    return this.cmdMove(units, x, y);
+    return this.cmdMove(units, x, y, queue);
   }
 
   // ---- garrisons: right-click a friendly keep, tower, barracks or village to go inside --------------------
@@ -1017,29 +1018,59 @@ export class Game {
     for (const u of units) {
       if (!this.locked(u)) { free.push(u); continue; }
       const t = this.closestEnemy(u, SALLY.lockR + 1, u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y } : null) }; u.path = []; u.repathT = 0; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace } : null) }; u.path = []; u.repathT = 0; }
       if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is locked in combat and cannot break off.`, 'warn');
     }
     return free;
   }
-  cmdMove(units, x, y) {
+  cmdMove(units, x, y, queue = false) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-    units = this.freeOf(units);
+    const pace = this.paceOf(units);
+    // Shift: a march under way takes the spot as its next leg; the others go there now
+    units = this.freeOf(queue ? units.filter((u, i) => !this.queueLeg(u, x, y, i, false)) : units);
     units.forEach((u, i) => {
       const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)];
-      u.task = { type: 'move' }; u.sally = null; if (u.kind === 'camel') u.parked = true;   // sent by hand: it waits there until given work
+      u.task = { type: 'move', pace }; u.sally = null; if (u.kind === 'camel') u.parked = true;   // sent by hand: it waits there until given work
       this.setPath(u, x + ox * 0.9, y + oy * 0.9);
     });
     return true;
   }
+  // ---- waypoints and marching together (T02) -------------------------------------------------------------
+  // A group sent together keeps together: every member walks at the slowest one's pace (a lone unit, or a group all of one speed, has none).
+  paceOf(units) {
+    const sp = units.filter((u) => u.kind !== 'camel').map((u) => u.speed ?? UNITS[u.kind].speed);
+    return sp.length > 1 && Math.min(...sp) < Math.max(...sp) ? Math.min(...sp) : null;
+  }
+  // Shift-click adds a leg to a march, an attack-move, or the attack-move a fight broke into; up to WAYPOINTS legs wait their turn.
+  // Each member keeps its place in the group (the same spiral offset as a fresh order). False if the unit has no march to add to.
+  queueLeg(u, x, y, i, fight) {
+    const k = u.task.type, tail = k === 'move' || k === 'amove' ? u.task : k === 'attack' && u.task.then ? u.task.then : null;
+    if (!tail) return false;
+    const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)];
+    tail.next ||= [];
+    if (tail.next.length < WAYPOINTS) tail.next.push({ x: x + ox * 0.9, y: y + oy * 0.9, a: !!fight && this.fighter(u) });
+    return true;
+  }
+  // a leg is done: take the next one, if any (skipping any that cannot be reached). False when the march is over.
+  nextLeg(u) {
+    const q = u.task.next, pace = u.task.pace ?? null;
+    while (q?.length) {
+      const w = q.shift();
+      u.task = w.a && this.fighter(u) ? { type: 'amove', x: w.x, y: w.y, next: q, pace } : { type: 'move', next: q, pace };
+      if (w.a) u.aggroT = 0;
+      if (this.setPath(u, w.x, w.y)) return true;
+    }
+    return false;
+  }
   // Attack-move: march to (x, y), turning on any foe met on the way and walking on once it is dealt with. Those who do not fight just walk.
-  cmdAttackMove(units, x, y) {
+  cmdAttackMove(units, x, y, queue = false) {
     if (!units.length || !Number.isFinite(x) || !Number.isFinite(y)) return false;
-    units = this.freeOf(units);
+    const pace = this.paceOf(units);
+    units = this.freeOf(queue ? units.filter((u, i) => !this.queueLeg(u, x, y, i, true)) : units);
     units.forEach((u, i) => {
       const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)], tx = x + ox * 0.9, ty = y + oy * 0.9;
-      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); return; }
-      u.task = { type: 'amove', x: tx, y: ty }; u.sally = null; u.aggroT = 0;
+      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); if (pace) u.task.pace = pace; return; }
+      u.task = { type: 'amove', x: tx, y: ty, pace }; u.sally = null; u.aggroT = 0;
       this.setPath(u, tx, ty);
     });
     return true;
@@ -1061,7 +1092,7 @@ export class Game {
   // a fight is over (the foe is dead, gone or no longer a foe): walk on if it was met on an attack-move, else stand
   endFight(u) {
     const th = u.task.then;
-    if (th) { u.task = { type: 'amove', x: th.x, y: th.y }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y)) u.task = { type: 'idle' }; return; }
+    if (th) { u.task = { type: 'amove', x: th.x, y: th.y, next: th.next, pace: th.pace ?? null }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y) && !this.nextLeg(u)) u.task = { type: 'idle' }; return; }
     u.task = { type: 'idle' }; u.path = [];
   }
   doAttackMove(u, dt) {
@@ -1070,9 +1101,9 @@ export class Game {
     if (u.aggroT <= 0) {
       u.aggroT = 0.45;
       const t = this.closestEnemy(u, this.acquireR(u), u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y } }; u.path = []; u.repathT = 0; return; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace ?? null } }; u.path = []; u.repathT = 0; return; }
     }
-    if (!this.follow(u, dt)) u.task = { type: 'idle' };
+    if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle' };
   }
   cmdAttack(units, target) {
     if (!target || !units.length) return false;
@@ -2462,7 +2493,7 @@ export class Game {
       u.repathT -= dt;
       u.anim += dt * (u.path.length ? 8 : 2);
       switch (u.task.type) {
-        case 'move': if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt)) u.task = { type: 'idle' }; break;
+        case 'move': if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle' }; break;
         case 'attack': this.doAttack(u, s, dt); break;
         case 'amove': this.doAttackMove(u, dt); break;
         case 'gather': this.doGather(u, dt); break;

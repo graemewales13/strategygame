@@ -781,6 +781,52 @@ test('attack-move: fights every foe met on the way, then walks on to the spot; a
   assert.equal(g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: undefined, y: 4 }), false);
 });
 
+test('waypoints (T02): Shift-queued legs are walked in turn, attack-move legs fight on the way, and the queue survives a save', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; quiet(g);
+  const [x, y] = openBand(g, 26);
+  const u = g.addUnit('footman', PLAYER, x, y); u.stance = 'passive';
+  assert.equal(g.applyIntent({ type: 'context', team: PLAYER, ids: [u.id], x: x + 8, y }), true);
+  assert.equal(g.applyIntent({ type: 'context', team: PLAYER, ids: [u.id], x: x + 20, y, queue: true }), true);
+  assert.equal(g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: x + 4, y, queue: true }), true);
+  assert.equal(u.task.type, 'move'); assert.equal(u.task.next.length, 2, 'two legs wait');
+  // a save keeps the legs still to walk
+  const g2 = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(g2.byId.get(u.id).task.next.length, 2);
+  let far = 0; for (let t = 0; t < 30; t += 0.1) { g.tick(0.1); far = Math.max(far, u.x - x); }
+  assert.ok(far > 18, `he went out to the second leg (${far.toFixed(1)} tiles)`);
+  assert.ok(Math.abs(u.x - (x + 4)) < 1.5 && u.task.type === 'idle', `and came back to the third (${(u.x - x).toFixed(1)})`);
+  // a plain order (no Shift) clears the queue
+  g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: x + 12, y }); g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: x + 20, y, queue: true });
+  g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: x + 6, y }); assert.ok(!u.task.next?.length, 'a fresh order starts a fresh march');
+  // an attack-move leg queued after a plain march fights the foe met on it, then walks on
+  const h = mk(); h.rel[0][1] = h.rel[1][0] = 'war'; quiet(h);
+  const a = h.addUnit('footman', PLAYER, x, y); a.stance = 'passive';
+  const foe = h.addUnit('recruit', 1, x + 15, y); foe.stance = 'passive';
+  h.applyIntent({ type: 'move', team: PLAYER, ids: [a.id], x: x + 8, y });
+  h.applyIntent({ type: 'amove', team: PLAYER, ids: [a.id], x: x + 22, y, queue: true });
+  for (let t = 0; t < 2; t += 0.1) h.tick(0.1);
+  assert.ok(foe.hp > 0 && a.task.type === 'move', 'the first leg is a plain march');
+  for (let t = 0; t < 30; t += 0.1) h.tick(0.1);
+  assert.ok(foe.hp <= 0, 'the attack-move leg cut the foe down');
+  assert.ok(Math.hypot(a.x - (x + 22), a.y - y) < 2.5, 'and he walked on to its end');
+});
+
+test('marching together (T02): a mixed group keeps to its slowest member; a lone rider or a group of one kind does not wait', () => {
+  const g = mk(); quiet(g);
+  const [x, y] = openBand(g, 26);
+  const f = g.addUnit('footman', PLAYER, x, y), k = g.addUnit('knight', PLAYER, x, y + 0.9);
+  g.applyIntent({ type: 'move', team: PLAYER, ids: [f.id, k.id], x: x + 22, y });
+  assert.equal(k.task.pace, UNITS.footman.speed);
+  for (let t = 0; t < 4; t += 0.1) g.tick(0.1);
+  assert.ok(Math.abs((k.x - x) - (f.x - x)) < 1.2, `they keep together (footman ${(f.x - x).toFixed(1)}, knight ${(k.x - x).toFixed(1)})`);
+  const lone = g.addUnit('knight', PLAYER, x, y - 0.9);
+  g.applyIntent({ type: 'move', team: PLAYER, ids: [lone.id], x: x + 22, y: y - 1 });
+  assert.ok(!lone.task.pace, 'a lone rider rides at his own speed');
+  const two = [g.addUnit('knight', PLAYER, x, y), g.addUnit('knight', PLAYER, x, y)];
+  g.applyIntent({ type: 'amove', team: PLAYER, ids: two.map((u) => u.id), x: x + 22, y });
+  assert.ok(two.every((u) => !u.task.pace), 'riders together need no pace');
+});
+
 test('stances: rival houses stand their home guard defensive at peace and send their attacks aggressive', () => {
   const g = new Game({ seed: 8, houses: 3, ai: true }); const t = 1, seat = g.seatOf(t);
   const guard = [0, 1, 2].map((i) => g.addUnit('footman', t, seat.x + i, seat.y + 4));

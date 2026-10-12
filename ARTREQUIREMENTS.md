@@ -2,7 +2,7 @@
 
 What the game needs painted next, in priority order. Every request uses the **Seven Holds Art Instruction Set** for style, negatives, angle, lighting, QA and file naming. **For people, the character guide below overrides the instruction set** (its unit table, its kit colours and its old Vikings): what each role is for, how big it is drawn, and what each people actually wore.
 
-Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 delivered (Grok, 8b7d6f1). Updated 2026-10-12: priorities 5 to 7 delivered; three new peoples added (priority 8); the **character guide** written after the owner found soldiers that read as feeble civilians and every serf alike; priority 9 (soldiers) delivered; the owner then asked that **the folk of every people look like what they really wore: workers, soldiers and kings**. That is the open work below.
+Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 delivered (Grok, 8b7d6f1). Updated 2026-10-12: priorities 5 to 7 delivered; three new peoples added (priority 8); the **character guide** written after the owner found soldiers that read as feeble civilians and every serf alike; priority 9 (soldiers) delivered; the owner then asked that **the folk of every people look like what they really wore: workers, soldiers and kings**. That is the open work below. Later on 2026-10-12: the 24 priority-9 soldiers scaled down to game size (T-054); T02 waypoints need no painting.
 
 ## Paint next: new characters are needed
 
@@ -32,9 +32,10 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 6 | Raising and ruin states for every other building | **Delivered and wired** 2026-10-12 for the first five peoples. The new three: open (order 6) |
 | 7 | War-horn alarm mark | **Delivered and wired** 2026-10-12 |
 | 8 | Three new peoples: Vikings, Byzantines, Persians | **Part delivered** 2026-10-12: 18 buildings, footman, bowman, knight, ruler portraits. **Open**: serfs, king, recruit, scout, spy, scholar, the six armed variants, building sites and ruins (orders 1 to 4 and 6). `PARTIAL` in `js/art.js` keeps them on the shared art meanwhile |
-| 9 | Soldiers to the character guide: footman, bowman, knight (8 peoples, 24) | **Delivered and wired** 2026-10-12. They pass the lineup test |
+| 9 | Soldiers to the character guide: footman, bowman, knight (8 peoples, 24) | **Delivered and wired** 2026-10-12. They pass the lineup test. Delivered at about 800x1200 px (1 MB each, 24 MB in all, drawn 50-66 px high); scaled to 260 px on the long side by the daily review (1.5 MB in all, T-054) |
 | 10 | **Serfs per people** (8 peoples, 24) | **Requested: order 1.** Stand-in today: the first five peoples' `recruit` figure, swaying at work; the new three: the shared serf. Wired: the keys wait in `REPAINT` in `js/art.js` |
 | 11 | Spies easy to miss (Egyptians, Scots, Mongols) | **Requested: order 5.** Delivered spies are pale all over (ghost rule) |
+| 13 | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** The queued legs are drawn in code as dashed lines and small ground marks in the order-line colours (green march, red attack-move) |
 | 12 | **Kings on the field** (8) | **Requested: order 2.** Today: his people's knight with a drawn crown. Wired: `king` waits in `REPAINT` |
 
 ## How the game uses delivered art
@@ -64,6 +65,10 @@ node tools/art-smoke.cjs logs/art-smoke.png                                     
 ```
 
 Check that every corner pixel is transparent. Units must look right or straight out (the game mirrors them to walk left).
+
+**Size on delivery.** Paint at any size, but deliver people at about 256 px on the long side (kings 320) and buildings at 480: the game draws a footman 50 px high, so a 1200 px figure only makes the download twenty times bigger. Oversized files are scaled down on arrival (`--max` on `tools/chromakey.py`, or a Lanczos resize in premultiplied alpha for files already keyed).
+
+**Rose and violet are paint, not key.** The Byzantine rose (#A8366E) and the Mongol violet sit in the same hue band as the magenta key. Since T-054 `tools/defringe.py` only removes an opaque pixel that is close to #FF00FF itself, so it no longer eats rose cloth; still, check a Byzantine or Mongol drop by eye after defringing.
 
 `<faction>` in this game is one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`.
 
@@ -319,7 +324,7 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
 
 Matches now seat up to eight houses. Three new peoples sit beside the first five. Each needs the same kit the others have. Until it arrives, their buildings and soldiers are the shared art tinted in their colour.
 
-**Once a people's kit is in, delete `kit: false` from its entry in `FACTIONS` in `js/config.js`.** The game only asks for a people's files when that flag is gone, so missing files make no 404 noise.
+**Once a people's remaining files are in, take it out of `PARTIAL` in `js/art.js`** (one line). Until then the game asks only for its buildings and its three soldiers, so the missing files make no 404 noise. (The older `kit: false` flag in `FACTIONS` is no longer set for any people.)
 
 | People (folder) | House | Colour (cloth hue) | Look: paste into the Building and Human unit templates | Do not |
 | --- | --- | --- | --- | --- |

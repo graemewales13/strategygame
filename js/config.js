@@ -352,6 +352,8 @@ export const DEFEND_R = 5;   // idle soldiers this close to something under atta
 // start a fight (the 'no running from a fight' lock still holds). A player's order always overrides the stance. Attack-move fights its way to a spot.
 export const STANCES = ['aggressive', 'defensive', 'hold', 'passive'];
 export const STANCE = { leash: 8, label: { aggressive: 'Aggressive', defensive: 'Defensive', hold: 'Hold ground', passive: 'No attack' } };
+// Shift-queued waypoints (T02): how many legs a march can hold after the one it is walking
+export const WAYPOINTS = 12;
 export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11, lookR: 9 };
 // The royal line: a house has a king and `heirs` heirs. Each fallen king is followed by the next heir after `heir` seconds; when the last of the
 // line dies the house falls. A king whose house has lost its seat is a fugitive, seen by every house (`fugitiveSight`).

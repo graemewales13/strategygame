@@ -156,7 +156,7 @@ export class UI {
     }
     if (e.button !== 0) return;
     if (this.placing) { this.tryPlace(e.shiftKey); return; }
-    if (this.amove) { this.setAmove(false); this.command(sx, sy, wx, wy, false, true); return; }
+    if (this.amove) { if (!e.shiftKey) this.setAmove(false); this.command(sx, sy, wx, wy, e.shiftKey, true); return; }   // Shift keeps attack-move on to queue more legs
     this.drag = { sx, sy, shift: e.shiftKey };
   }
   onMove(e) {
@@ -228,7 +228,7 @@ export class UI {
     if ((eu && eu.team !== PLAYER) || (v && v.owner !== PLAYER) || (b && b.team !== PLAYER)) color = '#e0685a';
     else if (n) color = '#e2c15e';
     if (units.length && fight && !(eu && eu.team !== PLAYER) && !(v && v.owner !== PLAYER) && !(b && b.team !== PLAYER)) {
-      this.host.send({ type: 'amove', ids: units.map((u) => u.id), x: wx, y: wy });
+      this.host.send({ type: 'amove', ids: units.map((u) => u.id), x: wx, y: wy, queue: shift });
       this.pings.push({ x: wx, y: wy, age: 0, color: '#e0685a' });
       return;
     }
@@ -1045,7 +1045,8 @@ export class UI {
       if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
       if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
-      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { glyph: '⚔', name: 'Attack-move', sub: 'F', cls: this.amove ? 'on' : '', tip: '<b>Attack-move</b> (F, or Ctrl+right-click)<br>Click the ground: they march there and fight every foe they meet on the way.' }) : ''}${this.captainBtn(us)}</div>`;
+      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { glyph: '⚔', name: 'Attack-move', sub: 'F', cls: this.amove ? 'on' : '', tip: '<b>Attack-move</b> (F, or Ctrl+right-click)<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${this.captainBtn(us)}</div>`;
+      if (us.some((u) => g.fighter(u))) html += `<div class="hint"><b>Shift</b>+right-click adds waypoints to a march; a group keeps to its slowest member's pace.</div>`;
       if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
       if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));
       if (us.some((u) => u.kind === 'recruit')) html += `<div class="ctitle">Role</div><div class="cgrid c4">${this.btn('spy', { glyph: GLYPH.spy, art: 'spy', name: 'Become spy', sub: SPY_FEE + 'c', off: g.players[PLAYER].gold < SPY_FEE, tip: `<b>Become a spy</b><br>${SPY_FEE} coin. Spies right-click an independent or rival village to sway its loyalty (and can be caught).` })}</div><div class="hint">Or right-click a keep to garrison, then drill into a soldier.</div>`;
