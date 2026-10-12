@@ -22,7 +22,9 @@ const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fo
 const VWIDE = { '1tile': 3.4 };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
 const RUIN_LIFE = 30;   // seconds a fallen building's painted ruin lies where it stood, fading over the last third
-const USCALE = { recruit: 44, serf: 40, scout: 46, footman: 45, bowman: 45, knight: 58, king: 62, spy: 46, scholar: 48 }; // drawn height at zoom 1
+// drawn height at zoom 1. The order says who matters in a fight: serfs smallest, levies and folk of the house next, soldiers a head taller,
+// riders and the king tallest (see the character guide in ARTREQUIREMENTS.md)
+const USCALE = { serf: 34, recruit: 40, scholar: 42, spy: 43, scout: 46, bowman: 49, footman: 50, knight: 66, king: 68 };
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
   hamlet: [['village_cluster', 0, 0.35, 3.9]],
@@ -686,7 +688,11 @@ export class Renderer {
     let rightArt = false, full = false;   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
     if (u.kind === 'ram') { const s2 = SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
     else if (u.kind === 'camel') { const fac = HOUSES[u.team].faction, s2 = fac === 'mongols' ? SIMG.bactrian : fac === 'romans' || fac === 'vikings' || fac === 'byzantines' ? SIMG.donkey : SIMG.dromedary; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }
-    else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light); w = (c ? c.width / c.height : 1) * 40 * z; }
+    else if (u.kind === 'serf') {   // the house's own serf when its people has one painted (idle, two work frames), else the common one
+      const fu = FUNIT[HOUSES[u.team]?.faction], key = working ? ((Math.floor(t * 2 + u.id) & 1) ? 'serf_work2' : 'serf_work1') : 'serf', own = fu?.[key] || fu?.serf;
+      if (own) { c = own; rightArt = true; full = true; } else c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light);
+      w = (c ? c.width / c.height : 1) * USCALE.serf * z;
+    }
     else {
       const fu = FUNIT[HOUSES[u.team]?.faction], ak = armedKey(u), armed = (ak && fu?.[ak]) || fu?.[u.kind];   // painted with the Armoury kit he carries, or his people's own plain figure
       if (armed) { c = armed; rightArt = true; full = true; } else c = tinted(st.art || u.kind, u.team, 'trim', false, light);

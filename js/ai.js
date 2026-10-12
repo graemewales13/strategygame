@@ -245,6 +245,7 @@ function think(game, team, p) {
     if (v) { const go = readyArmy.filter((u) => u.kind !== 'spy'); game.setStance(go, 'aggressive'); game.cmdAttack(go, v); p.planVillage = v.id; }
   }
   courtVillages(game, team, p, seat, army, need, t);
+  scoutAbroad(game, team, p, seat, army, t);
 
   // 6. war is chosen, not scheduled: a house fights the one it is at war with, or the one its stance says it means war on (threat, temptation,
   // grudge, less ties: see stance() in diplomacy.js). The difficulty's warAfter (x0.6) is only the earliest a house will start a war of its own.
@@ -319,7 +320,7 @@ export function courtVillages(game, team, p, seat, army, need, t) {
     return;
   }
   const posts = keeps.filter((k) => k.built >= 1 && wanted.some((v) => Math.hypot(k.x - v.x, k.y - v.y) < 20));
-  let free = army.filter((u) => fighter(u) && u.task.type === 'idle' && !u.inside);
+  let free = army.filter((u) => fighter(u) && u.task.type === 'idle' && !u.inside && u.id !== p.scoutId);
   free = free.slice(0, Math.max(0, free.length - need));   // keep a field force ready to march
   for (const k of posts) {
     const sitting = k.garrison.filter((id) => fighter(game.byId.get(id))).length + game.units.filter((u) => u.team === team && u.task.type === 'enter' && u.task.targetId === k.id).length;
@@ -336,6 +337,31 @@ export function courtVillages(game, team, p, seat, army, need, t) {
     if (room <= 0) continue;
     game.cmdEnter(free.sort((x, y) => Math.hypot(x.x - b.x, x.y - b.y) - Math.hypot(y.x - b.x, y.y - b.y)).splice(0, room), b);
   }
+}
+// A house that has not met every rival sends one rider out to look. He tours the places a hall can stand (the corners, the edge midpoints
+// and the middle: see createMap), nearest first, until every living house is met; then he rejoins the army. Without him a quiet house on
+// a large map is never found, and so is never treated with or fought.
+export function scoutAbroad(game, team, p, seat, army, t) {
+  const unmet = game.players.some((q) => q.alive && q.team !== team && !game.known[team][q.team]);
+  let sc = p.scoutId != null ? game.byId.get(p.scoutId) : null;
+  if (sc && (sc.hp <= 0 || sc.team !== team)) sc = null;
+  if (!unmet || t < 150) { if (sc) { if (sc.task.type === 'move') sc.task = { type: 'idle' }; game.setStance([sc], 'aggressive'); } p.scoutId = null; return; }
+  if (!sc) {
+    const pick = (k) => army.filter((u) => u.kind === k && !u.inside && u.task.type === 'idle').sort((a, b) => UNITS[b.kind].speed - UNITS[a.kind].speed)[0];
+    sc = pick('knight') || pick('bowman') || pick('footman'); if (!sc) return;
+    p.scoutId = sc.id; p.scoutAt = null;
+  }
+  if (sc.inside || sc.task.type === 'attack') return;   // (busy: fighting or sheltering; he goes on afterwards)
+  const W = game.W, H = game.H, F = [[0.14, 0.14], [0.84, 0.84], [0.84, 0.14], [0.14, 0.84], [0.49, 0.12], [0.49, 0.86], [0.12, 0.49], [0.86, 0.49], [0.5, 0.5]];
+  p.scoutSeen ||= [];
+  const at = p.scoutAt != null ? F[p.scoutAt] : null;
+  if (at && sc.task.type === 'move' && Math.hypot(sc.x - at[0] * W, sc.y - at[1] * H) > 6) return;   // still riding there
+  if (p.scoutAt != null) p.scoutSeen.push(p.scoutAt);
+  let left = F.map((f, i) => i).filter((i) => !p.scoutSeen.includes(i) && Math.hypot(F[i][0] * W - seat.x, F[i][1] * H - seat.y) > 24);
+  if (!left.length) { p.scoutSeen = []; left = F.map((f, i) => i).filter((i) => Math.hypot(F[i][0] * W - seat.x, F[i][1] * H - seat.y) > 24); }
+  const next = left.sort((a, b) => Math.hypot(F[a][0] * W - sc.x, F[a][1] * H - sc.y) - Math.hypot(F[b][0] * W - sc.x, F[b][1] * H - sc.y))[0];
+  if (next == null) return;
+  p.scoutAt = next; game.setStance([sc], 'passive'); game.cmdMove([sc], Math.round(F[next][0] * W), Math.round(F[next][1] * H));
 }
 const HIRE_WORTH = { veteran: 2, keen: 1.6, brawny: 1.5, fleet: 1, green: 0.6 };
 // nearest unmined deposit inside our territory (or beside a village of ours), preferring ores we do not already dig

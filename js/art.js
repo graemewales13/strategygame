@@ -21,7 +21,10 @@ const STATED = ['armoury', 'barracks', 'keep', 'market', 'mine', 'cottage', 'far
 export const FUNIT = {};
 export const ARMED_KEYS = ['footman_spear', 'footman_sword', 'footman_heavy', 'bowman_longbow', 'bowman_crossbow', 'knight_lance'];
 // the plain soldiers repainted per people in the same full-length style (ARTREQUIREMENTS priority 5); used when present, else the old shared art
-export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar'];
+export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'serf_work1', 'serf_work2'];
+// set aside until repainted (owner, 2026-10-12: the plain soldiers read as unarmed civilians, smaller-looking than serfs). The common
+// armoured figures, dyed in the people's colour, stand in. Drop a key from here once its repaint is in (ARTREQUIREMENTS priority 9).
+const REPAINT = new Set(['footman', 'bowman', 'knight']);
 // the variant a soldier's kit calls for, or null for the plain unit: heavy armour shows first on a footman, then the weapon
 export function armedKey(u) {
   const w = u.gear?.weapon, a = u.gear?.armour;
@@ -52,7 +55,7 @@ export function loadArt() {
     FIMG[f] = {}; FUNIT[f] = {};
     for (const k of FACTION_BUILDINGS) one(FIMG[f], k, `assets/factions/${f}/buildings/${k}.png`);
     for (const k of STATED) for (const st of ['build', 'ruin']) one(FIMG[f], `${k}_${st}`, `assets/factions/${f}/buildings/${k}_${st}.png`);
-    for (const k of [...ARMED_KEYS, ...PLAIN_KEYS]) one(FUNIT[f], k, `assets/factions/${f}/units/${k}.png`);
+    for (const k of [...ARMED_KEYS, ...PLAIN_KEYS].filter((x) => !REPAINT.has(x))) one(FUNIT[f], k, `assets/factions/${f}/units/${k}.png`);
   }
   for (const [grp, keys] of Object.entries(UI_KEYS)) for (const k of keys) one(UIART[grp], k, `assets/shared/ui/${grp}/${k}.png`);
   for (const sz of ['1tile']) for (const k of VILLAGE_ART_KEYS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { VIMG[sz][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/${sz}/${k}.png`; }));
