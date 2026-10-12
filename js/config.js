@@ -10,10 +10,7 @@ export const MAP_W = ENV_MAP || SAVED_SIZE || 320;
 export const MAP_H = MAP_W;
 export const AREA_MUL = (MAP_W * MAP_H) / (112 * 112);   // the board is this many times the old 112x112 valley (about 8x)
 export const VISION_MUL = Math.sqrt(8);               // sight radii grow by this, so the ground revealed as you travel is 8x larger
-// The seat of the person at THIS screen. Only what is shown (panels, logs, fog drawn, sounds) may depend on it; the rules of the
-// simulation must use game.humans / game.isHuman(team), or networked copies of one match would drift apart (see js/net.js).
-export let PLAYER = 0;
-export function setLocalPlayer(team) { PLAYER = team | 0; }
+export const PLAYER = 0;
 export const MIN_HOUSES = 3;
 export const MAX_HOUSES = 5;
 export const DEFAULT_HOUSES = 4;

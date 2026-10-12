@@ -126,7 +126,6 @@ js/
   map.js          seeded valley: river with fords, ponds, timber, berries, gold, villages
   entities.js     unit / building / village factories and geometry
   game.js         the host: ONE Game object ticks all state; intents in, state out
-  net.js          LocalHost (single player) and LockstepClient (online), the protocol, stateHash
   ai.js           rival houses (mine and market first, then barracks, tavern, keep ...; each people's doctrine, war and peace by stance, science)
   net.js          intent/snapshot seam: LocalHost now, SocketClient stub for later
   render.js       isometric (2:1) canvas drawing only; reads state, never changes it
@@ -141,30 +140,11 @@ assets/           screenshots, art sheets, early concept boards
 legacy/python/    the first pygame prototype, kept for reference (not the playable build)
 ```
 
-## Online multiplayer (experimental groundwork)
+## Multiplayer note (not shipped yet)
 
-Two to five people can play one match over the network. Empty seats are played by the AI.
+The structure is host-authoritative. `Game` is the only thing that mutates state; it has no DOM access and runs under Node. Every player command is an *intent* (`move`, `attack`, `gather`, `place`, `train`, `pillage`, `infiltrate`, `trade`, `relation`, `respond`, `gift`, `demand`, `askwar`, `askaid`, `rally`, `context` ...), sent with `host.send(intent)`. Today `LocalHost` applies it to an in-process `Game`.
 
-1. On one machine, run `node relay.js` (port 8080; `node relay.js 9000` for another). It serves the game, like `serve.js`, and relays online matches at `/ws`. No installs are needed.
-2. Everyone opens `http://<that machine>:8080/?mp=<room>&name=<your name>` with the same room name. On another network, the relay needs a public address or a tunnel. Add `&relay=wss://...` to use a relay elsewhere.
-3. The first to arrive hosts. The host picks houses (3 to 5) and difficulty in the lobby panel and presses **Start the match**. Each person plays their own house; empty seats are AI.
-
-**How it works: lockstep, the way most RTS games do it.**
-- Every browser runs the same deterministic simulation; only orders cross the network.
-- The relay keeps a turn clock (10 turns a second). It stamps each order with the sender's seat, so nobody can order another player's people, and sends every turn to everyone.
-- Each browser applies a turn's orders, then steps the game two fixed ticks.
-- Every second, each browser sends a fingerprint of its state. If they ever differ, everyone is told the match has fallen out of step.
-- A player who drops reloads the page and rejoins the same seat; the match replays up to the present.
-- A house whose last king dies is out but can watch. The match ends when one house is left, or when every human's line is gone.
-
-**Not yet** (roadmap T15):
-- Pause and speed are off online.
-- The lobby is a URL plus a small panel, not a menu screen.
-- Rejoining replays the whole match, which is slow in a long game.
-- No chat or host migration.
-- Nothing is matched over the internet: you run or share the relay.
-
-Protocol and message shapes: `js/net.js`. Server: `relay.js`. Tests: `node test/net.test.js` (two clients over real WebSockets: identical state, order stamping, rejoin, desync) and `node tools/mp-smoke.cjs` (two browsers, with the relay on 8124).
+To go online: run a `Game` on a server, let each client's `SocketClient.send` forward intents tagged with its team, apply them with `game.applyIntent`, tick on the server, and broadcast `game.snapshot()` (compact JSON of players, units, buildings, villages and relations) a few times a second. Clients render the latest snapshot instead of the local `Game`. There is no lockstep and no prediction yet; the AI would simply run on the host for empty seats.
 
 ## Not in this slice
 

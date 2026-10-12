@@ -15,7 +15,6 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 5 | Plain soldiers repainted per people, full length | **Requested** (below). Picked up automatically when delivered |
 | 6 | Raising and ruin states for every other building | **Requested** (below). Needs one line of wiring each |
 | 7 | War-horn alarm mark for the "under attack" warning | **Requested** (below). Already wired: shown in the warning as soon as the file exists; until then the warning is text only |
-| 8 | Online play: lobby, seat banners, connection marks | **Requested** (below). The lobby is a plain panel for now |
 
 ## How the game uses delivered art
 
@@ -179,18 +178,6 @@ ALARM MARK, a curved ox-horn war horn with a brass mouthpiece and bands and a pl
 ```
 
 Deliver: `assets/shared/ui/marks/alarm.png` (it is shown in the "...is under attack!" warning at 22 px; it must read on a dark red-bordered panel).
-## Priority 8: online play (new 2026-10-11)
-
-Online matches now exist as groundwork: a small lobby panel over the menu, and a status line during play. Both use the existing parchment-and-brass panel style, so nothing breaks without art. To make them feel part of the game:
-
-| Asset | Count | Size and path | Notes |
-|---|---|---|---|
-| **Lobby backdrop** | 1 | 1280x800, `assets/menu/lobby.jpg` | Painted like the splash and menu: a great hall's long table with five empty chairs, each behind its house's banner. No text; the seat list is drawn over the left third |
-| **Seat banners** | 5 | 160x320 each, `assets/shared/ui/seats/<faction>.png` | A hanging banner per people in its accent colour with its device. Shown beside each player's name in the lobby, dimmed when the seat is empty (AI) |
-| **Connection marks** | 3 | 64x64, `assets/shared/ui/net/<key>.png` | `online` (a lit beacon), `away` (a doused beacon), `desync` (a cracked seal). Used in the lobby and the status line |
-| **Watching mark** | 1 | 64x64, `assets/shared/ui/net/watch.png` | An eye over a crenellation, for spectators |
-
-Prompt (Goods icon template) for the marks: "Small painted icon of {a lit signal beacon on a stone post / the same beacon doused, cold smoke / a wax seal cracked in two / an eye carved over a battlement}, centred, readable at 32 px, soft shadow, transparent background, 128x128 px, same painterly style, no outline."
 
 ## Gaps in the instruction set itself
 

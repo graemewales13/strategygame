@@ -126,7 +126,7 @@ export function shift(g, a, b, d, why) {
 export function drift(g) {
   const top = g.players.filter((p) => p.alive).sort((x, y) => strength(g, y.team) - strength(g, x.team))[0]?.team;
   for (const A of g.players) {
-    if (!A.alive || g.isHuman(A.team)) continue;
+    if (!A.alive || A.team === PLAYER) continue;
     const a = A.team, pr = pers(g, a);
     for (const B of g.players) {
       if (!B.alive || B.team === a || !g.known[a][B.team]) continue;
@@ -290,7 +290,7 @@ export function pressWar(g, team, b) {
   if (g.rel[team][b] === 'war') return true;
   const p = g.players[team], s = stance(g, team, b), top = s.reasons.find((r) => r.kind !== 'ties' && r.kind !== 'weariness');
   const text = top ? top.text : `${nameOf(g, b)} stands in our way`;
-  if (!g.isHuman(b)) {
+  if (b !== PLAYER) {
     g.setRelation(team, b, 'war');
     record(g, team, b, 'warning', `${leaderName(g, team)} of ${nameOf(g, team)} declares war on ${nameOf(g, b)}: ${text}.`, 'note');
     return true;
@@ -319,12 +319,12 @@ export function deliberate(g, team) {
   const p = g.players[team], pr = pers(g, team);
   if (!p.alive || g.time < 90) return;
   const myS = strength(g, team);
-  const waiting = 0;
-  let to = -1; const canWrite = () => g.offers.filter((o) => o.to === to).length < DIPLO.maxLetters && g.time - (p.lastLetter ?? -1e9) >= DIPLO.letterGap;   // (to: the person being written to)
+  const waiting = g.offers.filter((o) => o.to === PLAYER).length;
+  const canWrite = () => g.offers.filter((o) => o.to === PLAYER).length < DIPLO.maxLetters && g.time - (p.lastLetter ?? -1e9) >= DIPLO.letterGap;
   const wrote = () => { p.lastLetter = g.time; };
   for (const q of g.players) {
     if (!q.alive || q.team === team || !g.known[team][q.team]) continue;
-    const b = q.team, rel = g.rel[team][b], o = op(g, team, b), human = g.isHuman(b); to = b;
+    const b = q.team, rel = g.rel[team][b], o = op(g, team, b), human = b === PLAYER;
     // allies take up each other's wars
     if (rel === 'alliance') {
       for (const c of enemiesOf(g, b)) {
@@ -341,7 +341,7 @@ export function deliberate(g, team) {
     if (rel === 'war' && g.parleyIn(team, b) <= 0) {
       const sue = stance(g, team, b).peace >= 0.55;
       if (sue && cooled(g, team, b, 'alliance')) {
-        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === b)) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'peace', { state: 'peace' }); wrote(); } }
+        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER)) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'peace', { state: 'peace' }); wrote(); } }
         else if (judge(g, 'peace', team, b).ok && g.willMakePeace(b, team)) { stamp(g, team, b, 'alliance'); g.setRelation(team, b, 'peace'); }
       }
       continue;
@@ -352,7 +352,7 @@ export function deliberate(g, team) {
       const useful = sharedEnemies(g, team, b).length || commonThreat || (enemiesOf(g, team).length && strength(g, b) > myS * 0.5) || (human && pr.honor > 0.6);
       if (!human && alliesOf(g, team).length >= 1) continue;
       if (useful) {
-        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === b && x.state === 'alliance')) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'alliance', { state: 'alliance' }); wrote(); } }
+        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER && x.state === 'alliance')) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'alliance', { state: 'alliance' }); wrote(); } }
         else { stamp(g, team, b, 'alliance'); if (judge(g, 'alliance', team, b).ok && judge(g, 'alliance', b, team).ok) exec(g, 'alliance', team, b); }
       }
     }

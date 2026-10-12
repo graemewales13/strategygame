@@ -1248,8 +1248,7 @@ export class UI {
   showEnd() {
     this.endShown = true;
     const o = this.game.outcome;
-    const won = o.winner != null ? o.winner === PLAYER : o.result === 'victory';   // (a networked match: each screen judges by its own seat)
-    $('endTitle').textContent = won ? 'The valley is yours.' : 'Your house has fallen.';
+    $('endTitle').textContent = o.result === 'victory' ? 'The valley is yours.' : 'Your house has fallen.';
     $('endText').textContent = o.reason + ` (${Math.floor(this.game.time / 60)} min ${Math.floor(this.game.time % 60)} s)`;
     $('end').classList.remove('hidden');
   }
