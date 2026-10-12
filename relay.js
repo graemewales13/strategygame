@@ -11,8 +11,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
-// limits for a public server: rooms, people per room (five seats and a few watchers), message size (a learned playbook is the largest)
-const MAX_ROOMS = 500, MAX_MEMBERS = 8, MAX_MESSAGE = 1 << 20, PING_MS = 25000, DEAD_MS = 70000;
 const MAX_SEATS = 5, MAX_INTENTS_PER_TURN = 40, CONFIG_KEYS = ['seed', 'houses', 'diff', 'people', 'size', 'fog', 'playbook'];
 
 // ---- a minimal WebSocket (RFC 6455): text frames, ping/pong, close; client frames are masked, server frames are not -------------
@@ -22,16 +20,16 @@ function wsAccept(req, socket, onOpen) {
   const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
   socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
   socket.setNoDelay(true);
-  const conn = { open: true, seen: Date.now(), socket, onmessage: () => {}, onclose: () => {}, send: (text) => sendFrame(socket, 0x1, Buffer.from(text)), ping: () => sendFrame(socket, 0x9, Buffer.alloc(0)), close: () => { if (conn.open) { sendFrame(socket, 0x8, Buffer.alloc(0)); socket.end(); } } };
+  const conn = { open: true, onmessage: () => {}, onclose: () => {}, send: (text) => sendFrame(socket, 0x1, Buffer.from(text)), close: () => { if (conn.open) { sendFrame(socket, 0x8, Buffer.alloc(0)); socket.end(); } } };
   let buf = Buffer.alloc(0), parts = [];
   socket.on('data', (chunk) => {
-    buf = Buffer.concat([buf, chunk]); conn.seen = Date.now();
+    buf = Buffer.concat([buf, chunk]);
     for (;;) {
       if (buf.length < 2) return;
       const fin = buf[0] & 0x80, op = buf[0] & 0x0f, masked = buf[1] & 0x80; let len = buf[1] & 0x7f, at = 2;
       if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); at = 4; }
       else if (len === 127) { if (buf.length < 10) return; len = Number(buf.readBigUInt64BE(2)); at = 10; }
-      if (len > MAX_MESSAGE) { socket.destroy(); return; }   // nobody sends a megabyte of orders
+      if (len > 1 << 22) { socket.destroy(); return; }   // nobody sends 4 MB of orders
       const need = at + (masked ? 4 : 0) + len; if (buf.length < need) return;
       let data = buf.subarray(at + (masked ? 4 : 0), need);
       if (masked) { const m = buf.subarray(at, at + 4); data = Buffer.from(data); for (let i = 0; i < data.length; i++) data[i] ^= m[i & 3]; }
@@ -53,10 +51,7 @@ function sendFrame(socket, op, data) {
 
 // ---- rooms -----------------------------------------------------------------------------------------------------------------------
 export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log = console.log, awayMs = 30000 } = {}) {
-  const rooms = new Map(), conns = new Set();
-  // keep-alive: load balancers and proxies (AWS ALB, CloudFront, nginx) close a connection that is quiet for a minute, and a lobby is quiet.
-  // Ping every PING_MS (browsers answer with a pong by themselves); a connection silent for DEAD_MS is dropped so its seat can be held.
-  const pinger = setInterval(() => { const now = Date.now(); for (const c of conns) { if (now - c.seen > DEAD_MS) { c.socket.destroy(); conns.delete(c); } else c.ping(); } }, PING_MS);
+  const rooms = new Map();
   const roomOf = (code) => {
     let r = rooms.get(code);
     if (!r) rooms.set(code, (r = { code, members: [], build: null, config: { houses: 4, diff: 'mid', people: 'random', fog: true }, started: false, turn: 0, pending: [], log: [], hashes: new Map(), timer: null }));
@@ -78,18 +73,15 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
   const close = (r) => { clearInterval(r.timer); for (const m of r.members) clearTimeout(m.awayTimer); rooms.delete(r.code); log(`[relay] room ${r.code} closed`); };
 
   function onConnection(conn) {
-    conns.add(conn);
     let me = null, room = null;
     conn.onmessage = (text) => {
       let msg; try { msg = JSON.parse(text); } catch { return; }
       if (!me) {
         if (msg.t !== 'hello' || typeof msg.room !== 'string' || !msg.room.trim()) return conn.send(JSON.stringify({ t: 'error', msg: 'Say hello with a room name first.' }));
-        if (!rooms.has(msg.room.trim().slice(0, 32)) && rooms.size >= MAX_ROOMS) return conn.send(JSON.stringify({ t: 'error', msg: 'The server is full. Try again later.' }));
         room = roomOf(msg.room.trim().slice(0, 32));
         if (room.build && msg.build && room.build !== msg.build) return conn.send(JSON.stringify({ t: 'error', msg: `This room runs build ${room.build}; you have ${msg.build}. Reload the page so both match.` }));
         room.build ||= msg.build || null;
         me = msg.token && room.members.find((m) => m.token === msg.token);   // a rejoin keeps its seat
-        if (!me && !msg.token && room.members.length >= MAX_MEMBERS) return conn.send(JSON.stringify({ t: 'error', msg: 'That room is full.' }));
         if (me) { try { me.conn?.close(); } catch {} me.conn = conn; clearTimeout(me.awayTimer); if (me.away) { me.away = false; room.pending.push({ type: 'seat', relay: true, seat: me.seat, team: me.seat, ai: false }); } }
         else {
           const taken = new Set(room.members.map((m) => m.seat));
@@ -141,7 +133,6 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
       }
     };
     conn.onclose = () => {
-      conns.delete(conn);
       if (!room || !me) return;
       if (room.started && me.seat >= 0 && me.conn === conn) {   // gone a while mid-match: the AI holds the house (as an order, so every copy switches together)
         clearTimeout(me.awayTimer);
@@ -153,7 +144,6 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
   }
 
   const server = http.createServer(async (req, res) => {
-    if (req.url === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain' }).end(`ok rooms=${rooms.size} connections=${conns.size}`); return; }   // for a load balancer's health check
     if (!serveFiles) { res.writeHead(404).end(); return; }
     try {
       let p = decodeURIComponent(new URL(req.url, 'http://x').pathname); if (p.endsWith('/')) p += 'index.html';
@@ -162,18 +152,12 @@ export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log 
     } catch { res.writeHead(404).end('not found'); }
   });
   server.on('upgrade', (req, socket) => { if (new URL(req.url, 'http://x').pathname === '/ws') wsAccept(req, socket, onConnection); else socket.destroy(); });
-  return new Promise((resolve) => server.listen(port, () => resolve({ server, rooms, port: server.address().port, close: () => { clearInterval(pinger); for (const r of rooms.values()) { clearInterval(r.timer); for (const m of r.members) clearTimeout(m.awayTimer); } for (const c of conns) c.socket.destroy(); server.close(); } })));
+  return new Promise((resolve) => server.listen(port, () => resolve({ server, rooms, port: server.address().port, close: () => { for (const r of rooms.values()) clearInterval(r.timer); server.close(); } })));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv[1])) {
-  const port = +process.argv[2] || +process.env.PORT || 8080;   // hosting services pass the port in PORT
-  createRelay({ port }).then(({ port: p, rooms, close }) => {
-    const stop = (sig) => {   // a deploy or restart: tell everyone, then go (matches in memory end here)
-      console.log(`[relay] ${sig}: closing ${rooms.size} room(s)`);
-      for (const r of rooms.values()) for (const m of r.members) if (m.conn?.open) m.conn.send(JSON.stringify({ t: 'error', msg: 'The server is restarting. Reload in a minute to start a new match.' }));
-      setTimeout(() => { close(); process.exit(0); }, 300);
-    };
-    process.on('SIGTERM', () => stop('SIGTERM')); process.on('SIGINT', () => stop('SIGINT'));
+  const port = +process.argv[2] || 8080;
+  createRelay({ port }).then(({ port: p }) => {
     console.log(`Auld World relay on http://localhost:${p}  (online: open http://<this machine>:${p}/?mp=ROOM&name=YOU ; Ctrl+C to stop)`);
   });
 }
