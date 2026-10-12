@@ -21,12 +21,12 @@ const STATED = ['armoury', 'barracks', 'keep', 'market', 'mine', 'cottage', 'far
 export const FUNIT = {};
 export const ARMED_KEYS = ['footman_spear', 'footman_sword', 'footman_heavy', 'bowman_longbow', 'bowman_crossbow', 'knight_lance'];
 // the plain soldiers repainted per people in the same full-length style (ARTREQUIREMENTS priority 5); used when present, else the old shared art
-export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'serf_work1', 'serf_work2'];
+export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'serf_work1', 'serf_work2', 'king'];
 // the plain soldiers repainted per people (priority 9): helmet, armour, a shield or a drawn bow, the people's colour on the cloth.
 // REPAINT is empty: the set-aside civilian figures have been replaced. Drop a key back in here only if a repaint must be hidden again.
-// The serfs of each people (priority 10) are wired but not painted yet: they stay in REPAINT so the game does not ask for missing files.
-// Take them out once serf.png, serf_work1.png and serf_work2.png are in for the first five peoples.
-const REPAINT = new Set(['serf', 'serf_work1', 'serf_work2']);
+// Wired but not painted yet, so not asked for (no 404s): each people's serfs (priority 10) and king on the field (priority 12).
+// Take a key out once its files are in for the first five peoples.
+const REPAINT = new Set(['serf', 'serf_work1', 'serf_work2', 'king']);
 // Vikings, Byzantines and Persians have their buildings and their three soldiers. They do not yet have raising
 // and ruin states, Armoury variants, serfs or the other roles, so those files are not requested (the shared art stands in).
 const PARTIAL = new Set(['vikings', 'byzantines', 'persians']);

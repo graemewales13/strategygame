@@ -18,6 +18,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 8 | Three new peoples: Vikings, Byzantines, Persians. Full kits, ruler portraits | **Part delivered** 2026-10-12: the 18 complete buildings, the three soldiers, and the ruler portraits (`jarl`, `basileus`, `shahanshah`). Still open: raising and ruin states, the six armed variants, serfs, and recruit, scout, spy, scholar. `PARTIAL` in `js/art.js` keeps those on the shared art so nothing 404s |
 | 9 | Soldiers repainted to the character guide: footman, bowman, knight per people (8 peoples, 24) | **Delivered** 2026-10-12. `REPAINT` is empty; these figures replace the stand-ins |
 | 10 | Serfs per people: idle and two work frames (8 peoples, 24) | **Requested** 2026-10-12 (below). **The most visible gap left**: every house still works the one shared serf, who is as bulky as a soldier. Wired; the three keys wait in `REPAINT` in `js/art.js` (so nothing 404s) and come out when the files land |
+| 12 | Kings on the field, one per people (8) | **Requested** 2026-10-12 (below). Today a king is his people's knight with a drawn crown |
 | 11 | Spies who are easy to miss (Egyptians, Scots, Mongols) | **Requested** 2026-10-12 (below). The delivered spies are pale all over and fail the ghost rule |
 
 ## How the game uses delivered art
@@ -105,18 +106,22 @@ Per-people figures are drawn as painted, **not re-dyed**, so the colour must be 
 | `scholar` | studies at the Academy | robes of the people's learned class (scribe, magistrate, monk, rune-carver, shaman, mobad, logothete), book, scroll or instrument | a weapon; armour |
 | `king` | the house: when the line ends, the house falls | crown or mark of rule, the richest armour, house colour boldest, on foot or mounted as the people's kings were | the same figure as a knight |
 
-### What each people's working folk look like (serfs)
+### How each people really looked: workers, soldiers, kings
 
-| People | Serf |
-|---|---|
-| Egyptians | fellah in a linen kilt, bare chest, reed basket or copper hoe |
-| Romans | colonus in a short belted tunic and straw petasos hat, iron pick or mattock |
-| Scots | crofter in a belted plaid over a leine, peat spade or creel basket |
-| British | villein in a hooded tunic and hose, felling axe or sack |
-| Mongols | herder in a deel and felt cap, felt bundle or hand axe |
-| Vikings | thrall in undyed wool with an iron neck-ring, wood axe or sack |
-| Byzantines | paroikos in a long tunic and cap, mattock or wine jar |
-| Persians | farmer in a quilted coat and cap, spade with a water channel at his feet |
+The owner wants each house's folk to look like the people they are: what they **actually wore**, in their own period. Not a costume-film idea of them. Each people is fixed to one period. Paint every tier from it, and keep the same people recognisable from the field hand to the king. Where an old brief or a delivered figure disagrees with this table, this table wins.
+
+| People (period) | Workers (`serf`, also `recruit` in his own clothes with a tool or club) | Soldiers (`footman`, `bowman`, `knight`: see priority 9 for each) | King (`king`, field figure; the portrait is already painted) |
+|---|---|---|---|
+| **Egyptians** (New Kingdom, about 1300 BC) | men bare-chested in a short white linen kilt (shendyt) or loincloth, shaven or close-cropped head, barefoot; women in a plain linen sheath dress; wooden hoe, copper sickle, reed baskets on a shoulder yoke | linen-and-leather caps, quilted linen or bronze-scale corselets, tall round-topped hide shields, khopesh and spear; archers with composite bows; chariots for the horse | Pharaoh in the blue war crown (khepresh), broad bead collar, pleated gold-edged kilt, standing in a gilded two-horse chariot with a drawn bow |
+| **Romans** (late Republic and early Empire, 1st century) | slaves and coloni in a coarse undyed wool tunic belted at the knee, or an exomis leaving one shoulder bare; straw petasus hat or felt cap; bare feet or hobnailed sandals; iron mattock, pruning hook, wicker basket | legionaries in mail or segmented plate, Imperial-Gallic helmets, red curved scuta, gladius; auxiliary archers in mail; cavalry with oval shields | Imperator in a muscled bronze cuirass with leather strips (pteruges), a crimson general's cloak (paludamentum), laurel wreath, on a white horse |
+| **Scots** (Gaelic kingdom, 12th to 13th century) | a long saffron or undyed linen shirt (léine) to the knee, a wool mantle (brat) pinned with a brooch, bare legs, bare feet or rawhide shoes, long hair; foot plough (cas-chrom), peat spade, creel basket. **No kilts or belted plaids**: they come four centuries later | conical helmets, mail shirts or quilted coats over the léine, round targes, long spears and axes; short-bow archers; knights in mail | High King with a gold circlet over a mail coif, fur-lined blue mantle, broadsword, on a dark horse with a blue cloth |
+| **British** (English, 13th to 14th century) | villeins in a knee-length wool tunic (cote) belted at the waist, wool hose, linen coif or straw hat, a hood with a short tail, leather turnshoes; billhook, flail, scythe, wooden spade shod with iron | kettle hats, gambesons and mail, heater shields, swords and spears; longbowmen in hoods; knights in mail and great helms with surcoats | King in mail under a green surcoat with gold, a crown over the mail coif, on a barded charger |
+| **Mongols** (Mongol Empire, 13th century) | herders in a wool or felt deel wrapped right over left and tied with a sash, a felt hat with an upturned brim, felt boots with turned-up toes, braided hair loops; lasso pole (uurga), felt bundles, milk pail, hand axe | lamellar of lacquered leather and iron, conical helmets with neck guards, recurve bows in cases, sabres; heavy lancers on armoured horses | Khan in a gold-woven silk deel (nasij) with fur trim, a fur hat with a peak, bow case and quiver, on a steppe horse with a saddle cloth |
+| **Vikings** (Norse, 9th to 10th century) | thralls in coarse undyed wool with cropped hair; free farmers (karls) in a wool tunic and trousers with wrapped leg bindings, a cloak pinned at the right shoulder; wooden spade, sickle, wood axe | spangenhelms, mail for the rich and padded coats for the rest, painted round shields, bearded axes and spears; hunting bows | Jarl in a mail byrnie with gold arm-rings, a fur-trimmed cloak, a helmet with gilt fittings, sword, an orange round shield, on a stocky northern horse |
+| **Byzantines** (Komnenian empire, 11th to 12th century) | tenant farmers (paroikoi) in a long belted wool tunic, trousers and leggings, felt or straw cap, leather boots; ox and wooden plough, mattock, pruning hook, amphora | lamellar klivanion over a quilted coat, helmets with mail aventails, kite shields, spathion; cataphracts in scale on scale-barded horses | Basileus in a gilded lamellar klivanion with a rose and gold cloak, the jewelled crown with hanging pendilia, the imperial **red boots**, on a white horse |
+| **Persians** (Sasanian, 3rd to 7th century) | farmers in a knee-length long-sleeved belted tunic over loose trousers tucked into soft boots or bare feet, a round felt cap or headcloth; spade, sickle, water jar for the channels (qanats) | ridge helmets, mail and quilted coats, wicker shields, swords; composite-bow archers; clibanarii in full mail on mailed horses | Shahanshah in the winged crown topped by a globe, with flowing ribbons at the diadem and shoulders, a pearl-edged tunic, a long sword, on a horse with tasselled harness, as on the rock reliefs |
+
+**Women.** About a third of the names the game gives its folk are women's (every people's name list has them). A future `serf_f`, `serf_f_work1` and `serf_f_work2` per people, in the same dress table, would let them be seen (optional, after priority 10).
 
 ### Before delivering: the lineup test
 
@@ -340,7 +345,7 @@ Deliver: `assets/factions/<faction>/units/{footman,bowman,knight}.png`. After th
 
 ## Priority 10: serfs of each people (24)
 
-Every house's serfs are one shared figure today, so a Persian village and a Scots one work the same man. Paint three frames per people from the serf table in the character guide:
+Every house's serfs were one shared figure. Since 2026-10-12 each of the first five peoples shows its painted villager (the `recruit` figure) as a stand-in, swaying at his task. That is better, but it has no work frames, and the Vikings, Byzantines and Persians still have the shared serf. Paint three frames per people from the **Workers** column of the dress table in the character guide:
 
 | File key | Pose |
 |---|---|
@@ -351,7 +356,7 @@ Every house's serfs are one shared figure today, so a Persian village and a Scot
 The game alternates `serf_work1` and `serf_work2` while a serf gathers, builds or mines, so the two must line up (same feet, same framing).
 
 ```text
-{PEOPLE} SERF, a working labourer, full length, three-quarter view looking right, slight build, a little stooped. {SERF cell from the character guide}. Undyed working cloth with one small touch of {COLOUR NAME}. {POSE}. No helmet, no armour, no shield, no weapon. Flat #FF00FF background, no shadow, 256x256, feet at the bottom edge less 8 px.
+{PEOPLE} SERF, a working labourer, full length, three-quarter view looking right, slight build, a little stooped. {WORKERS cell from the dress table}. Undyed working cloth with one small touch of {COLOUR NAME}. {POSE}. No helmet, no armour, no shield, no weapon. Flat #FF00FF background, no shadow, 256x256, feet at the bottom edge less 8 px.
 ```
 
 Deliver: `assets/factions/<faction>/units/serf.png`, `serf_work1.png`, `serf_work2.png`. Then take `serf`, `serf_work1` and `serf_work2` out of `REPAINT` in `js/art.js` (they wait there so the game does not ask for files that are not painted yet). For the three new peoples also take them out of the `PARTIAL` unit list.
@@ -365,6 +370,16 @@ The lineup test on 2026-10-12 passed every new soldier, but the Egyptian, Scotti
 ```
 
 Deliver: `assets/factions/{egyptians,scottish,mongols}/units/spy.png`. The scholars' pale robes are true to their people and may stay, but a stole or book cover in the people's colour would help them read as part of the house.
+
+## Priority 12: kings on the field (8)
+
+A house falls when its last king dies, so the king is the most important figure on the field. Today he is drawn as his people's knight with a small crown drawn over him: he looks like any other rider. Paint one field figure per people from the **King** column of the dress table. He must match his Council portrait (same face, same crown, same colours) and be told apart from his own knights at a glance: crown or mark of rule, the richest kit, the people's colour boldest. Mounted (or in the Pharaoh's chariot), drawn at 68 px, the tallest figure on the field.
+
+```text
+{PEOPLE} KING on campaign, mounted, full length, three-quarter view looking right, realistic proportions. {KING cell from the dress table}. The same man as the portrait {pharaoh/imperator/highking/king/khan/jarl/basileus/shahanshah}.png. Richest kit of his house; {COLOUR NAME} cloth boldest. Flat #FF00FF background, no shadow, 320x320, feet or hooves at the bottom edge less 8 px.
+```
+
+Deliver: `assets/factions/<faction>/units/king.png`. Then take `king` out of `REPAINT` in `js/art.js` (and add it to the `PARTIAL` unit list for the three new peoples); the game draws `king` before falling back to the knight.
 
 ## Acceptance
 
