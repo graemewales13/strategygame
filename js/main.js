@@ -158,7 +158,7 @@ async function joinOnline() {
     game.playbook = c.playbook || null;
     ui.setGame(game); net.attach(game); renderer.resetWorld?.();
     const splash = document.getElementById('splash'); if (splash && !splash.classList.contains('hidden')) { splash.classList.add('gone', 'hidden'); }   // the match is on: no title screens
-    mpStarted = true; ui.online = true; ui.speed = 1; ui.paused = false; drawLobby(); ui.closeMenu(); centerOnHall();
+    mpStarted = true; drawLobby(); ui.closeMenu(); centerOnHall();
     ui.toast(net.seat >= 0 ? `Online: you are ${game.players[PLAYER].name}.` : 'Online: watching the match.', 'good');
   };
   drawLobby();

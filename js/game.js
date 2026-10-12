@@ -120,15 +120,6 @@ export class Game {
   }
 
   nid() { return this.nextId++; }
-  // online: the relay hands a seat whose player has been away a while to the AI, and back when they return. It arrives as an order
-  // in the turn stream (so every copy switches on the same turn); only the relay can send it (relay.js strips 'relay' from players' orders).
-  setSeat(it) {
-    if (!it.relay || !this.players[it.seat]) return false;
-    const p = this.players[it.seat]; p.ai = !!it.ai;
-    this.humans = (this.humans || [0]).filter((t) => t !== it.seat); if (!it.ai) this.humans.push(it.seat); this.humans.sort((a, b) => a - b);
-    this.log(PLAYER, it.ai ? `${p.name}'s player is away: the AI holds their house until they return.` : `${p.name}'s player is back.`, 'info');
-    return true;
-  }
   isHuman(team) { return (this.humans || [0]).includes(team); }
   log(team, text, kind = 'info') {
     // the same line twice within a few seconds is one line (orders re-issued every tick would otherwise flood the feed)
@@ -465,7 +456,6 @@ export class Game {
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
       case 'hire': return this.hire(team, it.buildingId, it.index);
-      case 'seat': return this.setSeat(it);
       case 'research': return this.startResearch(team, it.tech);
       case 'craft': return this.craft(team, it.buildingId, it.item);
       case 'uncraft': return this.uncraft(team, it.buildingId, it.index);

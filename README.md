@@ -156,9 +156,6 @@ Two to five people can play one match over the network. Empty seats are played b
 - Every second, each browser sends a fingerprint of its state. If they ever differ, everyone is told the match has fallen out of step.
 - A player who drops reloads the page and rejoins the same seat; the match replays up to the present.
 - A house whose last king dies is out but can watch. The match ends when one house is left, or when every human's line is gone.
-- A player away more than 30 seconds has their house held by the AI until they rejoin. The switch travels in the turn stream, so every copy changes together.
-- If the host leaves the lobby before starting, the next player hosts. Seats of players who left the lobby go to the AI.
-- Pause, speed, saving and changing fog of war are off online, and each says why.
 
 **Not yet** (roadmap T15):
 - Pause and speed are off online.
