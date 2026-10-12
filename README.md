@@ -2,7 +2,7 @@
 
 A browser real-time strategy game in the spirit of *Seven Kingdoms* and *Age of Empires II*. You start with a home village of thirty folk and three serfs in a wide valley, and grow a house until you rule it. Plain HTML, CSS and JavaScript modules; canvas for the field. No build step, no dependencies.
 
-Choose your people in Skirmish setup (Egyptians, Romans, Scots, British, Mongols, Vikings, Byzantines, Persians) or leave it on Random: the nation, house name and motto are dealt per game (and per seed). Each people keeps its own colour and crest wherever it sits (the Scots are always blue). Houses are named for their people: Khemet (Egyptian), Aurelius (Roman), MacAlpin (Scottish), Wessex (British), Borjigin (Mongol), Ynglings (Viking), Komnenos (Byzantine), Sassan (Persian). Pick 3 to 8 houses in the menu; empty seats are AI.
+Choose your people in Skirmish setup (Egyptians, Romans, Scots, British, Mongols, Vikings, Byzantines, Persians) or leave it on Random: the nation, house name and motto are dealt per game (and per seed). Each people keeps its own colour and crest wherever it sits (the Scots are always blue). Houses are named for their people: Khemet (Egyptian), Aurelius (Roman), MacAlpin (Scottish), Wessex (British), Borjigin (Mongol), Ynglings (Viking), Komnenos (Byzantine), Sassan (Persian). Pick 3 to 8 houses in the menu (a new game starts with all 8); empty seats are AI.
 
 ## Run it
 
