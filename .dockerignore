@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+legacy
+logs
+test
+tools
+assets/art-drop
+*.log
+.vscode
+.idea

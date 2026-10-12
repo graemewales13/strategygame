@@ -111,6 +111,11 @@ await test('lobby: if the host leaves before starting, the next player hosts; a 
   I.close();
 });
 
+await test('hosting: /healthz answers for a load balancer\'s health check', async () => {
+  const r = await fetch(`http://127.0.0.1:${relay.port}/healthz`);
+  assert.equal(r.status, 200); assert.match(await r.text(), /^ok rooms=\d+ connections=\d+/);
+});
+
 A?.close(); C?.close(); relay.close();
 console.log(`${passed} passed`);
 process.exit(process.exitCode || 0);
