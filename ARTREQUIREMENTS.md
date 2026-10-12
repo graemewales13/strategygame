@@ -15,8 +15,8 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 5 | Plain soldiers repainted per people, full length | **Delivered** 2026-10-12. `recruit`, `scout`, `spy` and `scholar` are in use. **`footman`, `bowman` and `knight` set aside by the owner**: they read as unarmed civilians, paler and slighter than the serfs (the brief below asked for "no armour", which was wrong). The old armoured figures dyed in the people's colour stand in (`REPAINT` in `js/art.js`). Repaint: priority 9 |
 | 6 | Raising and ruin states for every other building | **Delivered and wired** 2026-10-12. Every key is in `STATED` in `js/art.js` |
 | 7 | War-horn alarm mark for the "under attack" warning | **Delivered and wired** 2026-10-12 |
-| 8 | Three new peoples: Vikings, Byzantines, Persians. Full kits, ruler portraits | **Requested** 2026-10-12 (below). Until delivered they use the shared buildings and soldiers, tinted in their colour |
-| 9 | Soldiers repainted to the character guide: footman, bowman, knight per people (8 peoples, 24) | **Requested** 2026-10-12 (below). Highest priority of the open requests |
+| 8 | Three new peoples: Vikings, Byzantines, Persians. Full kits, ruler portraits | **Part delivered** 2026-10-12: the 18 complete buildings, the three soldiers, and the ruler portraits (`jarl`, `basileus`, `shahanshah`). Still open: raising and ruin states, the six armed variants, serfs, and recruit, scout, spy, scholar. `PARTIAL` in `js/art.js` keeps those on the shared art so nothing 404s |
+| 9 | Soldiers repainted to the character guide: footman, bowman, knight per people (8 peoples, 24) | **Delivered** 2026-10-12. `REPAINT` is empty; these figures replace the stand-ins |
 | 10 | Serfs per people: idle and two work frames (8 peoples, 24) | **Requested** 2026-10-12 (below). Already wired: drawn as soon as the files exist |
 
 ## How the game uses delivered art

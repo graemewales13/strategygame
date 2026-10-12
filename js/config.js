@@ -23,9 +23,9 @@ export const FACTIONS = {
   british:   { label: 'British',   blurb: 'Timber frames and thatch.' },
   mongols:   { label: 'Mongols',   blurb: 'Gers, banners, Bactrian camels.' },
   scottish:  { label: 'Scottish',  blurb: 'Grey stone, heather thatch, tower houses.' },
-  vikings:   { label: 'Vikings',   blurb: 'Longhouses, carved prows, shield walls.', kit: false },
-  byzantines: { label: 'Byzantines', blurb: 'Golden domes, mosaics, cataphracts.', kit: false },
-  persians:  { label: 'Persians',  blurb: 'Iwan halls, glazed tile, horse archers.', kit: false },
+  vikings:   { label: 'Vikings',   blurb: 'Longhouses, carved prows, shield walls.' },
+  byzantines: { label: 'Byzantines', blurb: 'Golden domes, mosaics, cataphracts.' },
+  persians:  { label: 'Persians',  blurb: 'Iwan halls, glazed tile, horse archers.' },
 };
 export const FACTION_BUILDINGS = ['mine', 'keep', 'cottage', 'farm', 'mill', 'warehouse', 'market', 'forge', 'foundry', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower', 'armoury'];
 // The peoples. Each keeps its colour, sprite hue and crest device wherever it is seated (the Scots are always blue). `hue` is the
