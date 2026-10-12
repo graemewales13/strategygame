@@ -11,7 +11,61 @@ The game and its online relay are one small Node program (`relay.js`, no depende
 
 The relay is light: it only passes orders between players. Every player's browser runs the game itself. A small instance with 2 vCPU and 2 GB is plenty for many matches at once.
 
-## Recommended: one EC2 (or Lightsail) instance with Docker and Caddy
+## Recommended: Terraform (`deploy/terraform/`)
+
+Terraform builds the whole server in one command, and removes it all again with another.
+- **What it builds:**
+  - one EC2 instance (Amazon Linux 2023) running the game and relay in Docker, with Caddy in front for HTTPS
+  - a fixed Elastic IP address
+  - a security group with 80 and 443 open (SSH stays closed unless you ask)
+  - an instance role so you can open a shell through AWS Session Manager instead of SSH
+  - optionally, the DNS record in Route 53
+- **What happens on first boot:** the server installs Docker, clones the `network` branch, and starts automatically. It starts again after any reboot.
+
+**You need:**
+- **Terraform** 1.5 or later (`winget install Hashicorp.Terraform` on Windows).
+- **The AWS CLI**, logged in to your account (`aws configure`, or `aws sso login`).
+- **Optionally, the Session Manager plugin**, for the shell command.
+- **Optionally, a domain:** a domain in Route 53 lets Terraform create the DNS record; any other domain works if you add the record yourself.
+
+**Steps:**
+```bash
+cd deploy/terraform
+copy terraform.tfvars.example terraform.tfvars     # (cp on Mac/Linux) then edit it: region, domain, Route 53 zone ID
+terraform init
+terraform plan          # shows what will be created; nothing is built yet
+terraform apply         # builds it (type yes)
+```
+Terraform then prints:
+
+| Output | What it is |
+|---|---|
+| `url` | where to play (add `?mp=<room>&name=<you>` for online) |
+| `public_ip` | the fixed address: point your domain's A record here if you did not give a Route 53 zone |
+| `health_check` | open it after a few minutes; it should say `ok rooms=0 connections=0` |
+| `shell` | opens a shell on the server through Session Manager |
+| `update` | deploys the latest commit of the `network` branch (this ends live matches) |
+
+**Settings** (`terraform.tfvars`):
+
+| Setting | Default | Notes |
+|---|---|---|
+| `region` | `eu-west-2` (London) | |
+| `instance_type` | `t3.small` | `t4g.small` is Graviton and cheaper; the right image is chosen automatically |
+| `domain` | empty | Leave empty to test on plain HTTP at the IP. Set it for HTTPS: Caddy fetches the certificate once the domain points at the server |
+| `route53_zone_id` | empty | If set, Terraform creates the domain's A record |
+| `branch` | `network` | |
+| `ssh_cidr`, `ssh_key_name` | empty | SSH stays closed; use the `shell` output instead. To open SSH, give your own IP as `x.x.x.x/32` and an existing key pair |
+
+**Day to day:**
+- **Updating:** after pushing to `network`, run the `update` command Terraform printed. Changing `branch`, `repo_url` or `domain` and running `terraform apply` builds a fresh server instead (also ending live matches). The address stays the same, because it is an Elastic IP.
+- **Logs:** open the `shell`, then `cd /opt/auld-world/deploy && sudo docker compose logs -f relay`. First-boot output is in `/var/log/auld-world-setup.log`.
+- **Removing everything:** `terraform destroy`.
+- **State:** Terraform keeps track of what it built in `terraform.tfstate`, in that folder. It is ignored by git: keep it safe, or switch to the S3 backend sketched in `versions.tf`.
+
+## By hand: one EC2 (or Lightsail) instance with Docker and Caddy
+
+The same setup Terraform builds, done step by step.
 
 The simplest setup that works well. Caddy gets and renews a free HTTPS certificate automatically and proxies WebSockets with no extra setup.
 
@@ -29,7 +83,7 @@ The simplest setup that works well. Caddy gets and renews a free HTTPS certifica
    sudo mkdir -p /usr/local/lib/docker/cli-plugins
    sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m) -o /usr/local/lib/docker/cli-plugins/docker-compose
    sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-   git clone -b grok https://github.com/graemewales13/strategygame.git && cd strategygame/deploy
+   git clone -b network https://github.com/graemewales13/strategygame.git && cd strategygame/deploy
    ```
 4. **Start it:**
    ```bash

@@ -1,0 +1,50 @@
+#!/bin/bash
+# First boot of the Auld World server: Docker, the game from git, and Caddy in front (deploy/docker-compose.yml).
+set -euxo pipefail
+exec > >(tee /var/log/auld-world-setup.log) 2>&1
+
+dnf install -y docker git
+systemctl enable --now docker
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# the site Caddy serves: a domain (HTTPS) or :80 (plain HTTP on the IP)
+echo 'DOMAIN=${caddy_site}' > /etc/auld-world.env
+
+git clone --branch '${branch}' --depth 1 '${repo_url}' /opt/auld-world
+
+# auld-update: pull the latest of the branch and rebuild (ends live matches; players are told the server is restarting)
+cat > /usr/local/bin/auld-update <<'EOF'
+#!/bin/bash
+set -euo pipefail
+cd /opt/auld-world
+git fetch --depth 1 origin
+git reset --hard FETCH_HEAD
+cd deploy
+set -a; . /etc/auld-world.env; set +a
+docker compose up -d --build
+docker image prune -f
+EOF
+chmod +x /usr/local/bin/auld-update
+
+# start now, and again after every reboot
+cat > /etc/systemd/system/auld-world.service <<'EOF'
+[Unit]
+Description=Auld World game and relay (Docker Compose)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/auld-world.env
+WorkingDirectory=/opt/auld-world/deploy
+ExecStart=/usr/bin/docker compose up -d --build
+ExecStop=/usr/bin/docker compose down
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now auld-world.service

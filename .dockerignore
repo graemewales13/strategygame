@@ -9,3 +9,4 @@ assets/art-drop
 *.log
 .vscode
 .idea
+deploy/terraform
