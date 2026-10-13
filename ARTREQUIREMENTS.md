@@ -6,16 +6,16 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 ## Paint next: new characters are needed
 
-**Yes, new characters are required.** Soldiers are done. Workers and kings are not: every Viking, Byzantine and Persian serf is still one shared figure, the first five peoples' serfs are a stand-in, and every king is just his people's knight with a crown drawn over him. Paint in this order. Each line links to its brief; every figure follows the character guide and passes its lineup test.
+**The paint-next list is done**, except the optional women among the serfs (not wired). Kings, serfs, the new peoples' folk and sites, and the three pale spies are painted.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
-| 1 | **Serfs**: the people's own workers, in their real working dress, with two work frames | all 8 | `units/serf.png`, `serf_work1.png`, `serf_work2.png` | 24 | priority 10 |
-| 2 | **Kings on the field**: each ruler mounted (Pharaoh in his chariot), matching his portrait | all 8 | `units/king.png` | 8 | priority 12 |
-| 3 | **The rest of the new peoples' folk**: levy, scout, spy, scholar | Vikings, Byzantines, Persians | `units/recruit.png`, `scout.png`, `spy.png`, `scholar.png` | 12 | priority 8 |
-| 4 | **The new peoples' Armoury soldiers** | Vikings, Byzantines, Persians | the six keys of priority 3 | 18 | priorities 3 and 8 |
-| 5 | **Spies repainted dark** | Egyptians, Scots, Mongols | `units/spy.png` | 3 | priority 11 |
-| 6 | Building sites and ruins for the new peoples | Vikings, Byzantines, Persians | `buildings/<key>_build.png`, `<key>_ruin.png` for the 18 keys | 108 | priorities 6 and 8 |
+| 1 | **Serfs**: the people's own workers, in their real working dress, with two work frames | all 8 | `units/serf.png`, `serf_work1.png`, `serf_work2.png` | 24 | priority 10 — **delivered** 2026-10-13 |
+| 2 | **Kings on the field**: each ruler mounted (Pharaoh in his chariot), matching his portrait | all 8 | `units/king.png` | 8 | priority 12 — **delivered** 2026-10-13 |
+| 3 | **The rest of the new peoples' folk**: levy, scout, spy, scholar | Vikings, Byzantines, Persians | `units/recruit.png`, `scout.png`, `spy.png`, `scholar.png` | 12 | priority 8 — **delivered** 2026-10-13 |
+| 4 | **The new peoples' Armoury soldiers** | Vikings, Byzantines, Persians | the six keys of priority 3 | 18 | priorities 3 and 8 — **delivered** 2026-10-13 |
+| 5 | **Spies repainted dark** | Egyptians, Scots, Mongols | `units/spy.png` | 3 | priority 11 — **delivered** 2026-10-13 |
+| 6 | Building sites and ruins for the new peoples | Vikings, Byzantines, Persians | `buildings/<key>_build.png`, `<key>_ruin.png` for the 18 keys | 108 | priorities 6 and 8 — **delivered** 2026-10-13 |
 | 7 | *Optional:* women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | character guide (not wired yet: say when they are coming and it is one line) |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
@@ -26,17 +26,17 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 |---|---|---|
 | 1 | Armoury, complete, `_build` and `_ruin`, five peoples | **Delivered and wired** 2026-10-11 |
 | 2 | Kit icons (7) and research icons (9) | **Delivered and wired** |
-| 3 | Armed soldiers, six per people (30) | **Delivered and wired** for the first five peoples. The new three: open (order 4) |
-| 4 | Far-lander portraits (8), ruler portraits (5), captain standard, deed badges (6), fugitive mark | **Delivered and wired** |
-| 5 | Plain figures per people: footman, bowman, knight, scout, recruit, spy, scholar | **Delivered** 2026-10-12. The footman, bowman and knight read as civilians and were replaced by priority 9. `recruit` (also the serf stand-in), `scout`, `spy` and `scholar` are in use |
-| 6 | Raising and ruin states for every other building | **Delivered and wired** 2026-10-12 for the first five peoples. The new three: open (order 6) |
+| 3 | Armed soldiers, six per people | **Delivered and wired** for all eight peoples (the new three on 2026-10-13) |
+| 4 | Far-lander portraits (8), ruler portraits (5 plus jarl, basileus, shahanshah), captain standard, deed badges (6), fugitive mark | **Delivered and wired** |
+| 5 | Plain figures per people: footman, bowman, knight, scout, recruit, spy, scholar | **Delivered** 2026-10-12. Footman, bowman and knight were replaced by priority 9 |
+| 6 | Raising and ruin states for every building | **Delivered and wired** for all eight peoples (the new three on 2026-10-13) |
 | 7 | War-horn alarm mark | **Delivered and wired** 2026-10-12 |
-| 8 | Three new peoples: Vikings, Byzantines, Persians | **Part delivered** 2026-10-12: 18 buildings, footman, bowman, knight, ruler portraits. **Open**: serfs, king, recruit, scout, spy, scholar, the six armed variants, building sites and ruins (orders 1 to 4 and 6). `PARTIAL` in `js/art.js` keeps them on the shared art meanwhile |
-| 9 | Soldiers to the character guide: footman, bowman, knight (8 peoples, 24) | **Delivered and wired** 2026-10-12. They pass the lineup test. Delivered at about 800x1200 px (1 MB each, 24 MB in all, drawn 50-66 px high); scaled to 260 px on the long side by the daily review (1.5 MB in all, T-054) |
-| 10 | **Serfs per people** (8 peoples, 24) | **Requested: order 1.** Stand-in today: the first five peoples' `recruit` figure, swaying at work; the new three: the shared serf. Wired: the keys wait in `REPAINT` in `js/art.js` |
-| 11 | Spies easy to miss (Egyptians, Scots, Mongols) | **Requested: order 5.** Delivered spies are pale all over (ghost rule) |
-| 13 | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** The queued legs are drawn in code as dashed lines and small ground marks in the order-line colours (green march, red attack-move) |
-| 12 | **Kings on the field** (8) | **Requested: order 2.** Today: his people's knight with a drawn crown. Wired: `king` waits in `REPAINT` |
+| 8 | Three new peoples: Vikings, Byzantines, Persians | **Delivered and wired** 2026-10-13: buildings in three states, armed variants, footman, bowman, knight, recruit, scout, spy, scholar, serfs, ruler portraits. Kings are priority 12 |
+| 9 | Soldiers to the character guide: footman, bowman, knight (8 peoples, 24) | **Delivered and wired** 2026-10-12, scaled to 260 px on the long side (T-054) |
+| 10 | **Serfs per people** (8 peoples, 24) | **Delivered and wired** 2026-10-13. `serf`, `serf_work1`, `serf_work2` are out of `REPAINT` |
+| 11 | Spies easy to miss (Egyptians, Scots, Mongols) | **Delivered** 2026-10-13. Dark cloaks; the people's colour is only a cord |
+| 12 | **Kings on the field** (8) | **Delivered and wired** 2026-10-13. `king` is out of `REPAINT`. The drawn crown is kept only when a people has no painted king |
+| 13 | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** Queued legs are drawn in code |
 
 ## How the game uses delivered art
 
