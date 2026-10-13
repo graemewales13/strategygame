@@ -686,6 +686,7 @@ export class Renderer {
     else if (!moving) {
       const k = u.task, tg = k.type === 'gather' ? this.game.resources[k.nodeId] : (k.type === 'mine' || k.type === 'build' || k.type === 'attack' || k.type === 'infiltrate') ? this.game.byId.get(k.buildingId ?? k.targetId) : null;
       if (tg) { const [tx, ty] = this.toScreen(tg.x + (tg.size ? 0 : 0.5), tg.y + (tg.size ? 0 : 0.5)); vx = tx - sx; vy = ty - sy; }
+      else if (k.type === 'idle' && k.face) { vx = (k.face[0] - k.face[1]) * HW; vy = (k.face[0] + k.face[1]) * HH; }   // a march's end: face the way it went (T02)
     }
     u._lx = u.x; u._ly = u.y;
     if (vx || vy) { const m = Math.hypot(vx, vy) || 1; u._dx = (u._dx ?? vx / m) * 0.8 + (vx / m) * 0.2; u._dy = (u._dy ?? vy / m) * 0.8 + (vy / m) * 0.2; }

@@ -242,7 +242,7 @@ function think(game, team, p) {
   if (readyArmy.length >= need && t > firstAt) {
     const strength = readyArmy.reduce((n, u) => n + UNITS[u.kind].hp, 0);
     const v = nearestVillage(game, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => u.kind === 'ram') ? 400 : 0), 42);
-    if (v) { const go = readyArmy.filter((u) => u.kind !== 'spy'); game.setStance(go, 'aggressive'); game.cmdAttack(go, v); p.planVillage = v.id; }
+    if (v) { const go = readyArmy.filter((u) => u.kind !== 'spy'); game.setStance(go, 'aggressive'); game.setFormation(go, 'line'); game.cmdAttack(go, v); p.planVillage = v.id; }
   }
   courtVillages(game, team, p, seat, army, need, t);
   scoutAbroad(game, team, p, seat, army, t);
@@ -269,7 +269,7 @@ function think(game, team, p) {
       const ready = army.filter((u) => u.task.type === 'idle');
       if (ready.length >= 7) {
         const goal = huntGoal(game, team, target.team, seat, ready);
-        if (goal) { game.setStance(ready, 'aggressive'); game.cmdAttack(ready, goal); }
+        if (goal) { game.setStance(ready, 'aggressive'); game.setFormation(ready, 'line'); game.cmdAttack(ready, goal); }
       }
     }
   } else {

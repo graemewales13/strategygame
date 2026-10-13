@@ -7,7 +7,7 @@ import {
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
 } from './config.js';
@@ -442,6 +442,7 @@ export class Game {
       case 'move': return this.cmdMove(mine(), it.x, it.y, !!it.queue);
       case 'amove': return this.cmdAttackMove(mine(), it.x, it.y, !!it.queue);
       case 'stance': return this.setStance(mine(), it.stance);
+      case 'formation': return this.formUp(mine(), it.form);
       case 'stop': mine().forEach((u) => { u.route = null; u.parked = true; u.task = { type: 'idle' }; u.path = []; }); return true;
       case 'route': return this.cmdRoute(mine(), this.byId.get(it.targetId), it.want);
       case 'stoproute': return this.stopRoute(mine());
@@ -1018,22 +1019,87 @@ export class Game {
     for (const u of units) {
       if (!this.locked(u)) { free.push(u); continue; }
       const t = this.closestEnemy(u, SALLY.lockR + 1, u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace } : null) }; u.path = []; u.repathT = 0; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace, face: u.task.face } : null) }; u.path = []; u.repathT = 0; }
       if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is locked in combat and cannot break off.`, 'warn');
     }
     return free;
   }
   cmdMove(units, x, y, queue = false) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-    const pace = this.paceOf(units);
+    const pace = this.paceOf(units), slot = this.formSlots(units, x, y, queue), face = slot.face;
     // Shift: a march under way takes the spot as its next leg; the others go there now
-    units = this.freeOf(queue ? units.filter((u, i) => !this.queueLeg(u, x, y, i, false)) : units);
-    units.forEach((u, i) => {
-      const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)];
-      u.task = { type: 'move', pace }; u.sally = null; if (u.kind === 'camel') u.parked = true;   // sent by hand: it waits there until given work
-      this.setPath(u, x + ox * 0.9, y + oy * 0.9);
+    units = this.freeOf(queue ? units.filter((u) => !this.queueLeg(u, slot.at.get(u), face, false)) : units);
+    units.forEach((u) => {
+      const [tx, ty] = slot.at.get(u);
+      u.task = { type: 'move', pace, face }; u.sally = null; if (u.kind === 'camel') u.parked = true;   // sent by hand: it waits there until given work
+      this.setPath(u, tx, ty);
     });
     return true;
+  }
+  // ---- formations (T02) ----------------------------------------------------------------------------------
+  // The formation a group marches in: the one most of its members are set to (ties go to the first in FORMATIONS), else mass.
+  formOf(units) {
+    const n = {}; for (const u of units) { const f = FORMATIONS.includes(u.form) ? u.form : 'mass'; n[f] = (n[f] || 0) + 1; }
+    return FORMATIONS.reduce((best, f) => ((n[f] || 0) > (n[best] || 0) ? f : best), 'mass');
+  }
+  setFormation(units, form) {
+    if (!FORMATIONS.includes(form) || !units.length) return false;
+    for (const u of units) u.form = form;
+    return true;
+  }
+  // Where each member of a group stands at the end of a march to (x, y), and the way they face (the line of march).
+  // Mass and loose keep the order the group was given in (mass is exactly the old knot); line and box put the fighters in front or outside.
+  formSlots(units, x, y, queue = false, dir = null) {
+    const form = this.formOf(units), at = new Map(), n = units.length;
+    if (!dir) {   // from where the group is (or, for a Shift-queued leg, where its march will end) to the spot
+      let ox = 0, oy = 0;
+      for (const u of units) { const [ex, ey] = queue ? this.marchEnd(u) : [u.x, u.y]; ox += ex; oy += ey; }
+      dir = [x - ox / Math.max(1, n), y - oy / Math.max(1, n)];
+    }
+    const m = Math.hypot(dir[0], dir[1]), fx = m > 0.3 ? dir[0] / m : 1, fy = m > 0.3 ? dir[1] / m : 0, face = [Math.round(fx * 100) / 100, Math.round(fy * 100) / 100];
+    if (form === 'mass' || form === 'loose') {
+      const k = FORMATION[form];
+      units.forEach((u, i) => { const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)]; at.set(u, [x + ox * k, y + oy * k]); });
+      return { at, face, form };
+    }
+    const role = (u) => (u.kind === 'bowman' ? 1 : this.fighter(u) || u.kind === 'king' ? 0 : 2);
+    const order = units.map((u, i) => [u, i]).sort((a, b) => role(a[0]) - role(b[0]) || a[1] - b[1]).map((e) => e[0]);
+    const g = FORMATION.gap, rx = -fy, ry = fx;   // across the line of march
+    const put = (u, across, back) => at.set(u, [x + rx * across * g - fx * back * g, y + ry * across * g - fy * back * g]);
+    if (form === 'line') {
+      const cols = Math.min(n, Math.max(4, Math.ceil(Math.sqrt(n * 3))));
+      let r0 = 0;   // each kind starts its own rank: fighters, then bowmen, then the rest
+      for (const k of [0, 1, 2]) {
+        const grp = order.filter((u) => role(u) === k);
+        grp.forEach((u, i) => { const r = Math.floor(i / cols), c = i % cols, len = Math.min(cols, grp.length - r * cols); put(u, c - (len - 1) / 2, r0 + r); });
+        r0 += Math.ceil(grp.length / cols);
+      }
+    } else {   // box: the outermost cells of a square first, so the first in order (the fighters) stand on its edge
+      const side = Math.ceil(Math.sqrt(n)), h = (side - 1) / 2, cells = [];
+      for (let j = 0; j < side; j++) for (let i = 0; i < side; i++) cells.push([i - h, j - h]);
+      cells.sort((a, b) => Math.max(Math.abs(b[0]), Math.abs(b[1])) - Math.max(Math.abs(a[0]), Math.abs(a[1])));   // a stable sort: ties keep grid order
+      order.forEach((u, i) => put(u, cells[i][0], cells[i][1] + h));
+    }
+    return { at, face, form };
+  }
+  // The player picks a formation: the group keeps it for its next marches, and those standing idle form up in it where they stand,
+  // facing the way they last marched.
+  formUp(units, form) {
+    if (!this.setFormation(units, form)) return false;
+    const idle = units.filter((u) => u.task.type === 'idle' && !u.inside && !u.drilling && u.kind !== 'camel');
+    if (idle.length > 1) {
+      const cx = idle.reduce((a, u) => a + u.x, 0) / idle.length, cy = idle.reduce((a, u) => a + u.y, 0) / idle.length;
+      const slot = this.formSlots(idle, cx, cy, false, idle.find((u) => u.task.face)?.task.face || [1, 0]);
+      for (const u of idle) { const [tx, ty] = slot.at.get(u); u.task = { type: 'move', face: slot.face }; u.sally = null; this.setPath(u, tx, ty); }
+    }
+    return true;
+  }
+  // where a unit's march ends: the last queued leg, else the end of the path it walks, else where it stands
+  marchEnd(u) {
+    const k = u.task.type, tail = k === 'move' || k === 'amove' ? u.task : k === 'attack' ? u.task.then : null;
+    const q = tail?.next; if (q?.length) return [q[q.length - 1].x, q[q.length - 1].y];
+    if (tail && u.path.length) return u.path[u.path.length - 1];
+    return [u.x, u.y];
   }
   // ---- waypoints and marching together (T02) -------------------------------------------------------------
   // A group sent together keeps together: every member walks at the slowest one's pace (a lone unit, or a group all of one speed, has none).
@@ -1043,12 +1109,11 @@ export class Game {
   }
   // Shift-click adds a leg to a march, an attack-move, or the attack-move a fight broke into; up to WAYPOINTS legs wait their turn.
   // Each member keeps its place in the group (the same spiral offset as a fresh order). False if the unit has no march to add to.
-  queueLeg(u, x, y, i, fight) {
+  queueLeg(u, [x, y], face, fight) {
     const k = u.task.type, tail = k === 'move' || k === 'amove' ? u.task : k === 'attack' && u.task.then ? u.task.then : null;
     if (!tail) return false;
-    const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)];
     tail.next ||= [];
-    if (tail.next.length < WAYPOINTS) tail.next.push({ x: x + ox * 0.9, y: y + oy * 0.9, a: !!fight && this.fighter(u) });
+    if (tail.next.length < WAYPOINTS) tail.next.push({ x, y, a: !!fight && this.fighter(u), f: face });
     return true;
   }
   // a leg is done: take the next one, if any (skipping any that cannot be reached). False when the march is over.
@@ -1056,7 +1121,7 @@ export class Game {
     const q = u.task.next, pace = u.task.pace ?? null;
     while (q?.length) {
       const w = q.shift();
-      u.task = w.a && this.fighter(u) ? { type: 'amove', x: w.x, y: w.y, next: q, pace } : { type: 'move', next: q, pace };
+      u.task = w.a && this.fighter(u) ? { type: 'amove', x: w.x, y: w.y, next: q, pace, face: w.f } : { type: 'move', next: q, pace, face: w.f };
       if (w.a) u.aggroT = 0;
       if (this.setPath(u, w.x, w.y)) return true;
     }
@@ -1065,12 +1130,12 @@ export class Game {
   // Attack-move: march to (x, y), turning on any foe met on the way and walking on once it is dealt with. Those who do not fight just walk.
   cmdAttackMove(units, x, y, queue = false) {
     if (!units.length || !Number.isFinite(x) || !Number.isFinite(y)) return false;
-    const pace = this.paceOf(units);
-    units = this.freeOf(queue ? units.filter((u, i) => !this.queueLeg(u, x, y, i, true)) : units);
-    units.forEach((u, i) => {
-      const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)], tx = x + ox * 0.9, ty = y + oy * 0.9;
-      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); if (pace) u.task.pace = pace; return; }
-      u.task = { type: 'amove', x: tx, y: ty, pace }; u.sally = null; u.aggroT = 0;
+    const pace = this.paceOf(units), slot = this.formSlots(units, x, y, queue), face = slot.face;
+    units = this.freeOf(queue ? units.filter((u) => !this.queueLeg(u, slot.at.get(u), face, true)) : units);
+    units.forEach((u) => {
+      const [tx, ty] = slot.at.get(u);
+      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); if (pace) u.task.pace = pace; u.task.face = face; return; }
+      u.task = { type: 'amove', x: tx, y: ty, pace, face }; u.sally = null; u.aggroT = 0;
       this.setPath(u, tx, ty);
     });
     return true;
@@ -1092,7 +1157,7 @@ export class Game {
   // a fight is over (the foe is dead, gone or no longer a foe): walk on if it was met on an attack-move, else stand
   endFight(u) {
     const th = u.task.then;
-    if (th) { u.task = { type: 'amove', x: th.x, y: th.y, next: th.next, pace: th.pace ?? null }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y) && !this.nextLeg(u)) u.task = { type: 'idle' }; return; }
+    if (th) { u.task = { type: 'amove', x: th.x, y: th.y, next: th.next, pace: th.pace ?? null, face: th.face }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y) && !this.nextLeg(u)) u.task = { type: 'idle' }; return; }
     u.task = { type: 'idle' }; u.path = [];
   }
   doAttackMove(u, dt) {
@@ -1101,9 +1166,9 @@ export class Game {
     if (u.aggroT <= 0) {
       u.aggroT = 0.45;
       const t = this.closestEnemy(u, this.acquireR(u), u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace ?? null } }; u.path = []; u.repathT = 0; return; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace ?? null, face: u.task.face } }; u.path = []; u.repathT = 0; return; }
     }
-    if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle' };
+    if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle', face: u.task.face };
   }
   cmdAttack(units, target) {
     if (!target || !units.length) return false;
@@ -1944,7 +2009,7 @@ export class Game {
       }
     }
   }
-  // Treaties. Peace/trade need a house you have met; the other side must grant it (AI houses answer at once, a human gets an offer to accept).
+  // Treaties. Peace/trade need a house you have met; the other side must grant it (an AI house answers the player by letter once the envoy arrives, ASK_DELAY; a human gets an offer to accept).
   meet(a, b) { this.known[a][b] = this.known[b][a] = 1; }
   // Why the last treaty request was refused, for the interface to show (cleared by whoever reads it).
   deny(a, text) { this.diploNote = text; if (a === PLAYER && !this._envoy) this.log(PLAYER, text, 'warn'); return false; }
@@ -2458,6 +2523,7 @@ export class Game {
         const c = cells.get(ax * 4096 + ay); if (!c) continue;
         for (const o of c) {
           if (o === u) continue;
+          if (o.team === u.team && !u.path.length !== !o.path.length) continue;   // a walker slips past a friend standing still (so a formation can sort itself: T02); two walkers, or two standing, keep apart
           let dx = u.x - o.x, dy = u.y - o.y, d = Math.hypot(dx, dy);
           if (d >= R) continue;
           if (d < 0.01) { const a = ((u.id + o.id) * 2.399) % 6.283, sg = u.id > o.id ? 1 : -1; dx = Math.cos(a) * sg; dy = Math.sin(a) * sg; d = 0.01; }   // stacked exactly: the pair part in opposite directions
@@ -2493,7 +2559,7 @@ export class Game {
       u.repathT -= dt;
       u.anim += dt * (u.path.length ? 8 : 2);
       switch (u.task.type) {
-        case 'move': if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle' }; break;
+        case 'move': if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle', face: u.task.face }; break;
         case 'attack': this.doAttack(u, s, dt); break;
         case 'amove': this.doAttackMove(u, dt); break;
         case 'gather': this.doGather(u, dt); break;
@@ -2992,7 +3058,7 @@ export class Game {
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
       resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle),
-      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl }),
+      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {} }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
   }
   restore(d) {

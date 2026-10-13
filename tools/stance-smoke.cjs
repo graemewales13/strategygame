@@ -49,5 +49,15 @@ const { chromium } = require('playwright');
   console.log(' lines', await p.evaluate((i) => { const u = window.__seven.game.byId.get(i); return JSON.stringify({ x: u.x, y: u.y, path: u.path.length, goal: u.pathGoal, next: u.task.next }); }, id));
   const mm = await p.locator('#minimap').boundingBox(); await p.mouse.click(mm.x + mm.width * 0.5, mm.y + mm.height * 0.5, { button: 'right' }); await p.waitForTimeout(300);
   console.log('minimap right-click', JSON.stringify(await unit()));
+  // T02 formations: a group of footmen and bowmen, the Line button, then a march; the screenshot shows the ranks facing the march
+  const grp = await p.evaluate(() => { const { game: g, ui, renderer: r } = window.__seven, s = g.seatOf(0), us = [];
+    for (let i = 0; i < 5; i++) us.push(g.addUnit('footman', 0, s.x - 2 + i, s.y + 6)); for (let i = 0; i < 4; i++) us.push(g.addUnit('bowman', 0, s.x - 1.5 + i, s.y + 7));
+    ui.setUnits(us); r.centerOn(s.x, s.y + 7); return us.map((u) => u.id); });
+  await p.waitForTimeout(400);
+  await p.locator('button[data-act="formation"][data-form="line"]').first().click(); await p.waitForTimeout(250);
+  const forms = await p.evaluate((ids) => ids.map((i) => window.__seven.game.byId.get(i).form), grp), lit = await p.locator('button[data-act="formation"][data-form="line"].on').count();
+  console.log('formation line ->', forms.join(','), '| lit', lit > 0);
+  if (!forms.every((f) => f === 'line') || !lit) errs.push('formation button did not take: ' + forms.join());
+  await p.waitForTimeout(2500); await p.screenshot({ path: 'logs/formation.png' });
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length ? 1 : 0);
 })();

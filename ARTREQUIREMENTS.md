@@ -2,13 +2,15 @@
 
 What the game needs painted next, in priority order. Every request uses the **Seven Holds Art Instruction Set** for style, negatives, angle, lighting, QA and file naming. **For people, the character guide below overrides the instruction set** (its unit table, its kit colours and its old Vikings): what each role is for, how big it is drawn, and what each people actually wore.
 
-Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 delivered (Grok, 8b7d6f1). Updated 2026-10-12: priorities 5 to 7 delivered; three new peoples added (priority 8); the **character guide** written after the owner found soldiers that read as feeble civilians and every serf alike; priority 9 (soldiers) delivered; the owner then asked that **the folk of every people look like what they really wore: workers, soldiers and kings**. That is the open work below. Later on 2026-10-12: the 24 priority-9 soldiers scaled down to game size (T-054); T02 waypoints need no painting.
+Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 delivered (Grok, 8b7d6f1). Updated 2026-10-12: priorities 5 to 7 delivered; three new peoples added (priority 8); the **character guide** written after the owner found soldiers that read as feeble civilians and every serf alike; priority 9 (soldiers) delivered; the owner then asked that **the folk of every people look like what they really wore: workers, soldiers and kings**. That is the open work below. Later on 2026-10-12: the 24 priority-9 soldiers scaled down to game size (T-054); T02 waypoints need no painting. 2026-10-13: T02 formations added; **priority 14** asks for eight order icons (stances and formations), wired with glyph fallbacks.
 
 ## Paint next: new characters are needed
 
 **The paint-next list is done**, except the optional women among the serfs (not wired). Kings, serfs, the new peoples' folk and sites, and the three pale spies are painted. Checked 2026-10-13: all 197 files keyed; the full cast of all eight peoples passes the lineup test at game size; in game with no errors and no missing files.
 
 One small open item: the Scottish `recruit` still wears a kilt-like belted plaid, four centuries early for 12th to 13th century Gaels. Repaint it in the léine and brat like the new Scottish serfs (character guide, dress table). Low priority.
+
+**New 2026-10-13: eight order icons (priority 14)**: four stances and four formations for the command card, shared by every house, 128x128, `assets/shared/ui/orders/<key>.png`. Small and quick; the buttons work with text glyphs until then.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
@@ -39,6 +41,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 11 | Spies easy to miss (Egyptians, Scots, Mongols) | **Delivered** 2026-10-13. Dark cloaks; the people's colour is only a cord |
 | 12 | **Kings on the field** (8) | **Delivered and wired** 2026-10-13. `king` is out of `REPAINT`. The drawn crown is kept only when a people has no painted king |
 | 13 | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** Queued legs are drawn in code |
+| 14 | **Order icons**: four stances and four formations (T01, T02; added 2026-10-13) | **Requested.** Wired in code: the buttons show a text glyph until painted; switch on in one line (below) |
 
 ## How the game uses delivered art
 
@@ -50,6 +53,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | A plain soldier in the new style | `assets/factions/<faction>/units/<role>.png` for `footman`, `bowman`, `knight`, `scout`, `recruit`, `spy`, `scholar` | Automatically (priority 5). `footman`, `bowman`, `knight` only once removed from `REPAINT` in `js/art.js` (priority 9) |
 | A serf of one people | `assets/factions/<faction>/units/serf.png` (idle and walking), `serf_work1.png`, `serf_work2.png` (the two halves of a work swing) | Automatically (priority 10) |
 | Icons (kit, research) | `assets/shared/ui/gear/<key>.png`, `assets/shared/ui/tech/<key>.png` | Automatically (keys are `GEAR` and `TECH` in `js/config.js`) |
+| Order icons (stances, formations) | `assets/shared/ui/orders/<key>.png` (keys are `STANCES` and `FORMATIONS` in `js/config.js`) | After the drop, put `...STANCES, ...FORMATIONS` in `UI_KEYS.orders` in `js/art.js` (left empty until then so the game never asks for missing files) |
 | Marks (deeds, captain, fugitive, alarm) | `assets/shared/ui/marks/<key>.png` (deed keys are `DEEDS` in `js/config.js`) | Automatically |
 | Portraits | `assets/shared/ui/portraits/<key>.png` (far-land keys are `FARLANDS`; rulers are `pharaoh`, `imperator`, `king`, `khan`, `highking`, `jarl`, `basileus`, `shahanshah`) | Automatically |
 
@@ -301,7 +305,7 @@ FACTION KIT - SCOTS (Gaelic kingdom, 12th-13th century)
 Banner/trim accent: blue #3A6EA8 with white.
 Palette: grey granite and fieldstone, heather purple and brown, peat brown, moss and bracken green, undyed wool cream, sheep-grey, cold grey-blue shadows with low warm sun.
 Architecture: square stone tower houses with crow-stepped gables and slate or heather-thatch roofs, drystone walls, round-ended blackhouses with low thatch roped and weighted with stones, small stone kirks, timber palisades on mottes, standing stones.
-People: long wool tunics (leine) and belted plaids, simple coloured checks, leather brogues, cloaks pinned with a brooch; spearmen with long spear and round targe; swordsmen with broadsword and mail shirt; archers with short bows in plain wool; mounted knights in mail with a heater shield; monks in undyed robes.
+People: long linen shirts (leine) to the knee under a wool mantle (brat) pinned with a brooch, simple coloured checks, no kilts or belted plaids (they are four centuries later), rawhide shoes or bare feet; spearmen with long spear and round targe; swordsmen with broadsword and mail shirt; archers with short bows in plain wool; mounted knights in mail with a heater shield; monks in undyed robes.
 Pack animal: Highland garron pony with panniers, or a donkey.
 Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horned helmets, bagpipes on soldiers, fantasy claymores taller than the man.
 ```
@@ -318,7 +322,7 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
    - spy, scholar and ram singles
    - action button icons
 
-   These still count; the construction and ruin states are now priority 6.
+   These still count; the construction and ruin states are now priority 6 (delivered), and the stance and formation buttons are priority 14.
 4. **Facing.** The old shared unit art looks left; the new per-people figures look right. The game handles both (it mirrors), but keep every new figure looking right or straight out.
 5. **Captain standard** is painted with neutral cloth and the game dyes it per house. Keep any future marks that carry house colour neutral (white or pale grey cloth).
 
@@ -403,6 +407,29 @@ A house falls when its last king dies, so the king is the most important figure 
 ```
 
 Deliver: `assets/factions/<faction>/units/king.png`. Then take `king` out of `REPAINT` in `js/art.js` (and add it to the `PARTIAL` unit list for the three new peoples); the game draws `king` before falling back to the knight.
+
+## Priority 14: order icons, stances and formations (8, new 2026-10-13)
+
+The command card has a **Stance** row (since T01) and, for a group, a **Formation** row (T02, 2026-10-13): Mass, Line, Box, Loose. All eight buttons show a text glyph today (⚔ ⛨ ⚓ ☮ and ◉ ☰ ▣ ⁘). Formations themselves need no painting: the soldiers stand in ranks and face the way they marched, using the figures already painted. Only the eight button icons are wanted. Use the **Goods icon** template: 128x128 px, readable at 32 px on a dark wood button, neutral colours (no faction colour: every house uses the same buttons), no text or letters.
+
+| Key | Order | Subject to paint |
+|---|---|---|
+| `aggressive` | Stance: engage and chase | two crossed swords, blades up, a little motion in the hilts |
+| `defensive` | Stance: engage but come back | a round shield face-on with a sword lowered behind it |
+| `hold` | Stance: never step off the spot | a spear planted upright in the ground, a heavy iron stake beside it |
+| `passive` | Stance: never start a fight | a sword sheathed and bound to its scabbard with a cord (a peace-tie) |
+| `mass` | Formation: a tight knot | seven small dark helmets seen from above, packed in a round cluster |
+| `line` | Formation: ranks across the march | small helmets from above in two straight rows, shields along the front row, an arrow mark pointing forward |
+| `box` | Formation: a square, bowmen inside | small helmets from above round the edge of a square, shields facing out, two bows in the middle |
+| `loose` | Formation: spread wide | small helmets from above scattered widely with wide gaps between them |
+
+Prompt (Goods icon template, filled; one per key):
+
+```text
+ORDER ICON, {SUBJECT}, painted in the same hand-painted medieval style as the kit and research icons: iron, leather and wood, warm low sun from the upper left, soft shadow. Neutral colours only (iron grey, brown leather, natural wood), no faction colour, no text or letters. For formations: a top-down view of small round helmets and shields, like tokens on a war table, so the shape of the formation reads at 32 px. Flat #FF00FF background, centred, 4 px margin, 128x128 (shown at 24-32 px).
+```
+
+Deliver: `assets/shared/ui/orders/<key>.png` for the eight keys. Then add `...STANCES, ...FORMATIONS` to `UI_KEYS.orders` in `js/art.js` (one line; the buttons already ask for `uiArt('orders', key)` and fall back to the glyph).
 
 ## Acceptance
 

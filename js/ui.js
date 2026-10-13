@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE,
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE,
 } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
@@ -346,6 +346,7 @@ export class UI {
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
       case 'amove': this.setAmove(!this.amove); break;
       case 'stance': this.host.send({ type: 'stance', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id), stance: d.stance }); break;
+      case 'formation': this.host.send({ type: 'formation', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id), form: d.form }); break;
       case 'kind': this.setUnits(this.selUnits().filter((u) => u.kind === d.kind)); break;
       case 'load': { const u = this.selUnits().find((x) => x.kind === 'camel'); if (u) this.host.send({ type: 'load', unitId: u.id, good: d.good, amount: 20 }); break; }
       case 'unload': { const u = this.selUnits().find((x) => x.kind === 'camel'); if (u) this.host.send({ type: 'unload', unitId: u.id }); break; }
@@ -838,7 +839,20 @@ export class UI {
       hold: '<b>Hold ground</b><br>Never step off the spot to fight: strike only what comes within reach.',
       passive: '<b>No attack</b><br>Never start a fight (a soldier already locked in combat still cannot run). Your orders still go.',
     };
-    return `<div class="ctitle">Stance</div><div class="cgrid c4">${STANCES.map((k) => this.btn('stance', { glyph: glyph[k], name: STANCE.label[k], cls: cur.size === 1 && cur.has(k) ? 'on' : '', data: { stance: k }, tip: tip[k] })).join('')}</div>`;
+    return `<div class="ctitle">Stance</div><div class="cgrid c4">${STANCES.map((k) => this.btn('stance', { glyph: glyph[k], img: uiArt('orders', k), name: STANCE.label[k], cls: cur.size === 1 && cur.has(k) ? 'on' : '', data: { stance: k }, tip: tip[k] })).join('')}</div>`;
+  }
+  // formations (T02): how the group stands at the end of a march; shown for a group, kept by each member
+  formationGrid(us) {
+    const g = this.game, cur = g.formOf(us);
+    const glyph = { mass: '◉', line: '☰', box: '▣', loose: '⁘' };
+    const tip = {
+      mass: '<b>Mass</b><br>Gather in a tight knot at the spot.',
+      line: '<b>Line</b><br>Form ranks across the line of march: footmen and riders in front, bowmen behind. Faces the way it marched.',
+      box: '<b>Box</b><br>Form a square: fighters on the edge, bowmen and the weak inside.',
+      loose: '<b>Loose</b><br>Spread out wide, so fewer stand in the way of one blow or volley.',
+    };
+    const after = '<br><span class="info">Kept for the group\'s next marches. Those standing idle form up at once.</span>';
+    return `<div class="ctitle">Formation</div><div class="cgrid c4">${FORMATIONS.map((k) => this.btn('formation', { glyph: glyph[k], img: uiArt('orders', k), name: FORMATION.label[k], cls: cur === k ? 'on' : '', data: { form: k }, tip: tip[k] + after })).join('')}</div>`;
   }
   captainBtn(us) {
     if (us.length !== 1) return '';
@@ -1048,6 +1062,8 @@ export class UI {
       html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { glyph: '⚔', name: 'Attack-move', sub: 'F', cls: this.amove ? 'on' : '', tip: '<b>Attack-move</b> (F, or Ctrl+right-click)<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${this.captainBtn(us)}</div>`;
       if (us.some((u) => g.fighter(u))) html += `<div class="hint"><b>Shift</b>+right-click adds waypoints to a march; a group keeps to its slowest member's pace.</div>`;
       if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
+      const marchers = us.filter((u) => u.kind !== 'camel');
+      if (marchers.length > 1 && marchers.some((u) => g.fighter(u) || u.kind === 'king')) html += this.formationGrid(marchers);
       if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));
       if (us.some((u) => u.kind === 'recruit')) html += `<div class="ctitle">Role</div><div class="cgrid c4">${this.btn('spy', { glyph: GLYPH.spy, art: 'spy', name: 'Become spy', sub: SPY_FEE + 'c', off: g.players[PLAYER].gold < SPY_FEE, tip: `<b>Become a spy</b><br>${SPY_FEE} coin. Spies right-click an independent or rival village to sway its loyalty (and can be caught).` })}</div><div class="hint">Or right-click a keep to garrison, then drill into a soldier.</div>`;
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click: a deposit with a <b>mine</b> to dig, timber, berries or gold to gather, a building site to build.</div>`;

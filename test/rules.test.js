@@ -1,5 +1,6 @@
 // Tests for ratings, kings and diplomacy. Fast: `node test/rules.test.js` (part of `npm test`).
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
@@ -827,6 +828,38 @@ test('marching together (T02): a mixed group keeps to its slowest member; a lone
   assert.ok(two.every((u) => !u.task.pace), 'riders together need no pace');
 });
 
+test('formations (T02): a line puts fighters in front across the march and faces it; a box rings the bowmen; loose spreads out; saved', () => {
+  const g = mk(); quiet(g);
+  const [x, y] = openBand(g, 26);
+  const foot = [0, 1, 2, 3].map((i) => g.addUnit('footman', PLAYER, x, y + i * 0.9)), bows = [0, 1, 2, 3].map((i) => g.addUnit('bowman', PLAYER, x + 1, y + i * 0.9));
+  const all = [...bows, ...foot], ids = all.map((u) => u.id);   // bowmen listed first: the formation still puts the footmen in front
+  assert.equal(g.formOf(all), 'mass', 'a group starts in a mass');
+  assert.equal(g.applyIntent({ type: 'formation', team: PLAYER, ids, form: 'line' }), true);
+  assert.equal(g.applyIntent({ type: 'formation', team: PLAYER, ids, form: 'wedge' }), false, 'an unknown formation is refused');
+  assert.ok(all.every((u) => u.form === 'line'));
+  g.applyIntent({ type: 'move', team: PLAYER, ids, x: x + 18, y: y + 1 });
+  run(g, 20);
+  const fx = Math.min(...foot.map((u) => u.x)), bx = Math.max(...bows.map((u) => u.x));
+  assert.ok(fx > bx + 0.5, `footmen stand ahead of the bowmen (front ${fx.toFixed(1)}, back ${bx.toFixed(1)})`);
+  const ys = foot.map((u) => u.y); assert.ok(Math.max(...ys) - Math.min(...ys) > 2.5, 'the front rank stretches across the march');
+  assert.ok(all.every((u) => u.task.type === 'idle' && u.task.face && u.task.face[0] > 0.9), 'and they face the way they marched');
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(Math.hypot(all[i].x - all[j].x, all[i].y - all[j].y) > 0.5, 'nobody stacks');
+  // box: the bowmen inside, the footmen on the edge (nine: one cell in the middle)
+  const box = [g.addUnit('bowman', PLAYER, x, y + 5), ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => g.addUnit('footman', PLAYER, x + (i % 4), y + 6 + Math.floor(i / 4)))];
+  g.setFormation(box, 'box'); const s = g.formSlots(box, x + 10, y + 6), [cx, cy] = s.at.get(box[0]);
+  assert.ok(Math.hypot(cx - (x + 10 - 1.1), cy - (y + 6)) < 0.2, `the bowman takes the middle cell (${cx.toFixed(2)}, ${cy.toFixed(2)})`);
+  // loose spreads wider than mass
+  const spread = (form) => { g.setFormation(foot, form); const at = [...g.formSlots(foot, x + 10, y).at.values()]; return Math.max(...at.map(([a, b]) => Math.hypot(a - x - 10, b - y))); };
+  assert.ok(spread('loose') > spread('mass') * 1.8, 'loose stands wider apart');
+  // kept by a save
+  const g2 = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(g2.byId.get(bows[0].id).form, 'line'); assert.ok(g2.byId.get(bows[0].id).task.face, 'the facing is saved');
+  // idle soldiers form up where they stand when the formation is picked
+  const h = mk(); quiet(h); const loose = [0, 1, 2].map((i) => h.addUnit('footman', PLAYER, x + i * 0.3, y + i * 3));
+  h.applyIntent({ type: 'formation', team: PLAYER, ids: loose.map((u) => u.id), form: 'line' });
+  assert.ok(loose.every((u) => u.task.type === 'move'), 'idle soldiers step into the line');
+});
+
 test('stances: rival houses stand their home guard defensive at peace and send their attacks aggressive', () => {
   const g = new Game({ seed: 8, houses: 3, ai: true }); const t = 1, seat = g.seatOf(t);
   const guard = [0, 1, 2].map((i) => g.addUnit('footman', t, seat.x + i, seat.y + 4));
@@ -866,6 +899,13 @@ test('gaps: the "Raise an army" step counts soldiers garrisoned in a keep (T-050
   assert.equal(step.done(g), true);
   for (const u of us) u.inside = k.id;
   assert.equal(step.done(g), true, 'still an army when inside the keep');
+});
+
+test('the build stamp (T-055): index.html carries an import map that versions every module in js/', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8'), m = html.match(/<script type="importmap">([\s\S]*?)<\/script>/);
+  assert.ok(m, 'index.html has an import map (run node tools/stamp.js)');
+  const imports = JSON.parse(m[1]).imports, build = html.match(/window\.__BUILD = '([^']*)'/)?.[1];
+  for (const f of readdirSync(new URL('../js/', import.meta.url)).filter((f) => f.endsWith('.js'))) assert.equal(imports[`./js/${f}`], `./js/${f}?v=${build}`, `js/${f} is stamped with the build`);
 });
 
 console.log(`${passed} passed`);

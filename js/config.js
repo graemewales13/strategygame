@@ -354,6 +354,11 @@ export const STANCES = ['aggressive', 'defensive', 'hold', 'passive'];
 export const STANCE = { leash: 8, label: { aggressive: 'Aggressive', defensive: 'Defensive', hold: 'Hold ground', passive: 'No attack' } };
 // Shift-queued waypoints (T02): how many legs a march can hold after the one it is walking
 export const WAYPOINTS = 12;
+// Formations (T02): where each member of a group sent together stands at the end of its march, and which way it faces. Mass: a tight knot
+// (the old way, and the default). Line: ranks across the line of march, fighters in front, bowmen behind. Box: a square with the fighters
+// on the outside and bowmen and the weak inside. Loose: spread wide, so fewer stand in one blow's way. `gap` and `loose` are tiles apart.
+export const FORMATIONS = ['mass', 'line', 'box', 'loose'];
+export const FORMATION = { gap: 1.1, mass: 0.9, loose: 1.9, label: { mass: 'Mass', line: 'Line', box: 'Box', loose: 'Loose' } };
 export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11, lookR: 9 };
 // The royal line: a house has a king and `heirs` heirs. Each fallen king is followed by the next heir after `heir` seconds; when the last of the
 // line dies the house falls. A king whose house has lost its seat is a fugitive, seen by every house (`fugitiveSight`).

@@ -56,6 +56,7 @@ for (const seed of seeds) {
       () => ({ type: 'amove', ids: ids(), x: X(), y: Y(), queue: Math.random() < 0.3 }),
       () => ({ type: 'move', ids: ids(), x: X(), y: Y(), queue: Math.random() < 0.5 }),   // (Shift-queued waypoints, T02)
       () => ({ type: 'stance', ids: ids(), stance: pick(['aggressive', 'defensive', 'hold', 'passive', 'nonsense']) }),
+      () => ({ type: 'formation', ids: ids(), form: pick(['mass', 'line', 'box', 'loose', 'wedge']) }),   // (T02; 'wedge' is refused)
       () => ({ type: 'gather', ids: ids(), nodeId: anyN().id }),
       () => ({ type: 'build', ids: ids(), buildingId: anyB().id }),
     ];

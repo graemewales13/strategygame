@@ -34,9 +34,10 @@ export function armedKey(u) {
   return null;
 }
 // shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm). UIART[group][key] = Image.
-export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {} };
+export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {}, orders: {} };
 export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking', vikings: 'jarl', byzantines: 'basileus', persians: 'shahanshah' };
-const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS, portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm'] };
+const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS, portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm'],
+  orders: [] };   // stance and formation icons (ARTREQUIREMENTS priority 14): put [...STANCES, ...FORMATIONS] here once painted; glyphs until then (no 404s)
 export const uiArt = (group, key) => UIART[group]?.[key]?.src || null;
 // painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow
 export const TILE_KINDS = ['grass', 'dry', 'sand', 'rock', 'dirt', 'snow'];
