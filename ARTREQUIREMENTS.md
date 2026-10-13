@@ -6,7 +6,9 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 ## Paint next: new characters are needed
 
-**The paint-next list is done**, except the optional women among the serfs (not wired). Kings, serfs, the new peoples' folk and sites, and the three pale spies are painted.
+**The paint-next list is done**, except the optional women among the serfs (not wired). Kings, serfs, the new peoples' folk and sites, and the three pale spies are painted. Checked 2026-10-13: all 197 files keyed; the full cast of all eight peoples passes the lineup test at game size; in game with no errors and no missing files.
+
+One small open item: the Scottish `recruit` still wears a kilt-like belted plaid, four centuries early for 12th to 13th century Gaels. Repaint it in the léine and brat like the new Scottish serfs (character guide, dress table). Low priority.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
