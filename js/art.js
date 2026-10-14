@@ -13,7 +13,9 @@ export const FIMG = {};
 export const SIMG = {};
 export const VIMG = { '1tile': {}, '4tile': {} };   // independent village art in two footprints, by type
 export const VILLAGE_ART_KEYS = ['hamlet', 'farm', 'fishing', 'mining', 'fortified', 'market'];
-const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet'];
+// the ram as a body and one wheel the game turns (ARTREQUIREMENTS priority 13): set true once ram_body.png and ram_wheel.png are in
+const RAM_PARTS = false;
+const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet', ...(RAM_PARTS ? ['units/ram_body', 'units/ram_wheel'] : [])];
 export const factionSprite = (faction, kind) => FIMG[faction]?.[kind] || null;
 // buildings painted in their raising and ruined states too (FIMG[f]['<kind>_build'], FIMG[f]['<kind>_ruin']); others fall back to the clipped sprite
 const STATED = ['armoury', 'barracks', 'keep', 'market', 'mine', 'cottage', 'farm', 'forge', 'foundry', 'tower', 'academy', 'tavern', 'temple', 'archery', 'stable', 'mill', 'warehouse', 'workshop'];

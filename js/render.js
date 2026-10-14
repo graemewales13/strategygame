@@ -24,6 +24,9 @@ const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 
 const RUIN_LIFE = 30;   // seconds a fallen building's painted ruin lies where it stood, fading over the last third
 // drawn height at zoom 1. The order says who matters in a fight: serfs smallest, levies and folk of the house next, soldiers a head taller,
 // riders and the king tallest (see the character guide in ARTREQUIREMENTS.md)
+// the ram's wheel hubs on its painted body: [x, y, radius] as fractions of the body's width/height/width, 'far' wheels behind the body.
+// Placeholders until ram_body.png and ram_wheel.png are delivered (ARTREQUIREMENTS priority 13); fitted to the art then.
+const RAM_WHEELS = [[0.86, 0.6, 0.08, 'far'], [0.42, 0.66, 0.08, 'far'], [0.08, 0.8, 0.085], [0.55, 0.88, 0.085]];
 const USCALE = { serf: 34, recruit: 40, scholar: 42, spy: 43, scout: 46, bowman: 49, footman: 50, knight: 66, king: 68 };
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
@@ -665,6 +668,38 @@ export class Renderer {
       }
     }
   }
+  // legs that move, from one still painting: the figure is cut at the hip and the part below swings from it while the body stays
+  // level. A person's left and right legs swing in opposite phase (a scissor stride); a horse's hind and fore legs do (a trot).
+  // `g` is the gait from gaitOf(); `ph` the stride phase.
+  strideBody(ctx, c, w, h, top, g, ph) {
+    const iw = c.width, ih = c.height, hipY = top + h * g.hip, k = Math.sin(ph) * g.amp;
+    for (const [s0, s1, kk] of [[0, g.split, k], [g.split, 1, -k]]) {
+      ctx.save(); ctx.transform(1, 0, kk, 1, -kk * hipY, 0);
+      ctx.drawImage(c, s0 * iw, g.hip * ih, (s1 - s0) * iw, (1 - g.hip) * ih, -w / 2 + s0 * w, hipY, (s1 - s0) * w, h * (1 - g.hip));
+      ctx.restore();
+    }
+    ctx.drawImage(c, 0, 0, iw, g.hip * ih + 1, -w / 2, top, w, h * g.hip + 1);   // (one pixel over the cut, so no seam shows)
+  }
+  // how a figure walks: null for anything that should not stride (a chariot rolls, a ram has wheels, a serf at work)
+  gaitOf(u, c, fac) {
+    if (u.kind === 'ram' || u.kind === 'camel') return null;
+    const mounted = c.width / c.height > 0.8;   // a horse and rider is wider than tall; a man on foot is not
+    if (mounted) return fac === 'egyptians' && (u.kind === 'knight' || u.kind === 'king') ? null : { hip: 0.64, split: 0.5, amp: 0.34, rate: 0.7 };
+    const robed = u.kind === 'spy' || u.kind === 'scholar';   // long robes and cloaks: the hem sways rather than the legs scissoring
+    return { hip: robed ? 0.62 : 0.56, split: 0.5, amp: robed ? 0.1 : 0.24, rate: 0.55 };
+  }
+  // a ram painted as a body and one separate wheel (ARTREQUIREMENTS priority 13): the wheels turn with the distance it rolls.
+  // RAM_WHEELS are the hub centres and radii as fractions of the body picture, far wheels first (drawn behind the body).
+  ramBody(ctx, body, wheel, w, h, top, u) {
+    const spin = (u.anim || 0) * 0.9;
+    const one = ([fx, fy, fr]) => {
+      ctx.save(); ctx.translate(-w / 2 + fx * w, top + fy * h); ctx.scale(0.62, 1); ctx.rotate(spin);   // (a wheel seen three-quarter on is an upright ellipse)
+      ctx.drawImage(wheel, -fr * w, -fr * w, fr * w * 2, fr * w * 2); ctx.restore();
+    };
+    for (const wh of RAM_WHEELS.filter((x) => x[3] === 'far')) one(wh);
+    ctx.drawImage(body, -w / 2, top, w, h);
+    for (const wh of RAM_WHEELS.filter((x) => x[3] !== 'far')) one(wh);
+  }
   // dust kicked up behind a camel on the move
   dust(ctx, sx, sy, sgn, t, z, id) {
     for (let i = 0; i < 4; i++) {
@@ -700,7 +735,7 @@ export class Renderer {
     const working = !moving && (u.task.type === 'gather' || u.task.type === 'build' || u.task.type === 'mine');
     let c, w, h;
     let rightArt = false, full = false, sway = false;   // (sway: a stand-in figure with no work frames rocks at his task)   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
-    if (u.kind === 'ram') { const s2 = SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
+    if (u.kind === 'ram') { const s2 = SIMG.ram_body && SIMG.ram_wheel ? SIMG.ram_body : SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
     else if (u.kind === 'camel') { const fac = HOUSES[u.team].faction, s2 = fac === 'mongols' ? SIMG.bactrian : fac === 'romans' || fac === 'vikings' || fac === 'byzantines' ? SIMG.donkey : SIMG.dromedary; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }
     else if (u.kind === 'serf') {   // the house's own serf when its people has one painted (idle, two work frames), else the common one
       const fu = FUNIT[HOUSES[u.team]?.faction], key = working ? ((Math.floor(t * 2 + u.id) & 1) ? 'serf_work2' : 'serf_work1') : 'serf', own = fu?.[key] || fu?.serf || fu?.recruit;   // (until a people's serfs are painted, its villager in work clothes stands in)
@@ -715,7 +750,8 @@ export class Renderer {
     if (!c) return;
     h = (c.height / c.width) * w;
     const wheeled = u.kind === 'ram';   // a cart on four wheels: it rumbles over the ground instead of bobbing like a walker, and its shadow spans the wheelbase
-    const bob = wheeled ? (moving ? Math.abs(Math.sin(u.anim * 2.1)) * 0.6 * z : 0) : moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
+    const gait = moving && full && gfx.q >= 1 ? this.gaitOf(u, c, HOUSES[u.team]?.faction) : null, sph = gait ? u.anim * gait.rate : 0;   // (striding painted figures)
+    const bob = wheeled ? (moving ? Math.abs(Math.sin(u.anim * 2.1)) * 0.6 * z : 0) : gait ? (1 - Math.abs(Math.sin(sph))) * 1.6 * z : moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;   // (a striding body rises as the legs pass)
     const lunge = striking ? 5 * z * (u.cooldown > st.cd - 0.12 ? 1 : 0.5) : 0;
     if (wheeled) this.shadowAt(ctx, sx, sy - h * 0.13, w * 0.5, h * 0.17, 0.42);   // (the three-quarter art puts the rear wheels well up the picture)
     else this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
@@ -724,13 +760,15 @@ export class Renderer {
     this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
-    ctx.rotate(moving && !wheeled ? Math.sin(u.anim * 0.55) * 0.045 : working && sway ? Math.sin(t * 6 + u.id) * 0.07 : 0);
+    ctx.rotate(gait ? Math.sin(sph * 2) * 0.012 : moving && !wheeled ? Math.sin(u.anim * 0.55) * 0.045 : working && sway ? Math.sin(t * 6 + u.id) * 0.07 : 0);
     ctx.scale((flip !== rightArt) ? -sxScale : sxScale, 1);
     const foot = full ? 0.985 : u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
     const top = -h * foot - bob;
     if (u.kind === 'camel' && rightArt && gfx.q >= 1) this.camelBody(ctx, c, w, h, top, moving, u, t, z);
+    else if (gait) this.strideBody(ctx, c, w, h, top, gait, sph);
+    else if (wheeled && c === SIMG.ram_body) this.ramBody(ctx, c, SIMG.ram_wheel, w, h, top, u);
     else ctx.drawImage(c, -w / 2, top, w, h);
-    if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
+    if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); if (gait) this.strideBody(ctx, c, w, h, top, gait, sph); else ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
     ctx.restore();
     this.hit(u, 'unit', sx - w * 0.4, sy - h * foot - bob, sx + w * 0.4, sy + 3 * z);
     if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }

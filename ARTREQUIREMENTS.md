@@ -20,6 +20,8 @@ One small open item: the Scottish `recruit` still wears a kilt-like belted plaid
 | 4 | **The new peoples' Armoury soldiers** | Vikings, Byzantines, Persians | the six keys of priority 3 | 18 | priorities 3 and 8 — **delivered** 2026-10-13 |
 | 5 | **Spies repainted dark** | Egyptians, Scots, Mongols | `units/spy.png` | 3 | priority 11 — **delivered** 2026-10-13 |
 | 6 | Building sites and ruins for the new peoples | Vikings, Byzantines, Persians | `buildings/<key>_build.png`, `<key>_ruin.png` for the 18 keys | 108 | priorities 6 and 8 — **delivered** 2026-10-13 |
+| 8 | **The ram as a body and a wheel**, so its wheels really turn | shared | `assets/shared/units/ram_body.png`, `ram_wheel.png` | 2 | priority 13 (new 2026-10-14) |
+| 9 | *Later:* walk cycles, soldiers first | all 8 | `units/<role>_walk1.png` ... `_walk4.png` | up to 96 for soldiers | priority 14 (new 2026-10-14) |
 | 7 | *Optional:* women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | character guide (not wired yet: say when they are coming and it is one line) |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
@@ -39,6 +41,8 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 9 | Soldiers to the character guide: footman, bowman, knight (8 peoples, 24) | **Delivered and wired** 2026-10-12, scaled to 260 px on the long side (T-054) |
 | 10 | **Serfs per people** (8 peoples, 24) | **Delivered and wired** 2026-10-13. `serf`, `serf_work1`, `serf_work2` are out of `REPAINT` |
 | 11 | Spies easy to miss (Egyptians, Scots, Mongols) | **Delivered** 2026-10-13. Dark cloaks; the people's colour is only a cord |
+| 13 | **Ram body and wheel** | **Requested** 2026-10-14 (below). Wired behind `RAM_PARTS` in `js/art.js` |
+| 14 | Walk cycles (soldiers first) | **Later** (below). Until then the game strides the still figures in code |
 | 12 | **Kings on the field** (8) | **Delivered and wired** 2026-10-13. `king` is out of `REPAINT`. The drawn crown is kept only when a people has no painted king |
 | 13 | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** Queued legs are drawn in code |
 | 14 | **Order icons**: four stances and four formations (T01, T02; added 2026-10-13) | **Requested.** Wired in code: the buttons show a text glyph until painted; switch on in one line (below) |
@@ -430,6 +434,37 @@ ORDER ICON, {SUBJECT}, painted in the same hand-painted medieval style as the ki
 ```
 
 Deliver: `assets/shared/ui/orders/<key>.png` for the eight keys. Then add `...STANCES, ...FORMATIONS` to `UI_KEYS.orders` in `js/art.js` (one line; the buttons already ask for `uiArt('orders', key)` and fall back to the glyph).
+
+## Priority 13: a ram whose wheels turn (2)
+
+The owner asked for the ram's wheels to turn. The ram is one painting, so the game can only rumble it. Paint it in two parts:
+
+| File | Subject |
+|---|---|
+| `ram_body.png` | the same roofed ram as `ram.png`, same view, size and framing, but **with no wheels**: the axle ends and hubs' mounting showing where the wheels go |
+| `ram_wheel.png` | one heavy wooden wheel seen **face-on** (a true circle, not an ellipse): plank face, iron tyre and studs, a hub, 128x128, centred, 4 px margin |
+
+The game turns the wheel and squashes it into the three-quarter view itself, so paint it flat-on. It draws the two far wheels behind the body and the two near wheels in front.
+
+```text
+SIEGE RAM BODY: the roofed timber battering ram as in the current ram.png, same three-quarter view facing right, same size and framing, with the four wheels removed so the axle ends show. Flat #FF00FF background, no shadow, 420x392.
+RAM WHEEL: a single heavy wooden cart wheel of thick planks with an iron tyre and iron studs, seen exactly face-on as a perfect circle, centred. Flat #FF00FF background, no shadow, 128x128, 4 px margin.
+```
+
+Deliver both to `assets/shared/units/`. Then set `RAM_PARTS = true` in `js/art.js`, and fit the four hub positions (`RAM_WHEELS` in `js/render.js`, fractions of the body picture) to the painted axles.
+
+## Priority 14: walk cycles (later, soldiers first)
+
+Since 2026-10-14 the game makes still figures walk in code: it cuts each figure at the hip and swings the legs (scissoring for people, forelegs against hind legs for horses). That reads well at play zoom; close up it can look like a paper cut-out. Real walk cycles are the proper finish. Paint four frames of one stride per role, in the same framing as the role's still figure, starting with `footman`, `bowman` and `knight` for all eight peoples (96 files), then the rest.
+
+| File | Pose |
+|---|---|
+| `<role>_walk1.png` | right foot forward, contact |
+| `<role>_walk2.png` | passing, body highest |
+| `<role>_walk3.png` | left foot forward, contact |
+| `<role>_walk4.png` | passing, body highest |
+
+Same feet line and head height in every frame so the figure does not jump. Not wired yet: say when the first are coming.
 
 ## Acceptance
 
