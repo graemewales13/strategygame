@@ -528,3 +528,13 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 #holdbar.empty { display: none; }
 .hchip.rv { padding: 1px 3px 1px 1px; border-color: #4f381c; }
 @media (max-width: 1600px) { #brand span { display: none; } }
+
+/* playtest 2026-10-14: a treaty card shares the class name of the Council's .treaty row (a flex row), which squeezed its text into a column
+   and pushed Decline and Intel off the screen; the setup buttons had a fixed 54 px that cut "Egyptians", "Medium", "Standard" short */
+.offer, .offer.treaty { display: block; }
+.seg button { width: auto; min-width: 54px; padding: 7px 8px; }
+#mHouses button { min-width: 0; width: 38px; padding: 7px 0; }
+#mPeople button { width: auto; }
+.toast.news { font-size: 12.5px; font-weight: 600; padding: 4px 12px; opacity: .85; border-color: #6d4d27; color: #d9c79a; }
+.offer .ostake { font-size: 11.5px; color: #f0a890; margin: 2px 0 4px; } .offer .ostake b { color: #ffd0b8; }
+.endbox p.chron { font-size: 13px; color: #cdbb8a; margin: 10px 0 14px; } .endbox p.chron i { color: #e8d9ae; }

@@ -362,7 +362,7 @@ export const FORMATION = { gap: 1.1, mass: 0.9, loose: 1.9, label: { mass: 'Mass
 export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11, lookR: 9 };
 // The royal line: a house has a king and `heirs` heirs. Each fallen king is followed by the next heir after `heir` seconds; when the last of the
 // line dies the house falls. A king whose house has lost its seat is a fugitive, seen by every house (`fugitiveSight`).
-export const KING = { aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 20, heirs: 2, fugitiveSight: 2.5, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
+export const KING = { safeR: 12, aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 20, heirs: 2, fugitiveSight: 2.5, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
   titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King', vikings: 'Jarl', byzantines: 'Basileus', persians: 'Shahanshah' } };
 // Leaders have a temper that colours how they treat the other houses (see ai.js diplomacy): aggr, greed, honor and wary are 0..1.
 export const TEMPERS = [

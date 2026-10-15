@@ -55,7 +55,7 @@ export class UI {
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.mini.setGame(game); this.clearSel(); this.placing = null; this.endShown = false; this.sigCmd = this.sigSel = ''; $('end').classList.add('hidden'); }
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.endShown = false; this.sigCmd = this.sigSel = ''; $('end').classList.add('hidden'); }
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -167,6 +167,10 @@ export class UI {
       const s = BUILDINGS[this.placing].size; this.hoverTX = Math.round(wx - s / 2); this.hoverTY = Math.round(wy - s / 2);
       if (this.placing === 'mine') { const n = this.game.nodeAt(wx, wy); const sp = n && MINEABLE.includes(n.kind) ? this.game.mineSpot(PLAYER, n) : null; if (sp) { this.hoverTX = sp[0]; this.hoverTY = sp[1]; } }
     }
+    // a deposit names itself under the cursor: stone, iron and coal look alike at play zoom, and a mine raised on the wrong one costs minutes (playtest 2026-10-14)
+    { const h = this.drag || e.target !== this.r.canvas ? null : this.r.pick(sx, sy), n = h && h.type === 'node' && MINEABLE.includes(h.o.kind) ? h.o : null, tip = $('tip');
+      if (n) { tip.innerHTML = `<b>${n.kind === 'gold' ? 'Gold' : GOOD_LABEL[n.kind]} deposit</b><br>${Math.round(n.amount)} left · ${n.covered ? 'being mined' : n.kind === 'gold' ? 'serfs can pan it, or raise a Mine on it' : 'raise a Mine on it'}`; tip.classList.remove('hidden'); this.placeTip(e); this.nodeTip = true; }
+      else if (this.nodeTip) { this.nodeTip = false; tip.classList.add('hidden'); } }
     if (this.drag) {
       if (Math.hypot(sx - this.drag.sx, sy - this.drag.sy) > 6) this.dragBox = { x0: Math.min(sx, this.drag.sx), y0: Math.min(sy, this.drag.sy), x1: Math.max(sx, this.drag.sx), y1: Math.max(sy, this.drag.sy) };
     }
@@ -336,7 +340,7 @@ export class UI {
         const s = BUILDINGS[d.kind];
         const miss = g.missingFor(PLAYER, d.kind)[0];
         if (miss) return this.toast(`${s.label} needs a ${miss}.`, 'warn');
-        if (!g.canAfford(PLAYER, s.cost)) return this.toast('Not enough goods.', 'warn');
+        if (!g.canAfford(PLAYER, s.cost)) return this.toast(g.shortfall(PLAYER, s.cost), 'warn');
         this.placing = d.kind; $('game').classList.add('placing');
         const [wx, wy] = this.r.toWorld(this.mouse.x, this.mouse.y); this.hoverTX = Math.round(wx - s.size / 2); this.hoverTY = Math.round(wy - s.size / 2);
         break;
@@ -412,7 +416,7 @@ export class UI {
         else { const c = mine.filter((u) => u.kind === 'camel' && u.task.type !== 'caravan').sort(near)[0]; if (c) this.host.send({ type: 'context', ids: [c.id], x: v.x, y: v.y, want: this.want }); }
         break;
       }
-      case 'keephere': { const v = this.selEntity(); if (!v) break; if (!g.canAfford(PLAYER, BUILDINGS.keep.cost)) return this.toast('Not enough goods for a keep.', 'warn'); this.placing = 'keep'; $('game').classList.add('placing'); this.hoverTX = Math.round(v.x) - 8; this.hoverTY = Math.round(v.y) - 2; break; }
+      case 'keephere': { const v = this.selEntity(); if (!v) break; if (!g.canAfford(PLAYER, BUILDINGS.keep.cost)) return this.toast(g.shortfall(PLAYER, BUILDINGS.keep.cost, ' for a keep'), 'warn'); this.placing = 'keep'; $('game').classList.add('placing'); this.hoverTX = Math.round(v.x) - 8; this.hoverTY = Math.round(v.y) - 2; break; }
       case 'sendarmyb': { const b = this.selEntity(); const a = g.militaryOf(PLAYER).map((u) => u.id); if (b && a.length) this.host.send({ type: 'attack', ids: a, targetId: b.id }); break; }
       case 'minehere': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (n) { this.placing = 'mine'; $('game').classList.add('placing'); this.hoverTX = Math.round(n.x - 1); this.hoverTY = Math.round(n.y - 1); } break; }
       case 'gathernode': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (!n) break; const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - n.x, a.y - n.y) - Math.hypot(c.x - n.x, c.y - n.y)).slice(0, 4); if (!serfs.length) this.toast('No idle serfs.', 'warn'); else this.host.send({ type: 'gather', ids: serfs.map((u) => u.id), nodeId: n.id }); break; }
@@ -587,7 +591,11 @@ export class UI {
     this.pings = this.pings.filter((p) => p.age < 0.8);
     this.pruneSel();
     // events -> toasts
-    for (const ev of g.events.splice(0)) if (ev.team === PLAYER || ev.team === -1) this.toast(ev.text, ev.kind);
+    // news of other houses is one quiet line (its first sentence) so it never crowds out what happens to you; a war on you sounds the horn
+    for (const ev of g.events.splice(0)) {
+      if (ev.team === PLAYER) { this.toast(ev.text, ev.kind); if (ev.kind === 'war') play('alarm'); }
+      else if (ev.team === -1) this.toast(ev.text.split(/(?<=[.!])\s/)[0], 'news');
+    }
     this.renderObjectives();
     g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
@@ -602,8 +610,9 @@ export class UI {
     if (box.lastChild && box.lastChild.dataset.t === text) return;
     const el = document.createElement('div'); el.className = `toast ${kind}`; el.textContent = text; el.dataset.t = text;
     if (kind === 'bad' && /under attack/.test(text) && uiArt('marks', 'alarm')) { const i = document.createElement('img'); i.className = 'ico'; i.src = uiArt('marks', 'alarm'); i.alt = ''; el.prepend(i); }   // the war-horn mark when painted (ARTREQUIREMENTS priority 7)
+    if (kind === 'news') box.querySelectorAll('.toast.news').forEach((n) => n.remove());   // one line of news at a time
     box.appendChild(el);
-    while (box.children.length > 4) box.firstChild.remove();
+    while (box.children.length > 4) (box.querySelector('.toast.news') || box.firstChild).remove();   // news gives way first: an alarm is never pushed off by gossip
     setTimeout(() => el.classList.add('fade'), 3800); setTimeout(() => el.remove(), 4500);
   }
 
@@ -615,9 +624,13 @@ export class UI {
       const ok = { treaty: 'Accept', joinwar: `Join the war on ${o.target != null ? esc(HOUSES[o.target].short) : ''}`, tribute: `Pay ${o.amount}c`, aid: `Send ${o.amount}c` }[kind];
       const no = { treaty: 'Decline', joinwar: 'Decline', tribute: 'Refuse', aid: 'Refuse' }[kind];
       const text = o.text || `${esc(HOUSES[o.from].name)} offers ${o.state === 'trade' ? 'a trade treaty' : o.state === 'alliance' ? 'an alliance' : 'peace'}.`;
-      return `<div class="offer ${kind}" style="border-color:${HOUSES[o.from].accent}"><div class="oh"><b style="color:${HOUSES[o.from].accent}">${N}</b><span class="ok">${{ treaty: o.state === 'alliance' ? 'Alliance' : o.state === 'trade' ? 'Trade treaty' : 'Peace', joinwar: 'Call to arms', tribute: 'Demand', aid: 'Plea for aid' }[kind]}</span><small class="ocd" data-id="${o.id}"></small></div><div class="otext">${esc(text)}</div><div class="row"><button data-act="respond" data-team="${o.from}" data-accept="1" data-id="${o.id}" ${poor ? 'disabled title="Not enough coin"' : ''}>${ok}</button><button data-act="respond" data-team="${o.from}" data-accept="0" data-id="${o.id}">${no}</button><button data-act="council" data-team="${o.from}" title="Open the council to see their strength">Intel</button></div></div>`;
+      // a demand says what refusing risks: in play a refused (or ignored) demand was the only warning before an army came (playtest 2026-10-14)
+      const stake = kind === 'tribute' ? `<div class="ostake">Refuse or let it lapse and ${N} may march on you. Their army <b class="oarm" data-team="${o.from}"></b>, yours <b class="oarm" data-team="${PLAYER}"></b>.</div>` : '';   // (the counts are filled in place below, like the countdown)
+      return `<div class="offer ${kind}" style="border-color:${HOUSES[o.from].accent}"><div class="oh"><b style="color:${HOUSES[o.from].accent}">${N}</b><span class="ok">${{ treaty: o.state === 'alliance' ? 'Alliance' : o.state === 'trade' ? 'Trade treaty' : 'Peace', joinwar: 'Call to arms', tribute: 'Demand', aid: 'Plea for aid' }[kind]}</span><small class="ocd" data-id="${o.id}"></small></div><div class="otext">${esc(text)}</div>${stake}<div class="row"><button data-act="respond" data-team="${o.from}" data-accept="1" data-id="${o.id}" ${poor ? 'disabled title="Not enough coin"' : ''}>${ok}</button><button data-act="respond" data-team="${o.from}" data-accept="0" data-id="${o.id}">${no}</button><button data-act="council" data-team="${o.from}" title="Open the council to see their strength">Intel</button></div></div>`;
     }).join('');
     if (html !== this.sigOffers) { this.sigOffers = html; $('offers').innerHTML = html; }
+    for (const o of g.offers) if (o.to === PLAYER && !(this.heard ||= new Set()).has(o.id)) { this.heard.add(o.id); play(o.kind === 'tribute' ? 'alarm' : 'letter'); }   // a letter arrives with a sound, a demand with the horn
+    for (const el of $('offers').querySelectorAll('.oarm')) { const t = String(g.soldiersOf(+el.dataset.team).length); if (el.textContent !== t) el.textContent = t; }
     for (const el of $('offers').querySelectorAll('.ocd')) { const o = g.offers.find((x) => x.id === +el.dataset.id); const t = o ? `${Math.max(0, Math.ceil((o.expires ?? g.time + 60) - g.time))}s` : ''; if (el.textContent !== t) el.textContent = t; }   // the countdown ticks in place: rebuilding the card would swallow a click
   }
   renderTop() {
@@ -1278,6 +1291,15 @@ export class UI {
     const o = this.game.outcome;
     $('endTitle').textContent = o.result === 'victory' ? 'The valley is yours.' : 'Your house has fallen.';
     $('endText').textContent = o.reason + ` (${Math.floor(this.game.time / 60)} min ${Math.floor(this.game.time % 60)} s)`;
+    // a short chronicle: what happened and, after a fall, one thing to try next time (a bare "you lost" gave no reason to try again: playtest 2026-10-14)
+    const g = this.game, p = g.players[PLAYER], by = p.lineEndedBy, standing = g.players.filter((q) => q.team !== PLAYER && q.alive).length;
+    const lines = [
+      by != null && by >= 0 && by !== PLAYER ? `Your line was ended by ${esc(g.players[by].name)}.` : '',
+      `Kings lost: ${p.kingsLost || 0} · villages held: ${g.villagesOf(PLAYER).length} · coin earned: ${Math.round(p.earnedTotal || 0)} · rival houses standing: ${standing} of ${g.players.length - 1}`,
+      o.result === 'victory' ? '' : '<i>Next time: rival houses demand tribute from about minute 7 and march on the weak. Train soldiers early, and when raiders come, put your king inside a keep or your village.</i>',
+    ].filter(Boolean);
+    let ch = $('endChron'); if (!ch) { ch = document.createElement('p'); ch.id = 'endChron'; ch.className = 'chron'; $('endText').after(ch); }
+    ch.innerHTML = lines.join('<br>');
     $('end').classList.remove('hidden');
   }
 }

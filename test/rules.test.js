@@ -908,4 +908,43 @@ test('the build stamp (T-055): index.html carries an import map that versions ev
   for (const f of readdirSync(new URL('../js/', import.meta.url)).filter((f) => f.endsWith('.js'))) assert.equal(imports[`./js/${f}`], `./js/${f}?v=${build}`, `js/${f} is stamped with the build`);
 });
 
+test('playtest 2026-10-14: "not enough goods" names what is missing', () => {
+  const g = mk(), p = g.players[PLAYER]; Object.assign(p, { food: 999, wood: 300, gold: 100, stone: 35 });
+  const r = g.canPlace(PLAYER, 'keep', g.seatOf(PLAYER).tx + 12, g.seatOf(PLAYER).ty + 12);
+  assert.equal(r.ok, false); assert.match(r.reason, /50 coin and 5 stone/);
+  assert.equal(g.lacking(PLAYER, { wood: 10 }), '', 'nothing lacking, nothing said');
+});
+
+test('playtest 2026-10-14: an order to serfs sheltering in a village brings them out to obey (they used to sit inside for ever)', () => {
+  const g = mk(), v = g.seatOf(PLAYER), serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf');
+  for (const u of serfs) { u.inside = v.id; v.garrison.push(u.id); u.task = { type: 'idle' }; }
+  const tree = g.resources.filter((n) => n.kind === 'tree' && n.amount > 0).sort((a, b) => Math.hypot(a.x - v.x, a.y - v.y) - Math.hypot(b.x - v.x, b.y - v.y))[0];
+  g.applyIntent({ team: PLAYER, type: 'gather', ids: [serfs[0].id], nodeId: tree.id });
+  assert.equal(serfs[0].inside, null, 'out of the village'); assert.equal(serfs[0].task.type, 'gather'); assert.ok(!v.garrison.includes(serfs[0].id));
+  g.applyIntent({ team: PLAYER, type: 'move', ids: [serfs[1].id], x: v.x + 6, y: v.y + 6 });
+  assert.equal(serfs[1].inside, null); assert.equal(serfs[1].task.type, 'move');
+  assert.equal(serfs[2].inside, v.id, 'those not ordered stay inside');
+  g.cmdGather([serfs[2]], tree); assert.equal(serfs[2].task.type, 'idle', 'a direct gather call never gives someone inside a task he cannot do');
+});
+
+test('playtest 2026-10-14: an heir is crowned where no raider stands; with nowhere safe, at the seat as before', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war';
+  const seat = g.seatOf(PLAYER), far = g.villages.filter((v) => v.owner == null || v.owner < 0).sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
+  far.owner = PLAYER;
+  const at0 = g.thronePlace(PLAYER); assert.ok(Math.hypot(at0.x - seat.x, at0.y - seat.y) < 6, 'in peace, the seat');
+  for (let i = 0; i < 3; i++) g.addUnit('footman', 1, seat.x + i, seat.y + 4);
+  const at1 = g.thronePlace(PLAYER); assert.ok(Math.hypot(at1.x - far.x, at1.y - far.y) < 6, 'raiders at the seat: crowned at the other village');
+  for (let i = 0; i < 3; i++) g.addUnit('footman', 1, far.x + i, far.y + 4);
+  const at2 = g.thronePlace(PLAYER); assert.ok(Math.hypot(at2.x - seat.x, at2.y - seat.y) < 6, 'raiders everywhere: the seat');
+});
+
+test('playtest 2026-10-14: a struck king always raises his own alarm, saying how many heirs are left', () => {
+  const g = mk(), k = g.kingOf(PLAYER), h = g.seatOf(PLAYER);
+  g.alertPlayer(g.addBuilding('barracks', PLAYER, Math.round(h.x + 8), Math.round(h.y), true), 1);   // a building's alarm first...
+  g.alertPlayer(k, 1);   // ...does not swallow the king's a moment later
+  const last = g.events[g.events.length - 1].text; assert.match(last, /under attack!.*2 heirs left/);
+  g.players[PLAYER].heirs = 0; g.time += 9; g.alertPlayer(k, 1);
+  assert.match(g.events[g.events.length - 1].text, /last of your line/);
+});
+
 console.log(`${passed} passed`);

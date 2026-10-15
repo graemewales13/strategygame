@@ -195,6 +195,12 @@ export class Game {
     for (const k in cost) if (cost[k] && (p[k] || 0) < cost[k]) return false;
     return true;
   }
+  // what a house still lacks for `cost`, in words ("5 stone and 20 timber"), so a refusal says what to fetch rather than just "not enough"
+  lacking(team, cost) {
+    const p = this.players[team], miss = Object.keys(cost).filter((k) => cost[k] && (p[k] || 0) < cost[k]).map((k) => `${Math.ceil(cost[k] - (p[k] || 0))} ${(GOOD_LABEL[k] || k).toLowerCase()}`);
+    return miss.length > 1 ? miss.slice(0, -1).join(', ') + ' and ' + miss[miss.length - 1] : miss[0] || '';
+  }
+  shortfall(team, cost, what = '') { return `Not enough goods${what}: you need ${this.lacking(team, cost)} more.`; }
   pay(team, cost, sign = 1) {
     const p = this.players[team];
     for (const k in cost) if (cost[k]) p[k] -= cost[k] * sign;
@@ -438,9 +444,11 @@ export class Game {
     const team = it.team;
     if (this.outcome || !this.alive(team)) return null;
     const mine = () => (it.ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
+    // an order given to someone sheltering inside brings them out to obey it (they used to take the order and sit inside for ever: playtest 2026-10-14)
+    const out = () => { const us = mine(); for (const u of us) if (u.inside && !u.drilling) this.eject(u, this.byId.get(u.inside)); return us; };
     switch (it.type) {
-      case 'move': return this.cmdMove(mine(), it.x, it.y, !!it.queue);
-      case 'amove': return this.cmdAttackMove(mine(), it.x, it.y, !!it.queue);
+      case 'move': return this.cmdMove(out(), it.x, it.y, !!it.queue);
+      case 'amove': return this.cmdAttackMove(out(), it.x, it.y, !!it.queue);
       case 'stance': return this.setStance(mine(), it.stance);
       case 'formation': return this.formUp(mine(), it.form);
       case 'stop': mine().forEach((u) => { u.route = null; u.parked = true; u.task = { type: 'idle' }; u.path = []; }); return true;
@@ -450,10 +458,10 @@ export class Game {
       case 'draft': return this.draft(team, it.villageId, it.n || 1, it.role || 'serf') > 0;
       case 'sell': return this.sellGoods(team, it.marketId, it.good, it.amount) > 0;
       case 'attack':
-      case 'pillage': return this.cmdAttack(mine(), this.byId.get(it.targetId));
-      case 'infiltrate': return this.cmdInfiltrate(mine(), this.byId.get(it.villageId ?? it.targetId));
-      case 'gather': return this.cmdGather(mine(), this.resources[it.nodeId]);
-      case 'build': return this.cmdBuild(mine(), this.byId.get(it.buildingId), !!it.queue);
+      case 'pillage': return this.cmdAttack(out(), this.byId.get(it.targetId));
+      case 'infiltrate': return this.cmdInfiltrate(out(), this.byId.get(it.villageId ?? it.targetId));
+      case 'gather': return this.cmdGather(out(), this.resources[it.nodeId]);
+      case 'build': return this.cmdBuild(out(), this.byId.get(it.buildingId), !!it.queue);
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
       case 'hire': return this.hire(team, it.buildingId, it.index);
@@ -465,7 +473,7 @@ export class Game {
       case 'levy': return this.setLevy(team, it.buildingId, it.villageId);
       case 'settle': return this.settle(team, it.villageId);
       case 'drill': return this.drill(team, it.buildingId, it.unitId, it.kind);
-      case 'place': return this.place(team, it.kind, it.tx, it.ty, it.ids, it.nodeId ?? null);
+      case 'place': out(); return this.place(team, it.kind, it.tx, it.ty, it.ids, it.nodeId ?? null);
       case 'mine': return this.cmdMine(mine(), this.byId.get(it.buildingId));
       case 'unmine': return this.unassignMine(team, it.buildingId);
       case 'respond': return this.respondOffer(team, it.from, !!it.accept, it.id ?? null);
@@ -658,7 +666,7 @@ export class Game {
     if (!b || b.team !== team || b.kind !== 'armoury' || b.built < 1 || b.hp <= 0) return 'Needs a finished Armoury.';
     if (!this.hasTech(team, g.tech)) return `Research ${TECH[g.tech].label} first.`;
     if ((b.craft || []).length >= CRAFT_QUEUE) return 'The armoury is busy: wait for the work in hand.';
-    if (!this.canAfford(team, g.cost)) return 'Not enough goods.';
+    if (!this.canAfford(team, g.cost)) return this.shortfall(team, g.cost);
     return null;
   }
   craft(team, buildingId, item) {
@@ -751,7 +759,7 @@ export class Game {
     const b = this.byId.get(buildingId), say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
     if (!b || b.team !== team || b.kind !== 'tavern' || b.built < 1 || b.hp <= 0 || !b.roster?.[index]) return null;
     const w = b.roster[index];
-    if (!this.canAfford(team, w.cost)) return say('Not enough goods to hire.');
+    if (!this.canAfford(team, w.cost)) return say(this.shortfall(team, w.cost, ' to hire'));
     if (this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');
     this.pay(team, w.cost);
     const u = this.addUnit('recruit', team, b.x + (this.roll() - 0.5) * 1.2, b.ty + b.size + 0.7);
@@ -969,7 +977,7 @@ export class Game {
     if (u.kind !== 'recruit' && u.kind !== 'serf') return say('Only recruits and serfs can be drilled.');
     if (u.drilling) return say('Already training.');
     if (b.drills.length >= 4) return say('The drill yard is full.');
-    if (!this.canAfford(team, d.cost)) return say('Not enough goods to drill.');
+    if (!this.canAfford(team, d.cost)) return say(this.shortfall(team, d.cost, ' to drill'));
     this.pay(team, d.cost);
     u.drilling = true; b.drills.push({ uid: u.id, kind, t: 0 });
     return true;
@@ -1213,7 +1221,7 @@ export class Game {
       return false;
     }
     for (const u of units) {
-      if (u.kind !== 'serf') continue;
+      if (u.kind !== 'serf' || u.inside) continue;
       const res = NODE_RES[node.kind];
       if (u.carry && u.carry.kind !== res) u.carry = null; // drop whatever else was in hand
       u.task = { type: 'gather', nodeId: node.id };
@@ -1327,7 +1335,7 @@ export class Game {
     if (!s || !s.cost) return { ok: false, reason: 'Unknown building' };
     { const miss = this.missingFor(team, kind); if (miss.length) return { ok: false, reason: `Needs a ${miss[0]}` }; }
     if (kind === 'village' && this.villages.filter((v) => v.owner === team && v.founded).length + this.buildings.filter((b) => b.team === team && b.kind === 'village' && b.hp > 0).length >= FOUND.limit) return { ok: false, reason: `A house may found only ${FOUND.limit} villages: win the rest` };
-    if (!this.canAfford(team, s.cost)) return { ok: false, reason: 'Not enough goods' };
+    if (!this.canAfford(team, s.cost)) return { ok: false, reason: this.shortfall(team, s.cost) };
     const { W, H } = this;
     if (tx < 1 || ty < 1 || tx + s.size > W - 1 || ty + s.size > H - 1) return { ok: false, reason: 'Out of bounds' };
     for (let y = ty; y < ty + s.size; y++) for (let x = tx; x < tx + s.size; x++) {
@@ -1467,7 +1475,7 @@ export class Game {
     const say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
     if (!b || b.type !== 'building' || b.team !== team || b.built < 1 || b.hp <= 0 || !s) return null;
     if (!s.from.includes(b.kind)) return say(`A ${BUILDINGS[b.kind].label} cannot train that.`);
-    if (!this.canAfford(team, s.cost)) return say('Not enough goods.');
+    if (!this.canAfford(team, s.cost)) return say(this.shortfall(team, s.cost));
     if (this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');
     if (b.queue.length >= 5) return say('Training queue is full.');
     this.pay(team, s.cost);
@@ -2673,8 +2681,12 @@ export class Game {
     return ax != null && Math.hypot(u.x - ax, u.y - ay) <= KING.aura;
   }
   // where an heir is crowned: the house's seat, else any village or building it still holds, else beside its largest band of fighters
+  // (not into the arms of raiders: the first holding with no hostile soldier within KING.safeR, else the seat as before. In play an heir
+  // crowned at a seat under attack died at once, and the next one too: three kings lost in five minutes, playtest 2026-10-14)
   thronePlace(team) {
-    const s = this.seatOf(team) || this.villagesOf(team)[0] || this.buildings.find((b) => b.team === team && b.hp > 0 && b.built >= 1);
+    const held = [this.seatOf(team), ...this.villagesOf(team), ...this.buildings.filter((b) => b.team === team && b.hp > 0 && b.built >= 1)].filter(Boolean);
+    const raided = (s) => this.units.some((u) => u.hp > 0 && !u.inside && u.kind !== 'serf' && u.kind !== 'camel' && this.isEnemy(team, u.team) && Math.hypot(u.x - s.x, u.y - s.y) < KING.safeR);
+    const s = held.find((h) => !raided(h)) || held[0];
     if (s) return { x: s.x + 0.4, y: (s.ty != null ? s.ty + (s.size || 3) : s.y) + 0.8 };
     const u = this.units.find((x) => x.team === team && x.hp > 0 && !x.inside && x.kind !== 'camel');
     return u ? { x: u.x + 0.6, y: u.y + 0.6 } : null;
@@ -2773,6 +2785,13 @@ export class Game {
   alertPlayer(t, byTeam) {
     if ((t.type === 'village' ? t.owner : t.team) !== PLAYER || byTeam === PLAYER) return;
     if (this.sfxOn) { const a = this.alerts.find((p) => Math.hypot(p.x - t.x, p.y - t.y) < 8); if (a) { a.time = this.time; a.x = t.x; a.y = t.y; } else if (this.alerts.length < 12) this.alerts.push({ x: t.x, y: t.y, time: this.time, born: this.time }); }
+    if (t.type === 'unit' && t.kind === 'king') {   // the king is the game: his alarm never waits behind a mine's, and says what is at stake
+      if (this.time - (this._kingAlertT ?? -99) <= 8) return;
+      this._kingAlertT = this.alertT[PLAYER] = this.time;
+      const left = this.players[PLAYER].heirs ?? KING.heirs;
+      this.log(PLAYER, `Your ${t.title || 'King'} is under attack! ${left ? `${left} heir${left > 1 ? 's' : ''} left` : 'He is the last of your line: if he dies, your house falls'}. Get him inside a keep or your village.`, 'bad'); this.sfx('alarm', t.x, t.y);
+      return;
+    }
     if (this.time - this.alertT[PLAYER] <= 8) return;
     this.alertT[PLAYER] = this.time;
     this.log(PLAYER, t.type === 'village' ? `Your village of ${t.name} is under attack!` : `Your ${t.type === 'unit' ? UNITS[t.kind].label : BUILDINGS[t.kind].label} is under attack!`, 'bad'); this.sfx('alarm', t.x, t.y);
