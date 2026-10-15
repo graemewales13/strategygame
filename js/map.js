@@ -264,7 +264,9 @@ export function createMap(seed, houses = 4) {
   });
 
   // Mineral deposits. Own RNG stream so older layouts keep their trees, gold and villages.
-  // Every hall has stone close by and two of the four metals; the others must be found in the wild or traded for.
+  // Every hall has stone close by and two of the four metals; the others must be traded for, or won in the open ground between the houses.
+  // A house's own land holds only its own two metals (owner, 2026-10-15: with every metal at home nobody needed anyone, so trade was
+  // pointless): wild metal lies only beyond `home` tiles of every hall, and a mining camp inside a house's land digs that house's metals.
   const rm = rng((seed ^ 0x9e3779b9) >>> 0);
   const inVillage = (x, y) => villages.some((v) => x >= v.tx - 1 && x <= v.tx + VILLAGE_SIZE && y >= v.ty - 1 && y <= v.ty + VILLAGE_SIZE);
   const metals = ['copper', 'iron', 'coal', 'silver'];
@@ -290,8 +292,14 @@ export function createMap(seed, houses = 4) {
     near(metals[i % 4], sx, sy, 14, 3, base + 2.2);
     near(metals[(i + 1) % 4], sx, sy, 16, 3, base + 4.2);
   });
-  for (const kind of MATS) for (let i = 0; i < (kind === 'stone' ? 5 : 4); i++) deposit(kind, rm.int(6, W - 7), rm.int(6, H - 7), 3, 2);
-  villages.forEach((v) => { if (v.kind === 'mine' && (campOre++ % Math.round(AREA_MUL)) === 0) { deposit(rm.pick(['iron', 'coal', 'copper', 'silver']), v.tx + 1, v.ty + 1, 3, 4.5); deposit('stone', v.tx + 1, v.ty + 1, 2, 4.5); } });
+  const home = W * 0.22, ownMetals = starts.map((_, i) => [metals[i % 4], metals[(i + 1) % 4]]);
+  const landOf = (x, y) => { let best = -1, bd = home; starts.forEach(([sx, sy], i) => { const d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; best = i; } }); return best; };
+  for (const kind of MATS) for (let i = 0; i < (kind === 'stone' ? 5 : 4); i++) {
+    let x = rm.int(6, W - 7), y = rm.int(6, H - 7);
+    for (let k = 0; kind !== 'stone' && k < 12 && landOf(x, y) >= 0; k++) { x = rm.int(6, W - 7); y = rm.int(6, H - 7); }   // metal: out in the open ground
+    if (kind === 'stone' || landOf(x, y) < 0) deposit(kind, x, y, 3, 2);
+  }
+  villages.forEach((v) => { if (v.kind === 'mine' && (campOre++ % Math.round(AREA_MUL)) === 0) { const pick = rm.pick(['iron', 'coal', 'copper', 'silver']), land = landOf(v.tx + 1, v.ty + 1); deposit(land >= 0 ? ownMetals[land][campOre % 2] : pick, v.tx + 1, v.ty + 1, 3, 4.5); deposit('stone', v.tx + 1, v.ty + 1, 2, 4.5); } });
 
   // Dirt trails between halls and nearby villages (cosmetic, slightly faster to walk)
   const line = (x0, y0, x1, y1) => {

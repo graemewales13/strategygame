@@ -175,13 +175,22 @@ function think(game, team, p) {
       if (b && b.queue.length < 3 && game.train(team, b.id, kind)) break;
     }
   }
-  if (game.hasBuilding(team, 'tavern') && game.units.filter((u) => u.team === team && u.kind === 'spy' && u.hp > 0).length + queued(game, team, 'spy') < (doc.spies || 1)) {
-    const tav = game.buildings.find((b) => b.team === team && b.kind === 'tavern' && b.built >= 1 && b.hp > 0);
-    if (tav) game.train(team, tav.id, 'spy');
+  // spies: trained at a tavern or an academy. One keeps watch where a rival's spy has lately been at work in a village of ours; the rest
+  // work on our neighbours' villages near our land and on the villages of houses we are at war with or dislike, or else on free villages
+  const spiedOn = Object.entries(p.spied || {}).filter(([id, at]) => game.time - at < 90 && game.byId.get(+id)?.owner === team).map(([id]) => game.byId.get(+id));
+  const spyWant = (doc.spies || 1) + (spiedOn.length ? 1 : 0);
+  if (game.units.filter((u) => u.team === team && u.kind === 'spy' && u.hp > 0).length + queued(game, team, 'spy') < spyWant) {
+    const sch = game.buildings.find((b) => b.team === team && (b.kind === 'tavern' || b.kind === 'academy') && b.built >= 1 && b.hp > 0);
+    if (sch) game.train(team, sch.id, 'spy');
   }
   const spy = game.units.find((u) => u.team === team && u.kind === 'spy' && u.hp > 0 && u.task.type === 'idle');
   if (spy) {
-    const v = nearestVillage(game, seat, (x) => x.owner < 0 && x.loyalty < 70, 50);
+    const watched = (v) => game.units.some((w) => w.team === team && w.kind === 'spy' && w.hp > 0 && w.task.type === 'infiltrate' && w.task.targetId === v.id);
+    const guard = spiedOn.find((v) => !watched(v));
+    const hostile = (o) => o >= 0 && o !== team && game.alive(o) && game.known[team][o] && game.rel[team][o] !== 'alliance' && (game.rel[team][o] === 'war' || (game.opinion[team][o] || 0) < 0);
+    const rival = nearestVillage(game, seat, (x) => x.owner >= 0 && x.owner !== team && game.rel[team][x.owner] !== 'alliance' && game.known[team][x.owner] && (hostile(x.owner) || Math.hypot(x.x - seat.x, x.y - seat.y) < 32), 60);
+    const free = nearestVillage(game, seat, (x) => x.owner < 0 && x.loyalty < 70, 50);
+    const v = guard || (rival && (!free || game.roll() < 0.6) ? rival : free);
     if (v) game.cmdInfiltrate([spy], v);
   }
 
@@ -267,11 +276,14 @@ function think(game, team, p) {
     if (target && !pressWar(game, team, target.team)) target = null;   // an ultimatum first; the war comes if it is not answered
     if (target) {
       const ready = army.filter((u) => u.task.type === 'idle');
-      if (ready.length >= 7) {
+      // march only with the bulk of the army (a band of seven at a time is beaten one band at a time); not while a beaten band regroups
+      const fighters = army.filter((u) => game.fighter(u)).length + game.soldiersOf(team).filter((u) => u.inside && !u.drilling && u.kind !== 'recruit').length;
+      if (ready.length >= Math.max(7, Math.ceil(fighters * (game.diff.mass || 0))) && t >= (p.regroupUntil || 0)) {
         const goal = huntGoal(game, team, target.team, seat, ready);
         if (goal) { game.setStance(ready, 'aggressive'); game.setFormation(ready, 'line'); game.cmdAttack(ready, goal); }
       }
     }
+    regroup(game, team, p, seat, army, t);
   } else {
     // return stragglers home; at peace the home guard stands defensive, so a raider cannot draw it far from the seat
     for (const u of army) if (u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) > 12) game.cmdMove([u], seat.x + (game.roll() - 0.5) * 4, seat.y + 4);
@@ -280,6 +292,25 @@ function think(game, team, p) {
   }
 }
 
+// A war band that is losing falls back to its seat to join the rest and heal, instead of dying to the last man: the foes' fighting power
+// around the band (their soldiers and towers within reach) against its own. Then it waits a little before marching again.
+export function regroup(game, team, p, seat, army, t) {
+  const ratio = game.diff.regroup; if (!ratio) return;
+  const band = army.filter((u) => !u.inside && (u.task.type === 'attack' || u.task.type === 'amove') && Math.hypot(u.x - seat.x, u.y - seat.y) > 14);
+  if (band.length < 3) return;
+  const cx = band.reduce((a, u) => a + u.x, 0) / band.length, cy = band.reduce((a, u) => a + u.y, 0) / band.length;
+  const foe = (o) => o !== team && o >= 0 && game.rel[team][o] === 'war';
+  const pow = (u) => game.powerOf(u) * (u.hp / Math.max(1, u.maxHp));
+  let ours = 0, theirs = 0;
+  for (const u of game.units) {
+    if (u.hp <= 0 || u.inside || Math.hypot(u.x - cx, u.y - cy) > 11) continue;
+    if (u.team === team) ours += pow(u); else if (foe(u.team)) theirs += pow(u);
+  }
+  for (const b of game.buildings) if (foe(b.team) && b.hp > 0 && b.built >= 1 && (b.kind === 'tower' || b.kind === 'keep') && b.garrison?.length && Math.hypot(b.x - cx, b.y - cy) < 11) theirs += 1.2 * b.garrison.length;   // (a man shooting from a tower is worth about a bowman in the field)
+  if (theirs <= ours * ratio) return;
+  game.setStance(band, 'defensive'); game.cmdMove(band, Math.round(seat.x + 2), Math.round(seat.y + 4));
+  p.regroupUntil = t + 45;
+}
 // Where a war is won: at the enemy's crown. An exposed king (seen, outside walls, within reach of our army) is the first target; a king behind
 // walls makes his keep the target; then their keeps and nearest buildings, then their seat; a house with none of those is ended by running
 // its fugitive king down (he is seen by all), or failing that by its last fighters.
@@ -301,11 +332,12 @@ export function courtVillages(game, team, p, seat, army, need, t) {
   const keeps = game.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.hp > 0);
   const wanted = game.villages.filter((v) => v.owner !== team && (v.owner < 0 || game.rel[team][v.owner] === 'war') && Math.hypot(v.x - seat.x, v.y - seat.y) < 46)
     .sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y)).slice(0, 3);
+  const outposts = game.villages.filter((v) => v.owner === team && v.founded && Math.hypot(v.x - seat.x, v.y - seat.y) > 40);   // our camps out in the open ground
   p.courtT = (p.courtT ?? 20) - 1;
   if (p.courtT <= 0 && t > 300 && keeps.length < Math.min(4, 1 + Math.floor(t / 420)) && !keeps.some((k) => k.built < 1)
       && game.canAfford(team, BUILDINGS.keep.cost) && p.wood > BUILDINGS.keep.cost.wood + 120) {
     p.courtT = 20;
-    const v = wanted.find((x) => !keeps.some((k) => Math.hypot(k.x - x.x, k.y - x.y) < 16));
+    const v = [...outposts, ...wanted].find((x) => !keeps.some((k) => Math.hypot(k.x - x.x, k.y - x.y) < 16));   // a far camp is held by a keep first
     const spot = v && findSpot(game, team, seat, 'keep', { x: v.x, y: v.y, rmin: 6, rmax: 12 });
     if (spot) game.place(team, 'keep', spot[0], spot[1]);
   }
@@ -319,7 +351,7 @@ export function courtVillages(game, team, p, seat, army, need, t) {
     }
     return;
   }
-  const posts = keeps.filter((k) => k.built >= 1 && wanted.some((v) => Math.hypot(k.x - v.x, k.y - v.y) < 20));
+  const posts = keeps.filter((k) => k.built >= 1 && (wanted.some((v) => Math.hypot(k.x - v.x, k.y - v.y) < 20) || outposts.some((v) => Math.hypot(k.x - v.x, k.y - v.y) < 16)));
   let free = army.filter((u) => fighter(u) && u.task.type === 'idle' && !u.inside && u.id !== p.scoutId);
   free = free.slice(0, Math.max(0, free.length - need));   // keep a field force ready to march
   for (const k of posts) {
@@ -520,8 +552,13 @@ export function treasury(game, team, p, seat, serfs) {
   if (p.campT <= 0 && game.time > 300 && !game.missingFor(team, 'village').length && !game.buildings.some((b) => b.team === team && b.kind === 'village' && b.built < 1) && game.canAfford(team, BUILDINGS.village.cost) && p.wood > 220) {
     p.campT = 150;
     const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.hp > 0).map((b) => b.ore));
-    const ore = game.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && !have.has(n.kind) && n.amount > 40 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < 70 && !(game.minePower(team, n.x, n.y) > 0))
-      .sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
+    // metal is regional, so what we lack lies out in the open ground: go as far as the difficulty's reach; and now and then, with everything
+    // at home, stake out a rich seam out there anyway (owner, 2026-10-15: rivals kept to their own patch). Not beside another house's works.
+    const reach = game.diff.reach || 70, theirs = (n) => game.buildings.some((b) => b.team !== team && b.hp > 0 && Math.hypot(b.x - n.x, b.y - n.y) < 12);
+    const byDist = (a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y);
+    const open = (n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && n.amount > 40 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < reach && !(game.minePower(team, n.x, n.y) > 0) && !theirs(n);
+    const ore = game.resources.filter((n) => open(n) && !have.has(n.kind)).sort(byDist)[0]
+      || (game.roll() < 0.35 ? game.resources.filter((n) => open(n) && n.amount > 300 && Math.hypot(n.x - seat.x, n.y - seat.y) > 40).sort(byDist)[0] : null);
     // a mine of ours that has stood a minute with nobody to dig (its villages' folk are all at other mines) needs a camp of its own first
     const idleMine = game.buildings.find((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && (b.idleT || 0) > 60 && !game.villages.some((v) => v.owner === team && v.founded && Math.hypot(v.x - b.x, v.y - b.y) <= FOUND.campR + 2));
     const at = idleMine ? { x: idleMine.x, y: idleMine.y } : ore ? { x: ore.x + 0.5, y: ore.y + 0.5 } : null;

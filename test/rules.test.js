@@ -393,7 +393,7 @@ test('ai: a rival lacking an ore that no village can dig founds a mining camp be
   const g = mk(); const t = 1, seat = g.seatOf(t), p = g.players[t];
   Object.assign(p, { food: 2000, wood: 2000, gold: 2000, stone: 300 });
   g.addBuilding('keep', t, Math.round(seat.x) + 6, Math.round(seat.y) + 6, true); g.recomputeWalk();
-  const lone = g.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && n.amount > 40 && !(g.minePower(t, n.x, n.y) > 0) && Math.hypot(n.x - seat.x, n.y - seat.y) < 70);
+  const lone = g.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && n.amount > 40 && !(g.minePower(t, n.x, n.y) > 0) && Math.hypot(n.x - seat.x, n.y - seat.y) < g.diff.reach);   // (how far a house goes for ore it lacks)
   assert.ok(lone.length, 'the test valley has out-of-reach ore');
   g.time = 400; p.campT = 0; p.foundT = 999;
   treasury(g, t, p, seat, []);
@@ -945,6 +945,63 @@ test('playtest 2026-10-14: a struck king always raises his own alarm, saying how
   const last = g.events[g.events.length - 1].text; assert.match(last, /under attack!.*2 heirs left/);
   g.players[PLAYER].heirs = 0; g.time += 9; g.alertPlayer(k, 1);
   assert.match(g.events[g.events.length - 1].text, /last of your line/);
+});
+
+
+// ---- espionage: academy spies, rival spies on your villages, watchmen -------------------------------------
+const spyIn = (g, team, v) => { const s = g.addUnit('spy', team, v.x + 0.2, v.y + 0.2); g.cmdInfiltrate([s], v); return s; };
+// an outlying village of the house (far from its castle, where its pull is weak and a spy can make headway)
+const ownVillage = (g, team) => { const h = g.seatOf(team); const v = g.villages.filter((x) => x.owner < 0 && !x.home).sort((a, b) => Math.hypot(b.x - h.x, b.y - h.y) - Math.hypot(a.x - h.x, a.y - h.y))[0]; v.owner = team; v.loyalty = 90; return v; };
+
+test('spies: an academy trains spies as well as a tavern', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); g.players[PLAYER].gold = g.players[PLAYER].food = g.players[PLAYER].wood = 999;
+  const ac = g.addBuilding('academy', PLAYER, h.tx + 12, h.ty + 2); ac.built = 1;
+  assert.equal(g.train(PLAYER, ac.id, 'spy'), true, 'the academy takes the order');
+});
+
+test('spies: a rival spy in your village lowers its loyalty and warns you; a watchman of yours catches spies far sooner', () => {
+  const caughtAfter = (watch, seed) => {
+    const g = mk({ seed }); g.meet(0, 1); const v = ownVillage(g, PLAYER); v.protection = 0;
+    if (watch) spyIn(g, PLAYER, v);
+    const s = spyIn(g, 1, v); let t = 0;
+    while (s.hp > 0 && t < 400) { g.tick(0.25); t += 0.25; }
+    return { t, g, v };
+  };
+  const a = caughtAfter(false, 8);
+  assert.ok(a.g.events.length >= 0 && a.t > 0);
+  const plain = [8, 9, 10, 11].map((sd) => caughtAfter(false, sd).t), watched = [8, 9, 10, 11].map((sd) => caughtAfter(true, sd).t);
+  const avg = (xs) => xs.reduce((p, x) => p + x, 0) / xs.length;
+  assert.ok(avg(watched) * 3 < avg(plain), `watched ${avg(watched).toFixed(0)}s vs unwatched ${avg(plain).toFixed(0)}s`);
+  // the warning and the falling loyalty
+  const g = mk(); g.meet(0, 1); const v = ownVillage(g, PLAYER); v.protection = 0; const l0 = v.loyalty; const seen = [];
+  let low = l0; spyIn(g, 1, v); for (let i = 0; i < 80; i++) { g.tick(0.25); low = Math.min(low, v.loyalty); seen.push(...g.events.splice(0).map((e) => e.text)); }
+  assert.ok(low < l0 - 3, `loyalty fell while the spy worked (${l0} -> ${low.toFixed(1)})`);
+  assert.ok(seen.some((x) => /turning the folk of .* against you/.test(x)), 'the player was warned: ' + seen.slice(-3).join(' | '));
+});
+
+test('spies: right-clicking your own village with a spy posts him there as a watchman', () => {
+  const g = mk(); const v = ownVillage(g, PLAYER); const s = g.addUnit('spy', PLAYER, v.x + 3, v.y + 3);
+  g.contextCommand(PLAYER, [s.id], v.x, v.y);
+  assert.equal(s.task.type, 'infiltrate'); assert.equal(s.task.targetId, v.id);
+  for (let i = 0; i < 60; i++) g.tick(0.25);
+  assert.equal(g.watchmenIn(v), 1, 'he is on watch inside');
+});
+
+// ---- trade needs partners: metal is regional ------------------------------------------------------------------
+test('ore: the land round each hall holds only its own two metals; the others lie in the open ground or with other houses', () => {
+  const metals = ['copper', 'iron', 'coal', 'silver'];
+  for (const seed of [3, 7]) {
+    const g = new Game({ seed, houses: 4, ai: false }), home = g.W * 0.22;
+    let ok = 0, n = 0;
+    for (const r of g.resources) {
+      if (!metals.includes(r.kind)) continue;
+      let best = -1, bd = home; for (let i = 0; i < 4; i++) { const s = g.seatOf(i), d = Math.hypot(r.x - s.x, r.y - s.y); if (d < bd) { bd = d; best = i; } }
+      if (best < 0) continue;   // open ground: anything goes
+      n++; if ([metals[best % 4], metals[(best + 1) % 4]].includes(r.kind)) ok++;
+    }
+    assert.ok(n > 0 && ok / n >= 0.9, `seed ${seed}: ${ok} of ${n} metal deposits in a house's land are its own metals`);
+    assert.ok(g.resources.some((r) => metals.includes(r.kind) && [0, 1, 2, 3].every((i) => Math.hypot(r.x - g.seatOf(i).x, r.y - g.seatOf(i).y) >= home)), 'and there is metal out in the open ground');
+  }
 });
 
 console.log(`${passed} passed`);

@@ -163,7 +163,7 @@ export const UNITS = {
   footman: { label: 'Footman', hp: 90,  speed: 2.7, dmg: 10, range: 1,   cd: 1.1,  sight: 7,  cost: { food: 60, wood: 20, gold: 15 },  time: 14, from: ['barracks'],     bld: 0.5, vil: 1.0, info: 'Melee line infantry. Forge adds +3 damage.' },
   bowman:  { label: 'Bowman',  hp: 50,  speed: 2.8, dmg: 7,  range: 5.5, cd: 1.3,  sight: 8,  cost: { food: 40, wood: 30, gold: 30 }, time: 16, from: ['archery'],      bld: 0.35, vil: 0.8, info: 'Ranged. Forge adds +2 damage.' },
   knight:  { label: 'Knight',  hp: 150, speed: 3.9, dmg: 16, range: 1,   cd: 1.2,  sight: 7,  cost: { food: 80, wood: 0, gold: 80 },  time: 22, from: ['stable'],       bld: 0.5, vil: 1.0, info: 'Heavy cavalry. Forge adds +3 damage.' },
-  spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern'],       bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty. Can be caught.' },
+  spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern', 'academy'], bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty, or watches one of yours to catch rival spies. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 55,  speed: 2.6, dmg: 5,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
   camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click markets (yours or a treaty partner\'s) and it loops between them for ever, hauling goods both ways.' },
@@ -242,14 +242,21 @@ export const SPY_CATCH = 0.004;  // base catch chance per second, plus protectio
 // A spy inside a village a rival house holds reports on that house (purse, army, captains, far-landers, plans) for `fresh` seconds after leaving;
 // a spy caught in a held village costs you `caught` opinion with its lord.
 export const SPY_INTEL = { fresh: 45, caught: -12 };
+// counter-espionage: each spy of the village's own lord posted inside it adds `watch` to a rival spy's chance of being caught each second;
+// the lord hears that someone is working on a village of theirs at most every `warnEvery` seconds
+export const SPY_WATCH = { watch: 0.07, warnEvery: 40, owned: 0.45 };   // owned: how fast a spy wears down a village that has a lord, against a free one
 // difficulty tiers. playerMul scales the player's starting purse and stores; aiMul scales every coin an AI house earns;
 // armyCap and warAfter govern how big and how soon rival armies come (warAfter x0.6 is the earliest a house starts a war; warBar is how strongly
 // its stance must call for war, see stance() in diplomacy.js); think slows or quickens their decisions;
 // wealth is the fortune (coin plus goods at market value) that wins the game when held for WEALTH_HOLD seconds.
 export const DIFFICULTY = {
-  easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, warBar: 0.65, think: 1.5, wealth: 4000 },
-  mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.0,  armyCap: 22, warAfter: 840,  warBar: 0.5, think: 1.15, wealth: 6000 },
-  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.15, armyCap: 36, warAfter: 480,  warBar: 0.34, think: 0.85, wealth: 10000 },
+  // mass: share of its fighters a house gathers before it marches to war (0 = any seven, as before); regroup: a war band falls back to its
+  // seat when the foes around it are this many times stronger (0 = it fights to the last). Owner, 2026-10-15: Mid was too easy, the rivals
+  // grew slowly and lost their fights, so Mid and Hard rivals earn more, think faster, keep larger armies, mass them and regroup.
+  // reach: how far from its seat a house will go to found a mining camp (metal is regional, so what it lacks lies out in the open ground).
+  easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, warBar: 0.65, think: 1.5, wealth: 4000, mass: 0, regroup: 0, reach: 80 },
+  mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.2,  armyCap: 30, warAfter: 720,  warBar: 0.45, think: 0.95, wealth: 6000, mass: 0.65, regroup: 1.6, reach: 130 },
+  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.4,  armyCap: 46, warAfter: 420,  warBar: 0.32, think: 0.75, wealth: 10000, mass: 0.75, regroup: 1.4, reach: 150 },
 };
 // A house that is not copying the player plays to its people. bias buildings are raised a few slots early.
 // armyMul scales the force they will pay. mix is the share of foot, bow and horse they drill toward.
@@ -322,7 +329,7 @@ export const ABILITIES = {
   footman: 'Fights, sacks villages, enters buildings',
   bowman: 'Ranged fighter, sacks villages',
   knight: 'Heavy cavalry, sacks villages',
-  spy: 'Right-click a village to infiltrate it (gains influence)',
+  spy: 'Right-click a village to infiltrate it (turns it toward you); right-click one of yours to post him there as a watchman who catches rival spies',
   scholar: 'Heals friends, boosts academy influence',
   ram: 'Siege: right-click walls',
   king: 'Leads your soldiers (+damage near him), sways villages he visits, enters keeps to heal. If he falls your soldiers lose heart until an heir rises',
@@ -408,7 +415,9 @@ export const CAPTAIN = { minRank: 3, cost: { food: 0, wood: 0, gold: 60 }, max: 
 export const ROUTE_STOPS = 5;      // markets a camel keeps on its circuit (besides its home market)
 // arb: share of the price gap paid out as coin when a camel moves goods to where they are scarcer; purse: working coin a camel draws to buy abroad;
 // dwell: seconds spent at each stop; perGood: most of one good per leg; minGain: smallest coin gain per unit worth carrying
-export const ROUTE = { arb: 0.6, purse: 100, dwell: 1.2, perGood: 25, minGain: 0.05, eat: 0.02, eatEach: 0.012, pay: 0.45 };   // eat: goods a market's folk use per second per good that came by camel (+eatEach per customer), paid at pay x the local price
+// home: what a camel earns carrying goods between a house's OWN markets, against the full arbitrage it makes with a partner (owner,
+// 2026-10-15: trade was pointless when a house could shuttle goods round its own towns for the same coin; real money is abroad)
+export const ROUTE = { home: 0.25, arb: 0.6, purse: 100, dwell: 1.2, perGood: 25, minGain: 0.05, eat: 0.02, eatEach: 0.012, pay: 0.45 };   // eat: goods a market's folk use per second per good that came by camel (+eatEach per customer), paid at pay x the local price
 export const CAMEL_CAP = 40;       // goods per camel
 // ---- communities. A market and the people and works around it form a district. The flow it models:
 //   SUPPLY (mines dig, farms and mills grow)  ->  WORKS (foundries, forges, workshops make steel and ware)  ->  MARKET (shelf, camels, coin)  ->  HOMES (cottages, towns) who pay, and SERVICE (taverns, temples, abbeys) who keep them content.

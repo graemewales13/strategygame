@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, setPeoples, seatPeoples, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
@@ -511,7 +511,8 @@ export class Game {
     if (v && v.owner === team) {
       const carriers = units.filter((u) => u.kind === 'serf' && u.carry && ['food', 'wood', 'gold'].includes(u.carry.kind));
       carriers.forEach((u) => { u.task = { type: 'return', resume: null }; this.setPathToEntity(u, v); });
-      const rest = units.filter((u) => !carriers.includes(u));
+      const watchers = units.filter((u) => u.kind === 'spy'); if (watchers.length) this.cmdInfiltrate(watchers, v);   // a spy sent to a village of ours keeps watch there
+      const rest = units.filter((u) => !carriers.includes(u) && u.kind !== 'spy');
       return rest.length ? this.cmdEnter(rest, v) : true;
     }
     if (v && v.owner !== team && this.wasSeen(team, v.x, v.y)) {
@@ -1838,7 +1839,7 @@ export class Game {
     const marg = (k, i) => {
       const W = RES_VALUE[k] / RES_VALUE.gold, pS = this.pmAt(S, k, (sh[k] || 0) - i), pN = nOwn ? this.pmAt(N, k, this.stockOf(N, k) + i) : this.priceMul(N, k);
       let g, c = 0;
-      if (sOwn) g = nOwn ? ROUTE.arb * W * (pN - pS) : W * (pN * (1 - fee) - 1);
+      if (sOwn) g = nOwn ? ROUTE.arb * ROUTE.home * W * (pN - pS) : W * (pN * (1 - fee) - 1);
       else { c = pS * (1 + fee) * W; g = nOwn ? W * (1 - pS * (1 + fee)) + ROUTE.arb * W * (pN - pS) : W * (pN * (1 - fee) - pS * (1 + fee)); }
       return { g, c, pS, pN, W };
     };
@@ -1878,7 +1879,7 @@ export class Game {
         if (n <= 0.01) { delete u.cargo[g]; continue; }
         let sum = 0; const have = shelf[g] || 0;
         for (let i = 0; i < Math.floor(n); i++) sum += this.pmAt(S, g, have + i);
-        bounty += ROUTE.arb * W(g) * Math.max(0, sum - (u.src[g] ?? sum));
+        bounty += ROUTE.arb * ROUTE.home * W(g) * Math.max(0, sum - (u.src[g] ?? sum));   // (goods moved between our own towns: a small carrier's fee, not a merchant's profit)
         const capS = this.near(S, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP, put = Math.min(n, Math.max(0, capS - have));
         if (n - put > 0.01) this.depotStore(S, g, n - put);   // a full shelf spills into a warehouse; what even that cannot hold is bought up by the townsfolk
         shelf[g] = have + put;
@@ -2950,10 +2951,13 @@ export class Game {
     u.hidden = true;
     if (v.owner === u.team) { v.loyalty = Math.min(100, v.loyalty + SPY_RATE * 0.4 * dt); return; }
     if (v.owner >= 0) (this.spyIntel ||= {})[u.team + '>' + v.owner] = this.time;   // inside a rival's village: word of their house reaches us
-    // Spies can be caught: sturdier villages watch harder
-    if (this.roll() < (SPY_CATCH + v.protection / 16000) * dt) {
+    // Spies can be caught: sturdier villages watch harder, and every spy of the lord's posted inside as a watchman watches harder still
+    const watch = v.owner >= 0 ? this.watchmenIn(v) : 0;
+    if (v.owner >= 0) this.spiedOnVillage(v, u);
+    if (this.roll() < (SPY_CATCH + v.protection / 16000 + SPY_WATCH.watch * watch) * dt) {
       u.hp = 0;
-      this.log(u.team === PLAYER || v.owner === PLAYER ? PLAYER : -1, u.team === PLAYER ? `Your spy was caught in ${v.name}!` : `A spy of ${HOUSES[u.team].short} was caught in ${v.name}.`, u.team === PLAYER ? 'bad' : 'good');
+      const by = watch ? (v.owner === PLAYER ? 'Your watchman' : `A watchman of ${HOUSES[v.owner].short}`) : '';
+      this.log(u.team === PLAYER || v.owner === PLAYER ? PLAYER : -1, u.team === PLAYER ? `Your spy was caught in ${v.name}${watch ? ' by their watchman' : ''}!` : `${by ? by + ' caught' : 'They caught'} a spy of ${HOUSES[u.team].short} in ${v.name}.`, u.team === PLAYER ? 'bad' : 'good');
       if (v.owner >= 0 && v.owner !== u.team) this.opinionShift(v.owner, u.team, SPY_INTEL.caught, 'sent spies among us');   // the lord of the village hears of it
       return;
     }
@@ -2963,10 +2967,23 @@ export class Game {
       v.loyalty = Math.min(100, v.loyalty + SPY_RATE * dt);
       v.protection = Math.max(v.maxProtection * 0.5, v.protection - 0.5 * dt);
     } else {
-      v.loyalty = Math.max(0, v.loyalty - SPY_RATE * dt);
+      v.loyalty = Math.max(0, v.loyalty - SPY_RATE * SPY_WATCH.owned * dt);   // a village with a lord resists: time for him to hear of it and post a watchman
       v.spyFlip = u.team;
       v.lean = u.team;
     }
+  }
+
+  // the village's own lord's spies posted inside it (infiltrating a village of their own house = keeping watch)
+  watchmenIn(v) { return this.units.filter((w) => w.kind === 'spy' && w.hp > 0 && w.team === v.owner && w.hidden && w.task.type === 'infiltrate' && w.task.targetId === v.id).length; }
+  // a rival spy is at work in one of a house's villages: its loyalty falls, so the lord notices (without knowing whose spy until one is caught)
+  spiedOnVillage(v, spy) {
+    const lord = this.players[v.owner]; if (!lord) return;
+    (lord.spied ||= {})[v.id] = this.time;   // (the AI posts a watchman where this is fresh)
+    if (v.owner !== PLAYER) return;
+    this._spyWarn ||= {};
+    if (this.time - (this._spyWarn[v.id] ?? -1e9) < SPY_WATCH.warnEvery) return;
+    this._spyWarn[v.id] = this.time;
+    this.log(PLAYER, this.watchmenIn(v) ? `Someone is turning the folk of ${v.name} against you. Your watchman is hunting them.` : `Someone is turning the folk of ${v.name} against you (loyalty ${Math.round(v.loyalty)}). Post a spy there as a watchman to catch them.`, 'warn');
   }
 
   // ------------------------------------------------------------------ fog of war
