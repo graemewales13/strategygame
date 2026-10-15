@@ -59,5 +59,26 @@ const { chromium } = require('playwright');
   console.log('formation line ->', forms.join(','), '| lit', lit > 0);
   if (!forms.every((f) => f === 'line') || !lit) errs.push('formation button did not take: ' + forms.join());
   await p.waitForTimeout(2500); await p.screenshot({ path: 'logs/formation.png' });
+  // T31: I selects every idle soldier (the formation group stands formed, the first footman marches); a double-click on a bowman picks
+  // the bowmen on screen; Ctrl+double-click every bowman in the valley, one far away included
+  await p.evaluate(() => { const { game: g } = window.__seven, s = g.seatOf(0); g.addUnit('bowman', 0, s.x + 30, s.y - 30); });
+  await p.keyboard.press('i'); await p.waitForTimeout(200);
+  const idleSel = await p.evaluate(() => { const { game: g, ui } = window.__seven; return { sel: ui.selUnits().length, idle: g.idleArmyOf(0).length, allIdle: ui.selUnits().every((u) => u.task.type === 'idle') }; });
+  console.log('I idle soldiers', JSON.stringify(idleSel)); if (!idleSel.sel || idleSel.sel !== idleSel.idle || !idleSel.allIdle) errs.push('I did not select the idle soldiers: ' + JSON.stringify(idleSel));
+  // two lone bowmen on open ground, the screen centred on them, a click on the first (found by the renderer's own pick)
+  const bid = await p.evaluate(() => { const { game: g, renderer: r } = window.__seven, s = g.seatOf(0);
+    for (let d = 10; d < 40; d++) for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) { const x = Math.floor(s.x + dx * d) + 0.5, y = Math.floor(s.y + dy * d) + 0.5;
+      if (!g.walk[Math.floor(y) * g.W + Math.floor(x)] || !g.walk[Math.floor(y) * g.W + Math.floor(x) + 2] || g.nodeAt(x, y) || g.buildingAt(x, y) || g.villageAt(x, y) || g.units.some((u) => Math.hypot(u.x - x, u.y - y) < 4)) continue;
+      const u = g.addUnit('bowman', 0, x, y); g.addUnit('bowman', 0, x + 2, y); r.centerOn(x, y); return u.id; }
+    return null; });
+  await p.waitForTimeout(400);
+  const bow = await p.evaluate((i) => { const { game: g, renderer: r } = window.__seven, u = g.byId.get(i), cv = document.getElementById('game').getBoundingClientRect(), [sx, sy] = r.toScreen(u.x, u.y);
+    for (let lift = 0; lift < 60; lift += 2) { const h = r.pick(sx, sy - lift, ['unit']); if (h && h.o === u) return [cv.left + sx, cv.top + sy - lift]; } return [0, 0]; }, bid);
+  await p.waitForTimeout(200); await p.mouse.click(bow[0], bow[1]); await p.mouse.click(bow[0], bow[1]); await p.waitForTimeout(200);
+  const kinds = () => p.evaluate(() => { const us = window.__seven.ui.selUnits(); return { n: us.length, kinds: [...new Set(us.map((u) => u.kind))].join(), all: window.__seven.game.units.filter((u) => u.team === 0 && u.kind === 'bowman' && u.hp > 0 && !u.inside).length }; });
+  const onScreen = await kinds(); console.log('double-click bowman', JSON.stringify(onScreen));
+  await p.keyboard.down('Control'); await p.mouse.click(bow[0], bow[1]); await p.mouse.click(bow[0], bow[1]); await p.keyboard.up('Control'); await p.waitForTimeout(200);
+  const valley = await kinds(); console.log('ctrl+double-click bowman', JSON.stringify(valley));
+  if (onScreen.kinds !== 'bowman' || onScreen.n >= onScreen.all || valley.kinds !== 'bowman' || valley.n !== valley.all) errs.push('double-click selection wrong: ' + JSON.stringify({ onScreen, valley }));
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length ? 1 : 0);
 })();

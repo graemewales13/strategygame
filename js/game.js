@@ -69,6 +69,9 @@ export class Game {
     this.wanderers = [];
     this.projectiles = [];
     this._crewT = 0;
+    // timers and caches of the last match must not carry over: a reused Game would play a seed differently from a fresh one, and the
+    // last match's times would silence the spy warning, the king's alarm and repeated log lines for minutes (T-058)
+    this._refitT = 0; this._sallyT = 0; this._crewV = undefined; this._infl = undefined; this._spyWarn = {}; this._kingAlertT = -99; this._lastLog = new Map();
     this.floaters = []; this.fx = [];   // fx: collapse/poof effects for the renderer (only queued when a UI is attached)
     this.alerts = [];   // where the player is being hit, for the minimap and the Space key (UI only, like fx)
     this.byId = new Map();
@@ -214,6 +217,8 @@ export class Game {
   villagesOf(team) { return this.villages.filter((v) => v.owner === team); }
   // every soldier a house has, in the field or inside its buildings (what the panels count; militaryOf is those free to march)
   soldiersOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king'); }
+  // soldiers standing about with no order (no march, fight, queued leg or drill): what the idle-army key picks (T31)
+  idleArmyOf(team) { return this.militaryOf(team).filter((u) => u.task.type === 'idle' && !u.task.next?.length && !u.drilling); }
   militaryOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king' && !u.inside); }
   // does `viewer` have a spy's fresh report on house `t`?
   spiedOn(viewer, t) { const at = this.spyIntel?.[viewer + '>' + t]; return at != null && this.time - at <= SPY_INTEL.fresh; }
@@ -3030,7 +3035,11 @@ export class Game {
   cleanup() {
     let rebuilt = false;
     if (this.units.some((u) => u.hp <= 0)) {
-      for (const u of this.units) if (u.hp <= 0) this.byId.delete(u.id);
+      for (const u of this.units) if (u.hp <= 0) {
+        // one who dies inside (a soldier deserting for want of pay from a keep) leaves its roll too, or the keep counts him for ever (T-058)
+        if (u.inside != null) { const t = this.byId.get(u.inside); if (t?.garrison) t.garrison = t.garrison.filter((id) => id !== u.id); }
+        this.byId.delete(u.id);
+      }
       this.units = this.units.filter((u) => u.hp > 0);
     }
     if (this.buildings.some((b) => b.hp <= 0)) {

@@ -35,7 +35,7 @@ export function armedKey(u) {
   if (u.kind === 'knight') return w === 'lance' ? 'knight_lance' : null;
   return null;
 }
-// shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm). UIART[group][key] = Image.
+// shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm; 'watch', ARTREQUIREMENTS priority 16, joins the list once painted). UIART[group][key] = Image.
 export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {}, orders: {} };
 export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking', vikings: 'jarl', byzantines: 'basileus', persians: 'shahanshah' };
 const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS, portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm'],

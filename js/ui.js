@@ -107,7 +107,7 @@ export class UI {
     $('btnMap').onclick = () => this.toggleCampaign();
     $('btnHome').onclick = () => this.focusHall();
     $('btnIdle').onclick = () => this.selectIdleSerf();
-    $('btnArmy').onclick = () => this.selectArmy();
+    $('btnArmy').onclick = (e) => (e.shiftKey ? this.selectIdleArmy() : this.selectArmy());
     $('btnSpeed').onclick = () => { this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1; $('btnSpeed').textContent = this.speed + 'x'; };
     $('eNew').onclick = () => this.newValley();
     $('eStay').onclick = () => $('end').classList.add('hidden');
@@ -193,15 +193,15 @@ export class UI {
       }
       return;
     }
-    this.clickAt(d.sx, d.sy, d.shift);
+    this.clickAt(d.sx, d.sy, d.shift, e.ctrlKey || e.metaKey);
   }
-  clickAt(sx, sy, shift) {
+  clickAt(sx, sy, shift, ctrl = false) {
     const g = this.game, r = this.r, h = r.pick(sx, sy, ['unit']) || r.pick(sx, sy);   // a person under the cursor wins over the building or village behind them
     if (h && h.type === 'unit') {
       const u = h.o, now = performance.now();
       if (u.team === PLAYER) {
-        if (this.lastClick.id === u.id && now - this.lastClick.t < 350) {
-          this.setUnits(g.units.filter((o) => o.team === PLAYER && o.kind === u.kind && o.hp > 0 && r.onScreen(o.x, o.y)));
+        if (this.lastClick.id === u.id && now - this.lastClick.t < 350) {   // double-click: that kind on screen; with Ctrl, across the whole valley (T31)
+          this.setUnits(g.units.filter((o) => o.team === PLAYER && o.kind === u.kind && o.hp > 0 && !o.inside && (ctrl || r.onScreen(o.x, o.y))));
         } else if (shift && this.sel.type === 'units') {
           const set = this.selUnits(); const i = set.findIndex((o) => o.id === u.id); if (i >= 0) set.splice(i, 1); else set.push(u); this.setUnits(set);
         } else this.setUnits([u]);
@@ -286,6 +286,7 @@ export class UI {
     else if (k === ' ' || k === 'home') { e.preventDefault(); this.jumpToAlert(); }
     else if (k === '.') this.selectIdleSerf();
     else if (k === ',') this.selectArmy();
+    else if (k === 'i') this.selectIdleArmy();
     else if (k === 'f') { if (this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u))) this.setAmove(!this.amove); }
     else if (k === '+' || k === '=') { this.speed = Math.min(4, this.speed * 2); $('btnSpeed').textContent = this.speed + 'x'; }
     else if (k === '-') { this.speed = Math.max(1, this.speed / 2); $('btnSpeed').textContent = this.speed + 'x'; }
@@ -324,6 +325,19 @@ export class UI {
     if (!idle.length) return this.toast('No idle serfs.', 'info');
     this.idleI = ((this.idleI ?? -1) + 1) % idle.length;
     const u = idle[this.idleI]; this.setUnits([u]); this.r.centerOn(u.x, u.y);
+  }
+  // I (or Shift-click Army): every soldier standing idle, then the camera on the next of them at each press (T31)
+  selectIdleArmy() {
+    const idle = this.game.idleArmyOf(PLAYER);
+    if (!idle.length) return this.toast('No idle soldiers.', 'info');
+    this.setUnits(idle);
+    this.idleArmyI = ((this.idleArmyI ?? -1) + 1) % idle.length; const u = idle[this.idleArmyI]; this.r.centerOn(u.x, u.y);
+  }
+  // a village of ours: the spies we posted there as watchmen, and whether someone has lately been turning its folk (T-058: both were unseen)
+  watchRow(v) {
+    const g = this.game, n = g.watchmenIn(v), at = g.players[PLAYER].spied?.[v.id], hot = at != null && g.time - at < 20;
+    const tip = encodeURIComponent(`<b>Watch</b><br>A spy right-clicked onto a village you hold is posted inside as a watchman. Each one makes a rival spy at work there far likelier to be caught.`);
+    return `<div class="stat" data-tip="${tip}"><label>${uiImg('marks', 'watch', '👁')} Watch</label><span>${n ? `${n} watchm${n > 1 ? 'en' : 'an'} posted` : 'none: right-click a spy onto it'}${hot ? ' · <b style="color:#ff9a7a">someone is at work here</b>' : ''}</span></div>`;
   }
   selectArmy() {
     const army = this.game.militaryOf(PLAYER);
@@ -766,7 +780,7 @@ export class UI {
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
         <div class="stat"><label>Population</label><div class="meter"><i class="loy" style="width:${(v.pop / v.popMax) * 100}%"></i></div><span class="v">${Math.floor(v.pop)}/${v.popMax}</span></div>
         <div class="stat"><label>Folk</label><span>${v.folk.join(', ')} · ${v.hunger ? '<b style="color:#e0866a">starving: the store is out of grain</b>' : v.pop >= v.popMax ? 'at full strength' : 'growing (fed from the village store)'} · grain ${Math.floor(v.stores.food || 0)}</span></div>${v.owner === PLAYER ? `<div class="stat"><label>Housing</label><span>houses ${Math.floor(v.pop * POP_HOUSING)} of your population cap; tribute ${Math.round((0.5 + 0.7 * (v.pop / v.popMax)) * 100)}% of base</span></div>` : ''}
-        <div class="stat"><label>Influence</label><span>${this.pullText(v)}</span></div>${v.owner === PLAYER && v.garrison?.length ? `<div class="stat"><label>Garrison</label><span>${v.garrison.length}/${VILLAGE_GARRISON} inside</span></div>${this.rollChips(v.garrison.map((id) => g.byId.get(id)).filter(Boolean), 8)}` : ''}${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
+        <div class="stat"><label>Influence</label><span>${this.pullText(v)}</span></div>${v.owner === PLAYER ? this.watchRow(v) : ''}${v.owner === PLAYER && v.garrison?.length ? `<div class="stat"><label>Garrison</label><span>${v.garrison.length}/${VILLAGE_GARRISON} inside</span></div>${this.rollChips(v.garrison.map((id) => g.byId.get(id)).filter(Boolean), 8)}` : ''}${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
     } else if (s.type === 'node') {
       const n = g.resources[s.id]; if (!n) { this.clearSel(); return; }
       const res = NODE_RES[n.kind];
@@ -1082,7 +1096,7 @@ export class UI {
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click: a deposit with a <b>mine</b> to dig, timber, berries or gold to gather, a building site to build.</div>`;
       if (!us.some((u) => u.kind === 'serf' || u.kind === 'camel' || u.kind === 'recruit')) {
         const sp = us.some((u) => u.kind === 'spy');
-        html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>keep, tower, barracks</b> or a village you hold to go <b>inside</b>. Attacking a house at peace declares war. <b>F</b> then a click (or Ctrl+right-click) <b>attack-moves</b>.</div>`;
+        html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>keep, tower, barracks</b> or a village you hold to go <b>inside</b>${sp ? ' (a spy keeps <b>watch</b> there)' : ''}. Attacking a house at peace declares war. <b>F</b> then a click (or Ctrl+right-click) <b>attack-moves</b>.</div>`;
       }
     } else if (ent && ent.type === 'building' && ent.team === PLAYER) {
       if (ent.built < 1) html = `<div class="hint">Under construction. Select serfs and right-click this building to help raise it.</div><div class="cgrid" style="margin-top:6px">${this.btn('demolish', { glyph: '✕', name: 'Cancel site', sub: '80% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Cancel the site</b><br>Click twice. Four fifths of the cost comes back.' })}</div>`;

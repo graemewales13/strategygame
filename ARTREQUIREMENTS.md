@@ -2,7 +2,7 @@
 
 What the game needs painted next, in priority order. Every request uses the **Seven Holds Art Instruction Set** for style, negatives, angle, lighting, QA and file naming. **For people, the character guide below overrides the instruction set** (its unit table, its kit colours and its old Vikings): what each role is for, how big it is drawn, and what each people actually wore.
 
-Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 delivered (Grok, 8b7d6f1). Updated 2026-10-12: priorities 5 to 7 delivered; three new peoples added (priority 8); the **character guide** written after the owner found soldiers that read as feeble civilians and every serf alike; priority 9 (soldiers) delivered; the owner then asked that **the folk of every people look like what they really wore: workers, soldiers and kings**. That is the open work below. Later on 2026-10-12: the 24 priority-9 soldiers scaled down to game size (T-054); T02 waypoints need no painting. 2026-10-13: T02 formations added; **priority 14** asks for eight order icons (stances and formations), wired with glyph fallbacks.
+Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 delivered (Grok, 8b7d6f1). Updated 2026-10-12: priorities 5 to 7 delivered; three new peoples added (priority 8); the **character guide** written after the owner found soldiers that read as feeble civilians and every serf alike; priority 9 (soldiers) delivered; the owner then asked that **the folk of every people look like what they really wore: workers, soldiers and kings**. That is the open work below. Later on 2026-10-12: the 24 priority-9 soldiers scaled down to game size (T-054); T02 waypoints need no painting. 2026-10-13: T02 formations added; **priority 14** asks for eight order icons (stances and formations), wired with glyph fallbacks. 2026-10-15: walk cycles renumbered **15** (they had been given 14 twice); **priority 16** asks for a watchman mark (T-057 watchmen); T31 selection needs no painting.
 
 ## Paint next: new characters are needed
 
@@ -21,7 +21,9 @@ One small open item: the Scottish `recruit` still wears a kilt-like belted plaid
 | 5 | **Spies repainted dark** | Egyptians, Scots, Mongols | `units/spy.png` | 3 | priority 11 — **delivered** 2026-10-13 |
 | 6 | Building sites and ruins for the new peoples | Vikings, Byzantines, Persians | `buildings/<key>_build.png`, `<key>_ruin.png` for the 18 keys | 108 | priorities 6 and 8 — **delivered** 2026-10-13 |
 | 8 | **The ram as a body and a wheel**, so its wheels really turn | shared | `assets/shared/units/ram_body.png`, `ram_wheel.png` | 2 | priority 13 (new 2026-10-14) |
-| 9 | *Later:* walk cycles, soldiers first | all 8 | `units/<role>_walk1.png` ... `_walk4.png` | up to 96 for soldiers | priority 14 (new 2026-10-14) |
+| 9 | *Later:* walk cycles, soldiers first | all 8 | `units/<role>_walk1.png` ... `_walk4.png` | up to 96 for soldiers | priority 15 (new 2026-10-14; was a second "14") |
+| 10 | **Eight order icons**: four stances, four formations | shared | `assets/shared/ui/orders/<key>.png` | 8 | priority 14 (2026-10-13) |
+| 11 | **The watchman mark**: an eye-and-lantern badge for the Watch row of your villages | shared | `assets/shared/ui/marks/watch.png` | 1 | priority 16 (new 2026-10-15) |
 | 7 | *Optional:* women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | character guide (not wired yet: say when they are coming and it is one line) |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
@@ -42,10 +44,12 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 10 | **Serfs per people** (8 peoples, 24) | **Delivered and wired** 2026-10-13. `serf`, `serf_work1`, `serf_work2` are out of `REPAINT` |
 | 11 | Spies easy to miss (Egyptians, Scots, Mongols) | **Delivered** 2026-10-13. Dark cloaks; the people's colour is only a cord |
 | 13 | **Ram body and wheel** | **Requested** 2026-10-14 (below). Wired behind `RAM_PARTS` in `js/art.js` |
-| 14 | Walk cycles (soldiers first) | **Later** (below). Until then the game strides the still figures in code |
+| 15 | Walk cycles (soldiers first) | **Later** (below). Until then the game strides the still figures in code |
 | 12 | **Kings on the field** (8) | **Delivered and wired** 2026-10-13. `king` is out of `REPAINT`. The drawn crown is kept only when a people has no painted king |
-| 13 | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** Queued legs are drawn in code |
+| — | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** Queued legs are drawn in code |
 | 14 | **Order icons**: four stances and four formations (T01, T02; added 2026-10-13) | **Requested.** Wired in code: the buttons show a text glyph until painted; switch on in one line (below) |
+| 16 | **Watchman mark** (spies posted in your own villages, T-057; added 2026-10-15) | **Requested.** Wired in code: the village panel's Watch row shows 👁 until painted; switch on in one line (below) |
+| — | Selecting idle soldiers and a kind across the valley (T31, 2026-10-15) | **No painting needed.** Uses the existing Army button and keys |
 
 ## How the game uses delivered art
 
@@ -453,7 +457,9 @@ RAM WHEEL: a single heavy wooden cart wheel of thick planks with an iron tyre an
 
 Deliver both to `assets/shared/units/`. Then set `RAM_PARTS = true` in `js/art.js`, and fit the four hub positions (`RAM_WHEELS` in `js/render.js`, fractions of the body picture) to the painted axles.
 
-## Priority 14: walk cycles (later, soldiers first)
+## Priority 15: walk cycles (later, soldiers first)
+
+(Numbered 14 on 2026-10-14 by mistake, the same number as the order icons; renumbered 15 on 2026-10-15.)
 
 Since 2026-10-14 the game makes still figures walk in code: it cuts each figure at the hip and swings the legs (scissoring for people, forelegs against hind legs for horses). That reads well at play zoom; close up it can look like a paper cut-out. Real walk cycles are the proper finish. Paint four frames of one stride per role, in the same framing as the role's still figure, starting with `footman`, `bowman` and `knight` for all eight peoples (96 files), then the rest.
 
@@ -465,6 +471,20 @@ Since 2026-10-14 the game makes still figures walk in code: it cuts each figure 
 | `<role>_walk4.png` | passing, body highest |
 
 Same feet line and head height in every frame so the figure does not jump. Not wired yet: say when the first are coming.
+
+## Priority 16: the watchman mark (1, new 2026-10-15)
+
+Since T-057 a spy right-clicked onto a village you hold is posted inside as a **watchman**, and rival spies are far likelier to be caught there. The watchman himself is hidden inside (no figure to paint: he uses the people's dark `spy.png` when he comes out). The village panel now has a **Watch** row: how many watchmen are posted and whether someone is at work turning the village. It shows a 👁 glyph until a small mark is painted. Use the **Goods icon** template, as for the alarm mark.
+
+| Key | Size | Subject to paint |
+|---|---|---|
+| `watch` | 64x64 | a hooded lantern with a half-open shutter throwing a narrow beam, a single watchful eye worked into the iron of the hood; neutral colours, no faction colour, no text |
+
+```text
+WATCHMAN MARK, a small iron hooded lantern with a half-open shutter throwing a narrow warm beam, a single watchful eye worked into the iron hood, painted in the same style as the deed badges and the alarm mark: iron, horn and warm candlelight, light from the upper left. Neutral colours only, no faction colour, no text. Flat #FF00FF background, centred, 4 px margin, 256x256 (shown at 16-24 px).
+```
+
+Deliver: `assets/shared/ui/marks/watch.png`. Then add `'watch'` to `UI_KEYS.marks` in `js/art.js` (one word; the panel already asks for `uiArt('marks', 'watch')` and falls back to the glyph, and nothing probes for the file before then).
 
 ## Acceptance
 

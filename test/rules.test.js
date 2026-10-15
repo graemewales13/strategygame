@@ -1004,4 +1004,39 @@ test('ore: the land round each hall holds only its own two metals; the others li
   }
 });
 
+// ---- T31 selection, T-058 reset ------------------------------------------------------------------
+test('selection: idle soldiers are those standing with no order, queued leg or drill; serfs, spies and the garrisoned are not', () => {
+  const g = mk(); const s = g.seatOf(PLAYER);
+  const a = g.addUnit('footman', PLAYER, s.x, s.y + 6), b = g.addUnit('bowman', PLAYER, s.x + 2, s.y + 6), c = g.addUnit('knight', PLAYER, s.x + 4, s.y + 6);
+  g.addUnit('serf', PLAYER, s.x, s.y + 8); g.addUnit('spy', PLAYER, s.x + 1, s.y + 8);
+  b.task = { type: 'move' }; c.task = { type: 'idle', next: [{ x: 1, y: 1 }] };
+  const ids = g.idleArmyOf(PLAYER).map((u) => u.id);
+  assert.ok(ids.includes(a.id), 'a standing footman is idle');
+  assert.ok(!ids.includes(b.id) && !ids.includes(c.id), 'a marching bowman and a knight with a queued leg are not');
+  assert.ok(g.idleArmyOf(PLAYER).every((u) => g.militaryOf(PLAYER).includes(u)), 'only soldiers');
+});
+
+test('reset: a reused Game plays a seed exactly like a fresh one, and old timers do not silence the new match (T-058)', () => {
+  const opts = { seed: 21, houses: 3, ai: true };
+  const fresh = new Game(opts); run(fresh, 40, 0.2);
+  const used = new Game({ seed: 5, houses: 4, ai: true }); run(used, 90, 0.2);
+  used._spyWarn[999] = used.time; used._kingAlertT = used.time; used.log(PLAYER, 'old line');
+  used.reset(opts);
+  assert.deepEqual(used._spyWarn, {}); assert.equal(used._kingAlertT, -99);
+  used.log(PLAYER, 'old line'); assert.ok(used.events.some((e) => e.text === 'old line'), 'a line logged last match is not muted in this one');
+  used.events.length = 0; run(used, 40, 0.2);
+  const strip = (d) => { delete d.saved; return JSON.stringify(d); };
+  assert.equal(strip(used.serialize()), strip(fresh.serialize()), 'same seed, same play');
+});
+
+test('garrison: a soldier who dies inside (deserting for want of pay) leaves the keep\'s roll (T-058)', () => {
+  const g = mk(); const s = g.seatOf(PLAYER);
+  const k = g.addBuilding('keep', PLAYER, Math.round(s.x + 8), Math.round(s.y), true); g.recomputeWalk();
+  const a = g.addUnit('footman', PLAYER, k.x, k.y + 2), b = g.addUnit('footman', PLAYER, k.x + 1, k.y + 2);
+  g.cmdEnter([a, b], k); run(g, 8);
+  assert.equal(k.garrison.length, 2, 'both went in');
+  a.hp = 0; run(g, 0.2);
+  assert.deepEqual(k.garrison, [b.id], 'only the living stay on the roll');
+});
+
 console.log(`${passed} passed`);
