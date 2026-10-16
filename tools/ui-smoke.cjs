@@ -2,7 +2,7 @@
 const { chromium } = require('playwright');
 (async()=>{ const b = await chromium.launch(); const p = await b.newPage({viewport:{width:1400,height:850}});
  const errs=[]; p.on('pageerror',e=>errs.push('PAGE '+e)); p.on('console',m=>{if(/auld-world/.test(m.text()))errs.push(m.text())});
- await p.goto('http://localhost:8123/'); await p.waitForTimeout(2500);
+ await p.goto('http://localhost:8123/'); await p.waitForTimeout(2500); await p.waitForFunction(()=>window.__seven,null,{timeout:30000});   // (a slow machine takes about 7 s to load the game: wait for it, not a fixed time)
  const vis=()=>p.evaluate(()=>[...document.querySelectorAll('.screen')].filter(s=>!s.classList.contains('hidden')).map(s=>s.id).join(','));
  const clickHot=async(id)=>{const r=await p.locator('#'+id).boundingBox(); await p.mouse.click(r.x+r.width/2,r.y+r.height/2); await p.waitForTimeout(700);};
  const step=async(n)=>console.log(n.padEnd(34), '->', await vis(), '| paused:', await p.evaluate(()=>!!window.__seven.game.paused));

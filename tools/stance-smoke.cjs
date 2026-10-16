@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = []; p.on('pageerror', (e) => errs.push('PAGE ' + e));
-  await p.goto('http://localhost:8123/'); await p.waitForTimeout(2500);
+  await p.goto('http://localhost:8123/'); await p.waitForTimeout(2500); await p.waitForFunction(() => window.__seven, null, { timeout: 30000 });   // (wait for the game to load, not a fixed time: a slow machine takes about 7 s)
   await p.mouse.click(700, 425); await p.waitForTimeout(900);
   const r = await p.locator('#hSkirmish').boundingBox(); await p.mouse.click(r.x + r.width / 2, r.y + r.height / 2); await p.waitForTimeout(700);
   await p.click('#mBegin'); await p.waitForTimeout(1200);
