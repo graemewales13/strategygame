@@ -7,7 +7,7 @@ import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -1156,6 +1156,18 @@ test('repair: serfs mend a damaged building, paying half its price for the healt
   assert.equal(b.hp, b.maxHp, 'mended to full');
   const paid = wood0 - p.wood, want = 0.7 * 0.5 * BUILDINGS.barracks.cost.wood;
   assert.ok(Math.abs(paid - want) < 2, `paid ${paid.toFixed(1)} timber for 70% of a barracks at half price (${want})`);
+});
+
+test('pack animals: not people (no population, never capped); each people names its own (donkey, Bactrian camel, camel)', () => {
+  const g = mk({ people: 'romans' }); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  const m = g.addBuilding('market', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); Object.assign(p, { food: 999, wood: 999, gold: 999 });
+  const before = g.popUsed(PLAYER); g.addUnit('camel', PLAYER, m.x + 2, m.y + 3);
+  assert.equal(g.popUsed(PLAYER), before, 'a pack animal takes no room');
+  while (g.popUsed(PLAYER) < g.popCap(PLAYER)) g.addUnit('serf', PLAYER, h.x + 2, h.y + 2);
+  assert.equal(g.train(PLAYER, m.id, 'camel'), true, 'trained even at the population cap');
+  assert.equal(packWords('Train a camel; two camels. Camel.', PLAYER), 'Train a donkey; two donkeys. Donkey.');
+  const mg = new Game({ seed: 8, houses: 3, ai: false, people: 'mongols' }); assert.equal(packOf(PLAYER).one, 'Bactrian camel');
+  const eg = new Game({ seed: 8, houses: 3, ai: false, people: 'egyptians' }); assert.equal(packWords('a camel', PLAYER), 'a camel');
 });
 
 console.log(`${passed} passed`);

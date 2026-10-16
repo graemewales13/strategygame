@@ -43,6 +43,20 @@ const PEOPLE = [
 // HOUSES[seat]: the people sitting in each seat this game (set by setPeoples). Seat 0 is the player's.
 export const HOUSES = PEOPLE.map((p) => ({ ...p }));
 export const PEOPLE_KEYS = PEOPLE.map((p) => p.faction);
+// Each people's pack animal (the `camel` unit): what it is called and which picture it wears (owner, 2026-10-16: donkeys were being
+// raised from a 'Raise camel' button; the British and Scots had dromedaries).
+export const PACK = {
+  donkey: { one: 'donkey', many: 'donkeys', sprite: 'donkey' },
+  bactrian: { one: 'Bactrian camel', many: 'Bactrian camels', sprite: 'bactrian' },
+  dromedary: { one: 'camel', many: 'camels', sprite: 'dromedary' },
+};
+export const PACK_OF = { romans: 'donkey', vikings: 'donkey', byzantines: 'donkey', british: 'donkey', scottish: 'donkey', mongols: 'bactrian', egyptians: 'dromedary', persians: 'dromedary' };
+export const packOf = (team) => PACK[PACK_OF[HOUSES[team]?.faction] || 'dromedary'];
+// say 'camel' the way this house's people would: every word camel/camels/Camel in a line shown to it becomes its own animal
+export function packWords(text, team) {
+  const p = packOf(team); if (p === PACK.dromedary || typeof text !== 'string') return text;
+  return text.replace(/\b([Cc])amel(s?)\b/g, (m, c, s) => { const w = s ? p.many : p.one; return c === 'C' ? w[0].toUpperCase() + w.slice(1) : w; });
+}
 // Seat the peoples: order[seat] = index into PEOPLE. Everything moves with the people: nation, name, motto, colour and crest.
 // An order from an older save (five peoples) is kept and the newer peoples fill the seats after it.
 export function setPeoples(order) {
@@ -166,7 +180,7 @@ export const UNITS = {
   spy:     { label: 'Spy',     hp: 35,  speed: 3.4, dmg: 3,  range: 1,   cd: 1.0,  sight: 11, cost: { food: 30, wood: 20, gold: 40 }, time: 16, from: ['tavern', 'academy'], bld: 0.1, vil: 0, info: 'Infiltrates villages to turn their loyalty, or watches one of yours to catch rival spies. Can be caught.' },
   scholar: { label: 'Scholar', hp: 30,  speed: 2.0, dmg: 1,  range: 1,   cd: 1.5,  sight: 9,  cost: { food: 40, wood: 20, gold: 50 }, time: 18, from: ['academy'],      bld: 0.1, vil: 0, info: 'Near an academy: +influence and heals friends nearby.' },
   recruit: { label: 'Recruit', hp: 55,  speed: 2.6, dmg: 5,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
-  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, info: 'Pack animal. Select it, then click markets (yours or a treaty partner\'s) and it loops between them for ever, hauling goods both ways.' },
+  camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, nopop: true, info: 'Pack animal. Select it, then click markets (yours or a treaty partner\'s) and it loops between them for ever, hauling goods both ways.' },
   king:    { label: 'King',    hp: 240, speed: 3.0, dmg: 14, range: 1,   cd: 1.0,  sight: 9,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.5, vil: 1.2, art: 'knight', info: 'The ruler of a house. Rallies soldiers, sways villages by his presence, and must not fall.' },
   ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
 };

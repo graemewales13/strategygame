@@ -6,8 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE,
-} from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 
@@ -124,7 +123,7 @@ export class UI {
     document.addEventListener('mouseover', (e) => {
       const el = e.target.closest('[data-tip]'); const tip = $('tip');
       if (!el) { tip.classList.add('hidden'); return; }
-      tip.innerHTML = decodeURIComponent(el.dataset.tip); tip.classList.remove('hidden'); this.placeTip(e);
+      tip.innerHTML = packWords(decodeURIComponent(el.dataset.tip), PLAYER); tip.classList.remove('hidden'); this.placeTip(e);
     });
     document.addEventListener('mousemove', (e) => { if (!$('tip').classList.contains('hidden')) this.placeTip(e); });
 
@@ -625,7 +624,9 @@ export class UI {
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
 
+  rivalUnitSel() { const s = this.sel; return s?.type === 'units' && this.selUnits().some((u) => u.team !== PLAYER); }
   toast(text, kind = 'info') {
+    text = packWords(text, PLAYER);
     const box = $('toasts');
     if (box.lastChild && box.lastChild.dataset.t === text) return;
     const el = document.createElement('div'); el.className = `toast ${kind}`; el.textContent = text; el.dataset.t = text;
@@ -739,7 +740,7 @@ export class UI {
       if (us.length === 1) {
         const u = us[0], st = UNITS[u.kind], mine = u.team === PLAYER, far = u.far ? FARLANDS[u.far] : null;
         const who = far ? `${esc(far.label)} from ${esc(far.land)}<br>` : u.name ? `${u.trait ? `${esc(TRAITS[u.trait]?.label || '')}${u.origin ? ' of ' + esc(u.origin) : ''}<br>` : u.origin ? `Born in ${esc(u.origin)}<br>` : ''}` : '';
-        html = `${portrait(u.kind, HOUSES[u.team].accent, u.team, faceOf(u) || undefined)}<div class="seltitle">${esc(u.name || st.label)} <small style="color:${HOUSES[u.team].accent};font-size:12px">${u.captain ? 'Captain · ' : ''}${esc(u.title || st.label)} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${who}${esc(st.info)}</div>
+        html = `${portrait(u.kind, HOUSES[u.team].accent, u.team, faceOf(u) || undefined)}<div class="seltitle">${esc(u.name || (u.kind === 'camel' ? packOf(u.team).one.replace(/^./, (c) => c.toUpperCase()) : st.label))} <small style="color:${HOUSES[u.team].accent};font-size:12px">${u.captain ? 'Captain · ' : ''}${esc(u.title || st.label)} · ${esc(HOUSES[u.team].short)}</small></div><div class="selsub">${who}${esc(st.info)}</div>
           ${mine ? `<div class="stat"><label>Can</label><span>${esc(ABILITIES[u.kind] || '')}</span></div>` : this.foeRow(u.team)}
           <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(u.hp / u.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(u.hp)}/${u.maxHp}</span></div>
           <div class="stat"><label>Damage</label><span>${st.dmg ? g.shownDamage(u).toFixed(0) : '0'}${st.range > 1.6 ? ' ranged' : ''}</span><label>Speed</label><span>${(u.speed ?? st.speed).toFixed(1)}</span></div>
@@ -795,12 +796,12 @@ export class UI {
       if (MINEABLE.includes(n.kind)) {
         const m = g.buildings.find((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(n.id));
         html = `<div class="seltitle">${GOOD_LABEL[n.kind]} deposit</div><div class="selsub">${esc(GOOD_INFO[n.kind])} ${m ? '' : 'Raise a <b>Mine</b> on it, then assign serfs.'}</div><div class="stat"><label>Remaining</label><span>${Math.ceil(n.amount)}</span></div><div class="stat"><label>Worth</label><span>${RES_VALUE[n.kind]} each</span></div>`;
-        if (html !== this.sigSel) { this.sigSel = html; $('selPanel').innerHTML = html; }
+        if (html !== this.sigSel) { this.sigSel = html; $('selPanel').innerHTML = this.rivalUnitSel() ? html : packWords(html, PLAYER); }   // (a rival's beast keeps its own name)
         return;
       }
       html = `<div class="seltitle">${{ tree: 'Timber stand', berry: 'Berry bushes' }[n.kind]}</div><div class="selsub">Right-click with serfs to gather ${RES_LABEL[res].toLowerCase()}.</div><div class="stat"><label>Remaining</label><span>${Math.ceil(n.amount)}</span></div>`;
     }
-    if (html !== this.sigSel) { this.sigSel = html; $('selPanel').innerHTML = html; }
+    if (html !== this.sigSel) { this.sigSel = html; $('selPanel').innerHTML = this.rivalUnitSel() ? html : packWords(html, PLAYER); }   // (a rival's beast keeps its own name)
   }
 
   // a spy's coat: wear a house's colours (any house met) to walk into its buildings, or your own again
@@ -1152,7 +1153,7 @@ export class UI {
     } else {
       html = `<div class="hint">Press <b>H</b> for your home village: <b>draft serfs</b> and <b>raise buildings</b>. Right-click timber, berries or gold with serfs to gather. <b>M</b> opens the campaign map.</div>`;
     }
-    if (html !== this.sigCmd) { this.sigCmd = html; $('cmdPanel').innerHTML = html; }
+    if (html !== this.sigCmd) { this.sigCmd = html; $('cmdPanel').innerHTML = packWords(html, PLAYER); }
   }
 
   // ------------------------------------------------------------ screens: menu, campaign, end

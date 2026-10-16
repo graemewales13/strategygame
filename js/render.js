@@ -1,8 +1,7 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS,
-} from './config.js';
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
 import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, armedKey, factionSprite } from './art.js';
@@ -747,7 +746,7 @@ export class Renderer {
     let c, w, h;
     let rightArt = false, full = false, sway = false;   // (sway: a stand-in figure with no work frames rocks at his task)   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
     if (u.kind === 'ram') { const s2 = SIMG.ram_body && SIMG.ram_wheel ? SIMG.ram_body : SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
-    else if (u.kind === 'camel') { const fac = HOUSES[u.team].faction, s2 = fac === 'mongols' ? SIMG.bactrian : fac === 'romans' || fac === 'vikings' || fac === 'byzantines' ? SIMG.donkey : SIMG.dromedary; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }
+    else if (u.kind === 'camel') { const s2 = SIMG[packOf(u.team).sprite]; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }   // (each people's own pack animal)
     else if (u.kind === 'serf') {   // the house's own serf when its people has one painted (idle, two work frames), else the common one
       const fu = FUNIT[HOUSES[u.team]?.faction], key = working ? ((Math.floor(t * 2 + u.id) & 1) ? 'serf_work2' : 'serf_work1') : 'serf', own = fu?.[key] || fu?.serf || fu?.recruit;   // (until a people's serfs are painted, its villager in work clothes stands in)
       if (own) { c = own; rightArt = true; full = true; sway = !fu?.serf_work1; } else c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light);

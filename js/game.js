@@ -9,8 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
-} from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -124,6 +123,7 @@ export class Game {
 
   nid() { return this.nextId++; }
   log(team, text, kind = 'info') {
+    if (team === PLAYER) text = packWords(text, PLAYER);   // (a donkey is a donkey to the house that keeps donkeys)
     // the same line twice within a few seconds is one line (orders re-issued every tick would otherwise flood the feed)
     this._lastLog ||= new Map();
     const last = this._lastLog.get(text);
@@ -185,8 +185,8 @@ export class Game {
   hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
   popUsed(team) {
     let n = 0;
-    for (const u of this.units) if (u.team === team && u.hp > 0 && u.kind !== 'king') n++;
-    for (const b of this.buildings) if (b.team === team) n += b.queue.length;
+    for (const u of this.units) if (u.team === team && u.hp > 0 && u.kind !== 'king' && !UNITS[u.kind]?.nopop) n++;   // (pack animals are not people)
+    for (const b of this.buildings) if (b.team === team) n += b.queue.filter((q) => !UNITS[q.kind]?.nopop).length;
     return n;
   }
   popCap(team) {
@@ -1555,7 +1555,7 @@ export class Game {
     if (!b || b.type !== 'building' || b.team !== team || b.built < 1 || b.hp <= 0 || !s) return null;
     if (!s.from.includes(b.kind)) return say(`A ${BUILDINGS[b.kind].label} cannot train that.`);
     if (!this.canAfford(team, s.cost)) return say(this.shortfall(team, s.cost));
-    if (this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');
+    if (!s.nopop && this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');   // (pack animals are not people)
     if (b.queue.length >= 5) return say('Training queue is full.');
     this.pay(team, s.cost);
     b.queue.push({ kind, t: 0 });
