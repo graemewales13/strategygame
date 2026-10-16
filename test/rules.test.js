@@ -7,7 +7,7 @@ import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -66,10 +66,10 @@ test('king: a throne is never left empty - an heir is named within moments', () 
   g.players[1].kingId = -1; g.players[1].heirAt = null; run(g, KING.heir + 1); assert.ok(g.kingOf(1), 'even a house whose king vanished without a record is given one');
 });
 
-test('defence: idle soldiers within 5 squares of a building under attack turn on the attacker; those farther off do not', () => {
+test('defence: idle soldiers within DEFEND_R (14) squares of a building under attack turn on the attacker; those farther off do not', () => {
   const g = mk(); const h = g.seatOf(PLAYER);
   const b = g.addBuilding('cottage', PLAYER, h.tx + 8, h.ty, true);
-  const near = g.addUnit('footman', PLAYER, b.x + 3, b.y), far = g.addUnit('footman', PLAYER, b.x + 9, b.y), busy = g.addUnit('footman', PLAYER, b.x - 3, b.y);
+  const near = g.addUnit('footman', PLAYER, b.x + 11, b.y), far = g.addUnit('footman', PLAYER, b.x + 20, b.y), busy = g.addUnit('footman', PLAYER, b.x - 3, b.y);   // (owner, 2026-10-16: the call reaches the town, not just the doorstep)
   busy.task = { type: 'move' };
   g.rel[0][1] = g.rel[1][0] = 'war';
   const foe = g.addUnit('bowman', 1, b.x, b.y + 8); foe.hp = foe.maxHp = 9999;
@@ -1123,6 +1123,39 @@ test('disguise: a spy inside a rival barracks slows its training; a watchman of 
   };
   const avg = (w) => [8, 9, 10, 11].map((sd) => caught(w, sd)).reduce((a, b) => a + b, 0) / 4;
   assert.ok(avg(true) * 3 < avg(false), `watched ${avg(true).toFixed(0)}s vs unwatched ${avg(false).toFixed(0)}s`);
+});
+
+// ---- defence, pulling back, repair (owner, 2026-10-16) ----------------------------------------------------------------
+test('defence: idle soldiers well beyond their own sight of the raiders turn out when a building of ours is hit', () => {
+  const g = mk({ fog: false }); g.meet(0, 1); g.setRelation(0, 1, 'war'); const h = g.seatOf(PLAYER);
+  const b = g.addBuilding('barracks', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();
+  const ours = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, b.x - 11 + i * 0.5, b.y + 1));
+  const foes = [0, 1].map((i) => g.addUnit('footman', 1, b.x + 3, b.y - 1 + i)); foes.forEach((f) => { f.hp = f.maxHp = 3000; }); g.cmdAttack(foes, b);
+  for (let i = 0; i < 20; i++) g.tick(0.1);
+  assert.ok(ours.every((u) => u.task.type === 'attack'), 'all three came: ' + ours.map((u) => u.task.type).join(','));
+});
+
+test('pulling back: when the foe turns away, our soldiers obey a move order (no lock, no rout)', () => {
+  const g = mk(); const { ours, theirs } = brawl(g); const v = g.villages.find((x) => x.owner === PLAYER), l0 = v.loyalty;
+  assert.ok(ours.some((u) => g.locked(u)), 'locked while they fight');
+  g.cmdRetreat(theirs);   // they flee
+  const h = g.seatOf(PLAYER); g.cmdMove(ours, h.x + 2, h.y + 2);
+  assert.ok(ours.every((u) => u.task.type === 'move'), 'ours go where sent: ' + ours.map((u) => u.task.type).join(','));
+  for (let i = 0; i < 20; i++) g.tick(0.1);
+  assert.ok(ours.filter((u) => u.hp > 0).every((u) => u.task.type === 'move' || u.task.type === 'idle'), 'and keep going');
+  assert.ok(!(g.players[PLAYER].routT > -1e9) && v.loyalty >= l0 - 2, 'it is no rout of ours');
+});
+
+test('repair: serfs mend a damaged building, paying half its price for the health they restore; the Repair button sends the nearest', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  const b = g.addBuilding('barracks', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();
+  b.hp = b.maxHp * 0.3; Object.assign(p, { food: 999, wood: 999, gold: 999, stone: 999 }); const wood0 = p.wood;
+  for (let i = 0; i < 3; i++) g.addUnit('serf', PLAYER, b.x - 3 + i * 0.5, b.y + 3);
+  assert.equal(g.applyIntent({ type: 'repair', team: PLAYER, buildingId: b.id }), true);
+  for (let i = 0; i < 1200 && b.hp < b.maxHp; i++) g.tick(0.25);
+  assert.equal(b.hp, b.maxHp, 'mended to full');
+  const paid = wood0 - p.wood, want = 0.7 * 0.5 * BUILDINGS.barracks.cost.wood;
+  assert.ok(Math.abs(paid - want) < 2, `paid ${paid.toFixed(1)} timber for 70% of a barracks at half price (${want})`);
 });
 
 console.log(`${passed} passed`);

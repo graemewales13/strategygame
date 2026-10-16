@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, setPeoples, seatPeoples, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
@@ -472,6 +472,7 @@ export class Game {
       case 'disguise': return this.disguise(mine(), it.as);
       case 'gather': return this.cmdGather(out(), this.resources[it.nodeId]);
       case 'build': return this.cmdBuild(out(), this.byId.get(it.buildingId), !!it.queue);
+      case 'repair': return this.repairWith(team, this.byId.get(it.buildingId));
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
       case 'hire': return this.hire(team, it.buildingId, it.index);
@@ -549,6 +550,10 @@ export class Game {
       const rest = units.filter((u) => u.kind !== 'serf');
       if (rest.length) this.cmdMove(rest, x, y, queue);
       return true;
+    }
+    if (b && b.team === team && b.built >= 1 && b.hp < b.maxHp && units.some((u) => BUILDERS[u.kind] && !(u.carry && u.carry.amount > 0.5))) {   // serfs to a damaged building of ours mend it
+      const menders = units.filter((u) => BUILDERS[u.kind] && !(u.carry && u.carry.amount > 0.5)); this.cmdRepair(menders, b);
+      const rest = units.filter((u) => !menders.includes(u)); if (!rest.length) return true; units = rest;
     }
     if (b && b.team === team && b.built >= 1 && units.some((u) => u.kind === 'spy')) {   // a spy sent into one of our buildings keeps watch there
       this.cmdInfiltrateB(units.filter((u) => u.kind === 'spy'), b);
@@ -1037,7 +1042,8 @@ export class Game {
   // turn into fighting on): he finishes the foe first. Serfs, scouts, spies and camels may still run.
   locked(u) {
     if (!(this.time - (u.engagedT ?? -99) < SALLY.lockFor) || !this.ranked(u) || u.kind === 'scout' || u.inside) return false;
-    for (const o of this.units) if (o.hp > 0 && !o.inside && o.team !== u.team && this.isEnemy(u.team, o.team) && Math.hypot(o.x - u.x, o.y - u.y) <= SALLY.lockR) return true;
+    // a foe who has turned away (retreating, or marching off elsewhere) no longer holds you: your men may go where they are sent
+    for (const o of this.units) if (o.hp > 0 && !o.inside && o.team !== u.team && this.isEnemy(u.team, o.team) && !o.task.retreat && o.task.type !== 'move' && Math.hypot(o.x - u.x, o.y - u.y) <= SALLY.lockR) return true;
     return false;
   }
   // locked fighters among `units` turn on the nearest foe; the rest are returned
@@ -1376,6 +1382,7 @@ export class Game {
     return b._haul;
   }
   cmdBuild(units, b, queue = false) {
+    if (b && b.type === 'building' && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp) return this.cmdRepair(units, b);   // finished but damaged: mend it
     if (!b || b.type !== 'building' || b.built >= 1) return false;
     for (const u of units) {
       if (!BUILDERS[u.kind] || u.inside) continue;
@@ -2646,6 +2653,7 @@ export class Game {
         case 'mine': u.task = { type: 'idle' }; u.path = []; break;   // old saves: serfs no longer dig, the villagers do
         case 'return': this.doReturn(u, dt); break;
         case 'build': this.doBuild(u, dt); break;
+        case 'repair': this.doRepair(u, dt); break;
         case 'infiltrate': this.doInfiltrate(u, dt); break;
         case 'infiltrateB': this.doInfiltrateB(u, dt); break;
         case 'enter': this.doEnter(u, dt); break;
@@ -2971,6 +2979,35 @@ export class Game {
     if (node && Math.hypot(node.x - seat.x, node.y - seat.y) < 24) this.cmdGather([u], node);
   }
 
+  // serfs to a damaged building of ours: they mend it, paying as they go (REPAIR)
+  cmdRepair(units, b) {
+    let ok = false;
+    for (const u of units) {
+      if (!BUILDERS[u.kind] || u.inside || b.team !== u.team) continue;
+      if (u.task.type === 'gather' || u.task.type === 'return') u.afterBuild = u.task.type === 'gather' ? { nodeId: u.task.nodeId } : { nodeId: u.task.resume };
+      u.buildQ = []; u.task = { type: 'repair', targetId: b.id }; this.setPathToEntity(u, b); ok = true;
+    }
+    return ok;
+  }
+  // the Repair button: the nearest few serfs who are not raising something else
+  repairWith(team, b, n = 4) {
+    if (!b || b.team !== team || b.built < 1 || b.hp >= b.maxHp || b.hp <= 0) return false;
+    const ss = this.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0 && !u.inside && u.task.type !== 'build' && u.task.type !== 'repair')
+      .sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y)).slice(0, n);
+    if (!ss.length) { if (team === PLAYER) this.log(PLAYER, 'No serf is free to repair it.', 'warn'); return false; }
+    return this.cmdRepair(ss, b);
+  }
+  doRepair(u, dt) {
+    const b = this.byId.get(u.task.targetId), p = this.players[u.team];
+    if (!b || b.hp <= 0 || b.team !== u.team || b.hp >= b.maxHp) { u.task = { type: 'build', targetId: b?.id ?? -1 }; return this.doBuild(u, dt); }   // done: on to the next job, as after building
+    if (distTo(u.x, u.y, b) > 1.25) { if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, b); this.follow(u, dt); return; }
+    u.path = [];
+    const gain = Math.min(b.maxHp - b.hp, (b.maxHp * dt * (BUILDERS[u.kind] || 1) * REPAIR.pace) / BUILDINGS[b.kind].time), share = (gain / b.maxHp) * REPAIR.cost, cost = BUILDINGS[b.kind].cost;
+    for (const k in cost) if ((p[k] || 0) < cost[k] * share) { if (u.team === PLAYER && this.time - (this._repairWarn ?? -99) > 10) { this._repairWarn = this.time; this.log(PLAYER, `Repairs to your ${BUILDINGS[b.kind].label.toLowerCase()} have stopped: not enough ${GOOD_LABEL[k]?.toLowerCase() || k}.`, 'warn'); } u.task = { type: 'idle' }; return; }
+    for (const k in cost) p[k] -= cost[k] * share;
+    b.hp += gain;
+    if (b.hp >= b.maxHp && u.team === PLAYER) this.log(PLAYER, `${BUILDINGS[b.kind].label} repaired.`, 'good');
+  }
   doBuild(u, dt) {
     const b = this.byId.get(u.task.targetId);
     if (!b || b.hp <= 0 || b.built >= 1) {

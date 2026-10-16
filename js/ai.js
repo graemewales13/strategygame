@@ -256,6 +256,8 @@ function think(game, team, p) {
     const v = nearestFromFrontier(game, team, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => u.kind === 'ram') ? 400 : 0), 18);   // (from our frontier, not only home: a growing house keeps growing)
     if (v) { const go = readyArmy.filter((u) => u.kind !== 'spy'); game.setStance(go, 'aggressive'); game.setFormation(go, 'line'); game.cmdAttack(go, v); p.planVillage = v.id; }
   }
+  { const hurt = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp * 0.75 && (b.hitT ?? 0) <= 0 && !game.units.some((o) => o.hp > 0 && game.isEnemy(team, o.team) && Math.hypot(o.x - b.x, o.y - b.y) < 12));   // mend what is damaged, once the foe has gone
+    if (hurt && !game.units.some((u) => u.team === team && u.task.type === 'repair')) game.repairWith(team, hurt, 2); }
   courtVillages(game, team, p, seat, army, need, t);
   scoutAbroad(game, team, p, seat, army, t);
 

@@ -454,6 +454,7 @@ export class UI {
       case 'research': this.host.send({ type: 'research', tech: d.tech }); break;
       case 'craft': { const b = this.selEntity(); if (b) this.host.send({ type: 'craft', buildingId: b.id, item: d.item }); break; }
       case 'uncraft': { const b = this.selEntity(); if (b) this.host.send({ type: 'uncraft', buildingId: b.id, index: +d.i }); break; }
+      case 'repair': { const b = this.selEntity(); if (b) this.host.send({ type: 'repair', buildingId: b.id }); break; }
       case 'demolish': {   // two clicks: the first arms it
         const b = this.selEntity(); if (!b) break;
         if (this.demoArm === b.id && performance.now() - this.demoT < 4000) { this.demoArm = null; this.host.send({ type: 'demolish', buildingId: b.id }); this.clearSel(); }
@@ -715,6 +716,7 @@ export class UI {
       case 'return': return 'Carrying goods home';
       case 'build': return 'Building';
       case 'infiltrate': return 'Infiltrating';
+      case 'repair': return 'Repairing';
       case 'infiltrateB': { const b = this.game.byId.get(u.task.targetId); return b && b.team === u.team ? 'On watch' : 'Inside a building'; }
       case 'caravan': return u.route ? (t.stage === 'dwell' ? 'Trading at a market' : 'On its trade loop') : 'Heading home';
       default: return 'Idle';
@@ -1134,7 +1136,7 @@ export class UI {
         if (ent.kind === 'keep') html += this.buildGrid();
         if (!html) html = `<div class="hint">${esc(BUILDINGS[ent.kind].info)}</div>`;
         else if (Object.values(UNITS).some((u) => u.from.includes(ent.kind))) html += `<div class="hint">Right-click the field to set a <b>rally point</b>; on a resource, new serfs gather it.</div>`;
-        html += `<div class="cgrid" style="margin-top:6px">${this.btn('demolish', { glyph: '⚒', name: 'Pull down', sub: '30% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Pull down</b><br>Click twice. Those inside step out and a third of its cost comes back. A keep or temple pulled down stops swaying the villages around it.' })}</div>`;
+        html += `<div class="cgrid" style="margin-top:6px">${ent.hp < ent.maxHp ? this.btn('repair', { glyph: '🔨', name: 'Repair', sub: `${Math.round((100 * ent.hp) / ent.maxHp)}%`, tip: `<b>Repair</b><br>Sends the nearest four serfs to mend it. Repairs cost half the price of the health put back, paid as they work (grain, timber, coin or stone as the building needs). You can also select serfs and right-click it.` }) : ''}${this.btn('demolish', { glyph: '⚒', name: 'Pull down', sub: '30% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Pull down</b><br>Click twice. Those inside step out and a third of its cost comes back. A keep or temple pulled down stops swaying the villages around it.' })}</div>`;
       }
     } else if (ent && ent.type === 'village') {
       html = this.villageActs(ent) + this.tradeBoard(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (a keep with soldiers inside, plus a temple, tavern or market near it) or a <b>spy</b>. Independent villages also trade with your camels.'}</div>`;

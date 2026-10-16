@@ -362,7 +362,10 @@ export const XP = { perDamage: 0.1, kill: 14, killBuilding: 8, killRankMul: 0.5 
 // ---- the ruler. Every house is led by a named character; his presence rallies soldiers and sways villages, his fall shakes the house.
 // no running from a fight; garrisons sally out when foes come near their town
 export const BUILD_GAP = 1;   // empty tiles required between a new building and any other
-export const DEFEND_R = 5;   // idle soldiers this close to something under attack go to its defence
+// Repair (owner, 2026-10-16: a damaged or burning building could never be mended): serfs restore a finished building's health at `pace`
+// of their building speed, paying `cost` of its price for every full building's worth of health they put back, as they go.
+export const REPAIR = { pace: 0.65, cost: 0.5 };
+export const DEFEND_R = 14;   // idle soldiers this close to something under attack go to its defence (owner, 2026-10-16: at 5 soldiers a few squares off stood watching; now the whole town turns out, as a garrison's sally does)
 // Unit stances (AoE II style). Aggressive: engage foes in sight and chase them. Defensive: engage, but break off and return when a chase
 // leads more than `leash` tiles from where the fight began. Hold ground: never move to fight, only strike what is in reach. No attack: never
 // start a fight (the 'no running from a fight' lock still holds). A player's order always overrides the stance. Attack-move fights its way to a spot.
