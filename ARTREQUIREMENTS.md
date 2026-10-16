@@ -2,15 +2,15 @@
 
 What the game needs painted next, in priority order. Every request uses the **Seven Holds Art Instruction Set** for style, negatives, angle, lighting, QA and file naming. **For people, the character guide below overrides the instruction set** (its unit table, its kit colours and its old Vikings): what each role is for, how big it is drawn, and what each people actually wore.
 
-Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 delivered (Grok, 8b7d6f1). Updated 2026-10-12: priorities 5 to 7 delivered; three new peoples added (priority 8); the **character guide** written after the owner found soldiers that read as feeble civilians and every serf alike; priority 9 (soldiers) delivered; the owner then asked that **the folk of every people look like what they really wore: workers, soldiers and kings**. That is the open work below. Later on 2026-10-12: the 24 priority-9 soldiers scaled down to game size (T-054); T02 waypoints need no painting. 2026-10-13: T02 formations added; **priority 14** asks for eight order icons (stances and formations), wired with glyph fallbacks. 2026-10-15: walk cycles renumbered **15** (they had been given 14 twice); **priority 16** asks for a watchman mark (T-057 watchmen); T31 selection needs no painting.
+Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 delivered (Grok, 8b7d6f1). Updated 2026-10-12: priorities 5 to 7 delivered; three new peoples added (priority 8); the **character guide** written after the owner found soldiers that read as feeble civilians and every serf alike; priority 9 (soldiers) delivered; the owner then asked that **the folk of every people look like what they really wore: workers, soldiers and kings**. That is the open work below. Later on 2026-10-12: the 24 priority-9 soldiers scaled down to game size (T-054); T02 waypoints need no painting. 2026-10-13: T02 formations added; **priority 14** asks for eight order icons (stances and formations), wired with glyph fallbacks. 2026-10-15: walk cycles renumbered **15** (they had been given 14 twice); **priority 16** asks for a watchman mark (T-057 watchmen); T31 selection needs no painting. 2026-10-16: the owner's new **Attack**, **Retreat** and **Repair** buttons (T-059, T-061) and the **Stop** and **Attack-move** buttons join priority 14 (now thirteen order icons); the owner's disguise mask and painted ore deposits get their own numbers (**17** and **18**, prompts below) and are wired so a drop shows at once; T03 key rebinding needs no painting.
 
 ## Paint next: new characters are needed
 
-**The paint-next list is done**, except the optional women among the serfs (not wired). Kings, serfs, the new peoples' folk and sites, and the three pale spies are painted. Checked 2026-10-13: all 197 files keyed; the full cast of all eight peoples passes the lineup test at game size; in game with no errors and no missing files.
+**The character list is done**, except the optional women among the serfs (not wired). Still open, all small and all wired with stand-ins: the ram in two parts (13), thirteen order icons (14), the watchman mark (16), the disguise mark (17) and ore deposits per mineral (18); walk cycles (15) come later. Kings, serfs, the new peoples' folk and sites, and the three pale spies are painted. Checked 2026-10-13: all 197 files keyed; the full cast of all eight peoples passes the lineup test at game size; in game with no errors and no missing files.
 
 One small open item: the Scottish `recruit` still wears a kilt-like belted plaid, four centuries early for 12th to 13th century Gaels. Repaint it in the léine and brat like the new Scottish serfs (character guide, dress table). Low priority.
 
-**New 2026-10-13: eight order icons (priority 14)**: four stances and four formations for the command card, shared by every house, 128x128, `assets/shared/ui/orders/<key>.png`. Small and quick; the buttons work with text glyphs until then.
+**Order icons (priority 14, thirteen since 2026-10-16)**: four stances, four formations, and the five order buttons (Attack-move, Attack, Retreat, Stop, Repair) for the command card, shared by every house, 128x128, `assets/shared/ui/orders/<key>.png`. Small and quick; the buttons work with text glyphs until then.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
@@ -22,10 +22,10 @@ One small open item: the Scottish `recruit` still wears a kilt-like belted plaid
 | 6 | Building sites and ruins for the new peoples | Vikings, Byzantines, Persians | `buildings/<key>_build.png`, `<key>_ruin.png` for the 18 keys | 108 | priorities 6 and 8 — **delivered** 2026-10-13 |
 | 8 | **The ram as a body and a wheel**, so its wheels really turn | shared | `assets/shared/units/ram_body.png`, `ram_wheel.png` | 2 | priority 13 (new 2026-10-14) |
 | 9 | *Later:* walk cycles, soldiers first | all 8 | `units/<role>_walk1.png` ... `_walk4.png` | up to 96 for soldiers | priority 15 (new 2026-10-14; was a second "14") |
-| 10 | **Eight order icons**: four stances, four formations | shared | `assets/shared/ui/orders/<key>.png` | 8 | priority 14 (2026-10-13) |
+| 10 | **Thirteen order icons**: four stances, four formations, attack-move, attack, retreat, stop, repair | shared | `assets/shared/ui/orders/<key>.png` | 13 | priority 14 (2026-10-13; five order buttons added 2026-10-16) |
 | 11 | **The watchman mark**: an eye-and-lantern badge for the Watch row of your villages | shared | `assets/shared/ui/marks/watch.png` | 1 | priority 16 (new 2026-10-15) |
-| 10 | **Disguise mark**: a small theatre-style half mask, 64x64, neutral (no house colour), drawn over a disguised spy for his owner only | shared | `assets/shared/ui/marks/disguise.png` | 1 | stand-in today: the 🎭 emoji (new 2026-10-16) |
-| 11 | **Ore deposits painted per mineral**: stone, copper, iron, coal and silver, each full and half-dug, unmistakable at a glance (stone grey dressed rock; copper green-stained orange rock; **iron dark red-brown haematite**; coal black seams; silver pale veins in dark rock). Today they are the gold pile recoloured, and the owner could not tell iron from stone | shared | `assets/shared/resources/<mineral>.png`, `<mineral>_half.png` | 10 | new 2026-10-16; stand-in: recoloured gold pile (iron now rust red), and every mine wears a name plate |
+| 12 | **Disguise mark**: a plain dark leather half mask, 64x64, neutral (no house colour), drawn over a disguised spy for his owner only | shared | `assets/shared/ui/marks/disguise.png` | 1 | priority 17 (new 2026-10-16); stand-in: the 🎭 glyph; wired |
+| 13 | **Ore deposits painted per mineral**: stone, copper, iron, coal and silver, each full and half-dug, unmistakable at a glance (stone grey dressed rock; copper green-stained orange rock; **iron dark red-brown haematite**; coal black seams; silver pale veins in dark rock). Today they are the gold pile recoloured, and the owner could not tell iron from stone | shared | `assets/shared/resources/<mineral>.png`, `<mineral>_half.png` | 10 | priority 18 (new 2026-10-16); stand-in: recoloured gold pile (iron now rust red), and every mine wears a name plate; wired |
 | 7 | *Optional:* women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | character guide (not wired yet: say when they are coming and it is one line) |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
@@ -49,9 +49,13 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 15 | Walk cycles (soldiers first) | **Later** (below). Until then the game strides the still figures in code |
 | 12 | **Kings on the field** (8) | **Delivered and wired** 2026-10-13. `king` is out of `REPAINT`. The drawn crown is kept only when a people has no painted king |
 | — | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** Queued legs are drawn in code |
-| 14 | **Order icons**: four stances and four formations (T01, T02; added 2026-10-13) | **Requested.** Wired in code: the buttons show a text glyph until painted; switch on in one line (below) |
+| 14 | **Order icons**: four stances, four formations (T01, T02; added 2026-10-13), and attack-move, attack, retreat, stop, repair (added 2026-10-16) | **Requested.** Wired in code: the buttons show a text glyph until painted; switch on in one line (below) |
 | 16 | **Watchman mark** (spies posted in your own villages, T-057; added 2026-10-15) | **Requested.** Wired in code: the village panel's Watch row shows 👁 until painted; switch on in one line (below) |
 | — | Selecting idle soldiers and a kind across the valley (T31, 2026-10-15) | **No painting needed.** Uses the existing Army button and keys |
+| 17 | **Disguise mark** (a spy in a rival's colours, T-060; added 2026-10-16) | **Requested.** Wired: drawn over your disguised spy through the marks group, 🎭 until painted; switch on in one word (below) |
+| 18 | **Ore deposits per mineral**, full and half-dug (T-062; added 2026-10-16) | **Requested.** Wired: `ORE_ART` in `js/art.js`, the recoloured pile until painted; switch on in one line (below) |
+| — | Pack animals per people: donkey, Bactrian camel, camel (T-063, 2026-10-16) | **No painting needed.** `assets/shared/units/donkey.png`, `bactrian.png`, `dromedary.png` were already painted; the British and Scots now use the donkey |
+| — | Key rebinding (T03, 2026-10-16) | **No painting needed.** A text list in Options |
 
 ## How the game uses delivered art
 
@@ -63,7 +67,8 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | A plain soldier in the new style | `assets/factions/<faction>/units/<role>.png` for `footman`, `bowman`, `knight`, `scout`, `recruit`, `spy`, `scholar` | Automatically (priority 5). `footman`, `bowman`, `knight` only once removed from `REPAINT` in `js/art.js` (priority 9) |
 | A serf of one people | `assets/factions/<faction>/units/serf.png` (idle and walking), `serf_work1.png`, `serf_work2.png` (the two halves of a work swing) | Automatically (priority 10) |
 | Icons (kit, research) | `assets/shared/ui/gear/<key>.png`, `assets/shared/ui/tech/<key>.png` | Automatically (keys are `GEAR` and `TECH` in `js/config.js`) |
-| Order icons (stances, formations) | `assets/shared/ui/orders/<key>.png` (keys are `STANCES` and `FORMATIONS` in `js/config.js`) | After the drop, put `...STANCES, ...FORMATIONS` in `UI_KEYS.orders` in `js/art.js` (left empty until then so the game never asks for missing files) |
+| Order icons (stances, formations, orders) | `assets/shared/ui/orders/<key>.png` (keys are `STANCES` and `FORMATIONS` in `js/config.js`, plus `amove`, `charge`, `retreat`, `stop`, `repair`) | After the drop, put `...STANCES, ...FORMATIONS, 'amove', 'charge', 'retreat', 'stop', 'repair'` in `UI_KEYS.orders` in `js/art.js` (left empty until then so the game never asks for missing files) |
+| Ore deposits | `assets/shared/resources/<mineral>.png` and `<mineral>_half.png` for `stone`, `copper`, `iron`, `coal`, `silver` | After the drop, list the minerals in `ORE_PAINTED` in `js/art.js`; the half-dug picture shows once a deposit is below half |
 | Marks (deeds, captain, fugitive, alarm) | `assets/shared/ui/marks/<key>.png` (deed keys are `DEEDS` in `js/config.js`) | Automatically |
 | Portraits | `assets/shared/ui/portraits/<key>.png` (far-land keys are `FARLANDS`; rulers are `pharaoh`, `imperator`, `king`, `khan`, `highking`, `jarl`, `basileus`, `shahanshah`) | Automatically |
 
@@ -332,7 +337,7 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
    - spy, scholar and ram singles
    - action button icons
 
-   These still count; the construction and ruin states are now priority 6 (delivered), and the stance and formation buttons are priority 14.
+   These still count; the construction and ruin states are now priority 6 (delivered), and the stance, formation and order buttons are priority 14.
 4. **Facing.** The old shared unit art looks left; the new per-people figures look right. The game handles both (it mirrors), but keep every new figure looking right or straight out.
 5. **Captain standard** is painted with neutral cloth and the game dyes it per house. Keep any future marks that carry house colour neutral (white or pale grey cloth).
 
@@ -418,9 +423,9 @@ A house falls when its last king dies, so the king is the most important figure 
 
 Deliver: `assets/factions/<faction>/units/king.png`. Then take `king` out of `REPAINT` in `js/art.js` (and add it to the `PARTIAL` unit list for the three new peoples); the game draws `king` before falling back to the knight.
 
-## Priority 14: order icons, stances and formations (8, new 2026-10-13)
+## Priority 14: order icons, stances, formations and orders (13; 8 on 2026-10-13, 5 more on 2026-10-16)
 
-The command card has a **Stance** row (since T01) and, for a group, a **Formation** row (T02, 2026-10-13): Mass, Line, Box, Loose. All eight buttons show a text glyph today (⚔ ⛨ ⚓ ☮ and ◉ ☰ ▣ ⁘). Formations themselves need no painting: the soldiers stand in ranks and face the way they marched, using the figures already painted. Only the eight button icons are wanted. Use the **Goods icon** template: 128x128 px, readable at 32 px on a dark wood button, neutral colours (no faction colour: every house uses the same buttons), no text or letters.
+The command card has a **Stance** row (since T01) and, for a group, a **Formation** row (T02, 2026-10-13): Mass, Line, Box, Loose. All eight buttons show a text glyph today (⚔ ⛨ ⚓ ☮ and ◉ ☰ ▣ ⁘). Formations themselves need no painting: the soldiers stand in ranks and face the way they marched, using the figures already painted. Since 2026-10-16 the command card also has **Attack** (G, T-059), **Retreat** (R, T-059) and **Repair** (T-061) beside **Stop** and **Attack-move**, all with glyphs (■ ⚔ ⚑ ↩ 🔨). Only the thirteen button icons are wanted. Use the **Goods icon** template: 128x128 px, readable at 32 px on a dark wood button, neutral colours (no faction colour: every house uses the same buttons), no text or letters.
 
 | Key | Order | Subject to paint |
 |---|---|---|
@@ -432,6 +437,11 @@ The command card has a **Stance** row (since T01) and, for a group, a **Formatio
 | `line` | Formation: ranks across the march | small helmets from above in two straight rows, shields along the front row, an arrow mark pointing forward |
 | `box` | Formation: a square, bowmen inside | small helmets from above round the edge of a square, shields facing out, two bows in the middle |
 | `loose` | Formation: spread wide | small helmets from above scattered widely with wide gaps between them |
+| `amove` | Order: march and fight whatever is met | a sword laid along a forward arrow drawn on parchment, point leading |
+| `charge` | Order: fall on the nearest foe | a war banner on a lance, dipped forward as in a charge, cloth streaming back (pale cloth: no house colour) |
+| `retreat` | Order: off the field to the nearest keep | a round shield slung on the back of a small walking figure's silhouette, or a curved arrow turning back towards a tiny keep tower |
+| `stop` | Order: halt where you stand | a spear butt planted in the ground and an open palm raised before it |
+| `repair` | Order: serfs mend a damaged building | a carpenter's mallet and a peg over a split timber beam bound with fresh rope |
 
 Prompt (Goods icon template, filled; one per key):
 
@@ -439,7 +449,7 @@ Prompt (Goods icon template, filled; one per key):
 ORDER ICON, {SUBJECT}, painted in the same hand-painted medieval style as the kit and research icons: iron, leather and wood, warm low sun from the upper left, soft shadow. Neutral colours only (iron grey, brown leather, natural wood), no faction colour, no text or letters. For formations: a top-down view of small round helmets and shields, like tokens on a war table, so the shape of the formation reads at 32 px. Flat #FF00FF background, centred, 4 px margin, 128x128 (shown at 24-32 px).
 ```
 
-Deliver: `assets/shared/ui/orders/<key>.png` for the eight keys. Then add `...STANCES, ...FORMATIONS` to `UI_KEYS.orders` in `js/art.js` (one line; the buttons already ask for `uiArt('orders', key)` and fall back to the glyph).
+Deliver: `assets/shared/ui/orders/<key>.png` for the thirteen keys. Then add `...STANCES, ...FORMATIONS, 'amove', 'charge', 'retreat', 'stop', 'repair'` to `UI_KEYS.orders` in `js/art.js` (one line; the buttons already ask for `uiArt('orders', key)` and fall back to the glyph).
 
 ## Priority 13: a ram whose wheels turn (2)
 
@@ -487,6 +497,38 @@ WATCHMAN MARK, a small iron hooded lantern with a half-open shutter throwing a n
 ```
 
 Deliver: `assets/shared/ui/marks/watch.png`. Then add `'watch'` to `UI_KEYS.marks` in `js/art.js` (one word; the panel already asks for `uiArt('marks', 'watch')` and falls back to the glyph, and nothing probes for the file before then).
+
+## Priority 17: the disguise mark (1, new 2026-10-16)
+
+Since T-060 a spy can wear a met house's colours. His figure is drawn in that house's colours for everyone, and only his owner sees a small mask over his head, so the player can tell his own disguised spy from a real rival. It shows a 🎭 glyph until painted. Use the **Goods icon** template, as for the watchman mark.
+
+| Key | Size | Subject to paint |
+|---|---|---|
+| `disguise` | 64x64 | a plain half mask of dark leather with two eye holes, tied with a cord, a fold of a hooded cloak behind it; neutral colours, no faction colour, no text |
+
+```text
+DISGUISE MARK, a plain dark leather half mask with two eye holes and a thin tie cord, a fold of a muted grey hooded cloak behind it, painted in the same style as the deed badges and the watchman mark: leather and wool, light from the upper left, soft shadow. Neutral colours only, no faction colour, no text, not a carnival or theatre mask. Flat #FF00FF background, centred, 4 px margin, 256x256 (shown at 16-22 px over a figure's head).
+```
+
+Deliver: `assets/shared/ui/marks/disguise.png`. Then add `'disguise'` to `UI_KEYS.marks` in `js/art.js` (one word; the renderer already asks for the `disguise` mark and draws the glyph when it is missing).
+
+## Priority 18: ore deposits per mineral (10, new 2026-10-16)
+
+The owner could not tell iron from stone (T-062). Every deposit except gold is drawn from the gold pile or the rock recoloured. Paint each mineral as its own deposit, full and half-dug, in the board's style (the props and gold pile in `assets/world/`): a low heap of broken rock on bare ground, three-quarter view, no tools, no people, no buildings. Each must be told apart from the others at 25% zoom by shape and colour together, not colour alone.
+
+| Mineral | Full (`<mineral>.png`) | Half-dug (`<mineral>_half.png`) |
+|---|---|---|
+| `stone` | grey dressed blocks and rubble, a few squared stones | a lower heap, a cut face, loose chips |
+| `copper` | orange-brown rock stained bright green (malachite) | lower, the green showing on fresh faces |
+| `iron` | dark red-brown haematite boulders with rust streaks on the ground | lower, rust-red earth around |
+| `coal` | black glossy seams in grey shale, black dust on the ground | lower, more black dust than rock |
+| `silver` | dark grey rock with pale silvery veins catching the light | lower, a few bright fragments |
+
+```text
+ORE DEPOSIT, {MINERAL DESCRIPTION}, a low heap of broken rock on bare ground, hand-painted in the same style as the board's gold pile and rocks: three-quarter top-down view, warm low sun from the upper left, soft contact shadow painted in. No tools, people, carts or buildings, no text. Flat #FF00FF background, centred, 4 px margin, 256x192 (shown about 50 px wide). Half-dug variant: the same deposit lower and smaller, with a fresh cut face.
+```
+
+Deliver: `assets/shared/resources/<mineral>.png` and `<mineral>_half.png` for the five minerals (ten files). Then list the minerals in `ORE_PAINTED` in `js/art.js` (the renderer already draws `ORE_ART`, half-dug below half, and falls back to the recoloured pile).
 
 ## Acceptance
 

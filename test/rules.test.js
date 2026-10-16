@@ -7,6 +7,7 @@ import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
+import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE } from '../js/keys.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf } from '../js/config.js';
 
 let _s = 777;
@@ -1193,6 +1194,43 @@ test('fighting: a soldier battering a building turns on the foe who strikes him,
   assert.equal(a.task.targetId, foe.id, 'he turned on his attacker');
   for (let i = 0; i < 100 && foe.hp > 0; i++) g.tick(0.1); g.tick(0.1);
   assert.ok(foe.hp <= 0, 'and beat him'); assert.equal(a.task.type, 'attack'); assert.equal(a.task.targetId, b.id, 'then went back to the barracks');
+});
+
+test('keys (T03): every command has its own default key; rebinding swaps, refuses fixed keys, and is kept in the browser', () => {
+  const d = defaultKeys(), keys = Object.values(d);
+  assert.equal(new Set(keys).size, keys.length, 'no key does two things by default');
+  assert.equal(d.amove, 'f'); assert.equal(d.panLeft, 'a'); assert.equal(actionOf(d, 'G'), 'charge'); assert.equal(actionOf(d, '+'), 'faster');
+  const m = defaultKeys();
+  let r = rebind(m, 'amove', 'A'); assert.ok(r.ok); assert.equal(r.swapped, 'panLeft');
+  assert.equal(m.amove, 'a'); assert.equal(m.panLeft, 'f', 'the pan key takes attack-move\'s old key');
+  for (const k of ['Escape', 'Tab', '3', 'F5', 'ArrowUp', 'Home', 'Shift']) assert.equal(rebind(m, 'stop', k).ok, false, `${k} is fixed`);
+  const mem = new Map(), store = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: (k) => mem.delete(k) };
+  assert.ok(saveKeys(store, m)); assert.deepEqual(JSON.parse(mem.get(KEY_STORE)), { amove: 'a', panLeft: 'f' }, 'only the changes are stored');
+  assert.deepEqual(loadKeys(store), m, 'and come back on the next visit');
+  saveKeys(store, defaultKeys()); assert.equal(mem.has(KEY_STORE), false, 'defaults leave nothing behind');
+  mem.set(KEY_STORE, '{"amove":"g"}'); assert.deepEqual(loadKeys(store), defaultKeys(), 'a stored map with a key used twice falls back to the defaults');
+  mem.set(KEY_STORE, 'not json'); assert.deepEqual(loadKeys(store), defaultKeys());
+  assert.deepEqual(loadKeys({ getItem: () => { throw new Error('private window'); } }), defaultKeys(), 'no storage: defaults');
+  assert.equal(keyName(' '), 'Space'); assert.equal(keyName('='), '+');
+  // the HUD reads every key through the map: no command is left on a hard-wired letter
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8'), onKey = ui.slice(ui.indexOf('  onKey(e) {'), ui.indexOf('  applyKeys() {'));
+  assert.ok(!/k === '[a-z.,=+-]'/.test(onKey), 'onKey compares no letter directly');
+  for (const a of KEY_ACTIONS) assert.ok(onKey.includes(`'${a.id}'`) || a.id.startsWith('pan'), `onKey handles ${a.id}`);
+});
+
+test('pack animals: a rival raises one at the population cap, as the player can (T-063 asymmetry, T-065)', () => {
+  const g = mk({ fog: false }), s = g.seatOf(1), p = g.players[1];
+  const mkt = g.addBuilding('market', 1, Math.round(s.x) + 7, Math.round(s.y) + 3, true);
+  g.addBuilding('mine', 1, Math.round(s.x) - 8, Math.round(s.y) + 6, true); g.recomputeWalk();
+  g.units.filter((u) => u.team === 1 && u.kind === 'camel').forEach((u) => { u.hp = 0; });
+  p.gold = 500; g.popUsed = () => 999;
+  treasury(g, 1, p, s, g.units.filter((u) => u.team === 1 && u.kind === 'serf'));
+  assert.ok(mkt.queue.some((x) => x.kind === 'camel'), 'the market is raising a pack animal although the house is full');
+});
+
+test('a new match forgets the last one\'s repair warning timer (T-058 class, T-065)', () => {
+  const g = mk(); g._repairWarn = 1e9; g.reset({ seed: 8, houses: 3, ai: false });
+  assert.ok(g._repairWarn < 0);
 });
 
 console.log(`${passed} passed`);

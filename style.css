@@ -538,3 +538,12 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 .toast.news { font-size: 12.5px; font-weight: 600; padding: 4px 12px; opacity: .85; border-color: #6d4d27; color: #d9c79a; }
 .offer .ostake { font-size: 11.5px; color: #f0a890; margin: 2px 0 4px; } .offer .ostake b { color: #ffd0b8; }
 .endbox p.chron { font-size: 13px; color: #cdbb8a; margin: 10px 0 14px; } .endbox p.chron i { color: #e8d9ae; }
+/* Options > Keys (T03) */
+.optrow.keysrow { flex-wrap: wrap; }
+.keygrid { flex-basis: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 3px 14px; max-height: 260px; overflow-y: auto; padding: 4px 2px; }
+.keygrid .kgrp { grid-column: 1 / -1; font-weight: 600; opacity: 0.8; margin-top: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+.keygrid .krow { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.keygrid .krow button { min-width: 64px; }
+.keygrid .krow button.on { outline: 2px solid #e8c25a; }
+.keygrid .krow button.moved { color: #e8c25a; }
+.keygrid .tiny { grid-column: 1 / -1; }

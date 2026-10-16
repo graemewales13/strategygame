@@ -4,7 +4,7 @@ import {
   PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, armedKey, factionSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, ORE_ART, armedKey, factionSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -323,9 +323,10 @@ export class Renderer {
       this.sprite(ctx, tinted('gold', 0, null, h > 0.5), sx, sy + 4 * z, 50 * z, false, a);
       this.hit(n, 'node', sx - 22 * z, sy - 24 * z, sx + 22 * z, sy + 4 * z);
     } else if (MATS.includes(n.kind)) {
-      const c = oreSprite(n.kind, h > 0.5), w = (n.kind === 'stone' ? 46 : 54) * z;
+      const art = (n.amount < (n.max || 1) / 2 && ORE_ART[n.kind + '_half']) || ORE_ART[n.kind];   // (painted deposits, full and half-dug, once delivered: priority 18)
+      const c = art || oreSprite(n.kind, h > 0.5), w = (n.kind === 'stone' ? 46 : 54) * z;
       this.shadowAt(ctx, sx, sy, 22 * z, 6 * z, 0.3 * a);
-      this.sprite(ctx, c, sx, sy + 4 * z, w, false, a);
+      this.sprite(ctx, c, sx, sy + 4 * z, w, art ? h > 0.5 : false, a);
       this.hit(n, 'node', sx - 22 * z, sy - 22 * z, sx + 22 * z, sy + 4 * z);
     } else {
       this.shadowAt(ctx, sx, sy, 20 * z, 5 * z, 0.3 * a);
@@ -784,7 +785,7 @@ export class Renderer {
     if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }
     if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
     if (u.name && (ui?.isSelected(u) || z >= 1.15) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
-    if (u.kind === 'spy' && u.disguise != null && u.team === PLAYER) { ctx.font = `${Math.round(12 * Math.min(1.4, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#f0e2a0'; ctx.strokeStyle = 'rgba(20,12,4,.9)'; ctx.lineWidth = 3; ctx.strokeText('🎭', sx, sy - h * foot - 4 - bob); ctx.fillText('🎭', sx, sy - h * foot - 4 - bob); ctx.textAlign = 'start'; }   // (only you see the mask)
+    if (u.kind === 'spy' && u.disguise != null && u.team === PLAYER && !this.mark(ctx, 'disguise', sx, sy - h * foot - 4 - bob, 16 * z)) { ctx.font = `${Math.round(12 * Math.min(1.4, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#f0e2a0'; ctx.strokeStyle = 'rgba(20,12,4,.9)'; ctx.lineWidth = 3; ctx.strokeText('🎭', sx, sy - h * foot - 4 - bob); ctx.fillText('🎭', sx, sy - h * foot - 4 - bob); ctx.textAlign = 'start'; }   // (only you see the mask)
     if (u.kind === 'king' && !FUNIT[HOUSES[u.team]?.faction]?.king) this.crownAt(ctx, sx, sy - h * foot - 2 - bob, z, HOUSES[u.team].accent);
     if (u.kind === 'king' && u.team >= 0 && !this.game.seatOf(u.team)) this.mark(ctx, 'fugitive', sx, sy - h * foot - 10 * z - bob, 16 * z);   // a fugitive king, seen by all
     if (u.captain) { const mx = sx - Math.max(20, w * 0.7) / 2 - 4 * z, my = sy - h * foot - bob; if (!this.mark(ctx, 'captain', mx, my, 18 * z, HOUSES[u.team].primary)) { ctx.strokeStyle = '#2a1c0e'; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.moveTo(mx, my + 14 * z); ctx.lineTo(mx, my - 6 * z); ctx.stroke(); this.pennant(ctx, mx, my - 6 * z, z * 0.7, t, HOUSES[u.team].primary, HOUSES[u.team].accent, u.id); } }

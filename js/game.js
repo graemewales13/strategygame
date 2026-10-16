@@ -70,7 +70,7 @@ export class Game {
     this._crewT = 0;
     // timers and caches of the last match must not carry over: a reused Game would play a seed differently from a fresh one, and the
     // last match's times would silence the spy warning, the king's alarm and repeated log lines for minutes (T-058)
-    this._refitT = 0; this._sallyT = 0; this._crewV = undefined; this._infl = undefined; this._spyWarn = {}; this._kingAlertT = -99; this._lastLog = new Map();
+    this._refitT = 0; this._sallyT = 0; this._crewV = undefined; this._infl = undefined; this._spyWarn = {}; this._kingAlertT = -99; this._repairWarn = -99; this._lastLog = new Map();
     this.floaters = []; this.fx = [];   // fx: collapse/poof effects for the renderer (only queued when a UI is attached)
     this.alerts = [];   // where the player is being hit, for the minimap and the Space key (UI only, like fx)
     this.byId = new Map();

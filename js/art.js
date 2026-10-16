@@ -39,8 +39,13 @@ export function armedKey(u) {
 export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {}, orders: {} };
 export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking', vikings: 'jarl', byzantines: 'basileus', persians: 'shahanshah' };
 const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS, portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm'],
-  orders: [] };   // stance and formation icons (ARTREQUIREMENTS priority 14): put [...STANCES, ...FORMATIONS] here once painted; glyphs until then (no 404s)
+  orders: [] };   // order icons (ARTREQUIREMENTS priority 14): put [...STANCES, ...FORMATIONS, 'amove', 'charge', 'retreat', 'stop', 'repair'] here once painted; glyphs until then (no 404s)
+// 'disguise' (priority 17) joins UI_KEYS.marks once painted; the 🎭 glyph until then
 export const uiArt = (group, key) => UIART[group]?.[key]?.src || null;
+// painted ore deposits (ARTREQUIREMENTS priority 18): ORE_ART[mineral] and ORE_ART[mineral + '_half'] = Image. Put the minerals in
+// ORE_PAINTED once delivered to assets/shared/resources/<mineral>.png and <mineral>_half.png; until then the recoloured pile (oreSprite)
+export const ORE_ART = {};
+const ORE_PAINTED = [];   // e.g. ['stone', 'copper', 'iron', 'coal', 'silver'] (left empty so the game never asks for missing files)
 // painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow
 export const TILE_KINDS = ['grass', 'dry', 'sand', 'rock', 'dirt', 'snow'];
 export const TILES = {};
@@ -61,6 +66,7 @@ export function loadArt() {
     for (const k of [...ARMED_KEYS, ...PLAIN_KEYS].filter((x) => !REPAINT.has(x))) one(FUNIT[f], k, `assets/factions/${f}/units/${k}.png`);
   }
   for (const [grp, keys] of Object.entries(UI_KEYS)) for (const k of keys) one(UIART[grp], k, `assets/shared/ui/${grp}/${k}.png`);
+  for (const k of ORE_PAINTED) for (const v of ['', '_half']) one(ORE_ART, k + v, `assets/shared/resources/${k}${v}.png`);
   for (const sz of ['1tile']) for (const k of VILLAGE_ART_KEYS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { VIMG[sz][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/${sz}/${k}.png`; }));
   for (const n of SHARED) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { SIMG[n.split('/')[1]] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/${n}.png`; }));
   return Promise.all(jobs);

@@ -80,5 +80,22 @@ const { chromium } = require('playwright');
   await p.keyboard.down('Control'); await p.mouse.click(bow[0], bow[1]); await p.mouse.click(bow[0], bow[1]); await p.keyboard.up('Control'); await p.waitForTimeout(200);
   const valley = await kinds(); console.log('ctrl+double-click bowman', JSON.stringify(valley));
   if (onScreen.kinds !== 'bowman' || onScreen.n >= onScreen.all || valley.kinds !== 'bowman' || valley.n !== valley.all) errs.push('double-click selection wrong: ' + JSON.stringify({ onScreen, valley }));
+  // T03: Options > Keys - rebind Attack-move to A (Pan left swaps to F), back in the field A arms attack-move, then Reset keys
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+  const ho = await p.locator('#hOptions').boundingBox(); if (ho) { await p.mouse.click(ho.x + ho.width / 2, ho.y + ho.height / 2); await p.waitForTimeout(500); }
+  await p.click('#kShow'); await p.waitForTimeout(150); await p.click('#keyGrid button[data-key="amove"]'); await p.waitForTimeout(100);
+  const asking = await p.locator('#keyGrid button[data-key="amove"]').textContent();
+  await p.keyboard.press('a'); await p.waitForTimeout(150);
+  const km = await p.evaluate(() => ({ ...window.__seven.ui.kmap, stored: localStorage.getItem('auld-world.keys') }));
+  console.log('rebind', JSON.stringify({ asking, amove: km.amove, panLeft: km.panLeft, stored: km.stored }));
+  if (km.amove !== 'a' || km.panLeft !== 'f' || !/"amove":"a"/.test(km.stored || '')) errs.push('rebinding did not take: ' + JSON.stringify(km));
+  await p.click('#mBack').catch(() => {}); await p.waitForTimeout(300); await p.keyboard.press('Enter'); await p.waitForTimeout(400);
+  await p.evaluate((i) => { const { game: g, ui } = window.__seven; ui.closeMenu?.(); ui.setUnits([g.byId.get(i)].filter((u) => u && u.hp > 0)); }, id); await p.waitForTimeout(200);
+  await p.keyboard.press('a'); const armedA = await p.evaluate(() => window.__seven.ui.amove); await p.keyboard.press('Escape');
+  const sub = await p.evaluate(() => document.querySelector('button[data-act="amove"]')?.textContent || '');
+  console.log('A arms attack-move', armedA, '| button reads', JSON.stringify(sub.trim()));
+  if (!armedA) errs.push('the rebound key did not arm attack-move');
+  await p.evaluate(() => document.getElementById('kReset').click()); const back = await p.evaluate(() => ({ amove: window.__seven.ui.kmap.amove, stored: localStorage.getItem('auld-world.keys') }));
+  console.log('reset keys', JSON.stringify(back)); if (back.amove !== 'f' || back.stored) errs.push('reset keys failed: ' + JSON.stringify(back));
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length ? 1 : 0);
 })();

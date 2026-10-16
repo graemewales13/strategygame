@@ -9,6 +9,7 @@ import {
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
+import { KEY_ACTIONS, loadKeys, saveKeys, rebind, actionOf, keyName, normKey, defaultKeys } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -41,6 +42,8 @@ export class UI {
     this.placing = null; this.hoverTX = 0; this.hoverTY = 0;
     this.dragBox = null; this.drag = null; this.pings = [];
     this.keys = new Set(); this.mouse = { x: 0, y: 0, in: false };
+    let store = null; try { store = localStorage; } catch { store = null; }
+    this.keyStore = store; this.kmap = loadKeys(store); this.rebinding = null;   // the key map (T03), rebound in Options > Keys
     this.speed = 1; this.paused = false; this.started = false;
     this.menuOpen = true; this.campaignOpen = false; this.endShown = false;
     this.lastClick = { t: 0, id: null };
@@ -87,7 +90,7 @@ export class UI {
     cv.addEventListener('mouseenter', () => { this.mouse.in = true; });
     cv.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     window.addEventListener('keydown', (e) => this.onKey(e));
-    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    window.addEventListener('keyup', (e) => this.keys.delete(normKey(e.key)));
     window.addEventListener('blur', () => this.keys.clear());
     window.addEventListener('resize', () => { this.r.resize(); this.r.clampCam(); });
 
@@ -268,33 +271,71 @@ export class UI {
     const k = e.key.toLowerCase();
     const tg = e.target;
     if (tg && (tg.tagName === 'TEXTAREA' || (tg.tagName === 'INPUT' && tg.type !== 'checkbox'))) { if (k === 'enter' || k === 'escape') tg.blur?.(); if (k !== 'escape') return; }
+    if (this.rebinding) { e.preventDefault(); return this.takeRebind(k); }   // (Options > Keys: the next key pressed is the new one; Esc cancels)
     if (k === 'escape') { if (this.amove) return this.setAmove(false); return this.onEsc(); }
     if (k === 'f5') { e.preventDefault(); return void this.saveGame('manual'); }
     if (k === 'f9') { e.preventDefault(); return void this.loadGame('manual'); }
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
-    if (k === 'c' && !e.ctrlKey && !e.metaKey) { this.toggleCouncil(); return; }
-    if (k === 't') { this.showStand = !this.showStand; $('standings').classList.toggle('hidden', !this.showStand); return; }
-    if (k === 'm' || k === 'tab') { e.preventDefault(); return this.toggleCampaign(); }
+    // every other command goes through the key map (T03: rebindable in Options); Tab and Home stay as fixed extras
+    const mod = e.ctrlKey || e.metaKey, act = k === 'tab' ? 'campaign' : k === 'home' ? 'alert' : mod ? null : actionOf(this.kmap, k);
+    if (act === 'council') { this.toggleCouncil(); return; }
+    if (act === 'standings') { this.showStand = !this.showStand; $('standings').classList.toggle('hidden', !this.showStand); return; }
+    if (act === 'campaign') { e.preventDefault(); return this.toggleCampaign(); }
     if (this.campaignOpen) return;
-    this.keys.add(k);
+    this.keys.add(normKey(k));
     if (e.repeat) return;
-    if (k === 'e') this.showEcon = !this.showEcon;
-    else if (k === 'h') this.focusHall();
-    else if (k === 'k') this.selectKing();
-    else if (k === 'p') this.setPaused(!this.paused);
-    else if (k === ' ' || k === 'home') { e.preventDefault(); this.jumpToAlert(); }
-    else if (k === '.') this.selectIdleSerf();
-    else if (k === ',') this.selectArmy();
-    else if (k === 'i') this.selectIdleArmy();
-    else if (k === 'g' && this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u))) this.onCmd({ act: 'charge' });
-    else if (k === 'r' && this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' });
-    else if (k === 'f') { if (this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u))) this.setAmove(!this.amove); }
-    else if (k === '+' || k === '=') { this.speed = Math.min(4, this.speed * 2); $('btnSpeed').textContent = this.speed + 'x'; }
-    else if (k === '-') { this.speed = Math.max(1, this.speed / 2); $('btnSpeed').textContent = this.speed + 'x'; }
-    else if (/^[1-9]$/.test(k)) {
-      if (e.ctrlKey || e.metaKey) { e.preventDefault(); const us = this.selUnits(); if (us.length) { this.groups[k] = us.map((u) => u.id); this.toast(`Group ${k} set (${us.length}).`, 'info'); } }
+    const fighters = () => this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u));
+    if (/^[1-9]$/.test(k)) {
+      if (mod) { e.preventDefault(); const us = this.selUnits(); if (us.length) { this.groups[k] = us.map((u) => u.id); this.toast(`Group ${k} set (${us.length}).`, 'info'); } }
       else if (this.groups[k]) { const us = this.groups[k].map((id) => this.game.byId.get(id)).filter((u) => u && u.hp > 0); if (us.length) { this.setUnits(us); if (this.lastGroup === k) this.r.centerOn(us[0].x, us[0].y); this.lastGroup = k; } }
-    } else if (k === 's' && this.selUnits().length && !e.ctrlKey) { /* WASD pans; stop is a button */ }
+      return;
+    }
+    switch (act) {
+      case 'econ': this.showEcon = !this.showEcon; break;
+      case 'hall': this.focusHall(); break;
+      case 'king': this.selectKing(); break;
+      case 'pause': this.setPaused(!this.paused); break;
+      case 'alert': e.preventDefault(); this.jumpToAlert(); break;
+      case 'idleSerf': this.selectIdleSerf(); break;
+      case 'army': this.selectArmy(); break;
+      case 'idleArmy': this.selectIdleArmy(); break;
+      case 'charge': if (fighters()) this.onCmd({ act: 'charge' }); break;
+      case 'retreat': if (this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' }); break;
+      case 'amove': if (fighters()) this.setAmove(!this.amove); break;
+      case 'stop': if (this.selUnits().some((u) => u.team === PLAYER)) this.onCmd({ act: 'stop' }); break;
+      case 'faster': this.speed = Math.min(4, this.speed * 2); $('btnSpeed').textContent = this.speed + 'x'; break;
+      case 'slower': this.speed = Math.max(1, this.speed / 2); $('btnSpeed').textContent = this.speed + 'x'; break;
+      default: break;   // (the pan keys are read each frame from this.keys)
+    }
+  }
+  // the key map changed: redraw the Options list and every label that names a key
+  applyKeys() {
+    const kn = (id) => keyName(this.kmap[id]);
+    this.renderKeys(); this.sigCmd = ''; this.sigSel = '';
+    if ($('btnHome')) $('btnHome').title = `Jump to your home village (${kn('hall')})`;
+    if ($('btnIdle')) $('btnIdle').title = `Select next idle serf (${kn('idleSerf')})`;
+    if ($('btnArmy')) $('btnArmy').title = `Select all soldiers (${kn('army')}); Shift-click or ${kn('idleArmy')}: only the idle ones`;
+    if ($('mKeysHint')) $('mKeysHint').textContent = `Right-click to move, gather, sack, infiltrate. Drag to select. ${['panUp', 'panLeft', 'panDown', 'panRight'].map(kn).join('')} or the arrows pan. ${kn('campaign')} opens the campaign map. ${kn('alert')} jumps to where you are under attack. Esc returns here.`;
+  }
+  renderKeys() {
+    const g = $('keyGrid'); if (!g || g.classList.contains('hidden')) return;
+    let html = '', grp = '';
+    for (const a of KEY_ACTIONS) {
+      if (a.group !== grp) { grp = a.group; html += `<div class="kgrp">${esc(grp)}</div>`; }
+      const on = this.rebinding === a.id;
+      html += `<div class="krow"><span>${esc(a.label)}</span><button class="small${on ? ' on' : ''}${this.kmap[a.id] !== a.def ? ' moved' : ''}" data-key="${a.id}">${on ? 'Press a key…' : esc(keyName(this.kmap[a.id]))}</button></div>`;
+    }
+    g.innerHTML = html + `<div class="tiny">Click a command, then press its new key (Esc cancels). A key already in use swaps over. Fixed: Esc, F5/F9, Tab, 1-9, the arrows, Home.</div>`;
+  }
+  takeRebind(k) {
+    const id = this.rebinding; this.rebinding = null;
+    if (k === 'escape') return this.renderKeys();
+    const label = (x) => KEY_ACTIONS.find((a) => a.id === x)?.label;
+    const r = rebind(this.kmap, id, k);
+    if (!r.ok) { this.toast(r.why, 'warn'); return this.renderKeys(); }
+    if (!saveKeys(this.keyStore, this.kmap)) this.toast('Could not remember the keys in this browser; they last until you close the tab.', 'warn');
+    this.applyKeys();
+    this.toast(`${label(id)}: ${keyName(this.kmap[id])}${r.swapped ? ` (${label(r.swapped)} moves to ${keyName(this.kmap[r.swapped])})` : ''}.`, 'info');
   }
   onEsc() {
     if (this.councilOpen) { this.councilOpen = false; $('council').classList.add('hidden'); return; }
@@ -595,10 +636,11 @@ export class UI {
     if (!this.menuOpen && !this.campaignOpen) {
       const spd = (this.keys.has('shift') ? 1100 : 620) * dt;
       let dx = 0, dy = 0;
-      if (this.keys.has('w') || this.keys.has('arrowup')) dy -= spd;
-      if (this.keys.has('s') || this.keys.has('arrowdown')) dy += spd;
-      if (this.keys.has('a') || this.keys.has('arrowleft')) dx -= spd;
-      if (this.keys.has('d') || this.keys.has('arrowright')) dx += spd;
+      const km = this.kmap;   // (the pan keys are rebindable, T03; the arrows always pan)
+      if (this.keys.has(km.panUp) || this.keys.has('arrowup')) dy -= spd;
+      if (this.keys.has(km.panDown) || this.keys.has('arrowdown')) dy += spd;
+      if (this.keys.has(km.panLeft) || this.keys.has('arrowleft')) dx -= spd;
+      if (this.keys.has(km.panRight) || this.keys.has('arrowright')) dx += spd;
       if (this.mouse.in && !this.dragBox) {
         const e = 12;
         if (this.mouse.x < e) dx -= spd; if (this.mouse.x > r.w - e) dx += spd;
@@ -1107,7 +1149,8 @@ export class UI {
       if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
       if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
-      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { glyph: '⚔', name: 'Attack-move', sub: 'F', cls: this.amove ? 'on' : '', tip: '<b>Attack-move</b> (F, or Ctrl+right-click)<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { glyph: '⚑', name: 'Attack', sub: 'G', cls: '', tip: '<b>Attack</b> (G)<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { glyph: '↩', name: 'Retreat', sub: 'R', cls: '', tip: '<b>Retreat</b> (R)<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
+      const kn = (id) => keyName(this.kmap[id]);   // (the key each order is bound to now, T03)
+      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { img: uiArt('orders', 'stop'), glyph: '■', name: 'Stop', sub: kn('stop'), tip: `<b>Stop</b> (${kn('stop')})<br>Halt and hold position.`, cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { img: uiArt('orders', 'amove'), glyph: '⚔', name: 'Attack-move', sub: kn('amove'), cls: this.amove ? 'on' : '', tip: `<b>Attack-move</b> (${kn('amove')}, or Ctrl+right-click)`+'<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { img: uiArt('orders', 'charge'), glyph: '⚑', name: 'Attack', sub: kn('charge'), cls: '', tip: `<b>Attack</b> (${kn('charge')})`+'<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { img: uiArt('orders', 'retreat'), glyph: '↩', name: 'Retreat', sub: kn('retreat'), cls: '', tip: `<b>Retreat</b> (${kn('retreat')})`+'<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
       if (us.some((u) => g.fighter(u))) html += `<div class="hint"><b>Shift</b>+right-click adds waypoints to a march; a group keeps to its slowest member's pace.</div>`;
       if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
       const marchers = us.filter((u) => u.kind !== 'camel');
@@ -1138,7 +1181,7 @@ export class UI {
         if (ent.kind === 'keep') html += this.buildGrid();
         if (!html) html = `<div class="hint">${esc(BUILDINGS[ent.kind].info)}</div>`;
         else if (Object.values(UNITS).some((u) => u.from.includes(ent.kind))) html += `<div class="hint">Right-click the field to set a <b>rally point</b>; on a resource, new serfs gather it.</div>`;
-        html += `<div class="cgrid" style="margin-top:6px">${ent.hp < ent.maxHp ? this.btn('repair', { glyph: '🔨', name: 'Repair', sub: `${Math.round((100 * ent.hp) / ent.maxHp)}%`, tip: `<b>Repair</b><br>Sends the nearest four serfs to mend it. Repairs cost half the price of the health put back, paid as they work (grain, timber, coin or stone as the building needs). You can also select serfs and right-click it.` }) : ''}${this.btn('demolish', { glyph: '⚒', name: 'Pull down', sub: '30% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Pull down</b><br>Click twice. Those inside step out and a third of its cost comes back. A keep or temple pulled down stops swaying the villages around it.' })}</div>`;
+        html += `<div class="cgrid" style="margin-top:6px">${ent.hp < ent.maxHp ? this.btn('repair', { img: uiArt('orders', 'repair'), glyph: '🔨', name: 'Repair', sub: `${Math.round((100 * ent.hp) / ent.maxHp)}%`, tip: `<b>Repair</b><br>Sends the nearest four serfs to mend it. Repairs cost half the price of the health put back, paid as they work (grain, timber, coin or stone as the building needs). You can also select serfs and right-click it.` }) : ''}${this.btn('demolish', { glyph: '⚒', name: 'Pull down', sub: '30% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Pull down</b><br>Click twice. Those inside step out and a third of its cost comes back. A keep or temple pulled down stops swaying the villages around it.' })}</div>`;
       }
     } else if (ent && ent.type === 'village') {
       html = this.villageActs(ent) + this.tradeBoard(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (a keep with soldiers inside, plus a temple, tavern or market near it) or a <b>spy</b>. Independent villages also trade with your camels.'}</div>`;
@@ -1224,6 +1267,11 @@ export class UI {
       if (b.dataset.act === 'objcollapse') { this.objCollapsed = !this.objCollapsed; this.objKey = ''; this.objT = 0; }
       if (b.dataset.act === 'objhide') { this.objHidden = true; if ($('sObj')) $('sObj').checked = false; try { localStorage.setItem('auld-world.objectives', 'off'); } catch { /* ignore */ } this.toast('Objectives hidden. Turn them back on under Options.', 'info'); $('objectives').classList.add('hidden'); }
     });
+    // Options > Keys (T03): every command's key, rebound by clicking it and pressing the new key; kept in the browser
+    if ($('kShow')) $('kShow').onclick = () => { const g = $('keyGrid'); g.classList.toggle('hidden'); $('kShow').textContent = g.classList.contains('hidden') ? 'Change keys' : 'Hide keys'; this.rebinding = null; this.renderKeys(); };
+    if ($('kReset')) $('kReset').onclick = () => { this.kmap = defaultKeys(); this.rebinding = null; saveKeys(this.keyStore, this.kmap); this.applyKeys(); this.toast('Keys back to their defaults.', 'info'); };
+    if ($('keyGrid')) $('keyGrid').addEventListener('click', (e) => { const b = e.target.closest('button[data-key]'); if (!b) return; this.rebinding = this.rebinding === b.dataset.key ? null : b.dataset.key; this.renderKeys(); });
+    this.applyKeys();
     $('sbSave').onclick = () => this.saveGame('manual');
     $('sbLoad').onclick = () => this.loadGame('manual');
     $('sbAuto').onclick = () => this.loadGame('auto');

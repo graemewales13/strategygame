@@ -535,7 +535,7 @@ export function treasury(game, team, p, seat, serfs) {
     let want = Math.min(3, Math.ceil(mines / 2));
     const pbk = pbOf(game, p), pbc = pbk?.camels; if (pbc) want = Math.round(clamp(lerp(want, Math.min(4, mines * pbc.perMine), pbk.conf), 0, 4));
     const q = game.buildings.filter((b) => b.team === team).reduce((n, b) => n + b.queue.filter((x) => x.kind === 'camel').length, 0);
-    if (camels.length + q < want && p.gold > 90 && game.popUsed(team) < game.popCap(team)) game.train(team, mk.id, 'camel');
+    if (camels.length + q < want && p.gold > 90 && (UNITS.camel.nopop || game.popUsed(team) < game.popCap(team))) game.train(team, mk.id, 'camel');   // (pack animals need no room, as for the player: T-063)
     if (p.routeT <= 0) {
       p.routeT = 25;
       const idle = camels.filter((c) => !c.route && c.task.type === 'idle');

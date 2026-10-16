@@ -1,0 +1,60 @@
+// Auld World - the key map (T03). Every keyboard command has an action id and a default key; the player can rebind them in
+// Options, and the choice is kept in the browser. Pure data and helpers (no DOM), so the rules tests can check it.
+// Fixed keys that cannot be taken: Esc (menu), F5/F9 (save/load), Tab (campaign map), 1-9 (control groups), the arrows (pan),
+// Home (jump to the fight) and the modifier keys.
+
+export const KEY_ACTIONS = [
+  { id: 'panUp', label: 'Pan up', def: 'w', group: 'Camera' },
+  { id: 'panLeft', label: 'Pan left', def: 'a', group: 'Camera' },
+  { id: 'panDown', label: 'Pan down', def: 's', group: 'Camera' },
+  { id: 'panRight', label: 'Pan right', def: 'd', group: 'Camera' },
+  { id: 'hall', label: 'Home village', def: 'h', group: 'Camera' },
+  { id: 'alert', label: 'Jump to the fight', def: ' ', group: 'Camera' },
+  { id: 'campaign', label: 'Campaign map', def: 'm', group: 'Camera' },
+  { id: 'king', label: 'Select your king', def: 'k', group: 'Select' },
+  { id: 'idleSerf', label: 'Next idle serf', def: '.', group: 'Select' },
+  { id: 'army', label: 'Whole army', def: ',', group: 'Select' },
+  { id: 'idleArmy', label: 'Idle soldiers', def: 'i', group: 'Select' },
+  { id: 'amove', label: 'Attack-move', def: 'f', group: 'Orders' },
+  { id: 'charge', label: 'Attack', def: 'g', group: 'Orders' },
+  { id: 'retreat', label: 'Retreat', def: 'r', group: 'Orders' },
+  { id: 'stop', label: 'Stop', def: 'x', group: 'Orders' },
+  { id: 'council', label: 'Council of Houses', def: 'c', group: 'Panels' },
+  { id: 'standings', label: 'Standings', def: 't', group: 'Panels' },
+  { id: 'econ', label: 'Economy overlay', def: 'e', group: 'Panels' },
+  { id: 'pause', label: 'Pause', def: 'p', group: 'Game' },
+  { id: 'faster', label: 'Faster', def: '=', group: 'Game' },
+  { id: 'slower', label: 'Slower', def: '-', group: 'Game' },
+];
+export const KEY_STORE = 'auld-world.keys';
+const RESERVED = new Set(['escape', 'f5', 'f9', 'tab', 'home', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', 'control', 'alt', 'meta', 'enter', 'contextmenu', 'capslock', 'dead', 'unidentified']);
+// a key as the game stores it: lower case, '+' folded onto '=' (the same key on most layouts)
+export const normKey = (k) => { k = String(k || '').toLowerCase(); return k === '+' ? '=' : k; };
+export const reservedKey = (k) => { k = normKey(k); return !k || RESERVED.has(k) || /^[1-9]$/.test(k) || /^f\d+$/.test(k); };
+export const defaultKeys = () => Object.fromEntries(KEY_ACTIONS.map((a) => [a.id, a.def]));
+// the saved map over the defaults; an unknown action, a reserved key or a key used twice falls back to the defaults for those actions
+export function loadKeys(store) {
+  const map = defaultKeys();
+  let saved = null; try { saved = JSON.parse(store?.getItem(KEY_STORE) || 'null'); } catch { saved = null; }
+  if (!saved || typeof saved !== 'object') return map;
+  for (const a of KEY_ACTIONS) { const k = normKey(saved[a.id]); if (saved[a.id] != null && !reservedKey(k)) map[a.id] = k; }
+  const seen = new Map();
+  for (const a of KEY_ACTIONS) { const k = map[a.id]; if (seen.has(k)) return defaultKeys(); seen.set(k, a.id); }
+  return map;
+}
+export function saveKeys(store, map) {
+  const diff = {}; for (const a of KEY_ACTIONS) if (map[a.id] !== a.def) diff[a.id] = map[a.id];
+  try { if (Object.keys(diff).length) store?.setItem(KEY_STORE, JSON.stringify(diff)); else store?.removeItem(KEY_STORE); return true; } catch { return false; }
+}
+// Bind `key` to `id`. Whatever held that key before takes the old key of `id` (a swap), so no key ever does two things.
+// Returns { ok, swapped } or { ok: false, why }.
+export function rebind(map, id, key) {
+  const k = normKey(key);
+  if (!KEY_ACTIONS.some((a) => a.id === id)) return { ok: false, why: 'No such command.' };
+  if (reservedKey(k)) return { ok: false, why: `${keyName(k)} is kept for the game (Esc, F-keys, Tab, 1-9, arrows, Home, Enter, modifiers).` };
+  const old = map[id], other = KEY_ACTIONS.find((a) => a.id !== id && map[a.id] === k);
+  map[id] = k; if (other) map[other.id] = old;
+  return { ok: true, swapped: other ? other.id : null };
+}
+export const actionOf = (map, key) => { const k = normKey(key); for (const a of KEY_ACTIONS) if (map[a.id] === k) return a.id; return null; };
+export const keyName = (k) => (k === ' ' ? 'Space' : k === '=' ? '+' : !k ? '—' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
