@@ -1,7 +1,7 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, MINE_JOBS,
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS,
 } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
@@ -534,6 +534,15 @@ export class Renderer {
     ctx.drawImage(img, bx - w / 2, by - h + f.size * HH * z * 0.34, w, h);
     ctx.globalAlpha = 1;
   }
+  // a small name plate under a mine: a swatch of the mineral's colour and its name
+  oreLabel(ctx, x, y, ore, z) {
+    const s = Math.max(9, Math.round(10.5 * Math.min(1.3, z))), text = GOOD_LABEL[ore] || ore;
+    ctx.font = `bold ${s}px Georgia, serif`; const tw = ctx.measureText(text).width, pw = tw + s * 1.6, ph = s * 1.45;
+    ctx.fillStyle = 'rgba(20,14,8,0.78)'; ctx.beginPath(); ctx.roundRect(x - pw / 2, y, pw, ph, 3); ctx.fill();
+    ctx.strokeStyle = GOOD_COLOR[ore] || '#cdbb8a'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = GOOD_COLOR[ore] || '#cdbb8a'; ctx.beginPath(); ctx.arc(x - pw / 2 + s * 0.65, y + ph / 2, s * 0.32, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f0e2b0'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x - pw / 2 + s * 1.15, y + ph / 2 + 1); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+  }
   // ---------------------------------------------------------------- buildings
   building(ctx, b, dim, ui, t, z) {
     const f = HOUSES[b.team], prog = b.built, [name, mul] = BSPR[b.kind] || ['cottage', 1];
@@ -590,6 +599,7 @@ export class Renderer {
     }
     if (b.flash > 0 && c) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.7, b.flash * 2); ctx.drawImage(c, bx - w / 2, dy, w, h); ctx.restore(); }
     if (b.garrison?.length && b.team === PLAYER) this.badge(ctx, bx + w * 0.34, dy + h * 0.12, b.garrison.length, f, z);
+    if (b.kind === 'mine' && b.ore && z >= 0.55) this.oreLabel(ctx, bx, by + 3 * z, b.ore, z);   // what it digs, in the mineral's colour
     if (b.hp < b.maxHp && prog >= 1) this.bar(ctx, bx - w * 0.3, dy - 6, w * 0.6, 4, b.hp / b.maxHp, this.hpColor(b.hp / b.maxHp));
     if (b.queue.length && b.team === PLAYER) this.bar(ctx, bx - w * 0.3, by + 4 * z, w * 0.6, 3, b.queue[0].t / UNITS[b.queue[0].kind].time, '#7ac1ff');
     if (ui?.isSelected(b)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, b.tx - 0.1, b.ty - 0.1, b.size + 0.2, b.size + 0.2); ctx.stroke(); ctx.setLineDash([]); }

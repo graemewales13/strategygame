@@ -138,7 +138,8 @@ export function camelSprite(team) {
 }
 
 // ---- ore deposits and the mine: recoloured from the board's gold pile and rock, assembled on a small canvas ----------
-const ORE_LOOK = { copper: [24, 0.82, 0.95], iron: [212, 0.22, 0.66], silver: [210, 0.07, 1.18] };
+// iron is dark rust red, so it never passes for grey stone (owner, 2026-10-16); copper bright orange; silver pale
+const ORE_LOOK = { copper: [24, 0.82, 0.95], iron: [10, 0.62, 0.6], silver: [210, 0.07, 1.18] };
 export function oreSprite(kind, flip = false) {
   const key = `ore|${kind}|${flip ? 1 : 0}`; let c = cache.get(key); if (c) return c;
   if (kind === 'stone') return (cache.set(key, tinted('rock', 0, null, flip, 1.12)), cache.get(key));

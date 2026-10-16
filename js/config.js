@@ -94,7 +94,7 @@ export const MATS = ['stone', 'copper', 'iron', 'coal', 'silver'];
 export const PROCESSED = ['steel', 'ware']; // made by a Foundry from raw minerals
 export const ALL_GOODS = [...RES, ...MATS, ...PROCESSED];
 export const GOOD_LABEL = { food: 'Grain', wood: 'Timber', gold: 'Coin', stone: 'Stone', copper: 'Copper', iron: 'Iron', coal: 'Coal', silver: 'Silver', steel: 'Steel', ware: 'Fine ware' };
-export const GOOD_COLOR = { food: '#c23a56', wood: '#8a5a2a', gold: '#e0b83a', stone: '#9a9a90', copper: '#c8743a', iron: '#6f7a86', coal: '#35353a', silver: '#d8e0ea', steel: '#9fb4c8', ware: '#c9a0e0' };
+export const GOOD_COLOR = { food: '#c23a56', wood: '#8a5a2a', gold: '#e0b83a', stone: '#9a9a90', copper: '#c8743a', iron: '#9a4e32',   /* rust: iron ore is red-brown (owner, 2026-10-16: grey iron and grey stone were hard to tell apart) */ coal: '#35353a', silver: '#d8e0ea', steel: '#9fb4c8', ware: '#c9a0e0' };
 export const GOOD_INFO = {
   gold: 'Coin: pays for troops and trade; a mine digs it from a seam.',
   stone: 'Raises keeps, towers and foundries.',
