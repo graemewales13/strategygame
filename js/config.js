@@ -465,7 +465,10 @@ export const SHELF_RESERVE = { food: 100, wood: 100, gold: 100, other: 10 }; // 
 export const SPY_FEE = 25;         // coin to send a recruit out as a spy
 
 // Village folk stay indoors. A quarter muster to defend when it is attacked; now and then a family sets out for another village.
-export const MILITIA = { share: 0.25, rampEvery: 0.4, bite: 0.12, loss: 0.06 };
+// dps: what each of a village's fighting folk (a quarter of its people, `share`) deals back a second, times its walls (maxProtection
+// over a hamlet's 220), shared among everyone attacking it (owner, 2026-10-16: ten soldiers died to a hillfort of ten folk, because
+// every attacker took the village's full bite whatever its size and however many shared the fight)
+export const MILITIA = { share: 0.25, rampEvery: 0.4, bite: 0.12, loss: 0.06, dps: 3 };
 export const WANDER = { every: [90, 160], minPop: 6, range: 62, speed: 1.7, newsPull: 0.3, newsTime: 90, unrest: 2 };
 
 // ---- money --------------------------------------------------------------------------------

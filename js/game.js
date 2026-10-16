@@ -1220,7 +1220,18 @@ export class Game {
   // how far an idle fighter looks for a fight of its own
   acquireR(u) { return u.kind === 'king' ? 4.5 : Math.max(6.5, this.rangeOf(u) + 2); }
   // a fight is over (the foe is dead, gone or no longer a foe): walk on if it was met on an attack-move, else stand
+  // a fighter battering a building or village who is struck by a foe turns on him (owner, 2026-10-16: he used to keep hitting the wall
+  // and die); once that foe is dealt with he goes back to the wall (`resume`)
+  turnOnAttacker(u, by) {
+    if (u.type !== 'unit' || !by || by.type !== 'unit' || by.hp <= 0 || u.hp <= 0 || !this.fighter(u) || u.task.type !== 'attack') return;
+    const cur = this.byId.get(u.task.targetId);
+    if (!cur || cur.type === 'unit' || !this.isEnemy(u.team, by.team) || this.stanceOf(u) === 'passive') return;
+    if (this.stanceOf(u) === 'hold' && distTo(u.x, u.y, by) > this.rangeOf(u) + 0.15) return;
+    u.task = { type: 'attack', targetId: by.id, auto: true, resume: cur.id, then: u.task.then, anchor: u.task.anchor }; u.path = []; u.repathT = 0;
+  }
   endFight(u) {
+    const back = u.task.resume != null ? this.byId.get(u.task.resume) : null;   // the wall he left to deal with an attacker
+    if (back && (back.type === 'village' ? back.owner !== u.team && (back.owner < 0 || this.isEnemy(u.team, back.owner)) : back.hp > 0 && this.isEnemy(u.team, back.team))) { u.task = { type: 'attack', targetId: back.id, then: u.task.then }; u.path = []; u.repathT = 0; return; }
     const th = u.task.then;
     if (th) { u.task = { type: 'amove', x: th.x, y: th.y, next: th.next, pace: th.pace ?? null, face: th.face }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y) && !this.nextLeg(u)) u.task = { type: 'idle' }; return; }
     u.task = { type: 'idle' }; u.path = [];
@@ -2734,8 +2745,10 @@ export class Game {
     this.rallyDefenders(v, u, u.team); this.alertPlayer(v, u.team);
     const loot = Math.min(2, v.stores.gold || 0);
     if (loot) { v.stores.gold -= loot; this.earn(u.team, 'loot', loot * 0.6); }
-    // the folk fight back: the sturdier the village, the harder it bites
-    u.hp -= (v.maxProtection / 32) * s.cd * (1 + MILITIA.bite * m);
+    // the folk fight back: its fighting folk (more with walls, more when armed), their blows shared among all who attack it
+    const foes = Math.max(1, this.units.filter((o) => o.hp > 0 && o.team === u.team && o.task.type === 'attack' && o.task.targetId === v.id && distTo(o.x, o.y, v) <= this.rangeOf(o) + 0.6).length);
+    const back = MILITIA.dps * Math.max(1, v.pop * MILITIA.share) * (v.maxProtection / 220) * (1 + MILITIA.bite * m);
+    u.hp -= (back * s.cd) / foes;
     if (u.hp <= 0) u.hp = 0;
     if (v.protection <= 0) this.submit(v, u.team, 'pillage');
   }
@@ -2831,6 +2844,7 @@ export class Game {
     if (t.hp <= 0) return;
     const before = t.hp;
     if (t.type === 'unit' && byTeam >= 0) { t.engagedT = this.time; if (by) by.engagedT = this.time; }
+    this.turnOnAttacker(t, by);
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
     if (this.dmgNums && this.sfxOn && amt >= 0.5 && this.floaters.length < 60 && (t.team === PLAYER || byTeam === PLAYER || !this.fogOn || this.vis[PLAYER][Math.floor(t.y) * this.W + Math.floor(t.x)])) this.floaters.push({ x: t.x, y: t.y - 0.4, text: `-${Math.round(amt)}`, res: t.team === PLAYER ? 'hurt' : 'hit', age: 0 });   // optional damage numbers (Options)
     if (byTeam >= 0 && (t.type === 'building' || t.type === 'unit') && t.hp > 0) this.rallyDefenders(t, by, byTeam);

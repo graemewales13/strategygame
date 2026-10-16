@@ -1170,4 +1170,29 @@ test('pack animals: not people (no population, never capped); each people names 
   const eg = new Game({ seed: 8, houses: 3, ai: false, people: 'egyptians' }); assert.equal(packWords('a camel', PLAYER), 'a camel');
 });
 
+test('villages: a village fights back with its folk, shared among its attackers - ten soldiers take a hillfort of ten, not of forty', () => {
+  const attack = (pop) => {
+    const g = mk({ seed: 5, fog: false }); const v = g.villages.find((x) => x.owner < 0 && x.kind === 'hillfort' && !x.home);
+    v.pop = pop; v.protection = v.maxProtection;
+    const us = Array.from({ length: 10 }, (_, i) => g.addUnit('footman', PLAYER, v.x + 3 + (i % 5) * 0.6, v.y + 3 + Math.floor(i / 5) * 0.6)); g.cmdAttack(us, v);
+    let t = 0; while (t < 240 && v.owner !== PLAYER && us.some((u) => u.hp > 0)) { g.tick(0.25); t += 0.25; }
+    return { taken: v.owner === PLAYER, alive: us.filter((u) => u.hp > 0).length };
+  };
+  const small = attack(10), big = attack(40);
+  assert.ok(small.taken && small.alive === 10, `ten folk: taken ${small.taken}, ${small.alive} alive`);
+  assert.ok(!big.taken, 'forty folk behind the walls of a hillfort hold against ten');
+});
+
+test('fighting: a soldier battering a building turns on the foe who strikes him, then goes back to the building', () => {
+  const g = mk({ fog: false }); g.meet(0, 1); g.setRelation(0, 1, 'war'); const s = g.seatOf(1);
+  const b = g.addBuilding('barracks', 1, Math.round(s.x) + 8, Math.round(s.y) + 4, true); g.recomputeWalk();
+  const a = g.addUnit('footman', PLAYER, b.x + 2.5, b.y + 2.5); a.hp = a.maxHp = 400; g.cmdAttack([a], b);
+  for (let i = 0; i < 20; i++) g.tick(0.1);
+  const foe = g.addUnit('footman', 1, a.x + 0.8, a.y); foe.hp = foe.maxHp = 30; g.cmdAttack([foe], a);
+  for (let i = 0; i < 15; i++) g.tick(0.1);
+  assert.equal(a.task.targetId, foe.id, 'he turned on his attacker');
+  for (let i = 0; i < 100 && foe.hp > 0; i++) g.tick(0.1); g.tick(0.1);
+  assert.ok(foe.hp <= 0, 'and beat him'); assert.equal(a.task.type, 'attack'); assert.equal(a.task.targetId, b.id, 'then went back to the barracks');
+});
+
 console.log(`${passed} passed`);

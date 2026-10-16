@@ -842,7 +842,7 @@ export class UI {
     let html = `<div class="ctitle">Train</div><div class="cgrid">`;
     for (const k of kinds) {
       const s = UNITS[k];
-      const afford = g.canAfford(PLAYER, s.cost), room = g.popUsed(PLAYER) < g.popCap(PLAYER);
+      const afford = g.canAfford(PLAYER, s.cost), room = s.nopop || g.popUsed(PLAYER) < g.popCap(PLAYER);   // (a pack animal needs no room)
       const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br>HP ${s.hp} · dmg ${s.dmg}${s.range > 1.6 ? ' (ranged)' : ''} · speed ${s.speed}<br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s${room ? '' : '<br><span class="need">Population capped: raise cottages.</span>'}`;
       html += this.btn('train', { off: !afford || !room, glyph: GLYPH[k], art: k, name: s.label, sub: costShort(s.cost), data: { kind: k }, tip });
     }
@@ -909,14 +909,15 @@ export class UI {
     return this.btn('captain', { glyph: '⚑', name: 'Make captain', sub: CAPTAIN.cost.gold + 'c', off: !ok, tip: `<b>Make captain</b><br>Soldiers within ${CAPTAIN.aura} tiles hit ${Math.round(CAPTAIN.dmg * 100)}% harder and learn ${Math.round(CAPTAIN.xp * 100)}% faster; a captain on guard counts half again. Needs an ${RANKS[CAPTAIN.minRank].label} or better; ${n}/${CAPTAIN.max} captains.<br><span class="cost">${CAPTAIN.cost.gold} coin</span>` });
   }
   rosterPanel(b) {
-    const g = this.game, p = g.players[PLAYER];
+    const g = this.game, p = g.players[PLAYER], room = g.popUsed(PLAYER) < g.popCap(PLAYER);   // (a hire needs room: a cottage gives five)
     let html = `<div class="ctitle">Wanderers for hire (new faces every ${Math.round(120 / 60)} min)</div><div class="cgrid">`;
     b.roster.forEach((w, i) => {
       const far = w.far ? FARLANDS[w.far] : null, t = TRAITS[w.trait], afford = g.canAfford(PLAYER, w.cost);
-      if (far) { html += this.btn('hire', { off: !afford, glyph: '✦', art: 'recruit', img: uiArt('portraits', w.far), name: `${w.name.split(' ')[0]}`, sub: `${far.perk} · ${costShort(w.cost)}`, data: { i }, cls: 'far', tip: `<b>${esc(w.name)}</b><br>${esc(far.label)} from ${esc(far.land)}. A traveller of a people with no house in the valley.<br><b>${far.perk}</b>: ${far.tip}<br><span class="info">Starts Trained. Keeps the gift when drilled into a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>` }); return; }
+      if (far) { html += this.btn('hire', { off: !afford || !room, glyph: '✦', art: 'recruit', img: uiArt('portraits', w.far), name: `${w.name.split(' ')[0]}`, sub: `${far.perk} · ${costShort(w.cost)}`, data: { i }, cls: 'far', tip: `<b>${esc(w.name)}</b><br>${esc(far.label)} from ${esc(far.land)}. A traveller of a people with no house in the valley.<br><b>${far.perk}</b>: ${far.tip}<br><span class="info">Starts Trained. Keeps the gift when drilled into a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>` }); return; }
       const tip = `<b>${esc(w.name)}</b> · ${t.label}<br><span class="info">${t.hp > 1 ? `+${Math.round((t.hp - 1) * 100)}% health. ` : ''}${t.dmg ? `+${t.dmg} damage. ` : ''}${t.spd ? `Faster. ` : ''}${w.trait === 'green' ? 'Untrained but cheap.' : ''}Drill them in a keep to make a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>`;
-      html += this.btn('hire', { off: !afford, glyph: '☗', art: 'recruit', name: `${w.name}`, sub: `${t.label} · ${costShort(w.cost)}`, data: { i }, tip });
+      html += this.btn('hire', { off: !afford || !room, glyph: '☗', art: 'recruit', name: `${w.name}`, sub: room ? `${t.label} · ${costShort(w.cost)}` : 'No room: raise a cottage', data: { i }, tip });
     });
+    if (!room) html += `</div><div class="hint need">Your population is full (${g.popUsed(PLAYER)}/${g.popCap(PLAYER)}): every serf, soldier and recruit takes a place. Raise a <b>cottage</b> (+5) to hire more.`;
     return html + `</div><div class="hint">Hired wanderers walk to the rally point (right-click ground). Right-click a keep with them to garrison and drill.</div>`;
   }
   keepPanel(b) {
