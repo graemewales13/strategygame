@@ -1039,4 +1039,46 @@ test('garrison: a soldier who dies inside (deserting for want of pay) leaves the
   assert.deepEqual(k.garrison, [b.id], 'only the living stay on the roll');
 });
 
+// ---- attack and retreat: a rout costs faith and invites war -------------------------------------------------------
+const brawl = (g) => {   // three of ours trading blows with three of theirs, a little way out from our seat
+  g.meet(0, 1); g.setRelation(0, 1, 'war'); const h = g.seatOf(PLAYER), x = h.x + 14, y = h.y + 10;
+  const ours = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, x + i * 0.6, y)), theirs = [0, 1, 2].map((i) => g.addUnit('footman', 1, x + i * 0.6, y + 1.2));
+  for (const u of [...ours, ...theirs]) { u.hp = u.maxHp = 900; }
+  g.cmdAttack(ours, theirs[0]); for (const u of theirs) g.cmdAttack([u], ours[0]);
+  for (let i = 0; i < 30; i++) g.tick(0.1);
+  return { ours, theirs };
+};
+
+test('retreat: a band ordered off the field breaks out of a fight and heads for home', () => {
+  const g = mk(); const { ours } = brawl(g);
+  assert.ok(ours.some((u) => g.locked(u)), 'they are locked in combat');
+  g.applyIntent({ type: 'retreat', team: PLAYER, ids: ours.map((u) => u.id) });
+  assert.ok(ours.every((u) => u.task.type === 'move' && u.task.retreat), 'every one of them turns for home');
+  for (let i = 0; i < 40; i++) g.tick(0.1);   // struck again as they go, they keep going (a retreat takes the blows)
+  assert.ok(ours.filter((u) => u.hp > 0).every((u) => u.task.type === 'move' && u.task.retreat), 'nobody turned back: ' + ours.map((u) => u.task.type).join(','));
+});
+
+test('retreat: leaving a fight is a rout - villages lose a fifth of their loyalty, regain it slowly, and other kings smell weakness', () => {
+  const g = mk(); const vs = g.villages.filter((v) => v.owner === PLAYER); vs.forEach((v) => { v.loyalty = 80; });
+  const { ours } = brawl(g);
+  const before = vs.map((v) => v.loyalty);
+  g.applyIntent({ type: 'retreat', team: PLAYER, ids: ours.map((u) => u.id) });
+  vs.forEach((v, i) => assert.ok(Math.abs(v.loyalty - before[i] * 0.8) < 0.01, `${v.name}: ${before[i].toFixed(1)} -> ${v.loyalty.toFixed(1)}`));
+  assert.ok(g.events.some((e) => /fled the field/.test(e.text)), 'the player is told');
+  g._stance = {}; const st = stance(g, 1, PLAYER);   // (readings are cached a few seconds; the next one sees the rout)
+  assert.ok(st.reasons.some((r) => /fled the field/.test(r.text)), 'a rival counts it as weakness: ' + st.reasons.map((r) => r.text).join('; '));
+  // a second retreat at once is the same rout, not another
+  const l1 = vs[0].loyalty; g.applyIntent({ type: 'retreat', team: PLAYER, ids: ours.map((u) => u.id) }); assert.equal(vs[0].loyalty, l1);
+});
+
+test('retreat: walking home when nobody is fighting costs nothing; Attack falls on the nearest foe in sight', () => {
+  const g = mk(); const v = g.villages.find((x) => x.owner === PLAYER), l0 = v.loyalty, h = g.seatOf(PLAYER);
+  const band = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, h.x + 10 + i, h.y + 8));
+  g.applyIntent({ type: 'retreat', team: PLAYER, ids: band.map((u) => u.id) });
+  assert.equal(v.loyalty, l0, 'no rout without a fight'); assert.ok(!(g.players[PLAYER].routT > -1e9), 'no rout recorded');
+  g.meet(0, 1); g.setRelation(0, 1, 'war'); const foe = g.addUnit('bowman', 1, h.x + 13, h.y + 9); g.updateVisibility(true);
+  assert.equal(g.applyIntent({ type: 'charge', team: PLAYER, ids: band.map((u) => u.id) }), true);
+  assert.ok(band.every((u) => u.task.type === 'attack' && u.task.targetId === foe.id), 'they go for him');
+});
+
 console.log(`${passed} passed`);

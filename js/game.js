@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, setPeoples, seatPeoples, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
@@ -454,6 +454,8 @@ export class Game {
     switch (it.type) {
       case 'move': return this.cmdMove(out(), it.x, it.y, !!it.queue);
       case 'amove': return this.cmdAttackMove(out(), it.x, it.y, !!it.queue);
+      case 'charge': return this.cmdCharge(out());
+      case 'retreat': return this.cmdRetreat(out());
       case 'stance': return this.setStance(mine(), it.stance);
       case 'formation': return this.formUp(mine(), it.form);
       case 'stop': mine().forEach((u) => { u.route = null; u.parked = true; u.task = { type: 'idle' }; u.path = []; }); return true;
@@ -1037,6 +1039,38 @@ export class Game {
       if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is locked in combat and cannot break off.`, 'warn');
     }
     return free;
+  }
+  // Attack: fall on the nearest foe the band can see (soldiers first, then their buildings, then a village of a house we are at war with)
+  cmdCharge(units) {
+    const us = units.filter((u) => this.fighter(u) || u.kind === 'king'); if (!us.length) return false;
+    const team = us[0].team, cx = us.reduce((a, u) => a + u.x, 0) / us.length, cy = us.reduce((a, u) => a + u.y, 0) / us.length;
+    const near = (o) => Math.hypot(o.x - cx, o.y - cy);
+    const foe = this.units.filter((o) => o.hp > 0 && !o.inside && this.isEnemy(team, o.team) && this.canSee(team, o.x, o.y) && near(o) < 18).sort((a, b) => near(a) - near(b))[0]
+      || this.buildings.filter((b) => b.hp > 0 && b.team !== team && this.isEnemy(team, b.team) && this.canSee(team, b.x, b.y) && near(b) < 22).sort((a, b) => near(a) - near(b))[0]
+      || this.villages.filter((v) => v.owner >= 0 && v.owner !== team && this.isEnemy(team, v.owner) && this.wasSeen(team, v.x, v.y) && near(v) < 22).sort((a, b) => near(a) - near(b))[0];
+    if (!foe) { if (team === PLAYER) this.log(PLAYER, 'No foe in sight to attack. Use Attack-move (F) to march out and fight what you meet.', 'info'); return false; }
+    this.setStance(us, 'aggressive');
+    return this.cmdAttack(us, foe);
+  }
+  // Retreat: off the field to the nearest keep of ours (else the seat), even out of a fight. Leaving a fight with a band is a rout (RETREAT).
+  cmdRetreat(units) {
+    const us = units.filter((u) => this.fighter(u) || u.kind === 'king' || u.kind === 'scout'); if (!us.length) return false;
+    const team = us[0].team, cx = us.reduce((a, u) => a + u.x, 0) / us.length, cy = us.reduce((a, u) => a + u.y, 0) / us.length;
+    const keep = this.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0).sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0];
+    const to = keep || this.seatOf(team); if (!to) return false;
+    const inFight = us.filter((u) => this.time - (u.engagedT ?? -99) < RETREAT.engaged || this.locked(u));
+    const pace = this.paceOf(us), slot = this.formSlots(us, to.x + 1, to.y + (to.size || 2) / 2 + 2, false);
+    for (const u of us) { const [tx, ty] = slot.at.get(u); u.task = { type: 'move', pace, retreat: true }; u.sally = null; u.engagedT = -99; this.setPath(u, tx, ty); }   // (the lock is broken: they turn and go)
+    if (inFight.length >= RETREAT.min || inFight.some((u) => u.kind === 'king')) this.rout(team);
+    return true;
+  }
+  // a house's army left the field: its villages lose faith, slowly regained, and every other house smells weakness
+  rout(team) {
+    const p = this.players[team]; if (!p || this.time - (p.routT ?? -1e9) < RETREAT.cool) return;
+    p.routT = this.time; p.routs = (p.routs || 0) + 1;
+    for (const v of this.villages) if (v.owner === team) v.loyalty = Math.max(0, v.loyalty * (1 - RETREAT.loyalty));
+    if (team === PLAYER) this.log(PLAYER, `Your army fled the field. Your villages lose faith in you (a fifth of their loyalty, slow to come back), and the other houses smell weakness.`, 'bad');
+    else if (this.known[PLAYER][team]) this.log(PLAYER, `${this.players[team].name}'s army fled the field. Their villages waver.`, 'good');
   }
   cmdMove(units, x, y, queue = false) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
@@ -2449,7 +2483,7 @@ export class Game {
         const vd = this.districtAt(v.owner, v.x, v.y), own = pulls[v.owner] + 0.12 * Math.min(6, this.garrisonWeight(v) + this.watchersOf(v)) + (vd ? 0.06 * vd.score : 0);   // soldiers billeted in or standing watch over the village steady it
         const net = own - bp;
         if (own === 0 && bp === 0) v.loyalty = Math.max(0, v.loyalty - 0.06 * dt); // a lord far away is slowly forgotten
-        else v.loyalty = Math.max(0, Math.min(100, v.loyalty + net * LOYALTY_RATE * dt));
+        else v.loyalty = Math.max(0, Math.min(100, v.loyalty + net * (net > 0 && this.time - (this.players[v.owner].routT ?? -1e9) < RETREAT.shame ? RETREAT.regain : 1) * LOYALTY_RATE * dt));   // (after a rout faith comes back slowly)
         if (v.loyalty <= 8) {
           const lost = v.owner;
           this.ejectAll(v);
@@ -2573,7 +2607,7 @@ export class Game {
       u.repathT -= dt;
       u.anim += dt * (u.path.length ? 8 : 2);
       switch (u.task.type) {
-        case 'move': if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle', face: u.task.face }; break;
+        case 'move': if (!u.task.retreat && u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle', face: u.task.face }; break;   // (a retreat does not turn back when struck: it takes the blows)
         case 'attack': this.doAttack(u, s, dt); break;
         case 'amove': this.doAttackMove(u, dt); break;
         case 'gather': this.doGather(u, dt); break;

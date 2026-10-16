@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -68,8 +68,10 @@ function readStance(g, a, b) {
   why('temptation', busy * prox, `${nameOf(g, b)} is already at war with ${enemiesOf(g, b).filter((x) => x !== a).map((x) => nameOf(g, x)).join(' and ')}`, 'your wars leave your borders bare');
   why('temptation', headless * prox, `${nameOf(g, b)}'s throne is empty`, 'your throne stands empty');
   why('temptation', broke * prox, `${nameOf(g, b)}'s treasury is empty`, 'your treasury is empty and your soldiers unpaid');
+  const routed = g.time - (g.players[b].routT ?? -1e9) < RETREAT.shame ? RETREAT.tempt : 0, rp = Math.max(prox, 0.5);   // their army fled the field lately (news of a rout travels: far houses hear it too)
+  why('temptation', routed * rp, `${nameOf(g, b)}'s army fled the field`, 'your army fled the field');
   why('temptation', prize * prox, `${prizeV ? prizeV.name : 'a village of theirs'} lies close and poorly guarded`, `${prizeV ? prizeV.name : 'your village'} lies close to us and poorly guarded`);
-  const temptation = clamp01((0.6 * weak + busy + headless + broke + prize) * prox);
+  const temptation = clamp01((0.6 * weak + busy + headless + broke + prize) * prox + routed * rp);
   // ties
   const shared = sharedEnemies(g, a, b), settledNow = g.time - g.relSince[a][b] < 240 && rel !== 'war';
   const paid = g.players[a].appeased?.[b], appeased = paid != null && g.time - paid < 300 ? 0.6 : 0;

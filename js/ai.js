@@ -189,7 +189,7 @@ function think(game, team, p) {
     const guard = spiedOn.find((v) => !watched(v));
     const hostile = (o) => o >= 0 && o !== team && game.alive(o) && game.known[team][o] && game.rel[team][o] !== 'alliance' && (game.rel[team][o] === 'war' || (game.opinion[team][o] || 0) < 0);
     const rival = nearestVillage(game, seat, (x) => x.owner >= 0 && x.owner !== team && game.rel[team][x.owner] !== 'alliance' && game.known[team][x.owner] && (hostile(x.owner) || Math.hypot(x.x - seat.x, x.y - seat.y) < 32), 60);
-    const free = nearestVillage(game, seat, (x) => x.owner < 0 && x.loyalty < 70, 50);
+    const free = nearestFromFrontier(game, team, seat, (x) => x.owner < 0 && x.loyalty < 70, 18, 50);
     const v = guard || (rival && (!free || game.roll() < 0.6) ? rival : free);
     if (v) game.cmdInfiltrate([spy], v);
   }
@@ -250,7 +250,7 @@ function think(game, team, p) {
   if (pb?.attack) { need = Math.round(clamp(lerp(need, pb.attack.size, wb), 3, 14)); firstAt = clamp(lerp(90, pb.attack.first * 0.85, wb), 60, 1200); }
   if (readyArmy.length >= need && t > firstAt) {
     const strength = readyArmy.reduce((n, u) => n + UNITS[u.kind].hp, 0);
-    const v = nearestVillage(game, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => u.kind === 'ram') ? 400 : 0), 42);
+    const v = nearestFromFrontier(game, team, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => u.kind === 'ram') ? 400 : 0), 18);   // (from our frontier, not only home: a growing house keeps growing)
     if (v) { const go = readyArmy.filter((u) => u.kind !== 'spy'); game.setStance(go, 'aggressive'); game.setFormation(go, 'line'); game.cmdAttack(go, v); p.planVillage = v.id; }
   }
   courtVillages(game, team, p, seat, army, need, t);
@@ -308,7 +308,7 @@ export function regroup(game, team, p, seat, army, t) {
   }
   for (const b of game.buildings) if (foe(b.team) && b.hp > 0 && b.built >= 1 && (b.kind === 'tower' || b.kind === 'keep') && b.garrison?.length && Math.hypot(b.x - cx, b.y - cy) < 11) theirs += 1.2 * b.garrison.length;   // (a man shooting from a tower is worth about a bowman in the field)
   if (theirs <= ours * ratio) return;
-  game.setStance(band, 'defensive'); game.cmdMove(band, Math.round(seat.x + 2), Math.round(seat.y + 4));
+  game.cmdRetreat(band); game.setStance(band, 'defensive');   // (a retreat out of a fight is a rout, with its cost: RETREAT)
   p.regroupUntil = t + 45;
 }
 // Where a war is won: at the enemy's crown. An exposed king (seen, outside walls, within reach of our army) is the first target; a king behind
@@ -330,11 +330,12 @@ const AI_STUDY = ['drill', 'masonry', 'husbandry', 'metallurgy', 'fletching', 's
 // sitting inside to sway it (a keep's pull is full with GUARD.full guards in). At war they come out to march, leaving two on guard.
 export function courtVillages(game, team, p, seat, army, need, t) {
   const keeps = game.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.hp > 0);
-  const wanted = game.villages.filter((v) => v.owner !== team && (v.owner < 0 || game.rel[team][v.owner] === 'war') && Math.hypot(v.x - seat.x, v.y - seat.y) < 46)
-    .sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y)).slice(0, 3);
+  const front = frontierOf(game, team, seat).slice(1), fd = (v) => Math.min(Math.hypot(v.x - seat.x, v.y - seat.y) * (18 / 46), ...front.map((a) => Math.hypot(v.x - a.x, v.y - a.y)));   // (the seat reaches 46 as before, each holding 18 more)   // measured from everything we hold, so the reach grows as we do
+  const wanted = game.villages.filter((v) => v.owner !== team && (v.owner < 0 || game.rel[team][v.owner] === 'war') && fd(v) < 18)
+    .sort((a, c) => fd(a) - fd(c)).slice(0, 3);
   const outposts = game.villages.filter((v) => v.owner === team && v.founded && Math.hypot(v.x - seat.x, v.y - seat.y) > 40);   // our camps out in the open ground
   p.courtT = (p.courtT ?? 20) - 1;
-  if (p.courtT <= 0 && t > 300 && keeps.length < Math.min(4, 1 + Math.floor(t / 420)) && !keeps.some((k) => k.built < 1)
+  if (p.courtT <= 0 && t > 300 && keeps.length < Math.min(10, 2 + Math.floor(t / 400)) && !keeps.some((k) => k.built < 1)
       && game.canAfford(team, BUILDINGS.keep.cost) && p.wood > BUILDINGS.keep.cost.wood + 120) {
     p.courtT = 20;
     const v = [...outposts, ...wanted].find((x) => !keeps.some((k) => Math.hypot(k.x - x.x, k.y - x.y) < 16));   // a far camp is held by a keep first
@@ -414,6 +415,23 @@ function queued(game, team, kind) {
   return n;
 }
 
+// where a house reaches from: its seat, its keeps and every village it holds firmly (a shaky one does not carry it further: growth stays steady)
+function frontierOf(game, team, seat) {
+  return [seat, ...game.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.hp > 0), ...game.villages.filter((v) => v.owner === team && v.loyalty >= 50)];
+}
+// the village nearest to any part of the house's frontier (not just its seat) that `pred` accepts, within maxD of it
+// The seat reaches `seatR` tiles as it always did; each firmly held village or keep reaches `maxD` beyond itself, so a house grows outward
+// steadily (from its first villages a full-seat reach made it snowball). Nearest first, the seat's distance scaled to the frontier's.
+function nearestFromFrontier(game, team, seat, pred, maxD, seatR = 42) {
+  const front = frontierOf(game, team, seat).slice(1); let best = null, bd = maxD;
+  for (const v of game.villages) {
+    if (!pred(v)) continue;
+    let d = Math.hypot(v.x - seat.x, v.y - seat.y) * (maxD / seatR);
+    for (const a of front) d = Math.min(d, Math.hypot(v.x - a.x, v.y - a.y));
+    if (d < bd) { best = v; bd = d; }
+  }
+  return best;
+}
 function nearestVillage(game, seat, pred, maxD) {
   let best = null, bd = maxD;
   for (const v of game.villages) {

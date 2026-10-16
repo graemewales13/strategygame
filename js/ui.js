@@ -287,6 +287,8 @@ export class UI {
     else if (k === '.') this.selectIdleSerf();
     else if (k === ',') this.selectArmy();
     else if (k === 'i') this.selectIdleArmy();
+    else if (k === 'g' && this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u))) this.onCmd({ act: 'charge' });
+    else if (k === 'r' && this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' });
     else if (k === 'f') { if (this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u))) this.setAmove(!this.amove); }
     else if (k === '+' || k === '=') { this.speed = Math.min(4, this.speed * 2); $('btnSpeed').textContent = this.speed + 'x'; }
     else if (k === '-') { this.speed = Math.max(1, this.speed / 2); $('btnSpeed').textContent = this.speed + 'x'; }
@@ -363,6 +365,8 @@ export class UI {
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
       case 'amove': this.setAmove(!this.amove); break;
+      case 'charge': this.host.send({ type: 'charge', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id) }); break;
+      case 'retreat': this.host.send({ type: 'retreat', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id) }); break;
       case 'stance': this.host.send({ type: 'stance', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id), stance: d.stance }); break;
       case 'formation': this.host.send({ type: 'formation', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id), form: d.form }); break;
       case 'kind': this.setUnits(this.selUnits().filter((u) => u.kind === d.kind)); break;
@@ -1086,7 +1090,7 @@ export class UI {
       if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
       if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
-      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { glyph: '⚔', name: 'Attack-move', sub: 'F', cls: this.amove ? 'on' : '', tip: '<b>Attack-move</b> (F, or Ctrl+right-click)<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${this.captainBtn(us)}</div>`;
+      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { glyph: '■', name: 'Stop', tip: '<b>Stop</b><br>Halt and hold position.', cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { glyph: '⚔', name: 'Attack-move', sub: 'F', cls: this.amove ? 'on' : '', tip: '<b>Attack-move</b> (F, or Ctrl+right-click)<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { glyph: '⚑', name: 'Attack', sub: 'G', cls: '', tip: '<b>Attack</b> (G)<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { glyph: '↩', name: 'Retreat', sub: 'R', cls: '', tip: '<b>Retreat</b> (R)<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
       if (us.some((u) => g.fighter(u))) html += `<div class="hint"><b>Shift</b>+right-click adds waypoints to a march; a group keeps to its slowest member's pace.</div>`;
       if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
       const marchers = us.filter((u) => u.kind !== 'camel');

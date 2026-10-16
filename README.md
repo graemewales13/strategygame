@@ -46,6 +46,8 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Waypoints | **Shift+right-click** the ground adds a leg to a march (up to 12); **Shift** with attack-move (F or Ctrl+right-click) adds an attack-move leg. Soldiers sent together march at the pace of the slowest among them |
 | Rally point | Right-click the field with a training building selected |
 | Attack-move | **F** (or the Attack-move button), then click the ground; or **Ctrl+right-click**. Soldiers march there and fight every foe they meet on the way |
+| Attack | **G** (or the Attack button): the selected soldiers fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with. |
+| Retreat | **R** (or the Retreat button): off the field to your nearest keep (else your seat), **even out of a fight**. If three or more of them (or your king) were fighting, it is a **rout**: every village of yours loses a fifth of its loyalty, which comes back slowly for three minutes, and every other house reads it as weakness ("your army fled the field") and is more tempted to war on you. The rivals pay the same when they fall back to regroup. |
 | Stance | Buttons under the soldier's orders: **Aggressive** (default; chase foes in sight), **Defensive** (break off a chase 8 tiles out and come back), **Hold ground** (strike only what is in reach), **No attack** (never start a fight). Your own orders always go |
 | Formation | For a group: **Mass** (default; a tight knot), **Line** (ranks across the march, footmen and riders in front, bowmen behind), **Box** (a square, bowmen and the weak inside), **Loose** (spread wide). The group keeps it for its next marches, stands in it at the end and faces the way it marched; soldiers standing idle form up at once. A soldier walking through his own standing ranks slips past them |
 | Pan | WASD or arrows (Shift faster), or push the mouse to the screen edge |
@@ -222,7 +224,7 @@ The first five buildings are the game: mine, market, keep, barracks, tavern. The
 | Mid | x1.0 | x1.2 (and they think faster) | 30 | 7.2 min | middling (0.45) | they gather two thirds of their army before marching, and a band facing foes 1.6 times its strength falls back home to regroup |
 | Hard | x0.9 | x1.4 (and faster still) | 46 | 4.2 min | weak (0.32) | three quarters of the army; falls back against 1.4 times its strength |
 
-Rivals also go out for metal they lack: up to 80 tiles from their seat on Easy, 130 on Mid and 150 on Hard, founding a mining camp in the open ground and raising a keep beside it with guards posted. Now and then they stake out a rich seam there even when they lack nothing. Expect to meet them far from home.
+Rivals keep growing all game: they look for villages to take, court and spy on from everything they already hold (their seat, every keep and every village), not only from home, and may raise up to ten keeps as the match goes on. Rivals also go out for metal they lack: up to 80 tiles from their seat on Easy, 130 on Mid and 150 on Hard, founding a mining camp in the open ground and raising a keep beside it with guards posted. Now and then they stake out a rich seam there even when they lack nothing. Expect to meet them far from home.
 
 After the earliest time a house goes to war only when its reading of a neighbour calls for it (see "War and peace"); the bar is raised or lowered a little by its people's doctrine.
 

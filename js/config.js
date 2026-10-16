@@ -244,6 +244,10 @@ export const SPY_CATCH = 0.004;  // base catch chance per second, plus protectio
 export const SPY_INTEL = { fresh: 45, caught: -12 };
 // counter-espionage: each spy of the village's own lord posted inside it adds `watch` to a rival spy's chance of being caught each second;
 // the lord hears that someone is working on a village of theirs at most every `warnEvery` seconds
+// Retreat (owner, 2026-10-15): a band may be ordered off the field, even out of a fight, but if at least `min` fighters (or the king) were
+// in the fight it is a rout: every village of the house loses `loyalty` (a fifth) of its loyalty, for `shame` seconds loyalty comes back
+// at `regain` of its pace, and every other house reads it as weakness (`tempt` toward war, see stance()). A rout counts once per `cool` s.
+export const RETREAT = { min: 3, engaged: 6, loyalty: 0.2, shame: 180, regain: 0.35, cool: 60, tempt: 0.35 };
 export const SPY_WATCH = { watch: 0.07, warnEvery: 40, owned: 0.45 };   // owned: how fast a spy wears down a village that has a lord, against a free one
 // difficulty tiers. playerMul scales the player's starting purse and stores; aiMul scales every coin an AI house earns;
 // armyCap and warAfter govern how big and how soon rival armies come (warAfter x0.6 is the earliest a house starts a war; warBar is how strongly
