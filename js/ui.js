@@ -365,6 +365,7 @@ export class UI {
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
       case 'amove': this.setAmove(!this.amove); break;
+      case 'disguise': this.host.send({ type: 'disguise', ids: this.selUnits().filter((u) => u.team === PLAYER && u.kind === 'spy').map((u) => u.id), as: +d.as }); break;
       case 'charge': this.host.send({ type: 'charge', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id) }); break;
       case 'retreat': this.host.send({ type: 'retreat', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id) }); break;
       case 'stance': this.host.send({ type: 'stance', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id), stance: d.stance }); break;
@@ -714,6 +715,7 @@ export class UI {
       case 'return': return 'Carrying goods home';
       case 'build': return 'Building';
       case 'infiltrate': return 'Infiltrating';
+      case 'infiltrateB': { const b = this.game.byId.get(u.task.targetId); return b && b.team === u.team ? 'On watch' : 'Inside a building'; }
       case 'caravan': return u.route ? (t.stage === 'dwell' ? 'Trading at a market' : 'On its trade loop') : 'Heading home';
       default: return 'Idle';
     }
@@ -799,6 +801,17 @@ export class UI {
     if (html !== this.sigSel) { this.sigSel = html; $('selPanel').innerHTML = html; }
   }
 
+  // a spy's coat: wear a house's colours (any house met) to walk into its buildings, or your own again
+  disguiseGrid(spies) {
+    const g = this.game, now = spies[0].disguise ?? null;
+    let html = `<div class="ctitle">Disguise${now != null ? `: <b style="color:${HOUSES[now].accent}">${esc(HOUSES[now].short)}</b>` : ''}</div><div class="cgrid c4">`;
+    html += this.btn('disguise', { glyph: '◉', name: 'Own colours', cls: now == null ? 'on' : '', data: { as: -1 }, tip: '<b>Own colours</b><br>Drop the disguise.' });
+    for (let t = 0; t < g.houses; t++) {
+      if (t === PLAYER || !g.known[PLAYER][t] || !g.players[t].alive) continue;
+      html += this.btn('disguise', { glyph: '🎭', name: HOUSES[t].short, cls: now === t ? 'on' : '', data: { as: t }, tip: `<b>Disguise as ${esc(HOUSES[t].name)}</b><br>He wears their colours: their soldiers and towers take him for one of theirs. Then right-click one of their buildings (keep, barracks, market, academy...) to send him inside: he sends word home, slows their training, skims a market's coin or copies an academy's learning, until they catch him.<br><span class='info'>Right-click a building of yours with a spy to post him there as a watchman against theirs.</span>` });
+    }
+    return html + '</div>';
+  }
   btn(act, o) {
     const tip = encodeURIComponent(o.tip);
     return `<button class="cbtn ${o.off ? 'off' : ''} ${o.cls || ''}" data-act="${act}" ${Object.entries(o.data || {}).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ')} data-tip="${tip}"><span class="g ${o.art || o.img ? 'art' : ''}">${o.img ? `<img src="${o.img}" alt="" draggable="false">` : o.art ? icon(o.art, o.glyph) : o.glyph}</span><span class="n">${esc(o.name)}</span>${o.sub ? `<span class="c">${o.sub}</span>` : ''}</button>`;
@@ -1095,6 +1108,7 @@ export class UI {
       if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
       const marchers = us.filter((u) => u.kind !== 'camel');
       if (marchers.length > 1 && marchers.some((u) => g.fighter(u) || u.kind === 'king')) html += this.formationGrid(marchers);
+      if (us.some((u) => u.kind === 'spy' && u.team === PLAYER)) html += this.disguiseGrid(us.filter((u) => u.kind === 'spy'));
       if (us.some((u) => u.kind === 'camel')) html += this.camelPanel(us.filter((u) => u.kind === 'camel'));
       if (us.some((u) => u.kind === 'recruit')) html += `<div class="ctitle">Role</div><div class="cgrid c4">${this.btn('spy', { glyph: GLYPH.spy, art: 'spy', name: 'Become spy', sub: SPY_FEE + 'c', off: g.players[PLAYER].gold < SPY_FEE, tip: `<b>Become a spy</b><br>${SPY_FEE} coin. Spies right-click an independent or rival village to sway its loyalty (and can be caught).` })}</div><div class="hint">Or right-click a keep to garrison, then drill into a soldier.</div>`;
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click: a deposit with a <b>mine</b> to dig, timber, berries or gold to gather, a building site to build.</div>`;

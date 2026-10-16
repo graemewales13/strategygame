@@ -24,6 +24,7 @@ One small open item: the Scottish `recruit` still wears a kilt-like belted plaid
 | 9 | *Later:* walk cycles, soldiers first | all 8 | `units/<role>_walk1.png` ... `_walk4.png` | up to 96 for soldiers | priority 15 (new 2026-10-14; was a second "14") |
 | 10 | **Eight order icons**: four stances, four formations | shared | `assets/shared/ui/orders/<key>.png` | 8 | priority 14 (2026-10-13) |
 | 11 | **The watchman mark**: an eye-and-lantern badge for the Watch row of your villages | shared | `assets/shared/ui/marks/watch.png` | 1 | priority 16 (new 2026-10-15) |
+| 10 | **Disguise mark**: a small theatre-style half mask, 64x64, neutral (no house colour), drawn over a disguised spy for his owner only | shared | `assets/shared/ui/marks/disguise.png` | 1 | stand-in today: the 🎭 emoji (new 2026-10-16) |
 | 7 | *Optional:* women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | character guide (not wired yet: say when they are coming and it is one line) |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.

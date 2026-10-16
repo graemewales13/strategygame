@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -177,7 +177,7 @@ function think(game, team, p) {
   }
   // spies: trained at a tavern or an academy. One keeps watch where a rival's spy has lately been at work in a village of ours; the rest
   // work on our neighbours' villages near our land and on the villages of houses we are at war with or dislike, or else on free villages
-  const spiedOn = Object.entries(p.spied || {}).filter(([id, at]) => game.time - at < 90 && game.byId.get(+id)?.owner === team).map(([id]) => game.byId.get(+id));
+  const spiedOn = Object.entries(p.spied || {}).filter(([id, at]) => { const x = game.byId.get(+id); return game.time - at < 90 && x && (x.owner === team || (x.type === 'building' && x.team === team && x.hp > 0)); }).map(([id]) => game.byId.get(+id));
   const spyWant = (doc.spies || 1) + (spiedOn.length ? 1 : 0);
   if (game.units.filter((u) => u.team === team && u.kind === 'spy' && u.hp > 0).length + queued(game, team, 'spy') < spyWant) {
     const sch = game.buildings.find((b) => b.team === team && (b.kind === 'tavern' || b.kind === 'academy') && b.built >= 1 && b.hp > 0);
@@ -185,13 +185,16 @@ function think(game, team, p) {
   }
   const spy = game.units.find((u) => u.team === team && u.kind === 'spy' && u.hp > 0 && u.task.type === 'idle');
   if (spy) {
-    const watched = (v) => game.units.some((w) => w.team === team && w.kind === 'spy' && w.hp > 0 && w.task.type === 'infiltrate' && w.task.targetId === v.id);
+    const watched = (v) => game.units.some((w) => w.team === team && w.kind === 'spy' && w.hp > 0 && (w.task.type === 'infiltrate' || w.task.type === 'infiltrateB') && w.task.targetId === v.id);
     const guard = spiedOn.find((v) => !watched(v));
     const hostile = (o) => o >= 0 && o !== team && game.alive(o) && game.known[team][o] && game.rel[team][o] !== 'alliance' && (game.rel[team][o] === 'war' || (game.opinion[team][o] || 0) < 0);
     const rival = nearestVillage(game, seat, (x) => x.owner >= 0 && x.owner !== team && game.rel[team][x.owner] !== 'alliance' && game.known[team][x.owner] && (hostile(x.owner) || Math.hypot(x.x - seat.x, x.y - seat.y) < 32), 60);
     const free = nearestFromFrontier(game, team, seat, (x) => x.owner < 0 && x.loyalty < 70, 18, 50);
-    const v = guard || (rival && (!free || game.roll() < 0.6) ? rival : free);
-    if (v) game.cmdInfiltrate([spy], v);
+    // or, in a hated or warring house's colours, into one of its keeps, barracks, markets or academies
+    const bld = game.buildings.filter((b) => b.built >= 1 && b.hp > 0 && hostile(b.team) && SPY_COVER.kinds.includes(b.kind) && Math.hypot(b.x - seat.x, b.y - seat.y) < 70).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
+    if (guard) { spy.disguise = null; if (guard.type === 'building') game.cmdInfiltrateB([spy], guard); else game.cmdInfiltrate([spy], guard); }
+    else if (bld && game.roll() < 0.4) { spy.disguise = bld.team; game.cmdInfiltrateB([spy], bld); }
+    else { const v = rival && (!free || game.roll() < 0.6) ? rival : free; if (v) { spy.disguise = null; game.cmdInfiltrate([spy], v); } }
   }
 
   // 4b. tavern wanderers and castle drill: hire when flush, send recruits into the keep, drill them into soldiers

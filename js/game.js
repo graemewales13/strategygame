@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, setPeoples, seatPeoples, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
@@ -180,6 +180,8 @@ export class Game {
   // ------------------------------------------------------------------ queries
   alive(team) { return this.players[team]?.alive; }
   isEnemy(a, b) { return a !== b && b >= 0 && this.rel[a][b] === 'war'; }
+  // a spy in `team`'s colours passes for one of theirs: their soldiers and towers let him be
+  passesFor(u, team) { return u.kind === 'spy' && u.disguise === team; }
   hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
   popUsed(team) {
     let n = 0;
@@ -304,7 +306,7 @@ export class Game {
   closestEnemy(from, range, team) {
     let best = null, bd = range;
     for (const u of this.units) {
-      if (u.hp <= 0 || u.inside || !this.isEnemy(team, u.team)) continue;
+      if (u.hp <= 0 || u.inside || u.hidden || !this.isEnemy(team, u.team) || this.passesFor(u, team)) continue;
       const d = Math.hypot(u.x - from.x, u.y - from.y);
       if (d < bd) { best = u; bd = d; }
     }
@@ -466,7 +468,8 @@ export class Game {
       case 'sell': return this.sellGoods(team, it.marketId, it.good, it.amount) > 0;
       case 'attack':
       case 'pillage': return this.cmdAttack(out(), this.byId.get(it.targetId));
-      case 'infiltrate': return this.cmdInfiltrate(out(), this.byId.get(it.villageId ?? it.targetId));
+      case 'infiltrate': { const t = this.byId.get(it.villageId ?? it.targetId); return t?.type === 'building' ? this.cmdInfiltrateB(out(), t) : this.cmdInfiltrate(out(), t); }
+      case 'disguise': return this.disguise(mine(), it.as);
       case 'gather': return this.cmdGather(out(), this.resources[it.nodeId]);
       case 'build': return this.cmdBuild(out(), this.byId.get(it.buildingId), !!it.queue);
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
@@ -506,14 +509,14 @@ export class Game {
     const all = (ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
     if (!all.length) return false;
     // camels trade: right-click a market or village; anywhere else they just walk
-    const camels = all.filter((u) => u.kind === 'camel'), units = all.filter((u) => u.kind !== 'camel');
+    const camels = all.filter((u) => u.kind === 'camel'); let units = all.filter((u) => u.kind !== 'camel');
     if (camels.length) {
       const tgt = this.tradeTargetAt(team, x, y);
       if (tgt) this.cmdRoute(camels, tgt, want); else { camels.forEach((c) => { c.route = null; }); this.cmdMove(camels, x, y); }
       if (!units.length) return true;
     }
     const eu = this.unitAt(x, y, 0.75);
-    if (eu && eu.team !== team && this.canSee(team, eu.x, eu.y)) return this.cmdAttack(units, eu);
+    if (eu && eu.team !== team && this.canSee(team, eu.x, eu.y)) { const fs = units.filter((u) => u.kind !== 'spy'); return fs.length ? this.cmdAttack(fs, eu) : false; }   // (spies do not brawl)
     const v = this.villageAt(x, y);
     if (v && v.owner === team) {
       const carriers = units.filter((u) => u.kind === 'serf' && u.carry && ['food', 'wood', 'gold'].includes(u.carry.kind));
@@ -531,7 +534,11 @@ export class Game {
       return true;
     }
     const b = this.buildingAt(x, y);
-    if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) return this.cmdAttack(units, b);
+    if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) {
+      const spies = units.filter((u) => u.kind === 'spy'), rest = units.filter((u) => u.kind !== 'spy');
+      if (spies.length) this.cmdInfiltrateB(spies, b);   // a spy goes in, in their colours (he never attacks)
+      return rest.length ? this.cmdAttack(rest, b) : !!spies.length;
+    }
     if (b && b.team === team && b.built < 1) {
       const serfs = units.filter((u) => BUILDERS[u.kind]);
       if (serfs.length) { this.cmdBuild(serfs, b, queue); const rest = units.filter((u) => !BUILDERS[u.kind]); if (rest.length) this.cmdMove(rest, x, y, queue); return true; }
@@ -542,6 +549,10 @@ export class Game {
       const rest = units.filter((u) => u.kind !== 'serf');
       if (rest.length) this.cmdMove(rest, x, y, queue);
       return true;
+    }
+    if (b && b.team === team && b.built >= 1 && units.some((u) => u.kind === 'spy')) {   // a spy sent into one of our buildings keeps watch there
+      this.cmdInfiltrateB(units.filter((u) => u.kind === 'spy'), b);
+      const rest = units.filter((u) => u.kind !== 'spy'); if (!rest.length) return true; units = rest;
     }
     if (b && b.team === team && b.built >= 1) {
       const carriers = units.filter((u) => u.kind === 'serf' && u.carry && DROP_OFF[b.kind]?.includes(u.carry.kind));
@@ -1243,6 +1254,27 @@ export class Game {
       this.setPathToEntity(u, v);
     }
     return true;
+  }
+  // put on a house's colours (or take them off: as < 0 or our own). Only houses we have met.
+  disguise(units, as) {
+    const spies = units.filter((u) => u.kind === 'spy'); if (!spies.length) return false;
+    const team = spies[0].team, to = as == null || as < 0 || as === team ? null : +as;
+    if (to != null && (!this.known[team][to] || !this.alive(to))) return false;
+    for (const u of spies) { if (u.disguise !== to && u.task.type === 'infiltrateB') { u.task = { type: 'idle' }; u.path = []; } u.disguise = to; }   // (a change of coat inside would be noticed: he steps out)
+    if (team === PLAYER) this.log(PLAYER, to == null ? 'Your spy wears your own colours again.' : `Your spy now wears the colours of ${HOUSES[to].short}: their soldiers will take him for one of theirs. Right-click one of their buildings to send him in.`, 'info');
+    return true;
+  }
+  // into a building: a rival's only in its colours; one of our own to keep watch
+  cmdInfiltrateB(spies, b) {
+    if (!b || b.type !== 'building' || b.hp <= 0) return false;
+    let ok = false;
+    for (const u of spies) {
+      if (u.kind !== 'spy') continue;
+      if (b.team !== u.team && u.disguise !== b.team) { if (u.team === PLAYER) this.log(PLAYER, `${shortName(u.name)} would be seen at once: disguise him as ${HOUSES[b.team].short} first (Disguise, on the spy's panel).`, 'warn'); continue; }
+      if (b.team !== u.team && !SPY_COVER.kinds.includes(b.kind)) { if (u.team === PLAYER) this.log(PLAYER, `There is nothing for a spy to do in a ${BUILDINGS[b.kind].label.toLowerCase()}: try their keep, barracks, market or academy.`, 'warn'); continue; }
+      u.task = { type: 'infiltrateB', targetId: b.id }; this.setPathToEntity(u, b); ok = true;
+    }
+    return ok;
   }
   cmdGather(units, node) {
     if (!node || node.amount <= 0 || (node.covered && !this.buildings.some((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(node.id)))) return false;   // covered by a village: out of reach (a mine's deposit is handled below)
@@ -2359,7 +2391,7 @@ export class Game {
       }
       if (b.queue.length) {
         const q = b.queue[0];
-        q.t += dt;
+        q.t += dt * (this.time - (b._spyT ?? -9) < 1 ? SPY_COVER.slow : 1);   // (a rival's spy inside slows the work)
         if (q.t >= UNITS[q.kind].time) {
           b.queue.shift();
           const u = this.addUnit(q.kind, b.team, b.x + (this.roll() - 0.5) * 1.2, b.ty + b.size + 0.7);
@@ -2384,7 +2416,7 @@ export class Game {
     const s = BUILDINGS.tower;
     let best = null, bd = s.range + (this.hasTech(b.team, 'engineering') ? 2 : 0);
     for (const u of this.units) {
-      if (u.hp <= 0 || u.inside || !this.isEnemy(b.team, u.team)) continue;
+      if (u.hp <= 0 || u.inside || u.hidden || !this.isEnemy(b.team, u.team) || this.passesFor(u, b.team)) continue;
       const d = Math.hypot(u.x - b.x, u.y - b.y);
       if (d < bd) { best = u; bd = d; }
     }
@@ -2615,6 +2647,7 @@ export class Game {
         case 'return': this.doReturn(u, dt); break;
         case 'build': this.doBuild(u, dt); break;
         case 'infiltrate': this.doInfiltrate(u, dt); break;
+        case 'infiltrateB': this.doInfiltrateB(u, dt); break;
         case 'enter': this.doEnter(u, dt); break;
         case 'caravan': if (u.task.route) this.doRoute(u, dt); else this.doCaravan(u, dt); break;
         default: this.doIdle(u, s, dt);
@@ -3012,6 +3045,38 @@ export class Game {
     }
   }
 
+  // a spy inside a building: ours, he keeps watch; a rival's (in its colours), he sends word home and works against them
+  doInfiltrateB(u, dt) {
+    const b = this.byId.get(u.task.targetId);
+    if (!b || b.hp <= 0 || (b.team !== u.team && u.disguise !== b.team)) { u.task = { type: 'idle' }; return; }
+    if (Math.hypot(u.x - b.x, u.y - b.y) > b.size / 2 + 2) { if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, b); this.follow(u, dt); return; }
+    u.path = []; u.hidden = true;
+    if (b.team === u.team) return;   // on watch in a building of ours
+    const O = b.team, T = u.team, po = this.players[O], pt = this.players[T];
+    (this.spyIntel ||= {})[T + '>' + O] = this.time;
+    if (this.roll() < (SPY_COVER.catch + SPY_WATCH.watch * this.watchmenInB(b)) * dt) {
+      u.hp = 0;
+      const what = BUILDINGS[b.kind].label.toLowerCase();
+      this.log(T === PLAYER || O === PLAYER ? PLAYER : -1, T === PLAYER ? `Your spy was unmasked in ${HOUSES[O].short}'s ${what}!` : O === PLAYER ? `A spy of ${HOUSES[T].short} was unmasked in your ${what}.` : `A spy of ${HOUSES[T].short} was unmasked in ${HOUSES[O].short}'s ${what}.`, T === PLAYER ? 'bad' : 'good');
+      this.opinionShift(O, T, SPY_INTEL.caught, 'sent spies among us');
+      return;
+    }
+    b._spyT = this.time;   // (training here goes slowly while he is inside)
+    let lost = '';
+    if (b.kind === 'market' && po.gold > 1) { const c = Math.min(po.gold, SPY_COVER.coin * dt); po.gold -= c; pt.gold += c; lost = 'coin is going missing'; }
+    else if (b.kind === 'academy' && (po.learning || 0) > 0) { const l = Math.min(po.learning, SPY_COVER.learning * dt); po.learning -= l; pt.learning = Math.min(LEARNING.cap, (pt.learning || 0) + l); lost = 'the scholars\' notes are being copied'; }
+    else if (b.queue.length) lost = 'training is going slowly';
+    this.spiedOnBuilding(b, lost || 'strangers are about');
+  }
+  watchmenInB(b) { return this.units.filter((w) => w.kind === 'spy' && w.hp > 0 && w.team === b.team && w.hidden && w.task.type === 'infiltrateB' && w.task.targetId === b.id).length; }
+  spiedOnBuilding(b, what) {
+    (this.players[b.team].spied ||= {})[b.id] = this.time;
+    if (b.team !== PLAYER) return;
+    this._spyWarn ||= {};
+    if (this.time - (this._spyWarn['b' + b.id] ?? -1e9) < SPY_WATCH.warnEvery) return;
+    this._spyWarn['b' + b.id] = this.time;
+    this.log(PLAYER, `Something is wrong at your ${BUILDINGS[b.kind].label.toLowerCase()}: ${what}. ${this.watchmenInB(b) ? 'Your watchman is looking for the spy.' : 'Post a spy of yours inside as a watchman (right-click it with a spy) to catch them.'}`, 'warn');
+  }
   // the village's own lord's spies posted inside it (infiltrating a village of their own house = keeping watch)
   watchmenIn(v) { return this.units.filter((w) => w.kind === 'spy' && w.hp > 0 && w.team === v.owner && w.hidden && w.task.type === 'infiltrate' && w.task.targetId === v.id).length; }
   // a rival spy is at work in one of a house's villages: its loyalty falls, so the lord notices (without knowing whose spy until one is caught)

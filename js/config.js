@@ -248,6 +248,11 @@ export const SPY_INTEL = { fresh: 45, caught: -12 };
 // in the fight it is a rout: every village of the house loses `loyalty` (a fifth) of its loyalty, for `shame` seconds loyalty comes back
 // at `regain` of its pace, and every other house reads it as weakness (`tempt` toward war, see stance()). A rout counts once per `cool` s.
 export const RETREAT = { min: 3, engaged: 6, loyalty: 0.2, shame: 180, regain: 0.35, cool: 60, tempt: 0.35 };
+// A spy in a rival's colours (owner, 2026-10-15) can walk into that house's buildings. Inside he sends word home (the Council's spy
+// report) and works against them: training there runs at `slow`, a market loses `coin` a second to us, an academy `learning` a second.
+// He is caught at `catch` a second, plus SPY_WATCH.watch for each spy of theirs posted inside as a watchman; the owner hears that something
+// is wrong there at most every SPY_WATCH.warnEvery seconds. Their soldiers and towers take a spy in their own colours for one of theirs.
+export const SPY_COVER = { slow: 0.5, coin: 0.3, learning: 0.12, catch: 0.006, kinds: ['keep', 'barracks', 'archery', 'stable', 'tavern', 'market', 'academy', 'workshop', 'armoury'] };
 export const SPY_WATCH = { watch: 0.07, warnEvery: 40, owned: 0.45 };   // owned: how fast a spy wears down a village that has a lord, against a free one
 // difficulty tiers. playerMul scales the player's starting purse and stores; aiMul scales every coin an AI house earns;
 // armyCap and warAfter govern how big and how soon rival armies come (warAfter x0.6 is the earliest a house starts a war; warBar is how strongly

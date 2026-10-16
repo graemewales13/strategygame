@@ -7,7 +7,7 @@ import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -1079,6 +1079,50 @@ test('retreat: walking home when nobody is fighting costs nothing; Attack falls 
   g.meet(0, 1); g.setRelation(0, 1, 'war'); const foe = g.addUnit('bowman', 1, h.x + 13, h.y + 9); g.updateVisibility(true);
   assert.equal(g.applyIntent({ type: 'charge', team: PLAYER, ids: band.map((u) => u.id) }), true);
   assert.ok(band.every((u) => u.task.type === 'attack' && u.task.targetId === foe.id), 'they go for him');
+});
+
+// ---- spies in disguise: a rival's colours, into its buildings -------------------------------------------------------
+const rivalBuilding = (g, team, kind) => { const s = g.seatOf(team); const b = g.addBuilding(kind, team, Math.round(s.x) + 7, Math.round(s.y) - 2, true); g.recomputeWalk(); return b; };
+
+test('disguise: a spy right-clicked onto a rival building never attacks it; without their colours he is refused, in them he goes in', () => {
+  const g = mk({ fog: false });   // (a building must have been seen to be right-clicked) g.meet(0, 1); g.setRelation(0, 1, 'war');
+  const m = rivalBuilding(g, 1, 'market'), s = g.addUnit('spy', PLAYER, m.x + 3, m.y + 3);
+  g.contextCommand(PLAYER, [s.id], m.x, m.y);
+  assert.notEqual(s.task.type, 'attack', 'a spy does not attack'); assert.notEqual(s.task.type, 'infiltrateB', 'and is not let in undisguised');
+  assert.equal(g.applyIntent({ type: 'disguise', team: PLAYER, ids: [s.id], as: 1 }), true); assert.equal(s.disguise, 1);
+  g.contextCommand(PLAYER, [s.id], m.x, m.y);
+  assert.equal(s.task.type, 'infiltrateB'); assert.equal(s.task.targetId, m.id);
+});
+
+test('disguise: their soldiers let a spy in their colours be; inside their market he skims coin and they are warned', () => {
+  const g = mk(); g.meet(0, 1); g.setRelation(0, 1, 'war');
+  const m = rivalBuilding(g, 1, 'market'), s = g.addUnit('spy', PLAYER, m.x + 2, m.y + 2); s.disguise = 1;
+  const guard = g.addUnit('footman', 1, m.x + 2.5, m.y + 2);
+  assert.equal(g.closestEnemy(guard, 9, 1), null, 'the guard takes him for one of theirs');
+  s.disguise = null; assert.equal(g.closestEnemy(guard, 9, 1), s, 'undisguised, he is a foe'); s.disguise = 1; guard.hp = 0;
+  g.players[1].gold = 500; const mine0 = g.players[PLAYER].gold, theirs0 = g.players[1].gold;
+  g.cmdInfiltrateB([s], m); for (let i = 0; i < 120 && s.hp > 0; i++) g.tick(0.25);
+  if (s.hp > 0) { assert.ok(g.players[PLAYER].gold > mine0 && g.players[1].gold < theirs0, `coin moved: ours ${mine0} -> ${g.players[PLAYER].gold.toFixed(1)}`); assert.ok(g.spiedOn(PLAYER, 1), 'and a spy report came home'); }
+  assert.ok(g.players[1].spied?.[m.id] != null, 'the owner noticed something wrong there');
+});
+
+test('disguise: a spy inside a rival barracks slows its training; a watchman of theirs catches spies far sooner', () => {
+  const trainTime = (spy) => {
+    const g = mk(); g.meet(0, 1); g.setRelation(0, 1, 'war'); const b = rivalBuilding(g, 1, 'barracks');
+    Object.assign(g.players[1], { gold: 999, food: 999, wood: 999 }); g.train(1, b.id, 'footman');
+    if (spy) { const s = g.addUnit('spy', PLAYER, b.x + 0.5, b.y + 0.5); s.disguise = 1; s.hp = s.maxHp = 1e6; g.cmdInfiltrateB([s], b); SPY_COVER.catch = 0; }
+    let t = 0; while (b.queue.length && t < 200) { g.tick(0.25); t += 0.25; }
+    SPY_COVER.catch = 0.006; return t;
+  };
+  assert.ok(trainTime(true) > trainTime(false) * 1.6, 'training took much longer with a spy inside');
+  const caught = (watch, seed) => {
+    const g = mk({ seed }); g.meet(0, 1); const b = rivalBuilding(g, 1, 'academy');
+    if (watch) { const w = g.addUnit('spy', 1, b.x + 0.5, b.y + 0.5); g.cmdInfiltrateB([w], b); }
+    const s = g.addUnit('spy', PLAYER, b.x + 0.5, b.y + 0.5); s.disguise = 1; g.cmdInfiltrateB([s], b); let t = 0;
+    while (s.hp > 0 && t < 600) { g.tick(0.5); t += 0.5; } return t;
+  };
+  const avg = (w) => [8, 9, 10, 11].map((sd) => caught(w, sd)).reduce((a, b) => a + b, 0) / 4;
+  assert.ok(avg(true) * 3 < avg(false), `watched ${avg(true).toFixed(0)}s vs unwatched ${avg(false).toFixed(0)}s`);
 });
 
 console.log(`${passed} passed`);

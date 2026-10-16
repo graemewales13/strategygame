@@ -711,6 +711,7 @@ export class Renderer {
   // ---------------------------------------------------------------- units
   unit(ctx, u, ui, t, z) {
     const st = UNITS[u.kind], [sx, sy] = this.toScreen(u.x, u.y);
+    const look = u.kind === 'spy' && u.disguise != null ? u.disguise : u.team;   // a spy in disguise wears another house's colours
     // turning: the art looks left. Face the way it travels on screen (or toward its work); horizontal turns squash through the
     // middle, moving up the screen shows its back (darker), moving toward the camera shows it full-on.
     const moving = u.path.length > 0;
@@ -743,8 +744,8 @@ export class Renderer {
       w = (c ? c.width / c.height : 1) * USCALE.serf * z;
     }
     else {
-      const fu = FUNIT[HOUSES[u.team]?.faction], ak = armedKey(u), armed = (ak && fu?.[ak]) || fu?.[u.kind] || (u.kind === 'king' ? fu?.knight : null);   // (a king rides as his people's horseman, crowned, until his own figure is painted)   // painted with the Armoury kit he carries, or his people's own plain figure
-      if (armed) { c = armed; rightArt = true; full = true; } else c = tinted(st.art || u.kind, u.team, 'trim', false, light);
+      const fu = FUNIT[HOUSES[look]?.faction], ak = armedKey(u), armed = (ak && fu?.[ak]) || fu?.[u.kind] || (u.kind === 'king' ? fu?.knight : null);   // (a king rides as his people's horseman, crowned, until his own figure is painted)   // painted with the Armoury kit he carries, or his people's own plain figure
+      if (armed) { c = armed; rightArt = true; full = true; } else c = tinted(st.art || u.kind, look, 'trim', false, light);
       const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh;
     }
     if (!c) return;
@@ -756,7 +757,7 @@ export class Renderer {
     if (wheeled) this.shadowAt(ctx, sx, sy - h * 0.13, w * 0.5, h * 0.17, 0.42);   // (the three-quarter art puts the rear wheels well up the picture)
     else this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
     if (moving && gfx.q >= 1 && (u.kind === 'camel' || u.kind === 'ram')) this.dust(ctx, sx, sy, u._sg || 1, t, z, u.id);
-    if (gfx.q >= 1 && !ui?.isSelected(u) && u.kind !== 'camel') { ctx.strokeStyle = HOUSES[u.team]?.primary || '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); if (wheeled) ctx.ellipse(sx, sy - h * 0.13, w * 0.44, h * 0.15, 0, 0, 7); else ctx.ellipse(sx, sy + 1 * z, 9 * z, 4.2 * z, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+    if (gfx.q >= 1 && !ui?.isSelected(u) && u.kind !== 'camel') { ctx.strokeStyle = HOUSES[look]?.primary || '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); if (wheeled) ctx.ellipse(sx, sy - h * 0.13, w * 0.44, h * 0.15, 0, 0, 7); else ctx.ellipse(sx, sy + 1 * z, 9 * z, 4.2 * z, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
     this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
@@ -774,6 +775,7 @@ export class Renderer {
     if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }
     if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
     if (u.name && (ui?.isSelected(u) || z >= 1.15) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
+    if (u.kind === 'spy' && u.disguise != null && u.team === PLAYER) { ctx.font = `${Math.round(12 * Math.min(1.4, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#f0e2a0'; ctx.strokeStyle = 'rgba(20,12,4,.9)'; ctx.lineWidth = 3; ctx.strokeText('🎭', sx, sy - h * foot - 4 - bob); ctx.fillText('🎭', sx, sy - h * foot - 4 - bob); ctx.textAlign = 'start'; }   // (only you see the mask)
     if (u.kind === 'king' && !FUNIT[HOUSES[u.team]?.faction]?.king) this.crownAt(ctx, sx, sy - h * foot - 2 - bob, z, HOUSES[u.team].accent);
     if (u.kind === 'king' && u.team >= 0 && !this.game.seatOf(u.team)) this.mark(ctx, 'fugitive', sx, sy - h * foot - 10 * z - bob, 16 * z);   // a fugitive king, seen by all
     if (u.captain) { const mx = sx - Math.max(20, w * 0.7) / 2 - 4 * z, my = sy - h * foot - bob; if (!this.mark(ctx, 'captain', mx, my, 18 * z, HOUSES[u.team].primary)) { ctx.strokeStyle = '#2a1c0e'; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.moveTo(mx, my + 14 * z); ctx.lineTo(mx, my - 6 * z); ctx.stroke(); this.pennant(ctx, mx, my - 6 * z, z * 0.7, t, HOUSES[u.team].primary, HOUSES[u.team].accent, u.id); } }
@@ -927,7 +929,7 @@ export class Minimap {
     const blink = (g.time * 4) % 1 < 0.5;
     for (const u of g.units) {
       if (u.team !== PLAYER && (!g.fogOn || !vis[Math.floor(u.y) * g.W + Math.floor(u.x)])) continue;
-      ctx.fillStyle = u.team === PLAYER && blink && g.time - (u.engagedT ?? -99) < 1.5 ? '#ff4a3a' : HOUSES[u.team].primary; ctx.fillRect(u.x * sx - 1, u.y * sy - 1, 3, 3);   // ours in a fight blink red (T06)
+      ctx.fillStyle = u.team === PLAYER && blink && g.time - (u.engagedT ?? -99) < 1.5 ? '#ff4a3a' : HOUSES[u.team !== PLAYER && u.kind === 'spy' && u.disguise != null ? u.disguise : u.team].primary; ctx.fillRect(u.x * sx - 1, u.y * sy - 1, 3, 3);   // ours in a fight blink red (T06)
     }
     // where we are being hit: a pulsing red ring for ten seconds after the last blow (Space jumps there)
     for (const a of g.alerts || []) {
