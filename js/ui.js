@@ -572,8 +572,9 @@ export class UI {
     html += `<div class="drow">${ask('gift', 'Gift 50c', 'Send 50 coin. Warms them (more if they are mercantile).', 'data-amount="50"', gold < 50)}${ask('gift', 'Gift 150c', 'Send 150 coin.', 'data-amount="150"', gold < 150)}`
       + `${ask('demand', 'Demand tribute', 'Demand coin. Only the far weaker pay; the proud refuse and remember.', `data-amount="${Math.max(40, Math.min(300, Math.round((i.moneyShown * 0.15) / 10) * 10))}"`, rel === 'war')}`
       + `${ask('askaid', 'Ask 80c aid', 'A friend with coin to spare may send it.', 'data-amount="80"', rel === 'war')}</div>`;
-    const others = g.players.filter((p) => p.alive && p.team !== PLAYER && p.team !== t && g.known[PLAYER][p.team]);
-    if (!compact && others.length && rel !== 'war') html += `<div class="drow wrap"><span class="dlabel">Ask them to declare war on</span>${others.map((p) => ask('askwar', `⚔ ${esc(HOUSES[p.team].short)}`, `Ask ${esc(HOUSES[t].short)} to take up arms against ${esc(HOUSES[p.team].short)}. Friends and allies listen, if the odds look fair.`, `data-target="${p.team}"`, false)).join('')}</div>`;
+    // houses they could fight for you: your enemies first (owner, 2026-10-17: there was no way to ask another king for help in a war; the row was only in the Council)
+    const others = g.players.filter((p) => p.alive && p.team !== PLAYER && p.team !== t && g.known[PLAYER][p.team]).sort((x, y) => (g.rel[PLAYER][y.team] === 'war') - (g.rel[PLAYER][x.team] === 'war'));
+    if (others.length && rel !== 'war') html += `<div class="drow wrap"><span class="dlabel">Ask them to help you: declare war on</span>${others.map((p) => ask('askwar', `⚔ ${esc(HOUSES[p.team].short)}${g.rel[PLAYER][p.team] === 'war' ? ' (your enemy)' : ''}`, `Ask ${esc(HOUSES[t].short)} to take up arms against ${esc(HOUSES[p.team].short)}. Friends and allies listen, if the odds look fair.`, `data-target="${p.team}"`, false)).join('')}</div>`;
     html += `<div class="dnote">${rel === 'war' ? (wait > 0 ? `They will not parley for ${wait}s.` : 'They may take peace if they are not winning.') : rel === 'alliance' ? 'Allies trade freely, never fight each other, and take up each other’s wars. Breaking the oath is remembered by everyone. Victory still needs every house to fall.' : rel === 'trade' ? 'Camels may use their markets. Peace cancels it; war breaks it.' : 'No fighting, no trade. A treaty lets your camels use their markets; an alliance binds you.'}</div>`;
     if (compact) html += `<div class="drow"><button class="dbtn sm" data-act="council" data-team="${t}">Open the Council ›</button></div>`;
     return html;
@@ -613,7 +614,7 @@ export class UI {
   // asks of another house: one call, with the answer toasted (or the reason it was refused)
   ask(type, other, extra = {}) {
     const g = this.game, r = this.host.send({ type, other, ...extra });
-    if (r) this.toast(g.events.filter((e) => e.team === PLAYER).slice(-1)[0]?.text || 'Done.', 'good'); else this.toast(g.diploNote || 'Refused.', 'warn');
+    if (!r && !g.events.some((e) => e.team === PLAYER && e.text === g.diploNote)) this.toast(g.diploNote || 'Refused.', 'warn');   // (the answer is already in the game's own message; say it once)
     this.sigDiplo = this.sigCouncil = ''; this.renderDiplo(); this.renderCouncil();
   }
   toggleDiplo(team) { if (team === PLAYER) return; this.diploOpen = this.diploOpen === team ? null : team; this.sigDiplo = ''; this.renderDiplo(); }
