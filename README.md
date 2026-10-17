@@ -62,6 +62,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Pause / speed | **P**, **+** / **-** or the speed button |
 | Stop | **X** (or the Stop button): halt and hold position |
 | Change keys | Menu > **Keys** > *Change keys*: click a command, press its new key (a key already in use swaps over; Esc cancels); *Reset keys* restores these defaults. Kept in this browser. Fixed: Esc, F5/F9, Tab, 1-9, the arrows, Home |
+| Grid keys | Menu > **Keys** > *Grid keys* (off by default; Age of Empires IV layout): the command card answers to **Q W E R / A S D F / Z X C V** by place, and **Shift** with them for the next twelve; each button shows its key in its corner. A soldier's card has its orders on Q W E R (Stop, Attack-move, Attack, Retreat), stances on A S D F and formations on Z X C V; a serf's build menu keeps each building on its own key (Mine Q, Market W, Keep E, Barracks R...). The arrows pan; a grid key with no button in its place still does its usual command |
 | Idle serf / all soldiers / idle soldiers | **.** / **,** / **I** (or Shift-click **Army**; each press centres on the next idle soldier) |
 | Control groups | **Ctrl+1..9** set, **1..9** recall |
 | Under attack | **Space** or **Home** jumps to where you were last hit (press again for the next place); the minimap shows a pulsing red ring there and your fighting folk blink red |

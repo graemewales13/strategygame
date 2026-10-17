@@ -97,5 +97,16 @@ const { chromium } = require('playwright');
   if (!armedA) errs.push('the rebound key did not arm attack-move');
   await p.evaluate(() => document.getElementById('kReset').click()); const back = await p.evaluate(() => ({ amove: window.__seven.ui.kmap.amove, stored: localStorage.getItem('auld-world.keys') }));
   console.log('reset keys', JSON.stringify(back)); if (back.amove !== 'f' || back.stored) errs.push('reset keys failed: ' + JSON.stringify(back));
+  // T03 grid half: Grid keys on, the soldier's card is lettered by place (stances on A S D F); S sets Defensive; a serf's Q raises a mine
+  await p.evaluate(() => { const c = document.getElementById('kGrid'); if (!c.checked) c.click(); }); await p.waitForTimeout(100);
+  await p.evaluate((i) => { const { game: g, ui } = window.__seven; ui.setUnits([g.byId.get(i)].filter((u) => u && u.hp > 0)); }, id); await p.waitForTimeout(400);
+  const lettered = await p.evaluate(() => [...document.querySelectorAll('#cmdPanel .cbtn')].filter((b) => /^(stop|amove|charge|retreat|stance)$/.test(b.dataset.act)).map((b) => b.querySelector('.hk')?.textContent).join(' '));
+  await p.keyboard.press('s'); await p.waitForTimeout(200); const gridStance = (await unit()).stance;
+  const serfPlace = await p.evaluate(() => { const { game: g, ui } = window.__seven; ui.setUnits(g.units.filter((u) => u.team === 0 && u.kind === 'serf').slice(0, 1)); return true; }); await p.waitForTimeout(400);
+  const mineKey = await p.evaluate(() => document.querySelector('#cmdPanel button[data-act="place"][data-kind="mine"] .hk')?.textContent || '');
+  await p.keyboard.press('q'); await p.waitForTimeout(200); const placing = await p.evaluate(() => window.__seven.ui.placing); await p.keyboard.press('Escape');
+  console.log('grid keys', JSON.stringify({ lettered, gridStance, mineKey, placing, stored: await p.evaluate(() => localStorage.getItem('auld-world.gridkeys')) }));
+  if (lettered !== 'Q W E R A S D F' || gridStance !== 'defensive' || mineKey !== 'Q' || placing !== 'mine' || !serfPlace) errs.push('grid keys failed');
+  await p.evaluate(() => document.getElementById('kGrid').click()); if (await p.evaluate(() => window.__seven.ui.gridKeys || localStorage.getItem('auld-world.gridkeys'))) errs.push('grid keys did not switch off');
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length ? 1 : 0);
 })();

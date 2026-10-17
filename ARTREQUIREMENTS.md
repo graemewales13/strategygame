@@ -56,6 +56,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 18 | **Ore deposits per mineral**, full and half-dug (T-062; added 2026-10-16) | **Requested.** Wired: `ORE_ART` in `js/art.js`, the recoloured pile until painted; switch on in one line (below) |
 | — | Pack animals per people: donkey, Bactrian camel, camel (T-063, 2026-10-16) | **No painting needed.** `assets/shared/units/donkey.png`, `bactrian.png`, `dromedary.png` were already painted; the British and Scots now use the donkey |
 | — | Key rebinding (T03, 2026-10-16) | **No painting needed.** A text list in Options |
+| — | Grid keys (T03, 2026-10-17): the command card pressed by place (Q W E R / A S D F / Z X C V) | **No painting needed.** The key is printed in each button's top-right corner; painted button icons must leave that corner clear (priority 14) |
 
 ## How the game uses delivered art
 
@@ -340,6 +341,7 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
    These still count; the construction and ruin states are now priority 6 (delivered), and the stance, formation and order buttons are priority 14.
 4. **Facing.** The old shared unit art looks left; the new per-people figures look right. The game handles both (it mirrors), but keep every new figure looking right or straight out.
 5. **Captain standard** is painted with neutral cloth and the game dyes it per house. Keep any future marks that carry house colour neutral (white or pale grey cloth).
+6. **Command-card icons need a clear corner** (2026-10-17). The instruction set's Goods icon template centres the subject with a 4 px margin; the game now prints a hotkey letter in the top-right corner of every command-card button when Grid keys are on. Paint button icons (orders, stances, formations, any future train or build button art) with the subject weighted to the lower left and the top-right eighth empty.
 
 ## Priority 8: three new peoples (Vikings, Byzantines, Persians)
 
@@ -448,6 +450,8 @@ Prompt (Goods icon template, filled; one per key):
 ```text
 ORDER ICON, {SUBJECT}, painted in the same hand-painted medieval style as the kit and research icons: iron, leather and wood, warm low sun from the upper left, soft shadow. Neutral colours only (iron grey, brown leather, natural wood), no faction colour, no text or letters. For formations: a top-down view of small round helmets and shields, like tokens on a war table, so the shape of the formation reads at 32 px. Flat #FF00FF background, centred, 4 px margin, 128x128 (shown at 24-32 px).
 ```
+
+**Keep the top-right corner clear** (about the top-right eighth of the square): since 2026-10-17 Grid keys print the button's key there (Q, W, ⇧A...), so nothing important may sit under it. The same goes for any future command-card icon.
 
 Deliver: `assets/shared/ui/orders/<key>.png` for the thirteen keys. Then add `...STANCES, ...FORMATIONS, 'amove', 'charge', 'retreat', 'stop', 'repair'` to `UI_KEYS.orders` in `js/art.js` (one line; the buttons already ask for `uiArt('orders', key)` and fall back to the glyph).
 

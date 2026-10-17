@@ -9,7 +9,7 @@ import {
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
-import { KEY_ACTIONS, loadKeys, saveKeys, rebind, actionOf, keyName, normKey, defaultKeys } from './keys.js';
+import { KEY_ACTIONS, loadKeys, saveKeys, rebind, actionOf, keyName, normKey, defaultKeys, GRID_KEYS, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,6 +44,7 @@ export class UI {
     this.keys = new Set(); this.mouse = { x: 0, y: 0, in: false };
     let store = null; try { store = localStorage; } catch { store = null; }
     this.keyStore = store; this.kmap = loadKeys(store); this.rebinding = null;   // the key map (T03), rebound in Options > Keys
+    this.gridKeys = loadGrid(store); this.gridMap = [];   // Grid keys (T03, AoE IV layout): the command card's buttons by place, Options > Keys
     this.speed = 1; this.paused = false; this.started = false;
     this.menuOpen = true; this.campaignOpen = false; this.endShown = false;
     this.lastClick = { t: 0, id: null };
@@ -276,6 +277,8 @@ export class UI {
     if (k === 'f5') { e.preventDefault(); return void this.saveGame('manual'); }
     if (k === 'f9') { e.preventDefault(); return void this.loadGame('manual'); }
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
+    // Grid keys: a key whose place on the command card holds a button presses it, ahead of the key map (with nothing there, the map still has it)
+    if (this.gridKeys && !this.campaignOpen && !(e.ctrlKey || e.metaKey || e.altKey)) { const b = this.gridBtn(gridSlotOf(k, e.shiftKey)); if (b) { e.preventDefault(); if (!e.repeat) b.click(); return; } }
     // every other command goes through the key map (T03: rebindable in Options); Tab and Home stay as fixed extras
     const mod = e.ctrlKey || e.metaKey, act = k === 'tab' ? 'campaign' : k === 'home' ? 'alert' : mod ? null : actionOf(this.kmap, k);
     if (act === 'council') { this.toggleCouncil(); return; }
@@ -315,7 +318,8 @@ export class UI {
     if ($('btnHome')) $('btnHome').title = `Jump to your home village (${kn('hall')})`;
     if ($('btnIdle')) $('btnIdle').title = `Select next idle serf (${kn('idleSerf')})`;
     if ($('btnArmy')) $('btnArmy').title = `Select all soldiers (${kn('army')}); Shift-click or ${kn('idleArmy')}: only the idle ones`;
-    if ($('mKeysHint')) $('mKeysHint').textContent = `Right-click to move, gather, sack, infiltrate. Drag to select. ${['panUp', 'panLeft', 'panDown', 'panRight'].map(kn).join('')} or the arrows pan. ${kn('campaign')} opens the campaign map. ${kn('alert')} jumps to where you are under attack. Esc returns here.`;
+    this.sigCmd = ''; if ($('kGrid')) $('kGrid').checked = this.gridKeys;
+    if ($('mKeysHint')) $('mKeysHint').textContent = `Right-click to move, gather, sack, infiltrate. Drag to select. ${this.gridKeys ? 'The arrows pan (Grid keys are on: the command card answers to Q W E R / A S D F / Z X C V).' : `${['panUp', 'panLeft', 'panDown', 'panRight'].map(kn).join('')} or the arrows pan.`} ${kn('campaign')} opens the campaign map. ${kn('alert')} jumps to where you are under attack. Esc returns here.`;
   }
   renderKeys() {
     const g = $('keyGrid'); if (!g || g.classList.contains('hidden')) return;
@@ -637,11 +641,11 @@ export class UI {
     if (!this.menuOpen && !this.campaignOpen) {
       const spd = (this.keys.has('shift') ? 1100 : 620) * dt;
       let dx = 0, dy = 0;
-      const km = this.kmap;   // (the pan keys are rebindable, T03; the arrows always pan)
-      if (this.keys.has(km.panUp) || this.keys.has('arrowup')) dy -= spd;
-      if (this.keys.has(km.panDown) || this.keys.has('arrowdown')) dy += spd;
-      if (this.keys.has(km.panLeft) || this.keys.has('arrowleft')) dx -= spd;
-      if (this.keys.has(km.panRight) || this.keys.has('arrowright')) dx += spd;
+      const km = this.kmap, pan = (id) => this.keys.has(km[id]) && !(this.gridKeys && GRID_KEYS.includes(km[id]));   // (the pan keys are rebindable, T03; the arrows always pan; with Grid keys on, a pan key on the grid is the grid's)
+      if (pan('panUp') || this.keys.has('arrowup')) dy -= spd;
+      if (pan('panDown') || this.keys.has('arrowdown')) dy += spd;
+      if (pan('panLeft') || this.keys.has('arrowleft')) dx -= spd;
+      if (pan('panRight') || this.keys.has('arrowright')) dx += spd;
       if (this.mouse.in && !this.dragBox) {
         const e = 12;
         if (this.mouse.x < e) dx -= spd; if (this.mouse.x > r.w - e) dx += spd;
@@ -777,7 +781,7 @@ export class UI {
       const vs = g.villagesOf(PLAYER).length;
       html = `<div class="seltitle">${esc(HOUSES[PLAYER].name)}</div><div class="selsub">${esc(HOUSES[PLAYER].motto)}</div>
         <div class="stat"><label>Serfs</label><span>${serfs}</span></div><div class="stat"><label>Soldiers</label><span>${army}</span></div><div class="stat"><label>Villages</label><span>${vs} of ${g.villages.length}</span></div>
-        <div class="selsub">Press <b>H</b> for your home village: draft serfs and raise buildings. Drag to select units. Right-click to act.</div>`;
+        <div class="selsub">Press <b>${keyName(this.kmap.hall)}</b> for your home village: draft serfs and raise buildings. Drag to select units. Right-click to act.</div>`;
     } else if (s.type === 'units') {
       const us = this.selUnits();
       if (us.length === 1) {
@@ -872,7 +876,7 @@ export class UI {
       if (miss.length) { locked.push(`${s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery')} (${miss.join(' + ')})`); continue; }   // not unlocked yet: hidden
       const afford = g.canAfford(PLAYER, s.cost);
       const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s`;
-      html += this.btn('place', { off: !afford, glyph: GLYPH[kind], art: kind, name: s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery'), sub: costShort(s.cost), data: { kind }, tip });
+      html += this.btn('place', { off: !afford, glyph: GLYPH[kind], art: kind, name: s.label.replace('Watchtower', 'Tower').replace('Archery Range', 'Archery'), sub: costShort(s.cost), data: { kind, slot: BUILD_ORDER_UI.indexOf(kind) }, tip });   // (slot: its place for Grid keys)
     }
     html += `</div>`;
     if (locked.length) html += `<div class="hint">Unlocks as you build: ${esc(locked.join(', '))}.</div>`;
@@ -1150,8 +1154,8 @@ export class UI {
       if (us.some((u) => u.kind === 'serf' || BUILDERS[u.kind])) html += this.buildGrid();
       if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
-      const kn = (id) => keyName(this.kmap[id]);   // (the key each order is bound to now, T03)
-      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { img: uiArt('orders', 'stop'), glyph: '■', name: 'Stop', sub: kn('stop'), tip: `<b>Stop</b> (${kn('stop')})<br>Halt and hold position.`, cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { img: uiArt('orders', 'amove'), glyph: '⚔', name: 'Attack-move', sub: kn('amove'), cls: this.amove ? 'on' : '', tip: `<b>Attack-move</b> (${kn('amove')}, or Ctrl+right-click)`+'<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { img: uiArt('orders', 'charge'), glyph: '⚑', name: 'Attack', sub: kn('charge'), cls: '', tip: `<b>Attack</b> (${kn('charge')})`+'<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { img: uiArt('orders', 'retreat'), glyph: '↩', name: 'Retreat', sub: kn('retreat'), cls: '', tip: `<b>Retreat</b> (${kn('retreat')})`+'<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
+      const kn = (id) => (this.gridKeys ? '' : keyName(this.kmap[id]));   // (the key each order is bound to now, T03; with Grid keys on, the key in the corner says it)
+      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { img: uiArt('orders', 'stop'), glyph: '■', name: 'Stop', sub: kn('stop'), tip: `<b>Stop</b> ${this.gridKeys ? '' : `(${kn('stop')})`}<br>Halt and hold position.`, cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { img: uiArt('orders', 'amove'), glyph: '⚔', name: 'Attack-move', sub: kn('amove'), cls: this.amove ? 'on' : '', tip: `<b>Attack-move</b> (${this.gridKeys ? '' : `${kn('amove')}, or `}Ctrl+right-click)`+'<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { img: uiArt('orders', 'charge'), glyph: '⚑', name: 'Attack', sub: kn('charge'), cls: '', tip: `<b>Attack</b> ${this.gridKeys ? '' : `(${kn('charge')})`}`+'<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { img: uiArt('orders', 'retreat'), glyph: '↩', name: 'Retreat', sub: kn('retreat'), cls: '', tip: `<b>Retreat</b> ${this.gridKeys ? '' : `(${kn('retreat')})`}`+'<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
       if (us.some((u) => g.fighter(u))) html += `<div class="hint"><b>Shift</b>+right-click adds waypoints to a march; a group keeps to its slowest member's pace.</div>`;
       if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
       const marchers = us.filter((u) => u.kind !== 'camel');
@@ -1162,7 +1166,7 @@ export class UI {
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click: a deposit with a <b>mine</b> to dig, timber, berries or gold to gather, a building site to build.</div>`;
       if (!us.some((u) => u.kind === 'serf' || u.kind === 'camel' || u.kind === 'recruit')) {
         const sp = us.some((u) => u.kind === 'spy');
-        html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>keep, tower, barracks</b> or a village you hold to go <b>inside</b>${sp ? ' (a spy keeps <b>watch</b> there)' : ''}. Attacking a house at peace declares war. <b>F</b> then a click (or Ctrl+right-click) <b>attack-moves</b>.</div>`;
+        html += `<div class="hint">Right-click: <b>move</b>, <b>attack</b> a foe, <b>sack</b> a village${sp ? ', or send the <b>spy</b> in to turn its loyalty' : ''}. Right-click your own <b>keep, tower, barracks</b> or a village you hold to go <b>inside</b>${sp ? ' (a spy keeps <b>watch</b> there)' : ''}. Attacking a house at peace declares war. <b>${keyName(this.kmap.amove)}</b> then a click (or Ctrl+right-click) <b>attack-moves</b>.</div>`;
       }
     } else if (ent && ent.type === 'building' && ent.team === PLAYER) {
       if (ent.built < 1) html = `<div class="hint">Under construction. Select serfs and right-click this building to help raise it.</div><div class="cgrid" style="margin-top:6px">${this.btn('demolish', { glyph: '✕', name: 'Cancel site', sub: '80% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Cancel the site</b><br>Click twice. Four fifths of the cost comes back.' })}</div>`;
@@ -1196,9 +1200,33 @@ export class UI {
       const n = g.resources[s.id], mined = MINEABLE.includes(n.kind), hasMine = mined && g.buildings.some((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(n.id));
       html = `<div class="ctitle">Options</div><div class="cgrid">${mined && !hasMine ? this.btn('minehere', { glyph: '⛏', art: 'mine', name: 'Build mine', sub: costShort(BUILDINGS.mine.cost), off: !g.canAfford(PLAYER, BUILDINGS.mine.cost), tip: `<b>Mine</b><br>Raised beside the deposit; then assign serfs. <span class="cost">${costText(BUILDINGS.mine.cost, g.players[PLAYER])}</span>` }) : ''}${!mined ? this.btn('gathernode', { glyph: '⚒', name: 'Gather', sub: '4 idle serfs', tip: '<b>Gather</b><br>Sends up to four idle serfs.' }) : ''}</div><div class="hint">${mined ? (hasMine ? 'A mine stands here: select it to send diggers.' : 'Ore needs a <b>Mine</b>. Once built, serfs dig it into your stockpile.') : 'Select serfs and right-click to gather.'}</div>`;
     } else {
-      html = `<div class="hint">Press <b>H</b> for your home village: <b>draft serfs</b> and <b>raise buildings</b>. Right-click timber, berries or gold with serfs to gather. <b>M</b> opens the campaign map.</div>`;
+      html = `<div class="hint">Press <b>${keyName(this.kmap.hall)}</b> for your home village: <b>draft serfs</b> and <b>raise buildings</b>. Right-click timber, berries or gold with serfs to gather. <b>${keyName(this.kmap.campaign)}</b> opens the campaign map.</div>`;
     }
-    if (html !== this.sigCmd) { this.sigCmd = html; $('cmdPanel').innerHTML = packWords(html, PLAYER); }
+    if (html !== this.sigCmd) { this.sigCmd = html; $('cmdPanel').innerHTML = packWords(html, PLAYER); this.labelGrid(); }
+  }
+  // Grid keys: give each button of the card its key and show it in the corner. Per-person buttons (a serf's row) are left out.
+  // A fighting card keeps AoE IV's rows: orders on Q W E R (Stop, Attack-move, Attack, Retreat), stances on A S D F, formations on
+  // Z X C V; anything else (captain, disguise, the build menu) takes the Shift page. When the build menu leads a card with no stances
+  // (serfs), every building keeps its own key, and the keys of those still locked are kept free for them.
+  labelGrid() {
+    this.gridMap = [];
+    if (!this.gridKeys) return;
+    const bs = [...$('cmdPanel').querySelectorAll('.cbtn:not([data-id])')];
+    const fight = bs.some((b) => b.dataset.act === 'stance'), lead = !fight && bs[0]?.dataset.slot != null;
+    const ORDER = ['stop', 'amove', 'charge', 'retreat'];
+    const own = (b) => {
+      if (fight) { const d = b.dataset; return ORDER.includes(d.act) ? ORDER.indexOf(d.act) : d.act === 'stance' ? 4 + STANCES.indexOf(d.stance) : d.act === 'formation' ? 8 + FORMATIONS.indexOf(d.form ?? d.formation) : null; }
+      return lead && b.dataset.slot != null ? +b.dataset.slot : null;
+    };
+    const slots = assignGrid(bs.map(own), fight ? [...Array(12).keys()] : lead ? BUILD_ORDER_UI.map((_, i) => i) : []);
+    bs.forEach((b, i) => { const sl = slots[i]; if (sl < 0) return; this.gridMap[sl] = b; b.insertAdjacentHTML('beforeend', `<span class="hk">${gridLabel(sl)}</span>`); });
+  }
+  gridBtn(slot) { const b = slot >= 0 ? this.gridMap[slot] : null; return b && b.isConnected ? b : null; }
+  setGridKeys(on) {
+    this.gridKeys = !!on;
+    if (!saveGrid(this.keyStore, this.gridKeys)) this.toast('Could not remember that in this browser; it lasts until you close the tab.', 'warn');
+    this.applyKeys();
+    this.toast(this.gridKeys ? 'Grid keys on: Q W E R / A S D F / Z X C V press the command card by place (Shift for the second page); the arrows pan.' : 'Grid keys off.', 'info');
   }
 
   // ------------------------------------------------------------ screens: menu, campaign, end
@@ -1270,6 +1298,7 @@ export class UI {
     });
     // Options > Keys (T03): every command's key, rebound by clicking it and pressing the new key; kept in the browser
     if ($('kShow')) $('kShow').onclick = () => { const g = $('keyGrid'); g.classList.toggle('hidden'); $('kShow').textContent = g.classList.contains('hidden') ? 'Change keys' : 'Hide keys'; this.rebinding = null; this.renderKeys(); };
+    if ($('kGrid')) { $('kGrid').checked = this.gridKeys; $('kGrid').onchange = () => this.setGridKeys($('kGrid').checked); }
     if ($('kReset')) $('kReset').onclick = () => { this.kmap = defaultKeys(); this.rebinding = null; saveKeys(this.keyStore, this.kmap); this.applyKeys(); this.toast('Keys back to their defaults.', 'info'); };
     if ($('keyGrid')) $('keyGrid').addEventListener('click', (e) => { const b = e.target.closest('button[data-key]'); if (!b) return; this.rebinding = this.rebinding === b.dataset.key ? null : b.dataset.key; this.renderKeys(); });
     this.applyKeys();
@@ -1324,7 +1353,7 @@ export class UI {
     this.objPrev = p.index;
     el.classList.remove('hidden');
     el.innerHTML = `<div class="ohead"><b>Objective ${p.index + 1}/${p.total}</b><span><button data-act="objcollapse" title="Fold">${this.objCollapsed ? '+' : '-'}</button><button data-act="objhide" title="Hide objectives (turn back on in Options)">x</button></span></div>`
-      + `<div class="otitle">${esc(p.step.title)}</div>` + (this.objCollapsed ? '' : `<div class="ohint">${esc(p.step.hint)}</div><div class="osteps">${p.steps.map((s) => `<i class="${s.done ? 'on' : ''}" title="${esc(s.title)}"></i>`).join('')}</div>`);
+      + `<div class="otitle">${esc(p.step.title)}</div>` + (this.objCollapsed ? '' : `<div class="ohint">${esc(fillKeys(p.step.hint, this.kmap))}</div><div class="osteps">${p.steps.map((s) => `<i class="${s.done ? 'on' : ''}" title="${esc(s.title)}"></i>`).join('')}</div>`);
   }
 
   // ------------------------------------------------------------ save / load

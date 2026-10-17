@@ -58,3 +58,29 @@ export function rebind(map, id, key) {
 }
 export const actionOf = (map, key) => { const k = normKey(key); for (const a of KEY_ACTIONS) if (map[a.id] === k) return a.id; return null; };
 export const keyName = (k) => (k === ' ' ? 'Space' : k === '=' ? '+' : !k ? '—' : k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1));
+
+// The grid half of T03 (2026-10-17). With Grid keys on (Options > Keys), the command card's buttons answer to keys by their place, as in
+// Age of Empires IV: three rows of four (Q W E R / A S D F / Z X C V), then the same twelve with Shift. The camera then pans with the arrows.
+// A soldier's card fills the rows as orders, stances and formations; the build menu keeps each building on its own key while others are
+// still locked, so a key never moves under the player's fingers.
+export const GRID_KEYS = ['q', 'w', 'e', 'r', 'a', 's', 'd', 'f', 'z', 'x', 'c', 'v'];
+export const GRID_SLOTS = GRID_KEYS.length * 2;
+export const GRID_STORE = 'auld-world.gridkeys';
+export const gridLabel = (i) => (i >= 0 && i < GRID_KEYS.length ? GRID_KEYS[i].toUpperCase() : i >= GRID_KEYS.length && i < GRID_SLOTS ? '⇧' + GRID_KEYS[i - GRID_KEYS.length].toUpperCase() : '');
+export const gridSlotOf = (key, shift) => { const i = GRID_KEYS.indexOf(normKey(key)); return i < 0 ? -1 : i + (shift ? GRID_KEYS.length : 0); };
+// Slots for the buttons of one card, in order. `fixed[i]` is a button's own slot or null; `reserved` slots are kept free for buttons that
+// may appear later (locked buildings). Fixed buttons keep their slot; the rest take the free slots in order; past 24, a button has none (-1).
+export function assignGrid(fixed, reserved = []) {
+  const used = new Set([...reserved, ...fixed.filter((s) => s != null && s >= 0 && s < GRID_SLOTS)]);
+  let next = 0;
+  return fixed.map((s) => {
+    if (s != null && s >= 0 && s < GRID_SLOTS) return s;
+    while (next < GRID_SLOTS && used.has(next)) next++;
+    if (next >= GRID_SLOTS) return -1;
+    used.add(next); return next++;
+  });
+}
+export const loadGrid = (store) => { try { return store?.getItem(GRID_STORE) === 'on'; } catch { return false; } };
+export const saveGrid = (store, on) => { try { if (on) store?.setItem(GRID_STORE, 'on'); else store?.removeItem(GRID_STORE); return true; } catch { return false; } };
+// Text that names a key says {key:<action>} and is filled from the player's key map, so a hint never names a key that no longer does it.
+export const fillKeys = (text, map) => String(text).replace(/\{key:(\w+)\}/g, (_, id) => keyName(map?.[id] ?? KEY_ACTIONS.find((a) => a.id === id)?.def));

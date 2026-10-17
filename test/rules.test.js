@@ -7,13 +7,14 @@ import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
-import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE } from '../js/keys.js';
+import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 let passed = 0;
 const test = (name, fn) => { try { fn(); passed++; console.log('  ok  ', name); } catch (e) { console.log('  FAIL', name, '\n      ', e.stack.split('\n').slice(0, 4).join('\n       ')); process.exitCode = 1; } };
+const reservedKeyLike = (k) => !/^[a-z]$/.test(k);
 const run = (g, secs, dt = 0.1) => { for (let t = 0; t < secs; t += dt) g.tick(dt); };
 const mk = (opts = {}) => new Game({ seed: 8, houses: 3, ai: false, ...opts });
 
@@ -1216,6 +1217,30 @@ test('keys (T03): every command has its own default key; rebinding swaps, refuse
   const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8'), onKey = ui.slice(ui.indexOf('  onKey(e) {'), ui.indexOf('  applyKeys() {'));
   assert.ok(!/k === '[a-z.,=+-]'/.test(onKey), 'onKey compares no letter directly');
   for (const a of KEY_ACTIONS) assert.ok(onKey.includes(`'${a.id}'`) || a.id.startsWith('pan'), `onKey handles ${a.id}`);
+});
+
+test('grid keys (T03): the command card answers to Q W E R / A S D F / Z X C V by place, Shift for the next twelve; buildings keep their key', () => {
+  assert.equal(GRID_SLOTS, 24);
+  assert.equal(gridSlotOf('q', false), 0); assert.equal(gridSlotOf('V', false), 11); assert.equal(gridSlotOf('Q', true), 12); assert.equal(gridSlotOf('v', true), 23);
+  assert.equal(gridSlotOf('t', false), -1, 'T is not on the grid'); assert.equal(gridSlotOf('1', false), -1);
+  assert.equal(gridLabel(0), 'Q'); assert.equal(gridLabel(7), 'F'); assert.equal(gridLabel(13), '⇧W'); assert.equal(gridLabel(24), '');
+  // a soldier's card: four orders, four stances, four formations fill the three rows
+  assert.deepEqual(assignGrid(Array(12).fill(null)), [...Array(12).keys()]);
+  // a builder's card: buildings keep their place and the locked ones' keys stay free; the rest fill after them; past 24 there is no key
+  const reserved = [...Array(19).keys()], card = [0, 1, 3, 7, null, null, null, null, null, null];   // four unlocked buildings, then six more buttons
+  assert.deepEqual(assignGrid(card, reserved), [0, 1, 3, 7, 19, 20, 21, 22, 23, -1]);
+  assert.deepEqual(assignGrid([null, 2, null]), [0, 2, 1], 'a fixed place is never handed to another button');
+  // remembered in the browser, off by default
+  const mem = new Map(), store = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: (k) => mem.delete(k) };
+  assert.equal(loadGrid(store), false); assert.ok(saveGrid(store, true)); assert.equal(mem.get(GRID_STORE), 'on'); assert.equal(loadGrid(store), true);
+  saveGrid(store, false); assert.equal(mem.has(GRID_STORE), false); assert.equal(loadGrid({ getItem: () => { throw new Error('private'); } }), false);
+  assert.ok(GRID_KEYS.every((k) => !reservedKeyLike(k)), 'every grid key is a plain letter');
+  // hints name the key the player has, not a hard-wired letter (T-067)
+  const m = defaultKeys(); rebind(m, 'hall', 'j');
+  assert.equal(fillKeys('Press {key:hall} then {key:standings}.', m), 'Press J then T.');
+  for (const o of OBJECTIVES) assert.ok(!/\bPress [A-Z]\b/.test(o.hint), `objective "${o.id}" names a key through the key map`);
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  assert.ok(!/Press <b>[A-Z]<\/b>|<b>[A-Z]<\/b> (then|opens)/.test(ui), 'no HUD hint names a hard-wired letter');
 });
 
 test('pack animals: a rival raises one at the population cap, as the player can (T-063 asymmetry, T-065)', () => {

@@ -547,3 +547,6 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 .keygrid .krow button.on { outline: 2px solid #e8c25a; }
 .keygrid .krow button.moved { color: #e8c25a; }
 .keygrid .tiny { grid-column: 1 / -1; }
+/* Grid keys (T03): the key that presses a command-card button, in its corner */
+.cbtn .hk { position: absolute; top: 1px; right: 2px; font-size: 8px; font-weight: 700; line-height: 1; color: rgba(255, 240, 200, .78); text-shadow: 0 1px 0 #000; pointer-events: none; }
+.cbtn.mini .hk { top: -1px; right: 1px; }

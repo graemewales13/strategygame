@@ -12,7 +12,7 @@ const heldVillages = (g) => g.villages.filter((v) => v.owner === PLAYER && v.hom
 export const OBJECTIVES = [
   { id: 'timber', title: 'Cut timber', hint: 'Drag a box round your three serfs, then right-click a tree. They carry timber home.',
     done: (g) => g.players[PLAYER].wood > 500 * g.diff.playerMul || anyBuilt(g) },
-  { id: 'serfs', title: 'Draft more serfs', hint: 'Press H to open your home village and draft serfs. More hands, faster work.',
+  { id: 'serfs', title: 'Draft more serfs', hint: 'Press {key:hall} to open your home village and draft serfs. More hands, faster work.',
     done: (g) => serfs(g) >= 6 || anyBuilt(g) },
   { id: 'mine', title: 'Raise a mine', hint: 'Open the build menu, choose Mine and place it on a deposit (the glints in the rock). Villagers from villages within 16 tiles dig for it; with no village near it has no workers.',
     done: (g) => mine(g, 'mine') },
@@ -31,7 +31,7 @@ export const OBJECTIVES = [
     done: (g) => heldVillages(g) >= 1 },
   { id: 'arms', title: 'Study and arm', hint: 'Raise an Academy and choose research (Masonry, then Metallurgy). Metallurgy unlocks the Armoury: order spears and mail there, and your soldiers take them up.',
     done: (g) => mine(g, 'armoury') || g.units.some((u) => u.team === PLAYER && u.hp > 0 && u.gear) },
-  { id: 'conquer', title: 'Rule the valley', hint: 'A house falls when the last of its royal line dies (a king and two heirs). Kill every rival line, and guard your own. Press T for standings.',
+  { id: 'conquer', title: 'Rule the valley', hint: 'A house falls when the last of its royal line dies (a king and two heirs). Kill every rival line, and guard your own. Press {key:standings} for standings.',
     done: () => false },
 ];
 

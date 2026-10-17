@@ -1065,7 +1065,7 @@ export class Game {
     const foe = this.units.filter((o) => o.hp > 0 && !o.inside && this.isEnemy(team, o.team) && this.canSee(team, o.x, o.y) && near(o) < 18).sort((a, b) => near(a) - near(b))[0]
       || this.buildings.filter((b) => b.hp > 0 && b.team !== team && this.isEnemy(team, b.team) && this.canSee(team, b.x, b.y) && near(b) < 22).sort((a, b) => near(a) - near(b))[0]
       || this.villages.filter((v) => v.owner >= 0 && v.owner !== team && this.isEnemy(team, v.owner) && this.wasSeen(team, v.x, v.y) && near(v) < 22).sort((a, b) => near(a) - near(b))[0];
-    if (!foe) { if (team === PLAYER) this.log(PLAYER, 'No foe in sight to attack. Use Attack-move (F) to march out and fight what you meet.', 'info'); return false; }
+    if (!foe) { if (team === PLAYER) this.log(PLAYER, 'No foe in sight to attack. Use Attack-move to march out and fight what you meet.', 'info'); return false; }
     this.setStance(us, 'aggressive');
     return this.cmdAttack(us, foe);
   }
