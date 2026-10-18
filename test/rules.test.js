@@ -8,6 +8,7 @@ import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
+import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf } from '../js/config.js';
 
 let _s = 777;
@@ -1256,6 +1257,35 @@ test('pack animals: a rival raises one at the population cap, as the player can 
 test('a new match forgets the last one\'s repair warning timer (T-058 class, T-065)', () => {
   const g = mk(); g._repairWarn = 1e9; g.reset({ seed: 8, houses: 3, ai: false });
   assert.ok(g._repairWarn < 0);
+});
+
+test('control groups (T36): the HUD row counts the living, names the main kind, flashes in a fight, and drops what is not ours', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war';
+  const h = g.seatOf(PLAYER);
+  const a = g.addUnit('footman', PLAYER, h.x, h.y + 6), b = g.addUnit('footman', PLAYER, h.x + 1, h.y + 6), c = g.addUnit('bowman', PLAYER, h.x + 2, h.y + 6);
+  const foe = g.addUnit('footman', 1, h.x + 20, h.y + 20);
+  const groups = { 3: [c.id], 1: [a.id, b.id, c.id, foe.id, 99999] };
+  let row = groupRow(g, groups);
+  assert.deepEqual(row.map((r) => r.k), ['1', '3'], 'sorted by number');
+  assert.equal(row[0].n, 3, 'a rival unit and a missing id are not counted'); assert.equal(row[0].kind, 'footman'); assert.equal(row[0].fighting, false);
+  assert.deepEqual(groupUnits(g, groups[1]).map((u) => u.id), [a.id, b.id, c.id]);
+  g.damage(c, 1, 1, foe);
+  row = groupRow(g, groups);
+  assert.ok(row[0].fighting && row[1].fighting, 'a member struck just now makes the chip flash');
+  g.time += 7; assert.ok(!groupRow(g, groups)[0].fighting, 'quiet again once the fight is a few seconds past');
+  a.hp = 0; b.hp = 0;
+  row = groupRow(g, groups); assert.equal(row[0].n, 1); assert.equal(row[0].kind, 'bowman', 'the main kind follows the living');
+  c.hp = 0; assert.equal(groupRow(g, groups).length, 0, 'a group with nobody left is not shown');
+  assert.deepEqual(cleanGroups({ 1: [4, 'x', 5], 0: [1], a: [2], 2: 'no' }), { 1: [4, 5] }, 'a save only restores well-formed groups');
+  assert.deepEqual(cleanGroups(undefined), {});
+});
+
+test('control groups and the autosave clock do not outlive a match (UI setGame clears them; a save carries the groups)', () => {
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8'), setGame = ui.slice(ui.indexOf('  setGame(game) {'), ui.indexOf('\n', ui.indexOf('  setGame(game) {')));
+  assert.match(setGame, /this\.groups = \{\}/, 'a new or loaded match starts with no groups');
+  assert.match(setGame, /this\.lastAuto = game\.time/, 'and with the autosave clock at the match time');
+  assert.match(ui, /writeSave\(slot, \{ \.\.\.g\.serialize\(\), groups: this\.groups \}\)/);
+  assert.match(ui, /this\.groups = cleanGroups\(d\.groups\)/);
 });
 
 console.log(`${passed} passed`);

@@ -108,5 +108,17 @@ const { chromium } = require('playwright');
   console.log('grid keys', JSON.stringify({ lettered, gridStance, mineKey, placing, stored: await p.evaluate(() => localStorage.getItem('auld-world.gridkeys')) }));
   if (lettered !== 'Q W E R A S D F' || gridStance !== 'defensive' || mineKey !== 'Q' || placing !== 'mine' || !serfPlace) errs.push('grid keys failed');
   await p.evaluate(() => document.getElementById('kGrid').click()); if (await p.evaluate(() => window.__seven.ui.gridKeys || localStorage.getItem('auld-world.gridkeys'))) errs.push('grid keys did not switch off');
+  // T36: Ctrl+1 stores the formation group; the row over the minimap shows it; a click on the chip selects it again; a blow makes it flash
+  await p.evaluate((ids) => { const { game: g, ui } = window.__seven; ui.setUnits(ids.map((i) => g.byId.get(i)).filter((u) => u && u.hp > 0)); }, grp); await p.waitForTimeout(150);
+  await p.keyboard.down('Control'); await p.keyboard.press('1'); await p.keyboard.up('Control'); await p.waitForTimeout(400);
+  await p.evaluate(() => window.__seven.ui.clearSel()); await p.waitForTimeout(300);
+  const chip = await p.evaluate(() => { const c = document.querySelector('#groupBar .grp[data-grp="1"]'); return c ? { shown: !document.getElementById('groupBar').classList.contains('hidden'), n: c.querySelector('i').textContent, img: !!c.querySelector('img') } : null; });
+  await p.click('#groupBar .grp[data-grp="1"]'); await p.waitForTimeout(200);
+  const picked = await p.evaluate(() => window.__seven.ui.selUnits().length);
+  await p.evaluate((ids) => { const { game: g } = window.__seven; g.byId.get(ids[0]).engagedT = g.time; }, grp); await p.waitForTimeout(400);
+  const flash = await p.locator('#groupBar .grp.fight').count();
+  console.log('control group row', JSON.stringify({ chip, picked, flash }));
+  if (!chip || !chip.shown || chip.n !== '9' || picked !== 9 || !flash) errs.push('control group row failed: ' + JSON.stringify({ chip, picked, flash }));
+  await p.setViewportSize({ width: 1366, height: 768 }); await p.waitForTimeout(500); await p.screenshot({ path: 'logs/groups.png' });
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length ? 1 : 0);
 })();

@@ -8,32 +8,33 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mvcywgac">
+<link rel="stylesheet" href="style.css?v=mvee040o">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mvcywgac",
-    "./js/art.js": "./js/art.js?v=mvcywgac",
-    "./js/audio.js": "./js/audio.js?v=mvcywgac",
-    "./js/config.js": "./js/config.js?v=mvcywgac",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mvcywgac",
-    "./js/entities.js": "./js/entities.js?v=mvcywgac",
-    "./js/game.js": "./js/game.js?v=mvcywgac",
-    "./js/gfx.js": "./js/gfx.js?v=mvcywgac",
-    "./js/keys.js": "./js/keys.js?v=mvcywgac",
-    "./js/learn.js": "./js/learn.js?v=mvcywgac",
-    "./js/main.js": "./js/main.js?v=mvcywgac",
-    "./js/map.js": "./js/map.js?v=mvcywgac",
-    "./js/names.js": "./js/names.js?v=mvcywgac",
-    "./js/net.js": "./js/net.js?v=mvcywgac",
-    "./js/objectives.js": "./js/objectives.js?v=mvcywgac",
-    "./js/recorder.js": "./js/recorder.js?v=mvcywgac",
-    "./js/render.js": "./js/render.js?v=mvcywgac",
-    "./js/save.js": "./js/save.js?v=mvcywgac",
-    "./js/terrain.js": "./js/terrain.js?v=mvcywgac",
-    "./js/trainui.js": "./js/trainui.js?v=mvcywgac",
-    "./js/ui.js": "./js/ui.js?v=mvcywgac"
+    "./js/ai.js": "./js/ai.js?v=mvee040o",
+    "./js/art.js": "./js/art.js?v=mvee040o",
+    "./js/audio.js": "./js/audio.js?v=mvee040o",
+    "./js/config.js": "./js/config.js?v=mvee040o",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mvee040o",
+    "./js/entities.js": "./js/entities.js?v=mvee040o",
+    "./js/game.js": "./js/game.js?v=mvee040o",
+    "./js/gfx.js": "./js/gfx.js?v=mvee040o",
+    "./js/groups.js": "./js/groups.js?v=mvee040o",
+    "./js/keys.js": "./js/keys.js?v=mvee040o",
+    "./js/learn.js": "./js/learn.js?v=mvee040o",
+    "./js/main.js": "./js/main.js?v=mvee040o",
+    "./js/map.js": "./js/map.js?v=mvee040o",
+    "./js/names.js": "./js/names.js?v=mvee040o",
+    "./js/net.js": "./js/net.js?v=mvee040o",
+    "./js/objectives.js": "./js/objectives.js?v=mvee040o",
+    "./js/recorder.js": "./js/recorder.js?v=mvee040o",
+    "./js/render.js": "./js/render.js?v=mvee040o",
+    "./js/save.js": "./js/save.js?v=mvee040o",
+    "./js/terrain.js": "./js/terrain.js?v=mvee040o",
+    "./js/trainui.js": "./js/trainui.js?v=mvee040o",
+    "./js/ui.js": "./js/ui.js?v=mvee040o"
   }
 }
 </script>
@@ -41,7 +42,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mvcywgac';
+window.__BUILD = 'mvee040o';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -104,6 +105,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
   </main>
 
   <footer id="hud">
+    <div id="groupBar" class="hidden"></div>
     <section id="minimapWrap">
       <canvas id="minimap" width="176" height="176"></canvas>
       <div id="miniBtns"><button id="btnHome" title="Jump to your home village (H)">Home</button><button id="btnIdle" title="Select next idle serf (.)">Idle</button><button id="btnArmy" title="Select all soldiers (,); Shift-click or I: idle soldiers">Army</button></div>

@@ -56,6 +56,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 18 | **Ore deposits per mineral**, full and half-dug (T-062; added 2026-10-16) | **Requested.** Wired: `ORE_ART` in `js/art.js`, the recoloured pile until painted; switch on in one line (below) |
 | — | Pack animals per people: donkey, Bactrian camel, camel (T-063, 2026-10-16) | **No painting needed.** `assets/shared/units/donkey.png`, `bactrian.png`, `dromedary.png` were already painted; the British and Scots now use the donkey |
 | — | Key rebinding (T03, 2026-10-16) | **No painting needed.** A text list in Options |
+| — | Control groups on the HUD (T36, 2026-10-18): a row of chips over the minimap | **No painting needed.** Each chip shows the existing unit card of the kind most in the group (the glyph where a kind has no card), with the number and count printed over it; the fight flash is drawn in CSS |
 | — | Grid keys (T03, 2026-10-17): the command card pressed by place (Q W E R / A S D F / Z X C V) | **No painting needed.** The key is printed in each button's top-right corner; painted button icons must leave that corner clear (priority 14) |
 
 ## How the game uses delivered art

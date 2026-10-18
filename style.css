@@ -550,3 +550,14 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 /* Grid keys (T03): the key that presses a command-card button, in its corner */
 .cbtn .hk { position: absolute; top: 1px; right: 2px; font-size: 8px; font-weight: 700; line-height: 1; color: rgba(255, 240, 200, .78); text-shadow: 0 1px 0 #000; pointer-events: none; }
 .cbtn.mini .hk { top: -1px; right: 1px; }
+
+/* control groups over the minimap (T36) */
+#groupBar { position: absolute; bottom: calc(100% + 3px); left: 4px; display: flex; gap: 3px; z-index: 6; }
+#groupBar .grp { position: relative; width: 38px; height: 38px; padding: 0; background: linear-gradient(180deg, #4a3319, #24180c); border: 1px solid var(--brass); border-radius: 3px; color: var(--ink); cursor: pointer; overflow: hidden; }
+#groupBar .grp b { position: absolute; left: 2px; top: 0; font-size: 11px; text-shadow: 0 1px 0 #000; z-index: 1; }
+#groupBar .grp i { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-style: normal; font-weight: 700; text-shadow: 0 1px 0 #000; z-index: 1; }
+#groupBar .grp .gi { position: absolute; inset: 3px 3px 2px 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+#groupBar .grp .gi img { max-width: 100%; max-height: 100%; }
+#groupBar .grp.on { border-color: #ffe08a; box-shadow: 0 0 0 1px #ffe08a; }
+#groupBar .grp.fight { animation: grpFight 0.8s steps(2) infinite; }
+@keyframes grpFight { 50% { background: linear-gradient(180deg, #a3271c, #4a0f0a); } }

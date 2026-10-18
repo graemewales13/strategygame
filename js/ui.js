@@ -9,6 +9,7 @@ import {
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
+import { groupUnits, groupRow, cleanGroups } from './groups.js';
 import { KEY_ACTIONS, loadKeys, saveKeys, rebind, actionOf, keyName, normKey, defaultKeys, GRID_KEYS, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
@@ -53,12 +54,12 @@ export class UI {
     const off = document.createElement('div'); off.id = 'offers'; $('field').appendChild(off);
     off.addEventListener('click', (e) => { const b = e.target.closest('button[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
     // panels are rebuilt several times a second; a rebuild between press and release would lose the click, so they hold still while a button is down
-    document.addEventListener('pointerdown', (e) => { if (e.button === 0 && e.target.closest?.('#offers, #cmdPanel, #selPanel, #council, #diplo, #houses, #topbar')) this.uiHold = true; }, true);
+    document.addEventListener('pointerdown', (e) => { if (e.button === 0 && e.target.closest?.('#offers, #cmdPanel, #selPanel, #council, #diplo, #houses, #topbar, #groupBar')) this.uiHold = true; }, true);
     document.addEventListener('pointerup', () => { this.uiHold = false; }, true); window.addEventListener('blur', () => { this.uiHold = false; });
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.endShown = false; this.sigCmd = this.sigSel = ''; $('end').classList.add('hidden'); }
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = ''; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -67,6 +68,16 @@ export class UI {
     return (s.type === 'building' || s.type === 'village') && s.id === e.id;
   }
   clearSel() { this.sel = { type: 'none', ids: [], id: null }; }
+  // control groups (Ctrl+1-9 sets, 1-9 recalls, again centres); shown as a row over the minimap (T36)
+  setGroup(k) { const us = this.selUnits().filter((u) => u.team === PLAYER); if (!us.length) return; this.groups[k] = us.map((u) => u.id); this.toast(`Group ${k} set (${us.length}).`, 'info'); this.renderGroups(); }
+  recallGroup(k, centre) { const us = groupUnits(this.game, this.groups[k]); if (!us.length) return; this.setUnits(us); if (centre) this.r.centerOn(us[0].x, us[0].y); this.lastGroup = k; }
+  renderGroups() {
+    const row = groupRow(this.game, this.groups), el = $('groupBar'); if (!el) return;
+    const sig = row.map((c) => `${c.k}${c.n}${c.kind}${c.fighting ? '!' : ''}`).join() + (this.sel.type === 'units' ? '|' + this.lastGroup : '');
+    if (sig === this.sigGroups) return; this.sigGroups = sig;
+    el.classList.toggle('hidden', !row.length);
+    el.innerHTML = row.map((c) => `<button class="grp${c.fighting ? ' fight' : ''}${this.lastGroup === c.k && this.sel.type === 'units' ? ' on' : ''}" data-grp="${c.k}" data-tip="${encodeURIComponent(`<b>Group ${c.k}</b>: ${c.n} ${c.n === 1 ? UNITS[c.kind].label : 'men, most of them ' + UNITS[c.kind].label.toLowerCase() + 's'}${c.fighting ? '. <b>In a fight now.</b>' : ''}<br>Click or press ${c.k} to select; double-click or press it again to go there. Ctrl+${c.k} stores the selection here.`)}"><b>${c.k}</b><span class="gi">${icon(c.kind, GLYPH[c.kind] || '')}</span><i>${c.n}</i></button>`).join('');
+  }
   selUnits() { return this.sel.type === 'units' ? this.sel.ids.map((id) => this.game.byId.get(id)).filter((u) => u && u.hp > 0) : []; }
   selEntity() { return ['building', 'village'].includes(this.sel.type) ? this.game.byId.get(this.sel.id) : null; }
   setUnits(units) {
@@ -111,6 +122,8 @@ export class UI {
     $('btnHome').onclick = () => this.focusHall();
     $('btnIdle').onclick = () => this.selectIdleSerf();
     $('btnArmy').onclick = (e) => (e.shiftKey ? this.selectIdleArmy() : this.selectArmy());
+    $('groupBar').addEventListener('click', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, false); });
+    $('groupBar').addEventListener('dblclick', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, true); });
     $('btnSpeed').onclick = () => { this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1; $('btnSpeed').textContent = this.speed + 'x'; };
     $('eNew').onclick = () => this.newValley();
     $('eStay').onclick = () => $('end').classList.add('hidden');
@@ -289,8 +302,8 @@ export class UI {
     if (e.repeat) return;
     const fighters = () => this.selUnits().some((u) => u.team === PLAYER && this.game.fighter(u));
     if (/^[1-9]$/.test(k)) {
-      if (mod) { e.preventDefault(); const us = this.selUnits(); if (us.length) { this.groups[k] = us.map((u) => u.id); this.toast(`Group ${k} set (${us.length}).`, 'info'); } }
-      else if (this.groups[k]) { const us = this.groups[k].map((id) => this.game.byId.get(id)).filter((u) => u && u.hp > 0); if (us.length) { this.setUnits(us); if (this.lastGroup === k) this.r.centerOn(us[0].x, us[0].y); this.lastGroup = k; } }
+      if (mod) { e.preventDefault(); this.setGroup(k); }
+      else this.recallGroup(k, this.lastGroup === k);
       return;
     }
     switch (act) {
@@ -666,7 +679,7 @@ export class UI {
     g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     // (not while a button is held down: a panel rebuilt under the pointer loses the click)
-    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); if (this.diploOpen != null) this.renderDiplo(); }
+    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
@@ -1360,7 +1373,7 @@ export class UI {
   saveGame(slot = 'manual', quiet = false) {
     const g = this.game;
     if (!this.started || g.outcome) { if (!quiet) this.toast('There is no game in progress to save.', 'warn'); return false; }
-    const ok = writeSave(slot, g.serialize());
+    const ok = writeSave(slot, { ...g.serialize(), groups: this.groups });   // (the control groups ride along with the match)
     if (!quiet) this.toast(ok ? 'Game saved.' : 'Could not save: the browser refused storage (private window or full).', ok ? 'good' : 'warn');
     this.refreshSaveBar();
     return ok;
@@ -1369,6 +1382,7 @@ export class UI {
     const d = readSave(slot);
     if (!d) { this.toast('No saved game there yet.', 'warn'); return false; }
     try { this.onLoad(d); } catch (e) { console.error('[auld-world] load failed', e); this.toast('That save could not be loaded: ' + e.message, 'warn'); return false; }
+    this.groups = cleanGroups(d.groups); this.sigGroups = '';
     this.started = true; this.firstFocus = true; this.closeMenu(); this.toast('Game loaded.', 'good');
     return true;
   }
