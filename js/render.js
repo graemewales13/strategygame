@@ -24,8 +24,8 @@ const RUIN_LIFE = 30;   // seconds a fallen building's painted ruin lies where i
 // drawn height at zoom 1. The order says who matters in a fight: serfs smallest, levies and folk of the house next, soldiers a head taller,
 // riders and the king tallest (see the character guide in ARTREQUIREMENTS.md)
 // the ram's wheel hubs on its painted body: [x, y, radius] as fractions of the body's width/height/width, 'far' wheels behind the body.
-// Placeholders until ram_body.png and ram_wheel.png are delivered (ARTREQUIREMENTS priority 13); fitted to the art then.
-const RAM_WHEELS = [[0.86, 0.6, 0.08, 'far'], [0.42, 0.66, 0.08, 'far'], [0.08, 0.8, 0.085], [0.55, 0.88, 0.085]];
+// Fitted to the axle bolts on ram_body.png (left rear bolt, the beam over the log, the near rail, the bottom stub).
+const RAM_WHEELS = [[0.075, 0.625, 0.078, 'far'], [0.73, 0.71, 0.07, 'far'], [0.19, 0.675, 0.08], [0.535, 0.905, 0.088]];
 const USCALE = { serf: 34, recruit: 40, scholar: 42, spy: 43, scout: 46, bowman: 49, footman: 50, knight: 66, king: 68 };
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {

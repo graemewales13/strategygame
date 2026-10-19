@@ -6,9 +6,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 ## Paint next: new characters are needed
 
-**The character list is done**, except the optional women among the serfs (not wired). Still open, all small and all wired with stand-ins: the ram in two parts (13), thirteen order icons (14), the watchman mark (16), the disguise mark (17) and ore deposits per mineral (18); walk cycles (15) come later. Kings, serfs, the new peoples' folk and sites, and the three pale spies are painted. Checked 2026-10-13: all 197 files keyed; the full cast of all eight peoples passes the lineup test at game size; in game with no errors and no missing files.
-
-One small open item: the Scottish `recruit` still wears a kilt-like belted plaid, four centuries early for 12th to 13th century Gaels. Repaint it in the léine and brat like the new Scottish serfs (character guide, dress table). Low priority.
+**The character list is done**, except the optional women among the serfs (not wired). Delivered 2026-10-19: the ram in two parts (13), thirteen order icons (14), the watchman mark (16), the disguise mark (17), ore deposits per mineral (18), and the siege line (13b: onager, trebuchet, and the three research icons). Walk cycles (15) come later. The Scottish recruit was repainted the same day: a léine and a plain brat, no kilt. Kings, serfs, the new peoples' folk and sites, and the three pale spies were already painted.
 
 **Order icons (priority 14, thirteen since 2026-10-16)**: four stances, four formations, and the five order buttons (Attack-move, Attack, Retreat, Stop, Repair) for the command card, shared by every house, 128x128, `assets/shared/ui/orders/<key>.png`. Small and quick; the buttons work with text glyphs until then.
 
@@ -20,13 +18,13 @@ One small open item: the Scottish `recruit` still wears a kilt-like belted plaid
 | 4 | **The new peoples' Armoury soldiers** | Vikings, Byzantines, Persians | the six keys of priority 3 | 18 | priorities 3 and 8 — **delivered** 2026-10-13 |
 | 5 | **Spies repainted dark** | Egyptians, Scots, Mongols | `units/spy.png` | 3 | priority 11 — **delivered** 2026-10-13 |
 | 6 | Building sites and ruins for the new peoples | Vikings, Byzantines, Persians | `buildings/<key>_build.png`, `<key>_ruin.png` for the 18 keys | 108 | priorities 6 and 8 — **delivered** 2026-10-13 |
-| 8 | **The ram as a body and a wheel**, so its wheels really turn | shared | `assets/shared/units/ram_body.png`, `ram_wheel.png` | 2 | priority 13 (new 2026-10-14) |
+| 8 | **The ram as a body and a wheel**, so its wheels really turn | shared | `assets/shared/units/ram_body.png`, `ram_wheel.png` | 2 | priority 13 — **delivered** 2026-10-19 |
 | 9 | *Later:* walk cycles, soldiers first | all 8 | `units/<role>_walk1.png` ... `_walk4.png` | up to 96 for soldiers | priority 15 (new 2026-10-14; was a second "14") |
-| 10 | **Thirteen order icons**: four stances, four formations, attack-move, attack, retreat, stop, repair | shared | `assets/shared/ui/orders/<key>.png` | 13 | priority 14 (2026-10-13; five order buttons added 2026-10-16) |
-| 11 | **The watchman mark**: an eye-and-lantern badge for the Watch row of your villages | shared | `assets/shared/ui/marks/watch.png` | 1 | priority 16 (new 2026-10-15) |
-| 12 | **Disguise mark**: a plain dark leather half mask, 64x64, neutral (no house colour), drawn over a disguised spy for his owner only | shared | `assets/shared/ui/marks/disguise.png` | 1 | priority 17 (new 2026-10-16); stand-in: the 🎭 glyph; wired |
-| 13 | **Ore deposits painted per mineral**: stone, copper, iron, coal and silver, each full and half-dug, unmistakable at a glance (stone grey dressed rock; copper green-stained orange rock; **iron dark red-brown haematite**; coal black seams; silver pale veins in dark rock). Today they are the gold pile recoloured, and the owner could not tell iron from stone | shared | `assets/shared/resources/<mineral>.png`, `<mineral>_half.png` | 10 | priority 18 (new 2026-10-16); stand-in: recoloured gold pile (iron now rust red), and every mine wears a name plate; wired |
-| 12 | **Siege engines**: the **Onager** (a torsion catapult with a sling arm: the owner's "slingshot") and the **Trebuchet** (a great counterweight engine), the second and third of the siege line after the Ram; plus research icons for **Siegecraft**, **Torsion engines** and **Counterweight engines** | shared | `assets/shared/units/onager.png`, `trebuchet.png`; `assets/shared/ui/tech/siegecraft.png`, `torsion.png`, `counterweight.png` | 5 | new 2026-10-19. Stand-ins today: timber frames drawn in code with a house-coloured pennant (`siegeSprite` in art.js). When the units are in, set `SIEGE_ART = true` in `js/art.js`; when the icons are in, empty `TECH_UNPAINTED` |
+| 10 | **Thirteen order icons**: four stances, four formations, attack-move, attack, retreat, stop, repair | shared | `assets/shared/ui/orders/<key>.png` | 13 | priority 14 — **delivered** 2026-10-19 |
+| 11 | **The watchman mark**: an eye-and-lantern badge for the Watch row of your villages | shared | `assets/shared/ui/marks/watch.png` | 1 | priority 16 — **delivered** 2026-10-19 |
+| 12 | **Disguise mark**: a plain dark leather half mask, 64x64, neutral (no house colour), drawn over a disguised spy for his owner only | shared | `assets/shared/ui/marks/disguise.png` | 1 | priority 17 — **delivered** 2026-10-19 |
+| 13 | **Ore deposits painted per mineral**: stone, copper, iron, coal and silver, each full and half-dug | shared | `assets/shared/resources/<mineral>.png`, `<mineral>_half.png` | 10 | priority 18 — **delivered** 2026-10-19 |
+| 12 | **Siege engines**: the **Onager** and the **Trebuchet**, plus research icons for **Siegecraft**, **Torsion engines** and **Counterweight engines** | shared | `assets/shared/units/onager.png`, `trebuchet.png`; `assets/shared/ui/tech/siegecraft.png`, `torsion.png`, `counterweight.png` | 5 | priority 13b — **delivered** 2026-10-19 |
 | 7 | *Optional:* women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | character guide (not wired yet: say when they are coming and it is one line) |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
@@ -46,15 +44,16 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 9 | Soldiers to the character guide: footman, bowman, knight (8 peoples, 24) | **Delivered and wired** 2026-10-12, scaled to 260 px on the long side (T-054) |
 | 10 | **Serfs per people** (8 peoples, 24) | **Delivered and wired** 2026-10-13. `serf`, `serf_work1`, `serf_work2` are out of `REPAINT` |
 | 11 | Spies easy to miss (Egyptians, Scots, Mongols) | **Delivered** 2026-10-13. Dark cloaks; the people's colour is only a cord |
-| 13 | **Ram body and wheel** | **Requested** 2026-10-14 (below). Wired behind `RAM_PARTS` in `js/art.js` |
+| 13 | **Ram body and wheel** | **Delivered and wired** 2026-10-19. `RAM_PARTS` is true; `RAM_WHEELS` sits on the painted axles |
 | 15 | Walk cycles (soldiers first) | **Later** (below). Until then the game strides the still figures in code |
 | 12 | **Kings on the field** (8) | **Delivered and wired** 2026-10-13. `king` is out of `REPAINT`. The drawn crown is kept only when a people has no painted king |
 | — | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** Queued legs are drawn in code |
-| 14 | **Order icons**: four stances, four formations (T01, T02; added 2026-10-13), and attack-move, attack, retreat, stop, repair (added 2026-10-16) | **Requested.** Wired in code: the buttons show a text glyph until painted; switch on in one line (below) |
-| 16 | **Watchman mark** (spies posted in your own villages, T-057; added 2026-10-15) | **Requested.** Wired in code: the village panel's Watch row shows 👁 until painted; switch on in one line (below) |
+| 14 | **Order icons**: four stances, four formations, and attack-move, attack, retreat, stop, repair | **Delivered and wired** 2026-10-19. `UI_KEYS.orders` lists all thirteen. The top-right eighth of each icon is empty for the grid key |
+| 16 | **Watchman mark** | **Delivered and wired** 2026-10-19. `'watch'` is in `UI_KEYS.marks` |
+| 17 | **Disguise mark** | **Delivered and wired** 2026-10-19. `'disguise'` is in `UI_KEYS.marks` |
+| 18 | **Ore deposits per mineral**, full and half-dug | **Delivered and wired** 2026-10-19. `ORE_PAINTED` lists stone, copper, iron, coal, silver |
+| 13b | **Onager, trebuchet, and the siege research icons** | **Delivered and wired** 2026-10-19. `SIEGE_ART` is true; `TECH_UNPAINTED` is empty |
 | — | Selecting idle soldiers and a kind across the valley (T31, 2026-10-15) | **No painting needed.** Uses the existing Army button and keys |
-| 17 | **Disguise mark** (a spy in a rival's colours, T-060; added 2026-10-16) | **Requested.** Wired: drawn over your disguised spy through the marks group, 🎭 until painted; switch on in one word (below) |
-| 18 | **Ore deposits per mineral**, full and half-dug (T-062; added 2026-10-16) | **Requested.** Wired: `ORE_ART` in `js/art.js`, the recoloured pile until painted; switch on in one line (below) |
 | — | Pack animals per people: donkey, Bactrian camel, camel (T-063, 2026-10-16) | **No painting needed.** `assets/shared/units/donkey.png`, `bactrian.png`, `dromedary.png` were already painted; the British and Scots now use the donkey |
 | — | Key rebinding (T03, 2026-10-16) | **No painting needed.** A text list in Options |
 | — | Control groups on the HUD (T36, 2026-10-18): a row of chips over the minimap | **No painting needed.** Each chip shows the existing unit card of the kind most in the group (the glyph where a kind has no card), with the number and count printed over it; the fight flash is drawn in CSS |
