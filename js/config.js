@@ -134,18 +134,27 @@ export const SCIENCE = ['Husbandry', 'Masonry', 'Drill']; // (legacy names of th
 // ---- science. The Academy is the house's science division: every academy makes LEARNING (a little on its own, more with scholars beside it,
 // and each abbey you hold adds some). Learning, and silver for the deeper arts, pays for one research at a time from the tree below; a
 // tech's `needs` must be known first. The Armoury and each weapon it makes are unlocked by research.
-export const LEARNING = { academy: 0.3, scholar: 0.15, abbey: 0.05, cap: 300 };   // learning a second; the pool holds at most `cap`
+export const LEARNING = { academy: 0.3, scholar: 0.15, abbey: 0.05, cap: 600 };   // (the bank must hold a tier-3 research's 400)   // learning a second; the pool holds at most `cap`
+// Research costs were raised threefold on 2026-10-19 (owner: every house mastered the whole academy in a quarter of an hour, which made
+// it pointless). One academy with two scholars now takes about an hour for the lot, so choices matter and a second academy pays.
+// The siege line (owner, same day): each engine needs its research, and each is stronger than the last against walls.
 export const TECH = {
-  husbandry:   { label: 'Husbandry',   tier: 1, cost: { learning: 30 },             needs: [],                          info: '+15% grain from farms, +10% gathering and digging.' },
-  masonry:     { label: 'Masonry',     tier: 1, cost: { learning: 30 },             needs: [],                          info: 'New buildings +15% health.' },
-  drill:       { label: 'Drill',       tier: 1, cost: { learning: 30 },             needs: [],                          info: 'New soldiers +15% health.' },
-  metallurgy:  { label: 'Metallurgy',  tier: 2, cost: { learning: 60, silver: 4 },  needs: ['masonry'],                 info: 'Unlocks the Armoury, which makes spears and mail.' },
-  fletching:   { label: 'Fletching',   tier: 2, cost: { learning: 60, silver: 4 },  needs: ['drill'],                   info: 'The Armoury makes longbows.' },
-  medicine:    { label: 'Medicine',    tier: 2, cost: { learning: 60, silver: 4 },  needs: ['husbandry'],               info: 'Idle soldiers mend their wounds; scholars heal twice as fast.' },
-  steelcraft:  { label: 'Steelcraft',  tier: 3, cost: { learning: 100, silver: 8 }, needs: ['metallurgy'],              info: 'The Armoury makes swords, lances and plate.' },
-  mechanics:   { label: 'Mechanics',   tier: 3, cost: { learning: 100, silver: 8 }, needs: ['metallurgy', 'fletching'], info: 'The Armoury makes crossbows; new rams +30% health.' },
-  engineering: { label: 'Engineering', tier: 3, cost: { learning: 100, silver: 8 }, needs: ['masonry', 'medicine'],     info: 'Towers shoot 2 tiles further; new keeps and towers +25% health.' },
+  husbandry:   { label: 'Husbandry',   tier: 1, cost: { learning: 90 },              needs: [],                          info: '+15% grain from farms, +10% gathering and digging.' },
+  masonry:     { label: 'Masonry',     tier: 1, cost: { learning: 90 },              needs: [],                          info: 'New buildings +15% health.' },
+  drill:       { label: 'Drill',       tier: 1, cost: { learning: 90 },              needs: [],                          info: 'New soldiers +15% health.' },
+  siegecraft:  { label: 'Siegecraft',  tier: 1, cost: { learning: 90 },              needs: [],                          info: 'Unlocks the Ram at the Workshop: a roofed log that batters walls and gates up close.' },
+  metallurgy:  { label: 'Metallurgy',  tier: 2, cost: { learning: 200, silver: 6 },  needs: ['masonry'],                 info: 'Unlocks the Armoury, which makes spears and mail.' },
+  fletching:   { label: 'Fletching',   tier: 2, cost: { learning: 200, silver: 6 },  needs: ['drill'],                   info: 'The Armoury makes longbows.' },
+  medicine:    { label: 'Medicine',    tier: 2, cost: { learning: 200, silver: 6 },  needs: ['husbandry'],               info: 'Idle soldiers mend their wounds; scholars heal twice as fast.' },
+  torsion:     { label: 'Torsion engines', tier: 2, cost: { learning: 200, silver: 6 }, needs: ['siegecraft'],          info: 'Unlocks the Onager at the Workshop: a sling-armed engine that flings stones 7 tiles, harder on walls than a ram and deadly to men caught beneath.' },
+  steelcraft:  { label: 'Steelcraft',  tier: 3, cost: { learning: 400, silver: 12 }, needs: ['metallurgy'],              info: 'The Armoury makes swords, lances and plate.' },
+  mechanics:   { label: 'Mechanics',   tier: 3, cost: { learning: 400, silver: 12 }, needs: ['metallurgy', 'fletching'], info: 'The Armoury makes crossbows; new siege engines +30% health.' },
+  engineering: { label: 'Engineering', tier: 3, cost: { learning: 400, silver: 12 }, needs: ['masonry', 'medicine'],     info: 'Towers shoot 2 tiles further; new keeps and towers +25% health.' },
+  counterweight: { label: 'Counterweight engines', tier: 3, cost: { learning: 400, silver: 12 }, needs: ['torsion', 'masonry'], info: 'Unlocks the Trebuchet at the Workshop: a great counterweight engine that hurls boulders 11 tiles. The worst a wall can meet; slow, and poor against men.' },
 };
+export const SIEGE = new Set(['ram', 'onager', 'trebuchet']);
+// a keep has a yard and sheds for this many siege engines, apart from its garrison: stored out of harm's way and kept in repair (owner, 2026-10-19)
+export const SIEGE_STORE = 3;   // the siege engines (built at the Workshop, each behind its research)
 export const TECH_KEYS = Object.keys(TECH);
 export const MEDICINE = { heal: 0.6, quiet: 6 };   // hp a second an idle soldier mends, once `quiet` seconds clear of a fight
 // ---- weapons and armour, made at the Armoury and kept in the stockpile. A soldier takes up the best kit for his kind when he is trained or
@@ -182,7 +191,10 @@ export const UNITS = {
   recruit: { label: 'Recruit', hp: 55,  speed: 2.6, dmg: 5,  range: 1,   cd: 1.2,  sight: 6,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.3, vil: 0.6, art: 'scout', info: 'A hired wanderer or levied villager. Fights poorly until drilled into a soldier inside a keep.' },
   camel:   { label: 'Camel',   hp: 90,  speed: 3.0, dmg: 0,  range: 1,   cd: 2.0,  sight: 7,  cost: { food: 40, wood: 20, gold: 30 },  time: 12, from: ['market'],       bld: 0, vil: 0, nopop: true, info: 'Pack animal. Select it, then click markets (yours or a treaty partner\'s) and it loops between them for ever, hauling goods both ways.' },
   king:    { label: 'King',    hp: 240, speed: 3.0, dmg: 14, range: 1,   cd: 1.0,  sight: 9,  cost: { food: 0, wood: 0, gold: 0 },    time: 0,  from: [],              bld: 0.5, vil: 1.2, art: 'knight', info: 'The ruler of a house. Rallies soldiers, sways villages by his presence, and must not fall.' },
-  ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, info: 'Siege. Splinters halls and hillforts.' },
+  ram:     { label: 'Ram',     hp: 240, speed: 1.4, dmg: 30, range: 1.1, cd: 2.2,  sight: 5,  cost: { food: 0, wood: 180, gold: 40 }, time: 28, from: ['workshop'],     bld: 2.6, vil: 3.0, tech: 'siegecraft', info: 'Siege. Batters walls and gates up close. Needs Siegecraft.' },
+  // ranged siege: `unit` scales what a shot does to men (a trebuchet's boulder rarely finds one)
+  onager:  { label: 'Onager',  hp: 170, speed: 1.1, dmg: 52, range: 7,   cd: 4.0,  sight: 8,  cost: { food: 0, wood: 240, gold: 120, stone: 40 }, time: 34, from: ['workshop'], bld: 3.2, vil: 3.2, unit: 1, tech: 'torsion', info: 'Siege. Flings stones 7 tiles: harder on walls than a ram, and hurts men too. Needs Torsion engines.' },
+  trebuchet: { label: 'Trebuchet', hp: 230, speed: 0.85, dmg: 110, range: 11, cd: 6.0, sight: 9, cost: { food: 0, wood: 360, gold: 200, stone: 80 }, time: 46, from: ['workshop'], bld: 3.6, vil: 3.6, unit: 0.3, tech: 'counterweight', info: 'Siege. Hurls boulders 11 tiles: the worst a wall can meet. Slow, and poor against men. Needs Counterweight engines.' },
 };
 
 // ---- Buildings ---------------------------------------------------------------------------
@@ -194,7 +206,7 @@ export const BUILDINGS = {
   warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['mine'],          info: 'Drop-off for all goods, +10% delivered.' },
   market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: [],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets and villages. Drop-off. Small coin trickle.' },
   forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks', 'foundry'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
-  workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Trains rams.' },
+  workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Builds siege engines: the Ram, Onager and Trebuchet, each once its research is done at the academy.' },
   tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: [],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
   academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'The science division: makes learning (more with scholars beside it) and researches technologies, one at a time. Trains scholars. Unlocks the workshop and temple coin.' },
   armoury:   { label: 'Armoury',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60, stone: 20 }, time: 24, requires: ['forge'], tech: 'metallurgy', info: 'Makes weapons and armour from the stockpile (each unlocked by research): spears, swords, longbows, crossbows, lances, mail, plate. Soldiers take them up when trained, or when idle nearby.' },
@@ -355,6 +367,8 @@ export const ABILITIES = {
   spy: 'Right-click a village to infiltrate it (turns it toward you); right-click one of yours to post him there as a watchman who catches rival spies',
   scholar: 'Heals friends, boosts academy influence',
   ram: 'Siege: right-click walls',
+  onager: 'Siege: right-click walls or troops within 7 tiles',
+  trebuchet: 'Siege: right-click walls from 11 tiles',
   king: 'Leads your soldiers (+damage near him), sways villages he visits, enters keeps to heal. If he falls your soldiers lose heart until an heir rises',
   camel: 'Carries up to 40 goods: select it, then click up to 5 markets to loop between for ever (markets only)',
 };

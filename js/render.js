@@ -1,10 +1,10 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf } from './config.js';
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf, SIEGE } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, ORE_ART, armedKey, factionSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, ORE_ART, armedKey, factionSprite, siegeSprite } from './art.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -147,6 +147,7 @@ export class Renderer {
     for (const p of g.projectiles) {
       if (!isVis(p.x, p.y)) continue;
       const [sx, sy] = this.toScreen(p.x, p.y), a = p.ang || 0;
+      if (p.stone) { ctx.fillStyle = '#6a665e'; ctx.strokeStyle = '#2a2622'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx, sy - 22 * z, 4.5 * z, 0, 7); ctx.fill(); ctx.stroke(); ctx.strokeStyle = '#f3e2a0'; ctx.lineWidth = 2; continue; }   // a siege stone, high in its arc
       const dx = (Math.cos(a) - Math.sin(a)) * HW, dy = (Math.cos(a) + Math.sin(a)) * HH, l = Math.hypot(dx, dy) || 1;
       ctx.beginPath(); ctx.moveTo(sx - (dx / l) * 9 * z, sy - 14 * z - (dy / l) * 9 * z); ctx.lineTo(sx, sy - 14 * z); ctx.stroke();
     }
@@ -692,7 +693,7 @@ export class Renderer {
   }
   // how a figure walks: null for anything that should not stride (a chariot rolls, a ram has wheels, a serf at work)
   gaitOf(u, c, fac) {
-    if (u.kind === 'ram' || u.kind === 'camel') return null;
+    if (SIEGE.has(u.kind) || u.kind === 'camel') return null;
     const mounted = c.width / c.height > 0.8;   // a horse and rider is wider than tall; a man on foot is not
     if (mounted) return fac === 'egyptians' && (u.kind === 'knight' || u.kind === 'king') ? null : { hip: 0.64, split: 0.5, amp: 0.34, rate: 0.7 };
     const robed = u.kind === 'spy' || u.kind === 'scholar';   // long robes and cloaks: the hem sways rather than the legs scissoring
@@ -746,7 +747,8 @@ export class Renderer {
     const working = !moving && (u.task.type === 'gather' || u.task.type === 'build' || u.task.type === 'mine');
     let c, w, h;
     let rightArt = false, full = false, sway = false;   // (sway: a stand-in figure with no work frames rocks at his task)   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
-    if (u.kind === 'ram') { const s2 = SIMG.ram_body && SIMG.ram_wheel ? SIMG.ram_body : SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
+    if (u.kind === 'onager' || u.kind === 'trebuchet') { const s2 = SIMG[u.kind]; if (s2) { c = s2; rightArt = true; } else { c = siegeSprite(u.kind, u.team); rightArt = true; } w = (u.kind === 'trebuchet' ? 96 : 82) * z; }
+    else if (u.kind === 'ram') { const s2 = SIMG.ram_body && SIMG.ram_wheel ? SIMG.ram_body : SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
     else if (u.kind === 'camel') { const s2 = SIMG[packOf(u.team).sprite]; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }   // (each people's own pack animal)
     else if (u.kind === 'serf') {   // the house's own serf when its people has one painted (idle, two work frames), else the common one
       const fu = FUNIT[HOUSES[u.team]?.faction], key = working ? ((Math.floor(t * 2 + u.id) & 1) ? 'serf_work2' : 'serf_work1') : 'serf', own = fu?.[key] || fu?.serf || fu?.recruit;   // (until a people's serfs are painted, its villager in work clothes stands in)
@@ -760,20 +762,20 @@ export class Renderer {
     }
     if (!c) return;
     h = (c.height / c.width) * w;
-    const wheeled = u.kind === 'ram';   // a cart on four wheels: it rumbles over the ground instead of bobbing like a walker, and its shadow spans the wheelbase
+    const wheeled = SIEGE.has(u.kind);   // a cart on four wheels: it rumbles over the ground instead of bobbing like a walker, and its shadow spans the wheelbase
     const gait = moving && full && gfx.q >= 1 ? this.gaitOf(u, c, HOUSES[u.team]?.faction) : null, sph = gait ? u.anim * gait.rate : 0;   // (striding painted figures)
     const bob = wheeled ? (moving ? Math.abs(Math.sin(u.anim * 2.1)) * 0.6 * z : 0) : gait ? (1 - Math.abs(Math.sin(sph))) * 1.6 * z : moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;   // (a striding body rises as the legs pass)
     const lunge = striking ? 5 * z * (u.cooldown > st.cd - 0.12 ? 1 : 0.5) : 0;
     if (wheeled) this.shadowAt(ctx, sx, sy - h * 0.13, w * 0.5, h * 0.17, 0.42);   // (the three-quarter art puts the rear wheels well up the picture)
     else this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
-    if (moving && gfx.q >= 1 && (u.kind === 'camel' || u.kind === 'ram')) this.dust(ctx, sx, sy, u._sg || 1, t, z, u.id);
+    if (moving && gfx.q >= 1 && (u.kind === 'camel' || SIEGE.has(u.kind))) this.dust(ctx, sx, sy, u._sg || 1, t, z, u.id);
     if (gfx.q >= 1 && !ui?.isSelected(u) && u.kind !== 'camel') { ctx.strokeStyle = HOUSES[look]?.primary || '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); if (wheeled) ctx.ellipse(sx, sy - h * 0.13, w * 0.44, h * 0.15, 0, 0, 7); else ctx.ellipse(sx, sy + 1 * z, 9 * z, 4.2 * z, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
-    this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
+    this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (SIEGE.has(u.kind) || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
     ctx.rotate(gait ? Math.sin(sph * 2) * 0.012 : moving && !wheeled ? Math.sin(u.anim * 0.55) * 0.045 : working && sway ? Math.sin(t * 6 + u.id) * 0.07 : 0);
     ctx.scale((flip !== rightArt) ? -sxScale : sxScale, 1);
-    const foot = full ? 0.985 : u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
+    const foot = full ? 0.985 : SIEGE.has(u.kind) || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
     const top = -h * foot - bob;
     if (u.kind === 'camel' && rightArt && gfx.q >= 1) this.camelBody(ctx, c, w, h, top, moving, u, t, z);
     else if (gait) this.strideBody(ctx, c, w, h, top, gait, sph);

@@ -103,19 +103,24 @@ Rival houses play for the crown: at war they strike an **exposed king** first (s
 - **Opinions and letters.** Every house keeps an opinion of every other. Trade, common enemies and gifts warm it; envy of the strongest, broken oaths, sacked villages, slain kings and fighting a friend sour it. Leaders judge requests by opinion, strength and temper, and **write to you**: alliance offers, calls to arms against a third house, tribute demands (defy a stronger house and it may declare war), pleas for aid, offers of peace when losing, gifts, warnings. Letters appear as cards top right with Accept and Decline, and lapse if ignored (ignoring a demand or call to arms counts as refusing). A demand card says what refusing risks, with their army against yours; a letter arrives with a chime, a demand or a war on you with the horn. News of other houses shows as one quiet line, so it never pushes your own alarms off the screen. Allies trade freely, never fight each other, and join each other's wars; breaking an oath is remembered by everyone. Victory is still conquest only: allies are for convenience.
 
 ## Science and weapons
-**The Academy is your science division.** Every academy makes *learning* (0.3 a second, +0.15 for each scholar beside it, up to four; each abbey you hold adds 0.05; up to 300 is banked). Select an academy and choose one research at a time; learning pays for it, and the deeper tiers also cost silver (paid when chosen, refunded if you change your mind):
+**The Academy is your science division.** Every academy makes *learning* (0.3 a second, +0.15 for each scholar beside it, up to four; each abbey you hold adds 0.05; up to 600 is banked). Select an academy and choose one research at a time; learning pays for it, and the deeper tiers also cost silver (paid when chosen, refunded if you change your mind):
 
 | Tier | Research | Needs | Does |
 |---|---|---|---|
-| 1 (30 learning) | Husbandry | - | +15% farm grain, +10% gathering and digging |
+| 1 (90 learning) | Husbandry | - | +15% farm grain, +10% gathering and digging |
 | 1 | Masonry | - | new buildings +15% health |
 | 1 | Drill | - | new soldiers +15% health |
-| 2 (60 + 4 silver) | Metallurgy | Masonry | unlocks the **Armoury**: spears, mail |
+| 1 | **Siegecraft** | - | the Workshop builds **Rams** (walls, up close) |
+| 2 (200 + 6 silver) | Metallurgy | Masonry | unlocks the **Armoury**: spears, mail |
 | 2 | Fletching | Drill | longbows |
 | 2 | Medicine | Husbandry | idle soldiers mend; scholars heal twice as fast |
-| 3 (100 + 8 silver) | Steelcraft | Metallurgy | swords, lances, plate |
-| 3 | Mechanics | Metallurgy, Fletching | crossbows; rams +30% health |
+| 2 | **Torsion engines** | Siegecraft | the Workshop builds **Onagers**: stones from 7 tiles, harder on walls than a ram, and they hurt men |
+| 3 (400 + 12 silver) | Steelcraft | Metallurgy | swords, lances, plate |
+| 3 | Mechanics | Metallurgy, Fletching | crossbows; siege engines +30% health |
 | 3 | Engineering | Masonry, Medicine | towers +2 range; keeps and towers +25% health |
+| 3 | **Counterweight engines** | Torsion engines, Masonry | the Workshop builds **Trebuchets**: boulders from 11 tiles, the worst a wall can meet; poor against men |
+
+Research is dear (owner, 2026-10-19): one academy with two scholars takes about an hour for the whole tree, so choose; a second academy doubles the pace. Up to 600 learning is banked. **Siege engines** are built at the Workshop once researched; each does more to walls than the one before. A **keep** has sheds for three engines, apart from its garrison: right-click it with an engine to store it out of harm's way and in repair; **Leave** rolls them out. Rivals research the siege line, build engines beside their armies, keep them in their sheds in peace and roll them out for war.
 
 **The Armoury** (needs a forge and Metallurgy) makes kit into your stockpile from timber, iron and steel, five orders at a time: spears (+2 damage, +60% against horse), swords (+5), longbows (+1 damage, +1.5 range), crossbows (+6, slower to load), lances (+6), mail (+25% health), plate (+50% health, a little slower). Soldiers take up the best kit for their kind when trained or drilled, and swap up (handing the old kit back) when they stand idle within 7 tiles of an Armoury or sit garrisoned in a keep or barracks. The unit panel shows each soldier's kit. Rival houses research too, build armouries and keep kit in stock. Soldiers carrying kit are drawn with it (a spearman, a crossbowman, a footman in plate), and the panels show the kit and research icons. Art still to come is listed in `ARTREQUIREMENTS.md`; anything missing falls back to the older art or a glyph.
 

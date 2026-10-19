@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -154,7 +154,7 @@ function think(game, team, p) {
     const picks = [];
     if (pb?.mix && wb >= 0.35) {   // train toward the player's mix of footmen, bowmen and knights
       const have = (k) => army.filter((u) => u.kind === k).length + queued(game, team, k);
-      const total = Math.max(1, raised + queuedMil), order = Object.keys(pb.mix).filter((k) => k !== 'ram' && UNITS[k]).sort((x, y) => (pb.mix[y] - have(y) / total) - (pb.mix[x] - have(x) / total));
+      const total = Math.max(1, raised + queuedMil), order = Object.keys(pb.mix).filter((k) => !SIEGE.has(k) && UNITS[k]).sort((x, y) => (pb.mix[y] - have(y) / total) - (pb.mix[x] - have(x) / total));
       for (const k of order) picks.push(k);
       if (!picks.includes('footman')) picks.push('footman');
     } else {
@@ -169,12 +169,17 @@ function think(game, team, p) {
       }
       if (!picks.includes('footman')) picks.push('footman');
     }
-    if (game.hasBuilding(team, 'workshop') && army.filter((u) => u.kind === 'ram').length < 2 && army.length >= 6) picks.unshift('ram');
     for (const kind of picks) {
       const b = game.buildings.filter((x) => x.team === team && UNITS[kind].from.includes(x.kind) && x.built >= 1 && x.hp > 0).sort((a, c) => a.queue.length - c.queue.length)[0];
       if (b && b.queue.length < 3 && game.train(team, b.id, kind)) break;
     }
   }
+  // siege engines: their own allowance beside the army (one for every dozen soldiers, up to three), the best it has the research for
+  { const best = ['trebuchet', 'onager', 'ram'].find((k) => game.hasTech(team, UNITS[k].tech)), ws = game.buildings.find((b) => b.team === team && b.kind === 'workshop' && b.built >= 1 && b.hp > 0);
+    const have = game.units.filter((u) => u.team === team && SIEGE.has(u.kind) && u.hp > 0).length + ['ram', 'onager', 'trebuchet'].reduce((n, k) => n + queued(game, team, k), 0);
+    if (best && ws && raised >= 8 && have < Math.min(3, Math.floor(raised / 12) + 1) && ws.queue.length === 0) game.train(team, ws.id, best);
+    // the siege research is done but the build plan never reached a workshop: raise one
+    if (best && !game.buildings.some((b) => b.team === team && b.kind === 'workshop' && b.hp > 0) && !game.missingFor(team, 'workshop').length && game.canAfford(team, BUILDINGS.workshop.cost)) { const spot = findSpot(game, team, seat, 'workshop'); if (spot) game.place(team, 'workshop', spot[0], spot[1]); } }
   // spies: trained at a tavern or an academy. One keeps watch where a rival's spy has lately been at work in a village of ours; the rest
   // work on our neighbours' villages near our land and on the villages of houses we are at war with or dislike, or else on free villages
   const spiedOn = Object.entries(p.spied || {}).filter(([id, at]) => { const x = game.byId.get(+id); return game.time - at < 90 && x && (x.owner === team || (x.type === 'building' && x.team === team && x.hp > 0)); }).map(([id]) => game.byId.get(+id));
@@ -249,11 +254,11 @@ function think(game, team, p) {
 
   // 5. contest villages
   const readyArmy = army.filter((u) => u.task.type === 'idle');
-  let need = army.some((u) => u.kind === 'ram') ? 4 : 5, firstAt = 90;
+  let need = army.some((u) => SIEGE.has(u.kind)) ? 4 : 5, firstAt = 90;
   if (pb?.attack) { need = Math.round(clamp(lerp(need, pb.attack.size, wb), 3, 14)); firstAt = clamp(lerp(90, pb.attack.first * 0.85, wb), 60, 1200); }
   if (readyArmy.length >= need && t > firstAt) {
     const strength = readyArmy.reduce((n, u) => n + UNITS[u.kind].hp, 0);
-    const v = nearestFromFrontier(game, team, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => u.kind === 'ram') ? 400 : 0), 18);   // (from our frontier, not only home: a growing house keeps growing)
+    const v = nearestFromFrontier(game, team, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => SIEGE.has(u.kind)) ? 400 : 0), 18);   // (from our frontier, not only home: a growing house keeps growing)
     if (v) { const go = readyArmy.filter((u) => u.kind !== 'spy'); game.setStance(go, 'aggressive'); game.setFormation(go, 'line'); game.cmdAttack(go, v); p.planVillage = v.id; }
   }
   { const hurt = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp * 0.75 && (b.hitT ?? 0) <= 0 && !game.units.some((o) => o.hp > 0 && game.isEnemy(team, o.team) && Math.hypot(o.x - b.x, o.y - b.y) < 12));   // mend what is damaged, once the foe has gone
@@ -330,7 +335,7 @@ export function huntGoal(game, team, foeTeam, seat, ready) {
   if (k && !k.inside) return k;
   return game.units.find((u) => u.team === foeTeam && u.hp > 0 && !u.inside && game.powerOf(u) > 0) || null;
 }
-const AI_STUDY = ['drill', 'masonry', 'husbandry', 'metallurgy', 'fletching', 'steelcraft', 'medicine', 'mechanics', 'engineering'];
+const AI_STUDY = ['drill', 'masonry', 'siegecraft', 'husbandry', 'metallurgy', 'fletching', 'torsion', 'steelcraft', 'medicine', 'counterweight', 'mechanics', 'engineering'];
 // The house courts villages as a player does: a keep beside each village it wants (one more every few minutes, up to four), and soldiers
 // sitting inside to sway it (a keep's pull is full with GUARD.full guards in). At war they come out to march, leaving two on guard.
 export function courtVillages(game, team, p, seat, army, need, t) {
@@ -349,13 +354,19 @@ export function courtVillages(game, team, p, seat, army, need, t) {
   }
   const fighter = (u) => u && u.hp > 0 && (u.kind === 'footman' || u.kind === 'bowman' || u.kind === 'knight');
   const atWar = game.players.some((q) => q.alive && q.team !== team && game.rel[team][q.team] === 'war');
-  if (atWar) {   // the army is needed: posted soldiers come out, two stay on guard
+  if (atWar) {   // the army is needed: posted soldiers come out, two stay on guard; the engines roll out of the sheds
+    for (const k of keeps) for (const id of (k.engines || []).slice()) { const e = game.byId.get(id); if (e) game.eject(e, k); }
     const ready = army.filter((u) => u.task.type === 'idle' && !u.inside).length;
     if (ready < 7) for (const k of game.buildings.filter((b) => b.team === team && GARRISON[b.kind] && b.garrison.length)) {
       const sol = k.garrison.map((id) => game.byId.get(id)).filter((u) => fighter(u) && !u.drilling);
       for (const u of sol.slice(k.kind === 'keep' ? 2 : 0)) game.eject(u, k);
     }
     return;
+  }
+  // engines wait in the keeps' sheds in peace (out of harm's way, kept in repair)
+  for (const e of game.units.filter((u) => u.team === team && SIEGE.has(u.kind) && u.hp > 0 && !u.inside && u.task.type === 'idle')) {
+    const k = keeps.filter((x) => x.built >= 1 && (x.engines || []).length < SIEGE_STORE).sort((a, c) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(c.x - e.x, c.y - e.y))[0];
+    if (k) game.cmdEnter([e], k);
   }
   const posts = keeps.filter((k) => k.built >= 1 && (wanted.some((v) => Math.hypot(k.x - v.x, k.y - v.y) < 20) || outposts.some((v) => Math.hypot(k.x - v.x, k.y - v.y) < 16)));
   let free = army.filter((u) => fighter(u) && u.task.type === 'idle' && !u.inside && u.id !== p.scoutId);

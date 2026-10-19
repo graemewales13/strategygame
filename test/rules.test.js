@@ -9,7 +9,7 @@ import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -546,10 +546,10 @@ test('science: academies make learning; research follows the tree, and silver pa
   run(g, 3); assert.ok(p.learning > 0 && p.learnRate >= 0.2, 'the academy makes learning');
   g.addUnit('scholar', PLAYER, ac.x + 1, ac.y + 2); g.addUnit('scholar', PLAYER, ac.x - 1, ac.y + 2); run(g, 3);
   assert.ok(p.learnRate > 0.35, 'scholars beside it study faster: ' + p.learnRate);
-  p.learning = 39.9; run(g, 1); assert.ok(g.hasTech(PLAYER, 'masonry') && p.research === null && p.sci === 1);
+  p.learning = TECH.masonry.cost.learning - 0.1; run(g, 1); assert.ok(g.hasTech(PLAYER, 'masonry') && p.research === null && p.sci === 1);   // (prices from the rules: they change)
   p.silver = 0; assert.ok(/silver/.test(g.researchBlock(PLAYER, 'metallurgy')), 'the deeper arts cost silver');
-  p.silver = 10; assert.ok(g.startResearch(PLAYER, 'metallurgy')); assert.equal(p.silver, 6, 'paid up front');
-  assert.ok(g.startResearch(PLAYER, 'husbandry')); assert.equal(p.silver, 10, 'refunded when changed');
+  p.silver = 20; assert.ok(g.startResearch(PLAYER, 'metallurgy')); assert.equal(p.silver, 20 - TECH.metallurgy.cost.silver, 'paid up front');
+  assert.ok(g.startResearch(PLAYER, 'husbandry')); assert.equal(p.silver, 20, 'refunded when changed');
 });
 
 test('weapons: the Armoury needs Metallurgy; it makes kit that soldiers take up, and the kit tells in a fight', () => {
@@ -1286,6 +1286,49 @@ test('control groups and the autosave clock do not outlive a match (UI setGame c
   assert.match(setGame, /this\.lastAuto = game\.time/, 'and with the autosave clock at the match time');
   assert.match(ui, /writeSave\(slot, \{ \.\.\.g\.serialize\(\), groups: this\.groups \}\)/);
   assert.match(ui, /this\.groups = cleanGroups\(d\.groups\)/);
+});
+
+// ---- the siege line (owner, 2026-10-19) ---------------------------------------------------------------------------------
+test('siege: each engine waits on its research at the academy, and each batters walls harder than the last; the trebuchet is poor against men', () => {
+  const g = mk({ fog: false }); g.meet(0, 1); g.setRelation(0, 1, 'war'); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  Object.assign(p, { food: 9999, wood: 9999, gold: 9999, stone: 9999 });
+  const ws = g.addBuilding('workshop', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();
+  for (const k of ['ram', 'onager', 'trebuchet']) assert.equal(g.train(PLAYER, ws.id, k), null, k + ' needs its research');
+  (p.tech ||= {}).siegecraft = true; assert.equal(g.train(PLAYER, ws.id, 'ram'), true, 'Siegecraft unlocks the ram');
+  const wallDps = (kind) => { const s = UNITS[kind]; return (s.dmg * s.bld) / s.cd; };
+  assert.ok(wallDps('ram') < wallDps('onager') && wallDps('onager') < wallDps('trebuchet'), `ram ${wallDps('ram').toFixed(0)} < onager ${wallDps('onager').toFixed(0)} < trebuchet ${wallDps('trebuchet').toFixed(0)} a second on walls`);
+  assert.ok(UNITS.ram.range < UNITS.onager.range && UNITS.onager.range < UNITS.trebuchet.range, 'and each reaches further');
+  // the trebuchet's boulder rarely finds a man: against troops it does far less than against a wall
+  const e = g.seatOf(1), t = g.addUnit('trebuchet', PLAYER, e.x - 9, e.y), man = g.addUnit('footman', 1, e.x - 2, e.y); man.hp = man.maxHp = 5000;
+  const b = g.addBuilding('barracks', 1, Math.round(e.x) - 3, Math.round(e.y) + 4, true); b.hp = b.maxHp = 50000; g.recomputeWalk();
+  const hit = (target) => { const before = target.hp; t.cooldown = 0; t.task = { type: 'attack', targetId: target.id }; for (let i = 0; i < 400 && target.hp === before; i++) g.tick(0.05); return before - target.hp; };
+  const onMan = hit(man), onWall = hit(b);
+  assert.ok(onWall > onMan * 8, `a boulder does ${onWall.toFixed(0)} to a wall, ${onMan.toFixed(0)} to a man`);
+});
+
+test('siege: a keep stores up to three engines in its sheds, apart from its garrison, mending them; Leave rolls them out', () => {
+  const g = mk({ fog: false }); const h = g.seatOf(PLAYER);
+  const k = g.addBuilding('keep', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();
+  const engines = ['ram', 'onager', 'trebuchet', 'ram'].map((kind, i) => g.addUnit(kind, PLAYER, k.x + 2 + i * 0.7, k.y + 3));
+  engines[0].hp = engines[0].maxHp / 2;
+  g.contextCommand(PLAYER, engines.map((u) => u.id), k.x, k.y);
+  for (let i = 0; i < 200; i++) g.tick(0.1);
+  assert.equal((k.engines || []).length, 3, 'three in the sheds'); assert.equal(k.garrison.length, 0, 'none of them in the garrison');
+  assert.ok(!engines[3].inside, 'the fourth is turned away');
+  assert.ok(engines[0].hp > engines[0].maxHp / 2, 'a stored engine is kept in repair');
+  const ft = g.addUnit('footman', PLAYER, k.x + 2, k.y + 3); g.cmdEnter([ft], k); for (let i = 0; i < 60; i++) g.tick(0.1);
+  assert.equal(k.garrison.length, 1, 'soldiers still have the whole garrison');
+  const bar = g.addBuilding('barracks', PLAYER, Math.round(h.x) - 10, Math.round(h.y) + 4, true); g.recomputeWalk(); assert.equal(g.cmdEnter([engines[3]], bar), false, 'a barracks has no sheds');
+  g.applyIntent({ type: 'leave', team: PLAYER, buildingId: k.id });
+  assert.equal((k.engines || []).length, 0); assert.ok(engines.slice(0, 3).every((u) => !u.inside), 'Leave rolls them out');
+});
+
+test('science: the learning bank holds enough for the dearest research, so every tier can be finished', () => {
+  const dearest = Math.max(...Object.values(TECH).map((t) => t.cost.learning));
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER]; g.addBuilding('academy', PLAYER, h.tx + 9, h.ty - 9, true); g.recomputeWalk();
+  Object.assign(p.tech ||= {}, { masonry: true, metallurgy: true }); p.silver = 99; assert.ok(g.startResearch(PLAYER, 'steelcraft'));
+  p.learning = 0; for (let i = 0; i < 3000 && !g.hasTech(PLAYER, 'steelcraft'); i++) { p.learning = Math.min(p.learning + 2, 9999); g.tick(0.1); }
+  assert.ok(g.hasTech(PLAYER, 'steelcraft'), `a tier-3 research (${dearest} learning) completes`);
 });
 
 console.log(`${passed} passed`);

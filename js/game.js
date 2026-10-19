@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -143,7 +143,7 @@ export class Game {
     u.aggroT = this.roll() * 0.5;
     { const set = (this.named[team] ||= new Set()); u.name = pickName(HOUSES[team]?.faction, set, () => this.rnd()); set.add(u.name); }
     if (this.hasTech(team, 'drill') && kind !== 'serf' && kind !== 'camel') { u.maxHp = Math.round(u.maxHp * 1.15); u.hp = u.maxHp; } // Drill
-    if (kind === 'ram' && this.hasTech(team, 'mechanics')) { u.maxHp = Math.round(u.maxHp * 1.3); u.hp = u.maxHp; } // Mechanics
+    if (SIEGE.has(kind) && this.hasTech(team, 'mechanics')) { u.maxHp = Math.round(u.maxHp * 1.3); u.hp = u.maxHp; } // Mechanics
     u.born = this.time || 0; u.kills = 0;   // service record: when they joined and how many foes they have felled
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -587,7 +587,7 @@ export class Game {
     units = this.freeOf(units);
     let sent = 0;
     for (const u of units) {
-      if (u.hp <= 0 || u.inside || u.kind === 'ram') continue;
+      if (u.hp <= 0 || u.inside || (SIEGE.has(u.kind) && t.kind !== 'keep')) continue;   // (engines go only into a keep's sheds)
       u.buildQ = [];
       u.task = { type: 'enter', targetId: t.id };
       this.setPathToEntity(u, t);
@@ -603,6 +603,10 @@ export class Game {
       this.follow(u, dt);
       return;
     }
+    if (SIEGE.has(u.kind)) {   // into the keep's sheds, apart from the garrison
+      if (t.kind !== 'keep' || (t.engines ||= []).length >= SIEGE_STORE) { u.task = { type: 'idle' }; u.path = []; if (u.team === PLAYER) this.log(PLAYER, `The keep's sheds hold ${SIEGE_STORE} engines and are full.`, 'warn'); return; }
+      u.path = []; u.inside = t.id; u.task = { type: 'idle' }; t.engines.push(u.id); return;
+    }
     if (t.garrison.length >= this.garrisonCap(t)) { u.task = { type: 'idle' }; u.path = []; if (u.team === PLAYER) this.log(PLAYER, `${t.type === 'village' ? t.name : BUILDINGS[t.kind].label} is full.`, 'warn'); return; }
     u.path = []; u.carry = null;
     u.inside = t.id; u.task = { type: 'idle' };
@@ -617,7 +621,7 @@ export class Game {
   }
   eject(u, t) {
     u.inside = null; u.task = { type: 'idle' }; u.path = [];
-    if (t) { t.garrison = t.garrison.filter((id) => id !== u.id); }
+    if (t) { t.garrison = t.garrison.filter((id) => id !== u.id); if (t.engines) t.engines = t.engines.filter((id) => id !== u.id); }
     const ref = t || u;
     if (t && t.tx != null) {   // the ring of open tiles round the footprint, front (south and east) first, and the least crowded of them
       const ring = [];
@@ -636,11 +640,11 @@ export class Game {
   leave(team, id) {
     const t = this.byId.get(id);
     if (!t || (t.type === 'building' ? t.team : t.owner) !== team) return false;
-    const ids = t.garrison.slice();
+    const ids = [...t.garrison, ...(t.engines || [])];   // everyone, and the engines out of the sheds
     for (const uid of ids) { const u = this.byId.get(uid); if (u && !u.drilling) { this.eject(u, t); if (t.rally && t.type === 'building') this.cmdMove([u], t.rally.x, t.rally.y); } }
     return ids.length > 0;
   }
-  ejectAll(t) { for (const uid of t.garrison.slice()) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; }
+  ejectAll(t) { for (const uid of [...t.garrison, ...(t.engines || [])]) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; t.engines = []; }
 
   // ---- science: learning and research ----------------------------------------------------------------------------------
   hasTech(team, key) {
@@ -1565,6 +1569,7 @@ export class Game {
     const say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
     if (!b || b.type !== 'building' || b.team !== team || b.built < 1 || b.hp <= 0 || !s) return null;
     if (!s.from.includes(b.kind)) return say(`A ${BUILDINGS[b.kind].label} cannot train that.`);
+    if (s.tech && !this.hasTech(team, s.tech)) return say(`Research ${TECH[s.tech].label} at an academy first.`);
     if (!this.canAfford(team, s.cost)) return say(this.shortfall(team, s.cost));
     if (!s.nopop && this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');   // (pack animals are not people)
     if (b.queue.length >= 5) return say('Training queue is full.');
@@ -2733,7 +2738,8 @@ export class Game {
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
     if (t.type === 'building') dmg *= s.bld;
-    if (s.range > 1.6) { this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team, by: u.id }); this.sfx('arrow', u.x, u.y); }
+    if (t.type === 'unit' && s.unit != null) dmg *= s.unit;   // (a siege engine's shot is made for walls)
+    if (s.range > 1.6) { this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team, by: u.id, stone: SIEGE.has(u.kind) || undefined }); this.sfx('arrow', u.x, u.y); }
     else this.damage(t, dmg, u.team, u);
   }
 
@@ -3187,7 +3193,7 @@ export class Game {
     if (this.units.some((u) => u.hp <= 0)) {
       for (const u of this.units) if (u.hp <= 0) {
         // one who dies inside (a soldier deserting for want of pay from a keep) leaves its roll too, or the keep counts him for ever (T-058)
-        if (u.inside != null) { const t = this.byId.get(u.inside); if (t?.garrison) t.garrison = t.garrison.filter((id) => id !== u.id); }
+        if (u.inside != null) { const t = this.byId.get(u.inside); if (t?.garrison) t.garrison = t.garrison.filter((id) => id !== u.id); if (t?.engines) t.engines = t.engines.filter((id) => id !== u.id); }
         this.byId.delete(u.id);
       }
       this.units = this.units.filter((u) => u.hp > 0);

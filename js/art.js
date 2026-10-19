@@ -15,7 +15,9 @@ export const VIMG = { '1tile': {}, '4tile': {} };   // independent village art i
 export const VILLAGE_ART_KEYS = ['hamlet', 'farm', 'fishing', 'mining', 'fortified', 'market'];
 // the ram as a body and one wheel the game turns (ARTREQUIREMENTS priority 13): set true once ram_body.png and ram_wheel.png are in
 const RAM_PARTS = false;
-const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet', ...(RAM_PARTS ? ['units/ram_body', 'units/ram_wheel'] : [])];
+// the onager and trebuchet (ARTREQUIREMENTS, Paint next 12): set true once units/onager.png and units/trebuchet.png are in
+const SIEGE_ART = false;
+const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet', ...(RAM_PARTS ? ['units/ram_body', 'units/ram_wheel'] : []), ...(SIEGE_ART ? ['units/onager', 'units/trebuchet'] : [])];
 export const factionSprite = (faction, kind) => FIMG[faction]?.[kind] || null;
 // buildings painted in their raising and ruined states too (FIMG[f]['<kind>_build'], FIMG[f]['<kind>_ruin']); others fall back to the clipped sprite
 const STATED = ['armoury', 'barracks', 'keep', 'market', 'mine', 'cottage', 'farm', 'forge', 'foundry', 'tower', 'academy', 'tavern', 'temple', 'archery', 'stable', 'mill', 'warehouse', 'workshop'];
@@ -38,7 +40,9 @@ export function armedKey(u) {
 // shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm; 'watch', ARTREQUIREMENTS priority 16, joins the list once painted). UIART[group][key] = Image.
 export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {}, orders: {} };
 export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking', vikings: 'jarl', byzantines: 'basileus', persians: 'shahanshah' };
-const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS, portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm'],
+// research icons not painted yet (ARTREQUIREMENTS, Paint next 12): not asked for until they are, so nothing 404s; the button shows a glyph
+const TECH_UNPAINTED = new Set(['siegecraft', 'torsion', 'counterweight']);
+const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS.filter((k) => !TECH_UNPAINTED.has(k)), portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm'],
   orders: [] };   // order icons (ARTREQUIREMENTS priority 14): put [...STANCES, ...FORMATIONS, 'amove', 'charge', 'retreat', 'stop', 'repair'] here once painted; glyphs until then (no 404s)
 // 'disguise' (priority 17) joins UI_KEYS.marks once painted; the 🎭 glyph until then
 export const uiArt = (group, key) => UIART[group]?.[key]?.src || null;
@@ -123,6 +127,25 @@ export function ramSprite(team) {
   cache.set(k, c); return c;
 }
 
+// stand-ins for the onager and trebuchet until they are painted: timber frames in the same hand as the ram, a house-coloured pennant
+export function siegeSprite(kind, team) {
+  const k = kind + team; if (cache.has(k)) return cache.get(k);
+  const f = HOUSES[team] || HOUSES[0], tre = kind === 'trebuchet', c = document.createElement('canvas'); c.width = 150; c.height = tre ? 170 : 110; const x = c.getContext('2d'), H = c.height;
+  const beam = (x0, y0, x1, y1, w, col) => { x.strokeStyle = col; x.lineWidth = w; x.lineCap = 'round'; x.beginPath(); x.moveTo(x0, y0); x.lineTo(x1, y1); x.stroke(); };
+  x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.ellipse(75, H - 12, 62, 9, 0, 0, 7); x.fill();
+  beam(18, H - 30, 132, H - 30, 10, '#5a4022'); beam(18, H - 44, 132, H - 44, 7, '#6a4a2a');   // the bed
+  for (const wx of [34, 116]) { x.fillStyle = '#2a1c0e'; x.beginPath(); x.arc(wx, H - 22, 12, 0, 7); x.fill(); x.strokeStyle = '#7a5a30'; x.lineWidth = 2; x.stroke(); }
+  if (tre) {   // an A-frame, a long throwing beam, the counterweight box and the sling
+    beam(50, H - 44, 75, 30, 8, '#4d3820'); beam(100, H - 44, 75, 30, 8, '#4d3820'); beam(75, 30, 75, H - 44, 5, '#3a2a16');
+    beam(22, 70, 132, 18, 7, '#6a4a2a'); x.fillStyle = '#3d4046'; x.fillRect(112, 18, 26, 30); x.strokeStyle = '#1e1409'; x.lineWidth = 2; x.strokeRect(112, 18, 26, 30);
+    beam(22, 70, 14, 104, 2, '#c9b27a'); x.fillStyle = '#8a8a80'; x.beginPath(); x.arc(14, 108, 6, 0, 7); x.fill();
+  } else {   // the onager: an upright frame, the throwing arm with its sling cup, the torsion skein
+    beam(98, H - 44, 98, 34, 8, '#4d3820'); beam(58, H - 44, 98, 34, 6, '#4d3820'); beam(40, H - 46, 92, 22, 7, '#6a4a2a');
+    x.fillStyle = '#8a8a80'; x.beginPath(); x.arc(92, 20, 7, 0, 7); x.fill(); x.fillStyle = '#7a5a30'; x.fillRect(32, H - 52, 18, 14);
+  }
+  x.fillStyle = f.primary; x.beginPath(); x.moveTo(132, H - 44); x.lineTo(132, H - 76); x.lineTo(148, H - 68); x.lineTo(132, H - 60); x.fill();   // house pennant
+  cache.set(k, c); return c;
+}
 // the camel: nothing in the boards, so a painted pack animal in house colours, facing right
 export function camelSprite(team) {
   const k = 'camel' + team; if (cache.has(k)) return cache.get(k);

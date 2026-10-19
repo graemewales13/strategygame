@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { Game } from '../js/game.js';
-import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE, ROUTE_STOPS } from '../js/config.js';
+import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE, ROUTE_STOPS, TECH } from '../js/config.js';
 
 // Deterministic runs: the sim uses Math.random for spawn jitter and spy catches.
 let _s = 12345;
@@ -263,7 +263,7 @@ test('auto use: foundry smelts steel, forge turns steel into arms, the academy r
   assert.ok(p.steel >= 2 || p.arms >= 1, `steel ${p.steel} arms ${p.arms}`);
   p.steel = 6; p.silver = 6; g.startResearch(0, 'husbandry');
   for (let i = 0; i < 40 * 10; i++) g.tick(0.1);
-  p.learning = 50; g.tick(0.1);
+  p.learning = TECH.husbandry.cost.learning + 5; g.tick(0.1);   // (enough to finish it, whatever it costs now)
   assert.ok(p.arms >= 1, 'arms level');
   assert.ok(p.sci >= 1 && g.hasTech(0, 'husbandry'), 'a technology researched');
   const v = g.villages[0]; v.owner = 0; v.loyalty = 60; v.protection = v.maxProtection;

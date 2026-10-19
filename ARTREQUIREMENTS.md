@@ -26,6 +26,7 @@ One small open item: the Scottish `recruit` still wears a kilt-like belted plaid
 | 11 | **The watchman mark**: an eye-and-lantern badge for the Watch row of your villages | shared | `assets/shared/ui/marks/watch.png` | 1 | priority 16 (new 2026-10-15) |
 | 12 | **Disguise mark**: a plain dark leather half mask, 64x64, neutral (no house colour), drawn over a disguised spy for his owner only | shared | `assets/shared/ui/marks/disguise.png` | 1 | priority 17 (new 2026-10-16); stand-in: the 🎭 glyph; wired |
 | 13 | **Ore deposits painted per mineral**: stone, copper, iron, coal and silver, each full and half-dug, unmistakable at a glance (stone grey dressed rock; copper green-stained orange rock; **iron dark red-brown haematite**; coal black seams; silver pale veins in dark rock). Today they are the gold pile recoloured, and the owner could not tell iron from stone | shared | `assets/shared/resources/<mineral>.png`, `<mineral>_half.png` | 10 | priority 18 (new 2026-10-16); stand-in: recoloured gold pile (iron now rust red), and every mine wears a name plate; wired |
+| 12 | **Siege engines**: the **Onager** (a torsion catapult with a sling arm: the owner's "slingshot") and the **Trebuchet** (a great counterweight engine), the second and third of the siege line after the Ram; plus research icons for **Siegecraft**, **Torsion engines** and **Counterweight engines** | shared | `assets/shared/units/onager.png`, `trebuchet.png`; `assets/shared/ui/tech/siegecraft.png`, `torsion.png`, `counterweight.png` | 5 | new 2026-10-19. Stand-ins today: timber frames drawn in code with a house-coloured pennant (`siegeSprite` in art.js). When the units are in, set `SIEGE_ART = true` in `js/art.js`; when the icons are in, empty `TECH_UNPAINTED` |
 | 7 | *Optional:* women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | character guide (not wired yet: say when they are coming and it is one line) |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
@@ -545,3 +546,21 @@ Use the QA checklist from the instruction set, and the **lineup test** in the ch
 
 - **Plain soldiers (priority 5):** set beside the armed pose of the same role, the two must read as the same man before and after the Armoury.
 - **Ram and other wheeled engines:** the game grounds the ram with a shadow spanning the lower 30% of the picture (its wheelbase in three-quarter view) and does not bob it like a walker. A repainted or new engine (a future siege tower or catapult) must keep that framing: three-quarter view, the front wheel touching the bottom edge, all wheels within the lower third, and no empty margin under the wheels. Otherwise it floats above its shadow.
+
+## Priority 13b: the siege line (onager, trebuchet) and its research icons (5)
+
+The academy now has a siege line (owner, 2026-10-19): **Siegecraft** unlocks the Ram, **Torsion engines** the Onager, **Counterweight engines** the Trebuchet. Each engine does more to walls than the one before. Paint the two new engines as the ram is painted: shared (all peoples use them), three-quarter view looking right, timber and iron, a small pennant or cloth that is plain (the game adds no colour to shared engines), no crew. Same framing rules as the ram: the front wheel on the bottom edge, all wheels in the lower third.
+
+| File | Subject | Size |
+|---|---|---|
+| `units/onager.png` | a Roman-style onager: a low heavy timber bed on four wheels, a single upright throwing arm with a sling cup, a thick twisted-rope torsion skein at its foot, a padded buffer beam | 420x300 |
+| `units/trebuchet.png` | a counterweight trebuchet on a wheeled base: tall A-frame, a long throwing beam with a boxed counterweight of stones at the short end and a sling at the long end, the sling lying in its trough | 420x520 |
+| `ui/tech/siegecraft.png` | a battering ram's iron-capped head and a coil of rope | 256x256, icon style as the other research icons |
+| `ui/tech/torsion.png` | a twisted rope skein in a timber frame with a sling cup | 256x256 |
+| `ui/tech/counterweight.png` | a counterweight box of stones hanging from a beam | 256x256 |
+
+```text
+SIEGE ENGINE: {ONAGER or TREBUCHET as above}, three-quarter view facing right, realistic timber, rope and iron, weathered, on its wheels, no crew, plain undyed cloth only. Flat #FF00FF background, no shadow, {SIZE}, the front wheel on the bottom edge less 8 px.
+```
+
+The stones they throw are drawn by the game (no art needed).
