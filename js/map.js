@@ -1,7 +1,7 @@
 // Auld World - valley generation. Pure data, seeded, no DOM.
 // Guarantees: every start, village and resource node lies in ONE connected walkable region (the river has fords).
 
-import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW, BIOMES, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, MATS, AREA_MUL } from './config.js';
+import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW, BIOMES, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, VILLAGE_NAME_PARTS, MATS, AREA_MUL } from './config.js';
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -250,13 +250,23 @@ export function createMap(seed, houses = 4) {
     if (spots.some(([vx, vy]) => (x - vx) ** 2 + (y - vy) ** 2 < 12 * 12)) continue;
     spots.push([x, y]);
   }
-  const used = {};
+  // every village a name of its own: the old names first, then made from that kind's parts. A hash of the seed and the village's number
+  // picks the parts, so the map's own random draws (and so its layout) are untouched.
+  const taken = new Set(), hash = (n) => { let h = (seed ^ Math.imul(n + 1, 0x9e3779b1)) >>> 0; h = Math.imul(h ^ (h >>> 15), 0x85ebca6b) >>> 0; return (h ^ (h >>> 13)) >>> 0; };
+  const nameFor = (kind, i) => {
+    for (const n of VILLAGE_NAMES[kind]) if (!taken.has(n)) { taken.add(n); return n; }
+    const [a, b, saints] = VILLAGE_NAME_PARTS[kind];
+    for (let k = 0; k < 400; k++) {
+      const h = hash(i * 401 + k), pa = a[h % a.length], pb = b[(h >>> 8) % b.length];
+      const n = kind === 'inn' ? `The ${pa} ${pb}` : kind === 'abbey' && saints && ((h >>> 16) & 1) ? `St ${saints[(h >>> 17) % saints.length]}` : pa + pb;
+      if (!taken.has(n)) { taken.add(n); return n; }
+    }
+    let k = 2; while (taken.has(`${VILLAGE_NAMES[kind][0]} ${k}`)) k++; taken.add(`${VILLAGE_NAMES[kind][0]} ${k}`); return `${VILLAGE_NAMES[kind][0]} ${k}`;   // (never reached on a board this size)
+  };
   let mineCamps = 0, campOre = 0;
   const villages = spots.map(([x, y], i) => {
     const kind = kinds[i % kinds.length];
-    const list = VILLAGE_NAMES[kind];
-    used[kind] = (used[kind] || 0);
-    const name = list[used[kind]++ % list.length];
+    const name = nameFor(kind, i);
     // a village keeps a few fields/seams close to its walls
     if (kind === 'mine' && (mineCamps++ % Math.round(AREA_MUL)) === 0) cluster('gold', x + 1, y + 1, 3, 3.2, goldAmt);   // ore stays as scarce as on the small board
     if (kind === 'hamlet') cluster('berry', x + 1, y + 1, 3, 3.5, berryAmt);

@@ -342,6 +342,23 @@ export const VILLAGE_NAMES = {
   abbey: ['St Aldric', 'Veilmoor', 'St Wenna', 'Candlewick', 'Harrowgate'],
   inn: ['The Drover', 'The Gallows Oak', 'Crossways', 'The Pilgrim', 'The Ford Arms'],
 };
+// Parts for more names of each kind, once the lists above are used up (owner, 2026-10-19: on the big board 220 villages shared 31 names).
+// A name is a first part and a second part ('Ash' + 'wick'); an abbey may also be a saint's, an inn 'The' + a word + a sign.
+export const VILLAGE_NAME_PARTS = {
+  hamlet: [['Alder', 'Ash', 'Bram', 'Birch', 'Thorn', 'Elm', 'Hazel', 'Oak', 'Rush', 'Willow', 'Mill', 'Fern', 'Holly', 'Brack', 'Wheat', 'Barley', 'Rye', 'Lark', 'Wren', 'Cress', 'Moss', 'Heath', 'Fox', 'Hare', 'Ram', 'Ewe', 'Kine', 'Sedge', 'Rowan', 'Plum'],
+           ['mere', 'wick', 'by', 'ley', 'ton', 'ham', 'field', 'stead', 'thorpe', 'worth', 'combe', 'hurst', 'den', 'well', 'ford', 'cote']],
+  mine: [['Deep', 'Iron', 'Red', 'Coal', 'Grey', 'Black', 'Copper', 'Silver', 'Slag', 'Tin', 'Rust', 'Ore', 'Flint', 'Shale', 'Cinder', 'Lode', 'Crag', 'Dark', 'Gall', 'Smelt'],
+         ['delve', 'cleave', 'scar', 'gate', 'wash', 'hollow', 'shaft', 'seam', 'gill', 'pit', 'barrow', 'dale', 'heugh', 'level', 'rake']],
+  market: [['Market', 'Cheap', 'Ferrow', 'Wain', 'Toll', 'Chap', 'Mart', 'Penny', 'Bridge', 'Fair', 'Wool', 'Salt', 'Corn', 'Cloth', 'Cooper', 'Mercer', 'Barter', 'Silk', 'Hay', 'Malt'],
+           ['ton', 'side', 'by', 'mouth', 'gate', 'well', 'ford', 'cross', 'stow', 'port', 'ham', 'borough', 'stead', 'wick']],
+  hillfort: [['High', 'Stone', 'Wyrm', 'Cairn', 'Bleak', 'Grim', 'Storm', 'Raven', 'Eagle', 'Wolf', 'Crow', 'Dun', 'Ward', 'Shield', 'Hawk', 'Black', 'Thorn', 'Gaunt', 'Skull', 'Bear'],
+             ['crag', 'barrow', 'hold', 'holt', 'fort', 'keep', 'tor', 'burh', 'mount', 'rock', 'spur', 'ridge', 'edge', 'law']],
+  abbey: [['Veil', 'Candle', 'Harrow', 'Bell', 'Chapel', 'Cloister', 'Vesper', 'Psalm', 'Lantern', 'Prior', 'Chantry', 'Matins', 'Rood', 'Hallow'],
+          ['moor', 'wick', 'gate', 'hope', 'field', 'dale', 'ford', 'stow', 'minster', 'cell'],
+          ['Aldric', 'Wenna', 'Cuthbert', 'Brigid', 'Columba', 'Hilda', 'Aidan', 'Petroc', 'Ninian', 'Kentigern', 'Oswin', 'Edith', 'Mungo', 'Bede', 'Winifred', 'Dunstan', 'Agnes', 'Mildred', 'Swithun', 'Chad', 'Werburgh', 'Guthlac', 'Botolph', 'Neot', 'Piran', 'Teilo', 'Illtud', 'Dyfrig']],
+  inn: [['Golden', 'Black', 'White', 'Red', 'Old', 'Laughing', 'Sleeping', 'Wandering', 'Weary', 'Crooked', 'Merry', 'Drowned', 'Lame', 'Silver', 'Painted', 'Hungry'],
+        ['Stag', 'Boar', 'Hart', 'Plough', 'Goose', 'Bell', 'Lantern', 'Wheel', 'Crown', 'Fiddle', 'Horn', 'Kettle', 'Swan', 'Ox', 'Mare', 'Barrel', 'Bear', 'Cockerel', 'Anchor', 'Harp']],
+};
 
 export const RELATIONS = ['peace', 'trade', 'alliance', 'war'];
 export const DEFAULT_RELATION = 'peace';
