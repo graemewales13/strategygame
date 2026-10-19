@@ -25,7 +25,7 @@ const STATED = ['armoury', 'barracks', 'keep', 'market', 'mine', 'cottage', 'far
 export const FUNIT = {};
 export const ARMED_KEYS = ['footman_spear', 'footman_sword', 'footman_heavy', 'bowman_longbow', 'bowman_crossbow', 'knight_lance'];
 // the plain soldiers repainted per people in the same full-length style (ARTREQUIREMENTS priority 5); used when present, else the old shared art
-export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'serf_work1', 'serf_work2', 'king'];
+export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'serf_work1', 'serf_work2', 'serf_f', 'serf_f_work1', 'serf_f_work2', 'king'];
 // the plain soldiers repainted per people (priority 9): helmet, armour, a shield or a drawn bow, the people's colour on the cloth.
 // Every wired key is painted. Drop a key back in here only if a repaint must be hidden again.
 const REPAINT = new Set();
@@ -68,6 +68,11 @@ export function loadArt() {
     for (const k of FACTION_BUILDINGS) one(FIMG[f], k, `assets/factions/${f}/buildings/${k}.png`);
     for (const k of STATED) for (const st of ['build', 'ruin']) one(FIMG[f], `${k}_${st}`, `assets/factions/${f}/buildings/${k}_${st}.png`);
     for (const k of [...ARMED_KEYS, ...PLAIN_KEYS].filter((x) => !REPAINT.has(x))) one(FUNIT[f], k, `assets/factions/${f}/units/${k}.png`);
+    // walk cycles (priority 15). Egyptian knights and kings are chariots, so they have no stride.
+    for (const role of ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'king']) {
+      if (f === 'egyptians' && (role === 'knight' || role === 'king')) continue;
+      for (let n = 1; n <= 4; n++) one(FUNIT[f], `${role}_walk${n}`, `assets/factions/${f}/units/${role}_walk${n}.png`);
+    }
   }
   for (const [grp, keys] of Object.entries(UI_KEYS)) for (const k of keys) one(UIART[grp], k, `assets/shared/ui/${grp}/${k}.png`);
   for (const k of ORE_PAINTED) for (const v of ['', '_half']) one(ORE_ART, k + v, `assets/shared/resources/${k}${v}.png`);

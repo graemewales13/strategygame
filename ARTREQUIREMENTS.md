@@ -6,7 +6,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 ## Paint next: new characters are needed
 
-**The character list is done**, except the optional women among the serfs (not wired). Delivered 2026-10-19: the ram in two parts (13), thirteen order icons (14), the watchman mark (16), the disguise mark (17), ore deposits per mineral (18), and the siege line (13b: onager, trebuchet, and the three research icons). Walk cycles (15) come later. The Scottish recruit was repainted the same day: a léine and a plain brat, no kilt. Kings, serfs, the new peoples' folk and sites, and the three pale spies were already painted.
+**The character list is done.** Delivered 2026-10-19: the ram in two parts (13), thirteen order icons (14), walk cycles for every walking role (15), the watchman mark (16), the disguise mark (17), ore deposits per mineral (18), the siege line (13b), the women among the serfs, and the Scottish recruit without a kilt. Egyptian knights and kings stay chariots, so they have no walk cycle. An armed soldier still strides in code, from the still figure of his kit.
 
 **Order icons (priority 14, thirteen since 2026-10-16)**: four stances, four formations, and the five order buttons (Attack-move, Attack, Retreat, Stop, Repair) for the command card, shared by every house, 128x128, `assets/shared/ui/orders/<key>.png`. Small and quick; the buttons work with text glyphs until then.
 
@@ -19,13 +19,13 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 5 | **Spies repainted dark** | Egyptians, Scots, Mongols | `units/spy.png` | 3 | priority 11 — **delivered** 2026-10-13 |
 | 6 | Building sites and ruins for the new peoples | Vikings, Byzantines, Persians | `buildings/<key>_build.png`, `<key>_ruin.png` for the 18 keys | 108 | priorities 6 and 8 — **delivered** 2026-10-13 |
 | 8 | **The ram as a body and a wheel**, so its wheels really turn | shared | `assets/shared/units/ram_body.png`, `ram_wheel.png` | 2 | priority 13 — **delivered** 2026-10-19 |
-| 9 | *Later:* walk cycles, soldiers first | all 8 | `units/<role>_walk1.png` ... `_walk4.png` | up to 96 for soldiers | priority 15 (new 2026-10-14; was a second "14") |
+| 9 | Walk cycles, soldiers and the rest of the folk | all 8 | `units/<role>_walk1.png` ... `_walk4.png` | 280 | priority 15 — **delivered and wired** 2026-10-19. No cycle for the Egyptian chariot |
+| 7 | Women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | **delivered and wired** 2026-10-19. A woman's given name draws `serf_f` |
 | 10 | **Thirteen order icons**: four stances, four formations, attack-move, attack, retreat, stop, repair | shared | `assets/shared/ui/orders/<key>.png` | 13 | priority 14 — **delivered** 2026-10-19 |
 | 11 | **The watchman mark**: an eye-and-lantern badge for the Watch row of your villages | shared | `assets/shared/ui/marks/watch.png` | 1 | priority 16 — **delivered** 2026-10-19 |
 | 12 | **Disguise mark**: a plain dark leather half mask, 64x64, neutral (no house colour), drawn over a disguised spy for his owner only | shared | `assets/shared/ui/marks/disguise.png` | 1 | priority 17 — **delivered** 2026-10-19 |
 | 13 | **Ore deposits painted per mineral**: stone, copper, iron, coal and silver, each full and half-dug | shared | `assets/shared/resources/<mineral>.png`, `<mineral>_half.png` | 10 | priority 18 — **delivered** 2026-10-19 |
 | 12 | **Siege engines**: the **Onager** and the **Trebuchet**, plus research icons for **Siegecraft**, **Torsion engines** and **Counterweight engines** | shared | `assets/shared/units/onager.png`, `trebuchet.png`; `assets/shared/ui/tech/siegecraft.png`, `torsion.png`, `counterweight.png` | 5 | priority 13b — **delivered** 2026-10-19 |
-| 7 | *Optional:* women among the serfs | all 8 | `units/serf_f.png`, `serf_f_work1.png`, `serf_f_work2.png` | 24 | character guide (not wired yet: say when they are coming and it is one line) |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
 
@@ -45,7 +45,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 10 | **Serfs per people** (8 peoples, 24) | **Delivered and wired** 2026-10-13. `serf`, `serf_work1`, `serf_work2` are out of `REPAINT` |
 | 11 | Spies easy to miss (Egyptians, Scots, Mongols) | **Delivered** 2026-10-13. Dark cloaks; the people's colour is only a cord |
 | 13 | **Ram body and wheel** | **Delivered and wired** 2026-10-19. `RAM_PARTS` is true; `RAM_WHEELS` sits on the painted axles |
-| 15 | Walk cycles (soldiers first) | **Later** (below). Until then the game strides the still figures in code |
+| 15 | Walk cycles (soldiers, then the rest of the folk) | **Delivered and wired** 2026-10-19. 280 frames. The game plays them while a figure walks, and still strides an armed kit in code. Egyptian chariots have no cycle |
 | 12 | **Kings on the field** (8) | **Delivered and wired** 2026-10-13. `king` is out of `REPAINT`. The drawn crown is kept only when a people has no painted king |
 | — | Waypoints and marching together (T02, 2026-10-12) | **No painting needed.** Queued legs are drawn in code |
 | 14 | **Order icons**: four stances, four formations, and attack-move, attack, retreat, stop, repair | **Delivered and wired** 2026-10-19. `UI_KEYS.orders` lists all thirteen. The top-right eighth of each icon is empty for the grid key |
@@ -165,7 +165,7 @@ The owner wants each house's folk to look like the people they are: what they **
 | **Byzantines** (Komnenian empire, 11th to 12th century) | tenant farmers (paroikoi) in a long belted wool tunic, trousers and leggings, felt or straw cap, leather boots; ox and wooden plough, mattock, pruning hook, amphora | lamellar klivanion over a quilted coat, helmets with mail aventails, kite shields, spathion; cataphracts in scale on scale-barded horses | Basileus in a gilded lamellar klivanion with a rose and gold cloak, the jewelled crown with hanging pendilia, the imperial **red boots**, on a white horse |
 | **Persians** (Sasanian, 3rd to 7th century) | farmers in a knee-length long-sleeved belted tunic over loose trousers tucked into soft boots or bare feet, a round felt cap or headcloth; spade, sickle, water jar for the channels (qanats) | ridge helmets, mail and quilted coats, wicker shields, swords; composite-bow archers; clibanarii in full mail on mailed horses | Shahanshah in the winged crown topped by a globe, with flowing ribbons at the diadem and shoulders, a pearl-edged tunic, a long sword, on a horse with tasselled harness, as on the rock reliefs |
 
-**Women.** About a third of the names the game gives its folk are women's (every people's name list has them). A future `serf_f`, `serf_f_work1` and `serf_f_work2` per people, in the same dress table, would let them be seen (optional, after priority 10).
+**Women.** About a third of the names the game gives its folk are women's. A serf whose given name is one of those is drawn as `serf_f`, `serf_f_work1` and `serf_f_work2`, in the dress of the Workers column. Delivered and wired 2026-10-19.
 
 ### Before delivering: the lineup test
 
@@ -487,7 +487,7 @@ Since 2026-10-14 the game makes still figures walk in code: it cuts each figure 
 | `<role>_walk3.png` | left foot forward, contact |
 | `<role>_walk4.png` | passing, body highest |
 
-Same feet line and head height in every frame so the figure does not jump. Not wired yet: say when the first are coming.
+Same feet line and head height in every frame so the figure does not jump. **Delivered and wired** 2026-10-19 for `footman`, `bowman`, `knight`, `scout`, `recruit`, `spy`, `scholar`, `serf` and `king` (not the Egyptian chariot, and not the six armed-kit stills).
 
 ## Priority 16: the watchman mark (1, new 2026-10-15)
 

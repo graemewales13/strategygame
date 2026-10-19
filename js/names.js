@@ -50,6 +50,18 @@ export const FAR_NAMES = {
 
 const FALLBACK = 'british';
 
+// women's given names, so a serf with one of these is drawn as serf_f (ARTREQUIREMENTS, women among the serfs)
+export const WOMEN = new Set([
+  'Merit', 'Nebet', 'Senet', 'Takhat', 'Tia', 'Henutmire', 'Baket',
+  'Brutia', 'Drusilla', 'Galla', 'Iunia', 'Marcia', 'Ovidia', 'Quintilla', 'Tiberia', 'Camilla', 'Sabina', 'Tullia', 'Valeria', 'Ennia',
+  'Brynhild', 'Gudrun', 'Jorunn', 'Sigrun', 'Vigdis', 'Yngvild', 'Dagny', 'Solveig', 'Svala', 'Gunnhild',
+  'Eadburh', 'Isolde', 'Rhiannon', 'Sunniva', 'Tegwen', 'Aldith', 'Beornwyn', 'Gwenllian', 'Hild', 'Ysolt',
+  'Borte', 'Gerel', 'Khulan', 'Naran', 'Yesui', 'Checheg', 'Oyun',
+  'Ishbel', 'Morag', 'Oighrig', 'Una', 'Elspeth', 'Mairead',
+  'Anna', 'Theodora', 'Eudokia', 'Zoe', 'Irene', 'Maria', 'Helena', 'Kassia', 'Theophano', 'Euphrosyne', 'Pulcheria', 'Sophia', 'Thekla', 'Xene', 'Agathe', 'Melane',
+  'Shirin', 'Azadeh', 'Parisa', 'Roxana', 'Mandana', 'Purandokht', 'Atossa', 'Farnaz', 'Gordiya', 'Tahmina', 'Soudabeh', 'Anahid', 'Golnar', 'Nahid', 'Ziba',
+]);
+
 // pick an unused name for a person of `faction`; `taken` is a Set of names already in play for that house
 export function pickName(faction, taken, rnd = Math.random) {
   const pool = NAMES[faction] || NAMES[FALLBACK];
