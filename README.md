@@ -130,7 +130,7 @@ Every fighter keeps a **service record** (kills, buildings razed, time served, w
 ## Tech tree (short)
 
 Start: mine, market, foundry, tavern, keep, barracks. Then: market → cottage → farm → mill; mine → warehouse; keep → village, academy, temple; barracks → archery, tower; and so on.
-Barracks → archery range, forge. Keep + barracks → stable. Keep → academy, temple. Forge + academy → workshop (rams).
+Barracks → archery range, forge. Keep + barracks → stable. Keep → academy, temple. Forge + academy → workshop (rams, onagers, trebuchets, each after its research).
 
 Buildings have jobs, none are cosmetic: forge adds damage, mill and warehouse boost deliveries, keep/temple/tavern/academy/tower pull village loyalty, tavern trains spies, academy trains scholars and unlocks the workshop.
 
@@ -176,6 +176,8 @@ MIT. See `LICENSE`.
 
 `node tools/soak.js [minutes] [seeds] [houses] [chaos]` plays headless matches, checks invariants (stuck units, negative stock, sync of garrisons, NaN, snapshots, tick time) and writes `logs/soak-latest.log`; `chaos` replaces the player's AI with a random intent generator. Findings and fixes are tracked in `TROUBLESHOOTING.md`.
 
+`python3 tools/art-lint.py [files]` (or `npm run lint:art`; needs pillow and numpy) checks every sprite: RGBA, transparent corners, no magenta key left, no figure far bigger than its kind. CI runs it; run it on any art drop before committing (see ARTREQUIREMENTS, Preparing a drop).
+
 ## Village population
 Every village has folk (hamlet 16, market town 18, mining camp 12, hillfort 10, abbey 9, inn 6 at most), drawn as villagers strolling about and counted in its panel. They eat from the village store (0.003 grain each per second): fed villages grow a villager every 45 s, a dry store shrinks them. Selling a village's grain to your camels can starve it; buying grain for it grows it. A village you hold houses half its folk (they raise your population cap), pays tribute by how full it is (50% empty to 120% full), can **Call settler** (one villager becomes your serf for 20 grain), and feeds a keep's levy. A sack costs a quarter of the folk.
 
@@ -203,7 +205,7 @@ Money is the first measure of a house; the others are land influence (villages h
 - Village purses refill from their folk (bigger villages pay more); AI markets pay from their treasury.
 
 ## Peoples and painted kits
-Eight peoples (`FACTIONS` in config): Egyptians, Romans, British, Mongols, Scottish, Vikings, Byzantines, Persians. The peoples are seated by `setPeoples/seatPeoples` in config (default order: Khemet Egyptian, Aurelius Roman, MacAlpin Scottish, Wessex British, Borjigin Mongol, Ynglings Viking, Komnenos Byzantine, Sassan Persian). Colour, sprite hue and crest device belong to the people (`PEOPLE` in config), not the seat. Six to eight houses start at the corners and edge midpoints of the map. The Vikings, Byzantines and Persians have their own buildings, soldiers and serfs (see ARTREQUIREMENTS.md priority 8). Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Camels draw as dromedary (Mongols: Bactrian; Romans, Vikings and Byzantines: donkey); the ram and hamlet use the shared art.
+Eight peoples (`FACTIONS` in config): Egyptians, Romans, British, Mongols, Scottish, Vikings, Byzantines, Persians. The peoples are seated by `setPeoples/seatPeoples` in config (default order: Khemet Egyptian, Aurelius Roman, MacAlpin Scottish, Wessex British, Borjigin Mongol, Ynglings Viking, Komnenos Byzantine, Sassan Persian). Colour, sprite hue and crest device belong to the people (`PEOPLE` in config), not the seat. Six to eight houses start at the corners and edge midpoints of the map. The Vikings, Byzantines and Persians have their own buildings, soldiers and serfs (see ARTREQUIREMENTS.md priority 8). Single-sprite JPGs dropped in `assets/art-drop/{factions,shared}` are keyed from magenta and trimmed by `python3 tools/cut_sprites.py` into `assets/factions/<people>/buildings/<kind>.png` (committed). A house draws its own people's building when the PNG exists, else the common set. Pack animals draw per people (`PACK_OF`): dromedary for Egyptians and Persians, Bactrian camel for Mongols, donkey for Romans, British, Scots, Vikings and Byzantines; the siege engines (ram in two parts, onager, trebuchet) and the hamlet use the shared art.
 
 ## Money and manpower (the economy)
 Start: a home village of **30 folk**, **three serfs**, 300 grain, 480 timber, **320 coin**, 60 stone. Coin is booked by source (hover the coin counter; the green/red figure beside it is net income per second after army pay). `node tools/econ.js [minutes] [seed] [team]` prints a per-minute table of any rival house.

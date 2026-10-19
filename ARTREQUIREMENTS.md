@@ -8,7 +8,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 **The character list is done.** Delivered 2026-10-19: the ram in two parts (13), thirteen order icons (14), walk cycles for every walking role (15), the watchman mark (16), the disguise mark (17), ore deposits per mineral (18), the siege line (13b), the women among the serfs, and the Scottish recruit without a kilt. Egyptian knights and kings stay chariots, so they have no walk cycle. An armed soldier still strides in code, from the still figure of his kit.
 
-**Order icons (priority 14, thirteen since 2026-10-16)**: four stances, four formations, and the five order buttons (Attack-move, Attack, Retreat, Stop, Repair) for the command card, shared by every house, 128x128, `assets/shared/ui/orders/<key>.png`. Small and quick; the buttons work with text glyphs until then.
+**Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
@@ -25,7 +25,8 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 11 | **The watchman mark**: an eye-and-lantern badge for the Watch row of your villages | shared | `assets/shared/ui/marks/watch.png` | 1 | priority 16 — **delivered** 2026-10-19 |
 | 12 | **Disguise mark**: a plain dark leather half mask, 64x64, neutral (no house colour), drawn over a disguised spy for his owner only | shared | `assets/shared/ui/marks/disguise.png` | 1 | priority 17 — **delivered** 2026-10-19 |
 | 13 | **Ore deposits painted per mineral**: stone, copper, iron, coal and silver, each full and half-dug | shared | `assets/shared/resources/<mineral>.png`, `<mineral>_half.png` | 10 | priority 18 — **delivered** 2026-10-19 |
-| 12 | **Siege engines**: the **Onager** and the **Trebuchet**, plus research icons for **Siegecraft**, **Torsion engines** and **Counterweight engines** | shared | `assets/shared/units/onager.png`, `trebuchet.png`; `assets/shared/ui/tech/siegecraft.png`, `torsion.png`, `counterweight.png` | 5 | priority 13b — **delivered** 2026-10-19 |
+| 14 | **Siege engines**: the **Onager** and the **Trebuchet**, plus research icons for **Siegecraft**, **Torsion engines** and **Counterweight engines** | shared | `assets/shared/units/onager.png`, `trebuchet.png`; `assets/shared/ui/tech/siegecraft.png`, `torsion.png`, `counterweight.png` | 5 | priority 13b — **delivered** 2026-10-19 |
+| 15 | **Walk cycles for the armed soldiers**: four stride frames for each kit figure | all 8 | `units/<kit key>_walk1.png` ... `_walk4.png` for `footman_spear`, `footman_sword`, `footman_heavy`, `bowman_longbow`, `bowman_crossbow`, `knight_lance` | 192 (168: no Egyptian chariot) | priority 19 — **open**, requested 2026-10-19 |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
 
@@ -53,6 +54,9 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 17 | **Disguise mark** | **Delivered and wired** 2026-10-19. `'disguise'` is in `UI_KEYS.marks` |
 | 18 | **Ore deposits per mineral**, full and half-dug | **Delivered and wired** 2026-10-19. `ORE_PAINTED` lists stone, copper, iron, coal, silver |
 | 13b | **Onager, trebuchet, and the siege research icons** | **Delivered and wired** 2026-10-19. `SIEGE_ART` is true; `TECH_UNPAINTED` is empty |
+| 19 | **Walk cycles for the armed soldiers** (six kit figures, 8 peoples) | **Requested** 2026-10-19. Until delivered the game strides the kit's still figure in code (render.js `gaitOf`); not probed until listed in `js/art.js` |
+| — | Siege engines on the command card and unit panel (T-073, 2026-10-19) | **No painting needed.** The Workshop's Ram, Onager and Trebuchet buttons, the unit panel and the control-group chips show the painted engines (`assets/shared/units/ram.png`, `onager.png`, `trebuchet.png`) in place of a card |
+| — | Art lint (T30, 2026-10-19): `tools/art-lint.py` in CI | **No painting needed.** Every drop is now checked for RGBA, clear corners, the key colour and size against its kind |
 | — | Selecting idle soldiers and a kind across the valley (T31, 2026-10-15) | **No painting needed.** Uses the existing Army button and keys |
 | — | Pack animals per people: donkey, Bactrian camel, camel (T-063, 2026-10-16) | **No painting needed.** `assets/shared/units/donkey.png`, `bactrian.png`, `dromedary.png` were already painted; the British and Scots now use the donkey |
 | — | Key rebinding (T03, 2026-10-16) | **No painting needed.** A text list in Options |
@@ -69,9 +73,9 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | A plain soldier in the new style | `assets/factions/<faction>/units/<role>.png` for `footman`, `bowman`, `knight`, `scout`, `recruit`, `spy`, `scholar` | Automatically (priority 5). `footman`, `bowman`, `knight` only once removed from `REPAINT` in `js/art.js` (priority 9) |
 | A serf of one people | `assets/factions/<faction>/units/serf.png` (idle and walking), `serf_work1.png`, `serf_work2.png` (the two halves of a work swing) | Automatically (priority 10) |
 | Icons (kit, research) | `assets/shared/ui/gear/<key>.png`, `assets/shared/ui/tech/<key>.png` | Automatically (keys are `GEAR` and `TECH` in `js/config.js`) |
-| Order icons (stances, formations, orders) | `assets/shared/ui/orders/<key>.png` (keys are `STANCES` and `FORMATIONS` in `js/config.js`, plus `amove`, `charge`, `retreat`, `stop`, `repair`) | After the drop, put `...STANCES, ...FORMATIONS, 'amove', 'charge', 'retreat', 'stop', 'repair'` in `UI_KEYS.orders` in `js/art.js` (left empty until then so the game never asks for missing files) |
-| Ore deposits | `assets/shared/resources/<mineral>.png` and `<mineral>_half.png` for `stone`, `copper`, `iron`, `coal`, `silver` | After the drop, list the minerals in `ORE_PAINTED` in `js/art.js`; the half-dug picture shows once a deposit is below half |
-| Marks (deeds, captain, fugitive, alarm) | `assets/shared/ui/marks/<key>.png` (deed keys are `DEEDS` in `js/config.js`) | Automatically |
+| Order icons (stances, formations, orders) | `assets/shared/ui/orders/<key>.png` (keys are `STANCES` and `FORMATIONS` in `js/config.js`, plus `amove`, `charge`, `retreat`, `stop`, `repair`) | Automatically (all thirteen are listed in `UI_KEYS.orders` in `js/art.js`; a new order's key must be added there) |
+| Ore deposits | `assets/shared/resources/<mineral>.png` and `<mineral>_half.png` for `stone`, `copper`, `iron`, `coal`, `silver` | Automatically for the five listed in `ORE_PAINTED` in `js/art.js`; the half-dug picture shows once a deposit is below half |
+| Marks (deeds, captain, fugitive, alarm, watch, disguise) | `assets/shared/ui/marks/<key>.png` (deed keys are `DEEDS` in `js/config.js`) | Automatically |
 | Portraits | `assets/shared/ui/portraits/<key>.png` (far-land keys are `FARLANDS`; rulers are `pharaoh`, `imperator`, `king`, `khan`, `highking`, `jarl`, `basileus`, `shahanshah`) | Automatically |
 
 Until a file exists the game falls back to a stand-in: the forge sprite for the armoury, the old shared figure for a soldier, a text glyph for icons, no mark. Missing files never break the game.
@@ -84,6 +88,7 @@ Art painted on a flat #FF00FF ground is turned into game sprites with:
 python3 tools/chromakey.py --max 480 assets/factions/*/buildings/<new>.png    # buildings: key, trim, cap the longest side
 python3 tools/chromakey.py <unit, icon, mark and portrait files>               # key and trim with a 4 px margin
 python3 tools/defringe.py <the same files>                                      # any pink fringe left on edges
+python3 tools/art-lint.py <the same files>                                      # RGBA, clear corners, no key colour, sized like its kind (CI runs it on all art)
 node tools/art-smoke.cjs logs/art-smoke.png                                     # with the repo served on :8123: a screenshot of it all in game
 ```
 
@@ -343,6 +348,8 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
 4. **Facing.** The old shared unit art looks left; the new per-people figures look right. The game handles both (it mirrors), but keep every new figure looking right or straight out.
 5. **Captain standard** is painted with neutral cloth and the game dyes it per house. Keep any future marks that carry house colour neutral (white or pale grey cloth).
 6. **Command-card icons need a clear corner** (2026-10-17). The instruction set's Goods icon template centres the subject with a 4 px margin; the game now prints a hotkey letter in the top-right corner of every command-card button when Grid keys are on. Paint button icons (orders, stances, formations, any future train or build button art) with the subject weighted to the lower left and the top-right eighth empty.
+7. **Every figure that walks needs its own stride** (2026-10-19). The instruction set asks for one still per unit. The game now plays four walk frames per figure, and any figure without them (today the six Armoury kit figures, priority 19) strides in code and looks like a cut-out beside the rest. Any future person or mount (a new unit, a unique unit per people, T10) is delivered as a still plus `_walk1`-`_walk4`.
+8. **Drops are linted** (2026-10-19). `tools/art-lint.py` (CI) fails a file that is not RGBA, has a corner a quarter opaque or more (cards and portraits excepted), shows the key colour or a magenta rim on its soft edges, or is over twice the size of its kind. Run it before committing art.
 
 ## Priority 8: three new peoples (Vikings, Byzantines, Persians)
 
@@ -545,6 +552,27 @@ Use the QA checklist from the instruction set, and the **lineup test** in the ch
 
 - **Plain soldiers (priority 5):** set beside the armed pose of the same role, the two must read as the same man before and after the Armoury.
 - **Ram and other wheeled engines:** the game grounds the ram with a shadow spanning the lower 30% of the picture (its wheelbase in three-quarter view) and does not bob it like a walker. A repainted or new engine (a future siege tower or catapult) must keep that framing: three-quarter view, the front wheel touching the bottom edge, all wheels within the lower third, and no empty margin under the wheels. Otherwise it floats above its shadow.
+
+## Priority 19: walk cycles for the armed soldiers (192, new 2026-10-19)
+
+Priority 15 gave every plain figure four stride frames, and the game plays them. A soldier the Armoury has equipped is drawn from his kit's still figure (`footman_spear`, `footman_sword`, `footman_heavy`, `bowman_longbow`, `bowman_crossbow`, `knight_lance`), which has no frames, so the game still cuts him at the hip and swings his legs. In a mixed army the kitted men are the veterans the player looks at most, and they are the ones who walk like paper cut-outs.
+
+Paint four frames for each kit figure of each people, exactly as priority 15: the same framing, height and foot line as that kit's still figure (`units/<kit key>.png`), so the game can swap them in place, the weapon carried at the march (spear upright on the shoulder, sword sheathed or held low, bow in the off hand, crossbow on the shoulder, lance upright). The Egyptian `knight_lance` is a chariot: no cycle.
+
+| File | Pose |
+|---|---|
+| `units/<kit key>_walk1.png` | right foot forward, contact (a horse: near fore and off hind forward) |
+| `units/<kit key>_walk2.png` | passing, body highest |
+| `units/<kit key>_walk3.png` | left foot forward, contact |
+| `units/<kit key>_walk4.png` | passing, body highest |
+
+Deliver at the still figure's size (about 260 px on the long side; knights about 300). Dress, kit and colour as in **How each people really looked** in the character guide and priority 3; the people's colour on cloth only.
+
+```text
+UNIT WALK FRAME: {PEOPLE} {ROLE} carrying {KIT: spear / sword and mail / heavy plate or lamellar / longbow / crossbow / lance on horseback}, frame {1-4} of a four-frame walk cycle ({POSE from the table}), same costume, kit, proportions and scale as the still figure, three-quarter view facing right, painted AoE II style, realistic, weathered, no cartoon proportions. {FACTION KIT from the Seven Holds instruction set, or the Scots kit in Gaps 1}. Feet line and head height identical across the four frames. Flat #FF00FF background, no shadow, no ground, 4 px margin.
+```
+
+Wiring (Claude, on delivery): add the six kit keys to the walk-cycle loop in `js/art.js` `loadArt` and let render.js `gaitOf` prefer `<kit key>_walk<n>` over the hip-cut; run `tools/art-lint.py` on the drop.
 
 ## Priority 13b: the siege line (onager, trebuchet) and its research icons (5)
 

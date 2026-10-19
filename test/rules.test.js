@@ -1306,6 +1306,22 @@ test('siege: each engine waits on its research at the academy, and each batters 
   assert.ok(onWall > onMan * 8, `a boulder does ${onWall.toFixed(0)} to a wall, ${onMan.toFixed(0)} to a man`);
 });
 
+test('siege: spears and the Rus bear-hunter count against every engine, not only the ram (T-073)', () => {
+  const g = mk({ fog: false }); g.meet(0, 1); g.setRelation(0, 1, 'war'); const e = g.seatOf(1);
+  const rus = g.addUnit('footman', PLAYER, e.x - 6, e.y); rus.far = 'rus';
+  for (const k of ['ram', 'onager', 'trebuchet']) { const t = g.addUnit(k, 1, e.x - 5, e.y); assert.ok(g.charMul(rus, t) > 1.5, `the Rus is a horse-breaker against the ${k}`); t.hp = 0; }
+  const hitOnce = (gear) => {
+    const g2 = mk({ fog: false }); g2.meet(0, 1); g2.setRelation(0, 1, 'war'); const s = g2.seatOf(1);
+    const t = g2.addUnit('onager', 1, s.x - 6, s.y); t.hp = t.maxHp = 50000;
+    const u = g2.addUnit('footman', PLAYER, s.x - 6.8, s.y); if (gear) u.gear = { weapon: 'spear' };
+    u.cooldown = 0; u.task = { type: 'attack', targetId: t.id }; const before = t.hp;
+    for (let i = 0; i < 200 && t.hp === before; i++) g2.tick(0.05);
+    return before - t.hp;
+  };
+  const plain = hitOnce(false), spear = hitOnce(true);
+  assert.ok(plain > 0 && spear > plain * 1.6, `a spear strikes an onager for ${spear.toFixed(1)}, a plain footman for ${plain.toFixed(1)}`);
+});
+
 test('siege: a keep stores up to three engines in its sheds, apart from its garrison, mending them; Leave rolls them out', () => {
   const g = mk({ fog: false }); const h = g.seatOf(PLAYER);
   const k = g.addBuilding('keep', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();

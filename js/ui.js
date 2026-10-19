@@ -16,7 +16,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ART_B = new Set(['keep','cottage','farm','mill','warehouse','market','forge','workshop','tavern','academy','temple','barracks','archery','stable','tower','mine','foundry']);
 const ART_U = new Set(['recruit','serf','scout','footman','bowman','knight','spy','scholar']);
-const artUrl = (kind0, team = PLAYER, kind = kind0 === 'king' ? 'knight' : kind0) => kind === 'village' ? 'assets/shared/villages/1tile/hamlet.png' : FIMG[HOUSES[team].faction]?.[kind] ? FIMG[HOUSES[team].faction][kind].src : kind === 'camel' ? (SIMG.dromedary?.src || camelURL()) : ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
+const artUrl = (kind0, team = PLAYER, kind = kind0 === 'king' ? 'knight' : kind0) => kind === 'village' ? 'assets/shared/villages/1tile/hamlet.png' : FIMG[HOUSES[team].faction]?.[kind] ? FIMG[HOUSES[team].faction][kind].src : kind === 'camel' ? (SIMG.dromedary?.src || camelURL()) : SIMG[kind] && (kind === 'ram' || kind === 'onager' || kind === 'trebuchet') ? SIMG[kind].src :   // (the painted engines stand in for a card)
+   ART_U.has(kind) ? `assets/ui/units/${kind}.png` : ART_B.has(kind) ? `assets/ui/buildings/${kind}.png` : null;
 let _camel = null;
 function camelURL() { try { return (_camel ||= camelSprite(0).toDataURL()); } catch { return null; } }
 const icon = (kind, fallback) => { const u = artUrl(kind); return u ? `<img src="${u}" alt="" draggable="false">` : fallback; };
@@ -909,7 +910,7 @@ export class UI {
       const afford = g.canAfford(PLAYER, s.cost), room = s.nopop || g.popUsed(PLAYER) < g.popCap(PLAYER);   // (a pack animal needs no room)
       const needs = s.tech && !g.hasTech(PLAYER, s.tech) ? TECH[s.tech].label : null;   // a siege engine waits on its research
       const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br>HP ${s.hp} · dmg ${s.dmg}${s.range > 1.6 ? ' (ranged)' : ''} · speed ${s.speed}<br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s${room ? '' : '<br><span class="need">Population capped: raise cottages.</span>'}`;
-      html += this.btn('train', { off: !afford || !room || !!needs, glyph: GLYPH[k], art: k, name: s.label, sub: needs ? `Needs ${needs}` : costShort(s.cost), data: { kind: k }, tip: needs ? tip + `<br><span class='need'>Research <b>${needs}</b> at an academy first.</span>` : tip });
+      html += this.btn('train', { off: !afford || !room || !!needs, glyph: GLYPH[k], art: k, name: s.label, sub: needs ? 'Locked' : costShort(s.cost), data: { kind: k }, tip: needs ? tip + `<br><span class='need'>Research <b>${needs}</b> at an academy first.</span>` : tip });
     }
     return html + `</div>`;
   }

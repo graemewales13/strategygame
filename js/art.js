@@ -1,5 +1,5 @@
 // Auld World - painted art. The sprites are cut from the concept boards (assets/world/*) and recoloured per house at load.
-// Nothing here is drawn procedurally except the ram, which the boards do not show.
+// Drawn in code only as fallbacks: the ram and the siege engines (ramSprite, siegeSprite) when their painted files are missing.
 import { HOUSES, GOOD_COLOR, FACTIONS, FACTION_BUILDINGS, GEAR_KEYS, TECH_KEYS, DEEDS, FARLANDS, STANCES, FORMATIONS } from './config.js';
 
 const LIST = {
@@ -37,17 +37,16 @@ export function armedKey(u) {
   if (u.kind === 'knight') return w === 'lance' ? 'knight_lance' : null;
   return null;
 }
-// shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm; 'watch', ARTREQUIREMENTS priority 16, joins the list once painted). UIART[group][key] = Image.
+// shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm, the watchman and the disguise mask). UIART[group][key] = Image.
 export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {}, orders: {} };
 export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking', vikings: 'jarl', byzantines: 'basileus', persians: 'shahanshah' };
 // research icons not painted yet: empty once siegecraft, torsion and counterweight are in (priority 13b)
 const TECH_UNPAINTED = new Set();
 const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS.filter((k) => !TECH_UNPAINTED.has(k)), portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm', 'watch', 'disguise'],
   orders: [...STANCES, ...FORMATIONS, 'amove', 'charge', 'retreat', 'stop', 'repair'] };
-// 'watch' and 'disguise' are painted (priorities 16 and 17)
 export const uiArt = (group, key) => UIART[group]?.[key]?.src || null;
-// painted ore deposits (ARTREQUIREMENTS priority 18): ORE_ART[mineral] and ORE_ART[mineral + '_half'] = Image. Put the minerals in
-// ORE_PAINTED once delivered to assets/shared/resources/<mineral>.png and <mineral>_half.png; until then the recoloured pile (oreSprite)
+// painted ore deposits (ARTREQUIREMENTS priority 18): ORE_ART[mineral] and ORE_ART[mineral + '_half'] = Image. All five are painted (ORE_PAINTED); a
+// mineral left out of ORE_PAINTED falls back to the recoloured pile (oreSprite)
 export const ORE_ART = {};
 const ORE_PAINTED = ['stone', 'copper', 'iron', 'coal', 'silver'];
 // painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow

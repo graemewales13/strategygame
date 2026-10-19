@@ -828,7 +828,7 @@ export class Game {
     let m = 1;
     for (const d of u.deeds || []) m += (DEEDS[d]?.dmg || 0) + (t && t.type === 'building' ? DEEDS[d]?.bld || 0 : 0);
     if (u.far === 'norse') m += PERK.berserk * Math.max(0, 1 - u.hp / u.maxHp);
-    if (u.far === 'rus' && t && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || t.kind === 'ram')) m += PERK.breaker;
+    if (u.far === 'rus' && t && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || SIEGE.has(t.kind))) m += PERK.breaker;
     if (u.far === 'nihon' && t && t.type === 'unit' && (t.rank || 0) >= 1) m += PERK.duel;
     if (this.captainNear(u)) m += CAPTAIN.dmg;
     return m;
@@ -2733,7 +2733,7 @@ export class Game {
     if (this.players[u.team].leaderless) dmg *= KING.leaderless;
     if (this.players[u.team].broke) dmg *= BROKE.fight;
     dmg *= this.charMul(u, t);
-    { const w = this.gearOf(u, 'weapon'); if (w) { dmg += w.dmg || 0; if (w.vsHorse && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || t.kind === 'ram')) dmg *= 1 + w.vsHorse; } }   // the kit from the armoury
+    { const w = this.gearOf(u, 'weapon'); if (w) { dmg += w.dmg || 0; if (w.vsHorse && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || SIEGE.has(t.kind))) dmg *= 1 + w.vsHorse; } }   // the kit from the armoury
     if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);

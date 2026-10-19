@@ -160,7 +160,7 @@ export const MEDICINE = { heal: 0.6, quiet: 6 };   // hp a second an idle soldie
 // ---- weapons and armour, made at the Armoury and kept in the stockpile. A soldier takes up the best kit for his kind when he is trained or
 // drilled, and swaps up (handing the old kit back) when he stands idle within REFIT.r tiles of an Armoury.
 export const GEAR = {
-  spear:    { label: 'Spears',    slot: 'weapon', for: ['footman'],                     tech: 'metallurgy', cost: { wood: 6, iron: 2 },  time: 8,  tier: 1, dmg: 2, vsHorse: 0.6, info: '+2 damage; +60% against knights, kings and rams.' },
+  spear:    { label: 'Spears',    slot: 'weapon', for: ['footman'],                     tech: 'metallurgy', cost: { wood: 6, iron: 2 },  time: 8,  tier: 1, dmg: 2, vsHorse: 0.6, info: '+2 damage; +60% against knights, kings and siege engines.' },
   sword:    { label: 'Swords',    slot: 'weapon', for: ['footman'],                     tech: 'steelcraft', cost: { steel: 2 },          time: 10, tier: 2, dmg: 5, info: '+5 damage.' },
   longbow:  { label: 'Longbows',  slot: 'weapon', for: ['bowman'],                      tech: 'fletching',  cost: { wood: 10 },          time: 8,  tier: 1, dmg: 1, range: 1.5, info: '+1 damage, +1.5 range.' },
   crossbow: { label: 'Crossbows', slot: 'weapon', for: ['bowman'],                      tech: 'mechanics',  cost: { wood: 6, steel: 2 }, time: 12, tier: 2, dmg: 6, cd: 0.4, info: '+6 damage, a little slower to load.' },
@@ -450,7 +450,7 @@ export const FARLANDS = {
   parthian: { label: 'Parthian rider',      land: 'Parthia, beyond the salt deserts', perk: 'Outrider',      tip: 'Swift and far-sighted: +1.1 speed, +50% sight.',                                  hp: 1.1,  dmg: 1, spd: 1.1, cost: 80 },
   greek:    { label: 'Greek physician',     land: 'the Isles of the Middle Sea',      perk: 'Physician',     tip: 'Heals wounded friends within 4 tiles (2 health a second), even on the march.',     hp: 1,    dmg: 0, spd: 0,   cost: 75 },
   han:      { label: 'Han drillmaster',     land: 'the Middle Kingdom, far east',     perk: 'Drillmaster',   tip: 'Soldiers within 6 tiles earn +50% experience.',                                   hp: 1.1,  dmg: 1, spd: 0,   cost: 90 },
-  rus:      { label: 'Rus bear-hunter',     land: 'the river forests of the Rus',     perk: 'Horse-breaker', tip: '+75% damage against knights, kings and rams.',                                     hp: 1.3,  dmg: 1, spd: 0,   cost: 80 },
+  rus:      { label: 'Rus bear-hunter',     land: 'the river forests of the Rus',     perk: 'Horse-breaker', tip: '+75% damage against knights, kings and siege engines.',                                     hp: 1.3,  dmg: 1, spd: 0,   cost: 80 },
   moor:     { label: 'Moorish caravaneer',  land: 'the Maghreb, past the great sands', perk: 'Caravaneer',   tip: 'Your camels within 8 tiles walk 25% faster.',                                     hp: 1,    dmg: 0, spd: 0.4, cost: 70 },
   aksum:    { label: 'Aksumite envoy',      land: 'Aksum, across the Red Sea',        perk: 'Envoy',         tip: 'Sways villages within 10 tiles toward your house, like a lesser king.',           hp: 1,    dmg: 0, spd: 0.3, cost: 95 },
   nihon:    { label: 'Wandering swordsman', land: 'the Eastern Isles',                perk: 'Duellist',      tip: '+40% damage against rated foes (Trained or better).',                             hp: 1.15, dmg: 3, spd: 0.2, cost: 100 },
