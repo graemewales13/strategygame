@@ -457,7 +457,9 @@ export class Renderer {
     let top = 1e9, midx = 0, left = 1e9, right = -1e9, bottom = -1e9;
     if (dim) ctx.globalAlpha = 0.78;
     for (const p of parts) {
-      const [sx, sy] = this.toScreen(cx + p.dx + 0.7, cy + p.dy + 0.7);
+      // a painted village is its own ground diamond, p.w tiles across: its bottom corner sits p.w/2 below the centre of the village's square, so
+      // the painting lies on its square (owner, 2026-10-20: pinned at 0.9 it floated most of a tile north, over the bushes behind it)
+      const off = p.img ? p.w / 2 : 0.7, [sx, sy] = this.toScreen(cx + (p.img ? 0 : p.dx) + off, cy + (p.img ? 0 : p.dy) + off);
       const c = p.img || (p.name === 'village_cluster' && SIMG.hamlet ? SIMG.hamlet : tinted(p.name, team, 'banner', false));
       if (p.name === 'gold') this.shadowAt(ctx, sx, sy, p.w * HW * z * 0.5, 7 * z, 0.3);
       if (c && p.name !== 'gold' && !dim) this.castShadow(ctx, c, sx, sy, p.w * 2 * HW * z, (c.height / c.width) * p.w * 2 * HW * z * 0.9, false, 0.28, 0.8);
