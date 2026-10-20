@@ -1169,6 +1169,7 @@ test('pack animals: not people (no population, never capped); each people names 
   while (g.popUsed(PLAYER) < g.popCap(PLAYER)) g.addUnit('serf', PLAYER, h.x + 2, h.y + 2);
   assert.equal(g.train(PLAYER, m.id, 'camel'), true, 'trained even at the population cap');
   assert.equal(packWords('Train a camel; two camels. Camel.', PLAYER), 'Train a donkey; two donkeys. Donkey.');
+  assert.equal(packWords('<button data-act="train" data-kind="camel" data-tip="a camel">Camel</button>', PLAYER), '<button data-act="train" data-kind="camel" data-tip="a camel">Donkey</button>', 'only the words shown change: the button still trains the camel unit');
   const mg = new Game({ seed: 8, houses: 3, ai: false, people: 'mongols' }); assert.equal(packOf(PLAYER).one, 'Bactrian camel');
   const eg = new Game({ seed: 8, houses: 3, ai: false, people: 'egyptians' }); assert.equal(packWords('a camel', PLAYER), 'a camel');
 });

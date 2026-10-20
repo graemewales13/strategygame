@@ -55,7 +55,10 @@ export const packOf = (team) => PACK[PACK_OF[HOUSES[team]?.faction] || 'dromedar
 // say 'camel' the way this house's people would: every word camel/camels/Camel in a line shown to it becomes its own animal
 export function packWords(text, team) {
   const p = packOf(team); if (p === PACK.dromedary || typeof text !== 'string') return text;
-  return text.replace(/\b([Cc])amel(s?)\b/g, (m, c, s) => { const w = s ? p.many : p.one; return c === 'C' ? w[0].toUpperCase() + w.slice(1) : w; });
+  const say = (t) => t.replace(/\b([Cc])amel(s?)\b/g, (m, c, s) => { const w = s ? p.many : p.one; return c === 'C' ? w[0].toUpperCase() + w.slice(1) : w; });
+  // only the words a player reads: never inside a tag, where data-kind="camel" names the unit a button trains (owner, 2026-10-20: the
+  // donkey button sent 'donkey', which is no unit, so it did nothing)
+  return text.replace(/(<[^>]*>)|([^<]+)/g, (m, tag, words) => tag || say(words));
 }
 // Seat the peoples: order[seat] = index into PEOPLE. Everything moves with the people: nation, name, motto, colour and crest.
 // An order from an older save (five peoples) is kept and the newer peoples fill the seats after it.
