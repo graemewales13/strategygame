@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -123,6 +123,7 @@ export class UI {
     $('btnHome').onclick = () => this.focusHall();
     $('btnIdle').onclick = () => this.selectIdleSerf();
     $('btnArmy').onclick = (e) => (e.shiftKey ? this.selectIdleArmy() : this.selectArmy());
+    if ($('btnBell')) $('btnBell').onclick = () => this.ringBell();
     $('groupBar').addEventListener('click', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, false); });
     $('groupBar').addEventListener('dblclick', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, true); });
     $('btnSpeed').onclick = () => { this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1; $('btnSpeed').textContent = this.speed + 'x'; };
@@ -316,6 +317,7 @@ export class UI {
       case 'idleSerf': this.selectIdleSerf(); break;
       case 'army': this.selectArmy(); break;
       case 'idleArmy': this.selectIdleArmy(); break;
+      case 'bell': this.ringBell(); break;
       case 'charge': if (fighters()) this.onCmd({ act: 'charge' }); break;
       case 'retreat': if (this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' }); break;
       case 'amove': if (fighters()) this.setAmove(!this.amove); break;
@@ -332,6 +334,7 @@ export class UI {
     if ($('btnHome')) $('btnHome').title = `Jump to your home village (${kn('hall')})`;
     if ($('btnIdle')) $('btnIdle').title = `Select next idle serf (${kn('idleSerf')})`;
     if ($('btnArmy')) $('btnArmy').title = `Select all soldiers (${kn('army')}); Shift-click or ${kn('idleArmy')}: only the idle ones`;
+    if ($('btnBell')) $('btnBell').title = `Town bell (${kn('bell')}): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work`;
     this.sigCmd = ''; if ($('kGrid')) $('kGrid').checked = this.gridKeys;
     if ($('mKeysHint')) $('mKeysHint').textContent = `Right-click to move, gather, sack, infiltrate. Drag to select. ${this.gridKeys ? 'The arrows pan (Grid keys are on: the command card answers to Q W E R / A S D F / Z X C V).' : `${['panUp', 'panLeft', 'panDown', 'panRight'].map(kn).join('')} or the arrows pan.`} ${kn('campaign')} opens the campaign map. ${kn('alert')} jumps to where you are under attack. Esc returns here.`;
   }
@@ -508,6 +511,7 @@ export class UI {
       case 'councilclose': this.councilOpen = false; $('council').classList.add('hidden'); break;
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
+      case 'bell': this.ringBell(); break;
       case 'gsel': this.gsel = +d.id; break;
       case 'research': this.host.send({ type: 'research', tech: d.tech }); break;
       case 'craft': { const b = this.selEntity(); if (b) this.host.send({ type: 'craft', buildingId: b.id, item: d.item }); break; }
@@ -990,6 +994,16 @@ export class UI {
     if (!room) html += `</div><div class="hint need">Your population is full (${g.popUsed(PLAYER)}/${g.popCap(PLAYER)}): every serf, soldier and recruit takes a place. Raise a <b>cottage</b> (+5) to hire more.`;
     return html + `</div><div class="hint">Hired wanderers walk to the rally point (right-click ground). Right-click a keep with them to garrison and drill.</div>`;
   }
+  // the town bell (T38): the first ring shelters the serfs, the second sends them back to work
+  ringBell() {
+    const r = this.host.send({ type: 'bell' });
+    if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn');
+    this.sigCmd = ''; this.hudT = 0;
+  }
+  bellBtn() {
+    const on = this.game.players[PLAYER].bell != null, k = this.gridKeys ? '' : keyName(this.kmap.bell);
+    return this.btn('bell', { img: uiArt('orders', 'bell'), glyph: '🔔', name: on ? 'All clear' : 'Town bell', sub: k, cls: on ? 'on' : '', tip: on ? `<b>All clear</b> ${k ? `(${k})` : ''}<br>Everyone the bell sent inside comes out and goes back to the work they left.` : `<b>Town bell</b> ${k ? `(${k})` : ''}<br>Every serf and scholar within ${BELL.r} tiles of a keep, tower, barracks or village you hold runs inside the nearest one with room. Ring again for the all-clear.` });
+  }
   keepPanel(b) {
     const g = this.game, p = g.players[PLAYER];
     let html = `<div class="ctitle">Drill garrisoned recruits and serfs</div><div class="cgrid">`;
@@ -998,6 +1012,7 @@ export class UI {
       html += this.btn('drill', { off: !afford, glyph: GLYPH[k], art: k, name: UNITS[k].label, sub: `${costShort(d.cost)} · ${d.time}s`, data: { kind: k }, tip: `<b>Drill a ${UNITS[k].label.toLowerCase()}</b><br><span class="info">Turns the highlighted garrisoned recruit or serf (else the first one) into a ${UNITS[k].label.toLowerCase()}. Keeps their traits.</span><br><span class="cost">${costText(d.cost, p)}</span>` });
     }
     html += this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' });
+    html += this.bellBtn();
     return html + `</div><div class="hint">Right-click the keep with units to garrison them, or a village you hold to <b>levy villagers</b>.</div>`;
   }
   treatyRows() {
@@ -1212,7 +1227,7 @@ export class UI {
         html += `<div class="cgrid" style="margin-top:6px">${ent.hp < ent.maxHp ? this.btn('repair', { img: uiArt('orders', 'repair'), glyph: '🔨', name: 'Repair', sub: `${Math.round((100 * ent.hp) / ent.maxHp)}%`, tip: `<b>Repair</b><br>Sends the nearest four serfs to mend it. Repairs cost half the price of the health put back, paid as they work (grain, timber, coin or stone as the building needs). You can also select serfs and right-click it.` }) : ''}${this.btn('demolish', { glyph: '⚒', name: 'Pull down', sub: '30% back', cls: this.demoArm === ent.id ? 'on' : '', tip: '<b>Pull down</b><br>Click twice. Those inside step out and a third of its cost comes back. A keep or temple pulled down stops swaying the villages around it.' })}</div>`;
       }
     } else if (ent && ent.type === 'village') {
-      html = this.villageActs(ent) + this.tradeBoard(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (a keep with soldiers inside, plus a temple, tavern or market near it) or a <b>spy</b>. Independent villages also trade with your camels.'}</div>`;
+      html = this.villageActs(ent) + this.tradeBoard(ent) + `<div class="hint">${ent.owner === PLAYER ? 'Yours: right-click with soldiers to garrison. Select a keep and right-click it to <b>levy</b> villagers.' : 'Win it by <b>sack</b> (soldiers), <b>influence</b> (a keep with soldiers inside, plus a temple, tavern or market near it) or a <b>spy</b>.'}</div>`;
     } else if (ent && ent.type === 'building') {
       const army = g.militaryOf(PLAYER).length;
       html = `<div class="ctitle">Options</div><div class="cgrid">${this.btn('sendarmyb', { glyph: '⚔', name: 'Attack', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Attack</b><br>Sends every soldier at it. Or select units and right-click it (rams are best against walls).' })}${ent.team >= 0 && ent.team !== PLAYER ? this.btn('council', { glyph: '⚜', name: 'Council', data: { team: ent.team }, tip: '<b>Council of Houses</b><br>Everything about this house and every dealing with it.' }) : ''}</div>${ent.kind === 'market' ? this.tradeBoard(ent) : ''}<div class="hint">${esc(HOUSES[ent.team].name)} building. Select units and right-click it to attack.</div>`;

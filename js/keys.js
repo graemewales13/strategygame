@@ -19,6 +19,7 @@ export const KEY_ACTIONS = [
   { id: 'charge', label: 'Attack', def: 'g', group: 'Orders' },
   { id: 'retreat', label: 'Retreat', def: 'r', group: 'Orders' },
   { id: 'stop', label: 'Stop', def: 'x', group: 'Orders' },
+  { id: 'bell', label: 'Town bell (shelter / back to work)', def: 'b', group: 'Orders' },
   { id: 'council', label: 'Council of Houses', def: 'c', group: 'Panels' },
   { id: 'standings', label: 'Standings', def: 't', group: 'Panels' },
   { id: 'econ', label: 'Economy overlay', def: 'e', group: 'Panels' },

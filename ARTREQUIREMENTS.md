@@ -8,7 +8,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 **The character list is done.** Delivered 2026-10-19: the ram in two parts (13), thirteen order icons (14), walk cycles for every walking role (15), the watchman mark (16), the disguise mark (17), ore deposits per mineral (18), the siege line (13b), the women among the serfs, and the Scottish recruit without a kilt. Egyptian knights and kings stay chariots, so they have no walk cycle. An armed soldier still strides in code, from the still figure of his kit.
 
-**Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
+**Open (2026-10-20): priority 20, the town bell icon** (one 128x128 order icon for the new Bell button; the button shows 🔔 until then). **Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
@@ -27,6 +27,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 13 | **Ore deposits painted per mineral**: stone, copper, iron, coal and silver, each full and half-dug | shared | `assets/shared/resources/<mineral>.png`, `<mineral>_half.png` | 10 | priority 18 — **delivered** 2026-10-19 |
 | 14 | **Siege engines**: the **Onager** and the **Trebuchet**, plus research icons for **Siegecraft**, **Torsion engines** and **Counterweight engines** | shared | `assets/shared/units/onager.png`, `trebuchet.png`; `assets/shared/ui/tech/siegecraft.png`, `torsion.png`, `counterweight.png` | 5 | priority 13b — **delivered** 2026-10-19 |
 | 15 | **Walk cycles for the armed soldiers**: four stride frames for each kit figure | all 8 | `units/<kit key>_walk1.png` ... `_walk4.png` for `footman_spear`, `footman_sword`, `footman_heavy`, `bowman_longbow`, `bowman_crossbow`, `knight_lance` | 192 (168: no Egyptian chariot) | priority 19 — **open**, requested 2026-10-19 |
+| 16 | **Town bell order icon** for the new Bell button (T38) | shared | `assets/shared/ui/orders/bell.png` | 1 | priority 20 — **open**, requested 2026-10-20 |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
 
@@ -55,6 +56,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 18 | **Ore deposits per mineral**, full and half-dug | **Delivered and wired** 2026-10-19. `ORE_PAINTED` lists stone, copper, iron, coal, silver |
 | 13b | **Onager, trebuchet, and the siege research icons** | **Delivered and wired** 2026-10-19. `SIEGE_ART` is true; `TECH_UNPAINTED` is empty |
 | 19 | **Walk cycles for the armed soldiers** (six kit figures, 8 peoples) | **Requested** 2026-10-19. Until delivered the game strides the kit's still figure in code (render.js `gaitOf`); not probed until listed in `js/art.js` |
+| 20 | **Town bell order icon** (1, shared) | **Requested** 2026-10-20 (T38). The Bell button on the keep's card shows the 🔔 glyph until delivered; not probed until `'bell'` is added to `UI_KEYS.orders` in `js/art.js`. The minimap row's Bell button is text, like Home, Idle and Army |
 | — | Siege engines on the command card and unit panel (T-073, 2026-10-19) | **No painting needed.** The Workshop's Ram, Onager and Trebuchet buttons, the unit panel and the control-group chips show the painted engines (`assets/shared/units/ram.png`, `onager.png`, `trebuchet.png`) in place of a card |
 | — | Art lint (T30, 2026-10-19): `tools/art-lint.py` in CI | **No painting needed.** Every drop is now checked for RGBA, clear corners, the key colour and size against its kind |
 | — | Selecting idle soldiers and a kind across the valley (T31, 2026-10-15) | **No painting needed.** Uses the existing Army button and keys |
@@ -186,7 +188,7 @@ Make one picture per people of `serf`, `recruit`, `footman`, `bowman`, `knight`,
 
 The Armoury makes weapons and armour. It is unlocked by the Metallurgy research and sits beside the forge in a town. One per faction, five in all, each in three states: complete, `_build` and `_ruin`.
 
-- **Size class:** 3x3 tiles, 768 px wide, 560-720 px tall at 4x.
+- **Size class:** 2x2 tiles since 2026-10-20 (T-080; it was 3x3). The delivered 768 px art is scaled to the footprint, so it needs no repaint. New paintings: 512 px wide, 400-500 px tall at 4x, like the tavern.
 - **Must read as at a glance:** an armourer's workshop, *not* the forge. Show:
   - racks of spears and swords under an open-fronted roof
   - shields hung on the wall
@@ -198,7 +200,7 @@ The Armoury makes weapons and armour. It is unlocked by the Metallurgy research 
 Prompt (Building template, filled):
 
 ```text
-{FACTION_NAME} ARMOURY, 3x3 footprint, {STATE}. An armourer's workshop: an open-fronted bay with racks of spears and swords, shields hung on the wall, a mail shirt on a wooden stand, a grindstone, stacked bow staves, one small chimney. Faction details: {see below}. Banner in {ACCENT_COLOUR}. Show the south-east face door. Transparent background, small contact shadow, 4x resolution, image size 768x640.
+{FACTION_NAME} ARMOURY, 2x2 footprint, {STATE}. An armourer's workshop: an open-fronted bay with racks of spears and swords, shields hung on the wall, a mail shirt on a wooden stand, a grindstone, stacked bow staves, one small chimney. Faction details: {see below}. Banner in {ACCENT_COLOUR}. Show the south-east face door. Transparent background, small contact shadow, 4x resolution, image size 768x640.
 ```
 
 | Faction | Faction details to paste | Accent |
@@ -333,7 +335,7 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
 ```
 
 2. **The game's sizes differ.** The game currently draws:
-   - 3x3 buildings at about 365x420 px
+   - 3x3 buildings at about 365x420 px (2x2 ones, now including the market, forge and armoury, at about two-thirds of that)
    - units at about 145x195 px
    - UI unit portraits at 300x380 px
 
@@ -591,3 +593,17 @@ SIEGE ENGINE: {ONAGER or TREBUCHET as above}, three-quarter view facing right, r
 ```
 
 The stones they throw are drawn by the game (no art needed).
+
+## Priority 20: the town bell order icon (1, new 2026-10-20)
+
+The town bell (T38, as in AoE II) sends every serf and scholar near a keep, tower, barracks or held village inside, and a second ring sends them back to work. It is a button on the keep's command card (key **B** by default) and on the minimap row. The keep's button wants an icon in the same set as the thirteen order icons of priority 14: same **Goods icon** template, 128x128 px, readable at 32 px on a dark wood button, neutral colours (no faction colour: every house rings the same bell), no text or letters, top-right corner kept clear for the Grid key label.
+
+| Key | Order | Subject to paint |
+|---|---|---|
+| `bell` | Order: everyone into shelter; again for the all-clear | a bronze hand-bell or a small bell hung in a timber frame, swinging, with two short curved strokes beside it for its ring; a rope pull hanging below |
+
+```text
+ORDER ICON, a bronze town bell hung in a small timber frame, caught mid-swing, two short curved ring strokes beside it, a rope pull hanging below, painted in the same hand-painted medieval style as the kit and research icons: bronze, iron and weathered wood, warm low sun from the upper left, soft shadow. Neutral colours only, no faction colour, no text or letters, top-right eighth of the square left clear. Flat #FF00FF background, centred, 4 px margin, 128x128 (shown at 24-32 px).
+```
+
+Deliver: `assets/shared/ui/orders/bell.png`. Wiring (Claude, on delivery): key it (`tools/chromakey.py`, `tools/defringe.py`), run `tools/art-lint.py`, and add `'bell'` to `UI_KEYS.orders` in `js/art.js`; the button already asks for `uiArt('orders', 'bell')`.

@@ -211,7 +211,7 @@ export const BUILDINGS = {
   farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: [],                   info: 'Steady grain. +25% beside a mill.' },   // (from the start: grain feeds the folk and drafts serfs; owner, 2026-10-20)
   mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['farm'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
   warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['mine'],          info: 'Drop-off for all goods, +10% delivered.' },
-  market:    { label: 'Market',        size: 2, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: [],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets and villages. Drop-off. Small coin trickle.' },
+  market:    { label: 'Market',        size: 2, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: [],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets (yours or a trade partner\'s). Drop-off. Small coin trickle.' },
   forge:     { label: 'Forge',         size: 2, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks', 'foundry'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
   workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Builds siege engines: the Ram, Onager and Trebuchet, each once its research is done at the academy.' },
   tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: [],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
@@ -378,6 +378,10 @@ export const FOG_REVEAL_MS = 0;
 // Units enter a friendly building or village by right-click. Capacity per building kind:
 export const GARRISON = { keep: 8, tower: 3, barracks: 6 };
 export const VILLAGE_GARRISON = 8;
+// The town bell (T38, as in AoE II): one ring sends every serf and scholar within `r` tiles of a keep, tower, barracks or held village with room
+// inside the nearest of them; a second ring sends them back to the work they left. Rivals ring it when `foes` or more enemy fighters come within
+// `raidR` of their seat and outnumber the guard there by `odds` (a fair fight keeps the serfs out mending), and sound the all-clear after `quiet` seconds with no foe in that ring.
+export const BELL = { r: 18, kinds: ['serf', 'scholar'], raidR: 14, foes: 2, odds: 1.5, quiet: 15 };
 // who can raise buildings, and how fast compared with a serf (soldiers can build a castle beside a village they mean to sway)
 export const BUILDERS = { serf: 1, recruit: 0.5, footman: 0.6, bowman: 0.6, knight: 0.4, scout: 0.3 };
 // What each kind of character may do (all orders are right-clicks).
@@ -475,7 +479,7 @@ export const DEEDS = {
 // Captains (the Seven Kingdoms general): an Elite or better soldier can be given command. Soldiers near a captain hit harder and learn faster.
 export const CAPTAIN = { minRank: 3, cost: { food: 0, wood: 0, gold: 60 }, max: 3, aura: 6, dmg: 0.06, xp: 0.25, guard: 1.5 };
 
-// ---- caravans: camels carry goods between markets and villages ------------------------------
+// ---- caravans: camels carry goods between markets (never villages: DEMANDS) ------------------------------
 export const ROUTE_STOPS = 5;      // markets a camel keeps on its circuit (besides its home market)
 // arb: share of the price gap paid out as coin when a camel moves goods to where they are scarcer; purse: working coin a camel draws to buy abroad;
 // dwell: seconds spent at each stop; perGood: most of one good per leg; minGain: smallest coin gain per unit worth carrying

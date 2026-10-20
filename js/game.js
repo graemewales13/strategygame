@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -41,7 +41,7 @@ export class Game {
   set fogOn(v) { this._fog = v; }
   reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order } = {}) {
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
-    this.asks = [];   // the player's envoys on the road to rival houses: { from, to, state, at }
+    this.asks = [];   // the player's envoys on the road to rival houses: { from, to, state, coin, at } (coin: offered with a peace)
     this.losses = {}; this.spyIntel = {}; this._stance = {};   // nothing of the last match's wars or spies carries over
     this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
     this.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, houses));
@@ -475,6 +475,7 @@ export class Game {
       case 'repair': return this.repairWith(team, this.byId.get(it.buildingId));
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
+      case 'bell': return this.ringBell(team);
       case 'hire': return this.hire(team, it.buildingId, it.index);
       case 'research': return this.startResearch(team, it.tech);
       case 'craft': return this.craft(team, it.buildingId, it.item);
@@ -645,6 +646,53 @@ export class Game {
     return ids.length > 0;
   }
   ejectAll(t) { for (const uid of [...t.garrison, ...(t.engines || [])]) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; t.engines = []; }
+
+  // ---- the town bell (T38): the first ring shelters the house's workers, the second sends them back to what they were doing -------------
+  shelters(team) {
+    return [...this.buildings.filter((b) => b.team === team && b.built >= 1 && b.hp > 0 && GARRISON[b.kind]), ...this.villages.filter((v) => v.owner === team)];
+  }
+  ringBell(team) {
+    const p = this.players[team]; if (!p || !this.alive(team)) return false;
+    if (p.bell != null) return this.allClear(team);
+    const room = new Map(this.shelters(team).map((t) => [t, this.garrisonCap(t) - t.garrison.length]));
+    const folk = this.units.filter((u) => u.team === team && u.hp > 0 && !u.inside && BELL.kinds.includes(u.kind) && u.task.type !== 'enter');
+    let sent = 0;
+    for (const u of folk) {
+      let best = null, bd = BELL.r;
+      for (const [t, n] of room) { if (n <= 0) continue; const d = distTo(u.x, u.y, t); if (d < bd) { bd = d; best = t; } }
+      if (!best) continue;
+      const k = u.task, job = { type: k.type, nodeId: k.nodeId, targetId: k.targetId, resume: k.resume, buildQ: [...(u.buildQ || [])], afterBuild: u.afterBuild || null };
+      if (!this.cmdEnter([u], best)) continue;
+      u.bellJob = { ...job, post: best.id }; room.set(best, room.get(best) - 1); sent++;
+    }
+    if (!sent) { if (team === PLAYER) this.deny(team, `No serfs within ${BELL.r} tiles of a keep, tower, barracks or village with room.`); return false; }
+    p.bell = this.time;
+    this.log(team === PLAYER ? PLAYER : -1, team === PLAYER ? `The town bell rings: ${sent} of your folk run for shelter. Ring it again to send them back to work.` : `${p.name} rings the town bell.`, team === PLAYER ? 'warn' : 'info');
+    if (team === PLAYER) this.sfx('alarm', this.seatOf(team)?.x, this.seatOf(team)?.y);
+    return true;
+  }
+  // the all-clear: everyone the bell sent in comes out and takes up the work they left (anyone given other orders since keeps them)
+  allClear(team) {
+    const p = this.players[team]; if (!p || p.bell == null) return false;
+    p.bell = null; p.bellQuiet = null;
+    let back = 0;
+    for (const u of this.units) {
+      const j = u.bellJob; if (!j || u.team !== team) continue;
+      u.bellJob = null;
+      const post = this.byId.get(j.post);
+      if (u.hp <= 0 || !BELL.kinds.includes(u.kind)) continue;
+      if (u.inside === j.post) this.eject(u, post);
+      else if (u.task.type === 'enter' && u.task.targetId === j.post) { u.task = { type: 'idle' }; u.path = []; }
+      else if ((!post || post.type === 'building' && post.hp <= 0 || post.type === 'village' && post.owner !== team) && u.task.type === 'idle' && !u.inside) { /* the shelter fell and turned them out: they go back too */ }
+      else continue;   // (left or re-ordered while the bell rang: their new orders stand)
+      back++;
+      const t = j.targetId != null ? this.byId.get(j.targetId) : null, node = this.resources[j.type === 'gather' ? j.nodeId : j.resume];
+      if ((j.type === 'build' || j.type === 'repair') && t && t.hp > 0 && t.team === team) { this.cmdBuild([u], t); u.buildQ = j.buildQ.filter((id) => this.byId.get(id)?.hp > 0); if (j.afterBuild) u.afterBuild = j.afterBuild; }
+      else if ((j.type === 'gather' || j.type === 'return') && node && node.amount > 0) { if (u.kind === 'serf') this.cmdGather([u], node); }
+    }
+    this.log(team === PLAYER ? PLAYER : -1, team === PLAYER ? `All clear: ${back} of your folk go back to work.` : `${p.name} sounds the all-clear.`, 'info');
+    return true;
+  }
 
   // ---- science: learning and research ----------------------------------------------------------------------------------
   hasTech(team, key) {
@@ -2852,7 +2900,7 @@ export class Game {
     if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is promoted to ${RANKS[r].label}.`, 'good');
     return r;
   }
-  garrisonWeight(t) { let n = 0; for (const id of t.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0) n += this.guardWeight(u); } return n; }
+  garrisonWeight(t) { let n = 0; for (const id of t.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0 && this.ranked(u)) n += this.guardWeight(u); } return n; }   // (serfs sheltering from the bell are no garrison)
   // worth of one soldier for the standing guard of a keep or village (1 for a rookie)
   guardWeight(u) { return (u.kind === 'king' ? 2 : u.captain ? CAPTAIN.guard : 1) * (1 + RANK_BONUS.guard * (u.rank || 0)); }
   // fighting power of one unit: health times damage per second, 1.0 for a rookie footman; archers count double for fighting from range

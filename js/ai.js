@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -263,6 +263,7 @@ function think(game, team, p) {
   }
   { const hurt = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp * 0.75 && (b.hitT ?? 0) <= 0 && !game.units.some((o) => o.hp > 0 && game.isEnemy(team, o.team) && Math.hypot(o.x - b.x, o.y - b.y) < 12));   // mend what is damaged, once the foe has gone
     if (hurt && !game.units.some((u) => u.team === team && u.task.type === 'repair')) game.repairWith(team, hurt, 2); }
+  townBell(game, team, p, seat, t);
   courtVillages(game, team, p, seat, army, need, t);
   scoutAbroad(game, team, p, seat, army, t);
 
@@ -300,6 +301,21 @@ function think(game, team, p) {
     const guard = army.filter((u) => u.stance !== 'defensive' && u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) <= 12);
     if (guard.length) game.setStance(guard, 'defensive');
   }
+}
+
+// The town bell (T38), the player's button: raiders at the seat who clearly outnumber the guard there send the serfs inside;
+// the all-clear sounds once the seat has been quiet for BELL.quiet seconds.
+export function townBell(game, team, p, seat, t) {
+  const near = (u) => u.hp > 0 && !u.inside && Math.hypot(u.x - seat.x, u.y - seat.y) < BELL.raidR && game.powerOf(u) > 0;
+  const foes = game.units.filter((u) => near(u) && game.isEnemy(team, u.team) && game.fighter(u)).length;
+  if (p.bell == null) {
+    const guard = game.units.filter((u) => u.team === team && near(u) && game.fighter(u)).length;
+    if (foes >= BELL.foes && foes > guard * BELL.odds) game.ringBell(team);
+    return;
+  }
+  if (foes) { p.bellQuiet = null; return; }
+  if (p.bellQuiet == null) p.bellQuiet = t;
+  else if (t - p.bellQuiet >= BELL.quiet) game.allClear(team);
 }
 
 // A war band that is losing falls back to its seat to join the rest and heal, instead of dying to the last man: the foes' fighting power

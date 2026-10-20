@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -1390,6 +1390,48 @@ test('peace for coin: the envoy carries a share of the treasury, paid only if th
   const o = { id: h.nextLetter++, from: 1, to: PLAYER, kind: 'treaty', state: 'peace', amount: 100, t: h.time, expires: h.time + 60 }; h.offers.push(o);
   assert.equal(h.respondOffer(PLAYER, 1, true, o.id), true); assert.equal(h.rel[PLAYER][1], 'peace');
   assert.equal(h.players[PLAYER].gold, 100); assert.equal(h.players[1].gold, 400);
+});
+
+test('town bell (T38): one ring shelters the serfs in the nearest keep or village, the next sends them back to the work they left; saved; the AI rings it when raided', () => {
+  const g = mk(), seat = g.seatOf(PLAYER);
+  const keep = g.addBuilding('keep', PLAYER, Math.round(seat.x + 7), Math.round(seat.y - 2), true); g.recomputeWalk();
+  const node = g.resources.filter((r) => r.kind === 'tree' && r.amount > 0 && !r.covered).sort((a, b) => Math.hypot(a.x - keep.x, a.y - keep.y) - Math.hypot(b.x - keep.x, b.y - keep.y))[0];
+  const site = g.addBuilding('tavern', PLAYER, Math.round(keep.x - 1), Math.round(keep.y + 6), false); g.recomputeWalk();
+  const cutter = g.addUnit('serf', PLAYER, keep.x + 3, keep.y + 4), builder = g.addUnit('serf', PLAYER, site.x + 1.5, site.y);
+  assert.ok(g.cmdGather([cutter], node)); assert.ok(g.cmdBuild([builder], site));
+  const far = g.addUnit('serf', PLAYER, Math.min(g.W - 5, keep.x + BELL.r + 40), keep.y);   // out of town: the bell does not reach him
+  const farTask = far.task.type, wt = g.garrisonWeight(keep);
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'bell' }), true);
+  assert.ok(g.players[PLAYER].bell != null, 'rung');
+  run(g, 20);
+  assert.ok(cutter.inside != null && builder.inside != null, 'both serfs shelter');
+  assert.equal(far.inside, null); assert.equal(far.task.type, farTask);
+  assert.equal(g.garrisonWeight(keep), wt, 'sheltering serfs are no garrison');
+  // a save in the middle keeps the bell and the jobs
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  for (const x of [g, h]) {
+    const c = x.byId.get(cutter.id), b = x.byId.get(builder.id);
+    assert.equal(x.applyIntent({ team: PLAYER, type: 'bell' }), true, 'the all-clear');
+    assert.equal(x.players[PLAYER].bell, null);
+    assert.equal(c.inside, null); assert.equal(b.inside, null);
+    assert.equal(c.task.type, 'gather'); assert.equal(c.task.nodeId, node.id, 'back to the same trees');
+    assert.equal(b.task.type, 'build'); assert.equal(b.task.targetId, site.id, 'back to the same site');
+  }
+  // nobody to shelter: refused with a reason, nothing rung
+  const e = mk(); e.units = e.units.filter((u) => u.team !== PLAYER || !BELL.kinds.includes(u.kind)); e.byId = new Map([...e.units, ...e.buildings, ...e.villages].map((x) => [x.id, x]));
+  assert.equal(e.ringBell(PLAYER), false); assert.match(e.diploNote, /No serfs/); assert.equal(e.players[PLAYER].bell ?? null, null);
+  // the AI: raiders at its seat who outnumber the guard ring the bell; quiet for BELL.quiet seconds sounds the all-clear
+  const a = mk(); meet(a); a.players[1].ai = true; a.setRelation(PLAYER, 1, 'war');
+  const s1 = a.seatOf(1), p1 = a.players[1];
+  a.addUnit('serf', 1, s1.x + 2, s1.y + 3);
+  for (const u of a.units) if (u.team === 1 && a.fighter(u)) u.hp = 0;   // no guard at home
+  const raiders = [0, 1, 2].map((i) => a.addUnit('footman', PLAYER, s1.x + 4 + i * 0.6, s1.y + 4));
+  townBell(a, 1, p1, s1, a.time);
+  assert.ok(p1.bell != null, 'the rival rings its bell');
+  raiders.forEach((u) => { u.hp = 0; });
+  townBell(a, 1, p1, s1, a.time); assert.ok(p1.bell != null, 'not yet: the quiet has only begun');
+  townBell(a, 1, p1, s1, a.time + BELL.quiet + 1); assert.equal(p1.bell, null, 'all clear');
+  assert.equal(defaultKeys().bell, 'b');
 });
 
 console.log(`${passed} passed`);
