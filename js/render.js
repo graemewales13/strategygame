@@ -466,14 +466,11 @@ export class Renderer {
       const h = this.sprite(ctx, c, sx, sy, p.w * 2 * HW * z, false, 1);
       if (h != null) { const ww = p.w * 2 * HW * z; top = Math.min(top, sy - h); left = Math.min(left, sx - ww / 2); right = Math.max(right, sx + ww / 2); bottom = Math.max(bottom, sy); }
     }
-    // the folk mostly stay indoors: one or two idle by the door; a quarter muster outside, facing the attackers
+    // the folk stay indoors (owner, 2026-10-20: the two old-style serfs idling at every door are gone); when the village is attacked, a
+    // quarter muster outside, facing the attackers, drawn as levies of the village's lord's people (else the common painted levy)
     if (!dim) {
       const tin = v.owner >= 0 ? v.owner : -1, g = this.game, folk = [];
-      const calm = Math.min(2, Math.floor(v.pop / 7)), out = v.militia || 0;
-      for (let i = 0; i < calm && !out; i++) {
-        const h1 = hash(v.id * 7 + i, 3), sp = 0.1 + h1 * 0.08, ph = h1 * 40;
-        folk.push({ x: v.tx + v.size * (0.35 + 0.3 * i) + Math.sin(t * sp + ph) * 0.3, y: v.ty + v.size + 0.15 + Math.cos(t * sp * 0.8 + ph) * 0.15, flip: Math.cos(t * sp + ph) < 0, w: 36 });
-      }
+      const out = v.militia || 0;
       if (out > 0) {
         let ax = 1, ay = 1, best = 1e9;
         for (const u of g.units) if (u.hp > 0 && (u.task?.targetId === v.id || (v.owner >= 0 && g.isEnemy(v.owner, u.team)))) { const d = Math.hypot(u.x - v.x, u.y - v.y); if (d < best && d < 14) { best = d; ax = u.x - v.x; ay = u.y - v.y; } }
@@ -485,9 +482,9 @@ export class Renderer {
       }
       folk.sort((a, b) => a.x + a.y - (b.x + b.y));
       for (const f of folk) {
-        const [fx, fy] = this.toScreen(f.x, f.y), c = f.mil ? tinted('footman', tin, 'trim', f.flip, 1.15) : tinted('serf', tin, 'trim', f.flip, 1.35);
+        const [fx, fy] = this.toScreen(f.x, f.y), c = (tin >= 0 && FUNIT[HOUSES[tin]?.faction]?.recruit) || SIMG.recruit || tinted('footman', tin, 'trim', f.flip, 1.15);
         this.shadowAt(ctx, fx, fy, 5 * z, 2 * z, 0.3);
-        if (c) this.sprite(ctx, c, fx, fy + 1 * z, (c.width / c.height) * f.w * z, false, 1);
+        if (c) { ctx.save(); ctx.translate(fx, fy + 1 * z); if (!f.flip) ctx.scale(-1, 1); const w = (c.width / c.height) * USCALE.recruit * z; ctx.drawImage(c, -w / 2, -USCALE.recruit * z, w, USCALE.recruit * z); ctx.restore(); }   // (painted levies look right; turned to face the foe)
       }
     }
     if (v.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, v.flash); this.diamond(ctx, v.tx, v.ty, v.size, v.size); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }

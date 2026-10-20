@@ -311,3 +311,6 @@ Causes and fixes:
 
 ## T-075 - The pack animal button did nothing for donkey and Bactrian peoples (fixed 2026-10-20)
 - **Owner: "i click create camel and nothing happens".** `packWords` (T-063) changed every word "camel" in the command panel's HTML, including the button's `data-kind="camel"`. So for Romans, Vikings, Byzantines, British and Scots the button asked to train a `donkey`, and for Mongols a `Bactrian camel`: no such unit, so nothing happened. Egyptians and Persians were unaffected. It now changes only text outside tags. Checked in the browser for Romans, Mongols and Egyptians; a test pins it.
+
+## T-076 - Two old-style serfs stood at every village's door (fixed 2026-10-20)
+- **Owner: "each village has 2 old style serfs standing at the front of it. get rid of these".** `village()` in render.js drew up to two idle villagers by the door, from the old shared serf sprite, tinted. They are gone: the folk stay indoors. The armed villagers who muster when a village is attacked used the old shared footman. They now draw as levies of the village's lord's people (their painted `recruit`), else the common painted levy.
