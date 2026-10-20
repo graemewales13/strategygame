@@ -1348,4 +1348,48 @@ test('science: the learning bank holds enough for the dearest research, so every
   assert.ok(g.hasTech(PLAYER, 'steelcraft'), `a tier-3 research (${dearest} learning) completes`);
 });
 
+test('sites: a half-built building comes down easier than a finished one, and finishing it does not mend the damage (owner, 2026-10-20)', () => {
+  const g = mk(), h = { tx: 30, ty: 30 }; meet(g); g.setRelation(PLAYER, 1, 'war');
+  const hit = (built) => {
+    const b = g.addBuilding('barracks', 1, h.tx + 8, h.ty + 8, built); if (!built) { b.built = 0.5; b.hp = b.maxHp * 0.56; }
+    const u = g.addUnit('footman', PLAYER, b.x + b.size / 2 + 0.4, b.y); u.task = { type: 'attack', targetId: b.id }; u.cooldown = 0; u.cd = 0;
+    const before = b.hp; for (let i = 0; i < 3 && b.hp === before; i++) g.doAttack(u, UNITS.footman, 0.05);
+    const lost = before - b.hp; g.units = g.units.filter((x) => x !== u); g.buildings = g.buildings.filter((x) => x !== b); return lost;
+  };
+  const whole = hit(true), site = hit(false);
+  assert.ok(whole > 0 && site > whole * 2, `a site takes the blow harder (${site} vs ${whole})`);
+  const s = g.addBuilding('tavern', PLAYER, h.tx + 8, h.ty + 8, false); s.built = 0.99; s.hp = s.maxHp * 0.3;
+  const serf = g.addUnit('serf', PLAYER, s.x + 1.2, s.y); serf.task = { type: 'build', targetId: s.id };
+  for (let i = 0; i < 40 && s.built < 1; i++) g.doBuild(serf, 0.5);
+  assert.equal(s.built, 1); assert.ok(s.hp < s.maxHp * 0.6, 'the damage stays for a repair');
+});
+
+test('sizes: a market, forge and armoury are no wider than a tavern (owner, 2026-10-20)', () => {
+  for (const k of ['market', 'forge', 'armoury']) assert.ok(BUILDINGS[k].size <= BUILDINGS.tavern.size, k);
+  assert.ok(BUILDINGS.keep.size > BUILDINGS.barracks.size);
+});
+
+test('peace for coin: the envoy carries a share of the treasury, paid only if they agree; a rival that sues offers coin too (owner, 2026-10-20)', () => {
+  const g = mk(); meet(g); g.time = 2000; g.players[1].ai = true;
+  g.setRelation(PLAYER, 1, 'war'); g.relSince[PLAYER][1] = g.relSince[1][PLAYER] = g.time - 100;
+  for (let i = 0; i < 12; i++) g.addUnit('footman', 1, 30 + i * 0.3, 30);   // they are winning: plain peace is refused
+  g.players[PLAYER].gold = 1000; g.players[1].gold = 200;
+  assert.equal(g.proposeRelation(PLAYER, 1, 'peace', true), false, 'no peace for nothing'); assert.match(g.diploNote, /might take it for about \d+ coin/);
+  const price = g.peacePrice(1, PLAYER);
+  assert.equal(g.proposeRelation(PLAYER, 1, 'peace', true, 5), false, 'a pittance does not buy it');
+  assert.equal(g.players[PLAYER].gold, 1000, 'refused: nothing is paid');
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'relation', other: 1, state: 'peace', coin: price }), true, 'the envoy rides with the coin');
+  assert.equal(g.asks[0].coin, price);
+  for (let i = 0; i < 100 && g.asks.length; i++) { g.time += 0.1; g.updateDiplomacy(0.1); }
+  assert.equal(g.rel[PLAYER][1], 'peace'); assert.equal(g.players[PLAYER].gold, 1000 - price); assert.equal(g.players[1].gold, 200 + price);
+  assert.match(g.letters.map((l) => l.text).join(' '), /coin is received/);
+  // the other way: a losing rival sues the player for peace with coin, paid when accepted
+  const h = mk(); meet(h); h.time = 2000; h.players[1].ai = true; h.players[1].gold = 500; h.players[PLAYER].gold = 0;
+  h.setRelation(PLAYER, 1, 'war'); h.relSince[PLAYER][1] = h.relSince[1][PLAYER] = h.time - 400;
+  for (let i = 0; i < 20; i++) h.addUnit('knight', PLAYER, 20 + i * 0.3, 20);
+  const o = { id: h.nextLetter++, from: 1, to: PLAYER, kind: 'treaty', state: 'peace', amount: 100, t: h.time, expires: h.time + 60 }; h.offers.push(o);
+  assert.equal(h.respondOffer(PLAYER, 1, true, o.id), true); assert.equal(h.rel[PLAYER][1], 'peace');
+  assert.equal(h.players[PLAYER].gold, 100); assert.equal(h.players[1].gold, 400);
+});
+
 console.log(`${passed} passed`);

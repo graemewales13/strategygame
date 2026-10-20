@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -497,7 +497,7 @@ export class UI {
       case 'sendarmyb': { const b = this.selEntity(); const a = g.militaryOf(PLAYER).map((u) => u.id); if (b && a.length) this.host.send({ type: 'attack', ids: a, targetId: b.id }); break; }
       case 'minehere': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (n) { this.placing = 'mine'; $('game').classList.add('placing'); this.hoverTX = Math.round(n.x - 1); this.hoverTY = Math.round(n.y - 1); } break; }
       case 'gathernode': { const n = this.sel.type === 'node' ? g.resources[this.sel.id] : null; if (!n) break; const serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && u.task.type === 'idle').sort((a, c) => Math.hypot(a.x - n.x, a.y - n.y) - Math.hypot(c.x - n.x, c.y - n.y)).slice(0, 4); if (!serfs.length) this.toast('No idle serfs.', 'warn'); else this.host.send({ type: 'gather', ids: serfs.map((u) => u.id), nodeId: n.id }); break; }
-      case 'treaty': this.treaty(+d.team, d.state); break;
+      case 'treaty': this.treaty(+d.team, d.state, +d.coin || 0); break;
       case 'diploclose': this.diploOpen = null; this.renderDiplo(); break;
       case 'respond': { const r = this.host.send({ type: 'respond', from: +d.team, accept: d.accept === '1', id: d.id != null ? +d.id : null }); if (!r && d.accept === '1' && g.diploNote) this.toast(g.diploNote, 'warn'); this.sigOffers = null; this.sigCouncil = null; this.hudT = 0; break; }   // (null, not '': with no offers left the new html is '' and would look unchanged, leaving the answered card on screen)
       case 'gift': this.ask('gift', +d.team, { amount: +d.amount }); break;
@@ -535,9 +535,9 @@ export class UI {
     this.sigCmd = this.sigSel = '';
   }
   // One treaty request, with the reason shown whenever it is refused
-  treaty(team, state) {
+  treaty(team, state, coin = 0) {
     const g = this.game, name = HOUSES[team].name;
-    const r = this.host.send({ type: 'relation', other: team, state });
+    const r = this.host.send({ type: 'relation', other: team, state, coin });
     if (r === 'pending') this.toast(`Offer sent to ${name}.`, 'info');
     else if (r) this.toast(state === 'war' ? `War on ${name}!` : state === 'trade' ? `Trade treaty with ${name}.` : state === 'alliance' ? `Alliance with ${name}.` : `Peace with ${name}.`, state === 'war' ? 'war' : 'good');
     else this.toast(g.diploNote || `${name} refuses.`, 'warn');
@@ -586,6 +586,10 @@ export class UI {
     const tradeWhy = rel === 'war' ? 'Make peace first' : rel === 'alliance' ? 'Allies already trade' : pend ? 'Offer sent' : '';
     const allyWhy = rel === 'war' ? 'End the war first' : pend ? 'Offer sent' : '';
     html += `<div class="drow">${btn('peace', 'Peace', peaceWhy)}${btn('trade', 'Trade', tradeWhy)}${btn('alliance', 'Alliance', allyWhy)}${btn('war', 'War', '')}</div>`;
+    if (rel === 'war' && !me) {   // peace bought with a share of the treasury: the coin rides with the envoy and is paid only if they agree
+      const purse = Math.floor(g.players[PLAYER].gold);
+      html += `<div class="drow">${PEACE_COIN.shares.map((f) => { const c = Math.floor(purse * f); return `<button class="dbtn sm" data-act="treaty" data-team="${t}" data-state="peace" data-coin="${c}" ${peaceWhy || c < 10 ? 'disabled' : ''} data-tip="${encodeURIComponent(`<b>Peace and ${Math.round(f * 100)}% of our coin</b><br>Your envoy offers peace and ${c} coin. Paid only if ${esc(HOUSES[t].short)} agrees; the more coin, the likelier they take it, even while they are winning.`)}">Peace + ${Math.round(f * 100)}% (${c}c)</button>`; }).join('')}</div>`;
+    }
     const gold = g.players[PLAYER].gold, ask = (act, label, tip, extra = '', off = false) => `<button class="dbtn sm" data-act="${act}" data-team="${t}" ${extra} ${off ? 'disabled' : ''} data-tip="${encodeURIComponent(tip)}">${label}</button>`;
     html += `<div class="drow">${ask('gift', 'Gift 50c', 'Send 50 coin. Warms them (more if they are mercantile).', 'data-amount="50"', gold < 50)}${ask('gift', 'Gift 150c', 'Send 150 coin.', 'data-amount="150"', gold < 150)}`
       + `${ask('demand', 'Demand tribute', 'Demand coin. Only the far weaker pay; the proud refuse and remember.', `data-amount="${Math.max(40, Math.min(300, Math.round((i.moneyShown * 0.15) / 10) * 10))}"`, rel === 'war')}`
@@ -703,7 +707,7 @@ export class UI {
     const html = g.offers.filter((o) => o.to === PLAYER).map((o) => {
       const kind = o.kind || 'treaty', N = esc(HOUSES[o.from].short), left = Math.max(0, Math.ceil((o.expires ?? g.time + 60) - g.time));
       const poor = (kind === 'tribute' || kind === 'aid') && p.gold < o.amount;
-      const ok = { treaty: 'Accept', joinwar: `Join the war on ${o.target != null ? esc(HOUSES[o.target].short) : ''}`, tribute: `Pay ${o.amount}c`, aid: `Send ${o.amount}c` }[kind];
+      const ok = { treaty: o.state === 'peace' && o.amount ? `Accept (+${o.amount}c)` : 'Accept', joinwar: `Join the war on ${o.target != null ? esc(HOUSES[o.target].short) : ''}`, tribute: `Pay ${o.amount}c`, aid: `Send ${o.amount}c` }[kind];
       const no = { treaty: 'Decline', joinwar: 'Decline', tribute: 'Refuse', aid: 'Refuse' }[kind];
       const text = o.text || `${esc(HOUSES[o.from].name)} offers ${o.state === 'trade' ? 'a trade treaty' : o.state === 'alliance' ? 'an alliance' : 'peace'}.`;
       // a demand says what refusing risks: in play a refused (or ignored) demand was the only warning before an army came (playtest 2026-10-14)

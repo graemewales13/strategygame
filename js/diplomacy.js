@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -165,7 +165,7 @@ export function judge(g, kind, from, to, ctx = {}) {
       return yes();
     }
     case 'peace': {
-      if (o < -60) return no(`${me} will hear nothing from ${N} (${attitudeLabel(o).toLowerCase()}).`);
+      if (o < -60 - Math.min(25, (ctx.coin || 0) / 20)) return no(`${me} will hear nothing from ${N} (${attitudeLabel(o).toLowerCase()}).`);   // (coin softens even a bitter enemy, a little)
       return yes();
     }
     case 'alliance': {
@@ -343,8 +343,11 @@ export function deliberate(g, team) {
     if (rel === 'war' && g.parleyIn(team, b) <= 0) {
       const sue = stance(g, team, b).peace >= 0.55;
       if (sue && cooled(g, team, b, 'alliance')) {
-        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER)) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'peace', { state: 'peace' }); wrote(); } }
-        else if (judge(g, 'peace', team, b).ok && g.willMakePeace(b, team)) { stamp(g, team, b, 'alliance'); g.setRelation(team, b, 'peace'); }
+        // it offers coin with the peace, more the worse it is going: a tenth of its treasury up to a third (owner, 2026-10-20)
+        const share = PEACE_COIN.sue.min + (PEACE_COIN.sue.max - PEACE_COIN.sue.min) * Math.min(1, (stance(g, team, b).peace - 0.55) / 0.45);
+        const amount = Math.floor((g.players[team].gold * share) / 10) * 10;
+        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER)) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'peace', { state: 'peace', amount: amount || undefined, text: amount ? voice(g, 'peace', team, b).replace(/"$/, ` Take ${amount} coin from our treasury, and let it end."`) : undefined }); wrote(); } }
+        else if (judge(g, 'peace', team, b, { coin: amount }).ok && g.willMakePeace(b, team, amount)) { stamp(g, team, b, 'alliance'); g.setRelation(team, b, 'peace'); g.payPeace(team, b, amount); }
       }
       continue;
     }

@@ -157,7 +157,11 @@ export const TECH = {
 };
 export const SIEGE = new Set(['ram', 'onager', 'trebuchet']);
 // a keep has a yard and sheds for this many siege engines, apart from its garrison: stored out of harm's way and kept in repair (owner, 2026-10-19)
-export const SIEGE_STORE = 3;   // the siege engines (built at the Workshop, each behind its research)
+export const SIEGE_STORE = 3;
+// an unfinished building is scaffolding and loose stone: blows land this many times harder on it than on finished walls (owner, 2026-10-20)
+export const SITE_FRAGILE = 2.5;
+// peace bought with coin (owner, 2026-10-20): the shares of the treasury the player may offer with peace, and what a losing rival offers when it sues
+export const PEACE_COIN = { shares: [0.1, 0.2, 0.35], sue: { min: 0.1, max: 0.35 } };   // the siege engines (built at the Workshop, each behind its research)
 export const TECH_KEYS = Object.keys(TECH);
 export const MEDICINE = { heal: 0.6, quiet: 6 };   // hp a second an idle soldier mends, once `quiet` seconds clear of a fight
 // ---- weapons and armour, made at the Armoury and kept in the stockpile. A soldier takes up the best kit for his kind when he is trained or
@@ -207,12 +211,12 @@ export const BUILDINGS = {
   farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: [],                   info: 'Steady grain. +25% beside a mill.' },   // (from the start: grain feeds the folk and drafts serfs; owner, 2026-10-20)
   mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['farm'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
   warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['mine'],          info: 'Drop-off for all goods, +10% delivered.' },
-  market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: [],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets and villages. Drop-off. Small coin trickle.' },
-  forge:     { label: 'Forge',         size: 3, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks', 'foundry'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
+  market:    { label: 'Market',        size: 2, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: [],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets and villages. Drop-off. Small coin trickle.' },
+  forge:     { label: 'Forge',         size: 2, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks', 'foundry'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
   workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Builds siege engines: the Ram, Onager and Trebuchet, each once its research is done at the academy.' },
   tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: [],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
   academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'The science division: makes learning (more with scholars beside it) and researches technologies, one at a time. Trains scholars. Unlocks the workshop and temple coin.' },
-  armoury:   { label: 'Armoury',       size: 3, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60, stone: 20 }, time: 24, requires: ['forge'], tech: 'metallurgy', info: 'Makes weapons and armour from the stockpile (each unlocked by research): spears, swords, longbows, crossbows, lances, mail, plate. Soldiers take them up when trained, or when idle nearby.' },
+  armoury:   { label: 'Armoury',       size: 2, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60, stone: 20 }, time: 24, requires: ['forge'], tech: 'metallurgy', info: 'Makes weapons and armour from the stockpile (each unlocked by research): spears, swords, longbows, crossbows, lances, mail, plate. Soldiers take them up when trained, or when idle nearby.' },
   temple:    { label: 'Temple',        size: 2, hp: 590,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 50 }, time: 20, requires: ['keep'],          info: 'Strong loyalty aura. Coin trickle with an academy.' },
   barracks:  { label: 'Barracks',      size: 3, hp: 780,  sight: 6,  pop: 0, cost: { food: 0, wood: 140, gold: 40 }, time: 22, requires: [],          info: 'Trains footmen.' },
   archery:   { label: 'Archery Range', size: 3, hp: 700,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 30 }, time: 20, requires: ['barracks'],      info: 'Trains bowmen.' },
