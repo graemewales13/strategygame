@@ -229,7 +229,7 @@ Build **Village** (needs a keep or a mine, 100 grain, 150 timber, 30 coin, 30 s)
 ### Ways to win and lose
 - **Conquest is the only win:** the royal line of every rival house must end (king and two heirs). Wealth and village share never win.
 - You lose when the last of your royal line dies.
-The first five buildings are the game: mine, market, keep, barracks, tavern. The rest unlock after them.
+The first six buildings are the game: mine, farm, market, keep, barracks, tavern. The rest unlock after them.
 
 | Tier | Your purse | Rival income | Rival army cap | Earliest war of their own | How strong a case for war they need | How they fight |
 |---|---|---|---|---|---|---|

@@ -317,3 +317,6 @@ Causes and fixes:
 
 ## T-077 - The donkey was massive (fixed 2026-10-20)
 - **Owner: "the donkey is massive".** Pack animals were drawn at a fixed 62 px width. The camel pictures are wider than tall (about 51 to 53 px high), but the donkey picture is taller than wide, so it stood 75 px high: taller than a mounted knight (66) and half again a footman (50). Pack animals are now sized by height (`PACK_H` in render.js): donkey 40, dromedary 56, Bactrian camel 54. Checked beside a serf, a footman and a knight for the Romans and the Mongols.
+
+## T-078 - No farm early on (changed 2026-10-20)
+- **Owner: "why cant i build a farm to increase grain?"** The farm required a cottage, and the cottage a market, so it was hidden among the "unlock as you build" buildings until both stood. By the owner's choice it is now available from the start, second among the build buttons (Mine, Farm, Market, Keep, Barracks, Tavern). The mill still needs a farm. Checked: the farm button shows for a serf at the first second and a farm site can be placed.

@@ -204,7 +204,7 @@ export const UNITS = {
 export const BUILDINGS = {
   keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 150, stone: 40 }, time: 36, requires: [],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; trains serfs and scouts, more pop.' },
   cottage:   { label: 'Cottage',       size: 2, hp: 380,  sight: 5,  pop: 5, cost: { food: 0, wood: 60, gold: 0 },   time: 12, requires: ['market'],          info: '+5 population.' },
-  farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: ['cottage'],          info: 'Steady grain. +25% beside a mill.' },
+  farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: [],                   info: 'Steady grain. +25% beside a mill.' },   // (from the start: grain feeds the folk and drafts serfs; owner, 2026-10-20)
   mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['farm'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
   warehouse: { label: 'Warehouse',     size: 3, hp: 700,  sight: 5,  pop: 0, cost: { food: 0, wood: 100, gold: 20 }, time: 18, requires: ['mine'],          info: 'Drop-off for all goods, +10% delivered.' },
   market:    { label: 'Market',        size: 3, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: [],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets and villages. Drop-off. Small coin trickle.' },
@@ -223,8 +223,8 @@ export const BUILDINGS = {
   tower:     { label: 'Watchtower',    size: 2, hp: 640,  sight: 11, pop: 0, cost: { food: 0, wood: 100, gold: 40, stone: 15 }, time: 20, requires: ['barracks'],          info: 'Sight and ranged defence. Small loyalty pull.', range: 7.5, dmg: 9, cd: 1.1 },
 };
 // basic buildings first; the rest unlock as their requirements are built (market -> cottage -> farm -> mill, mine -> warehouse, barracks -> archery ...)
-export const BUILD_ORDER_UI = ['mine', 'market', 'keep', 'barracks', 'tavern', 'foundry', 'village', 'cottage', 'farm', 'mill', 'warehouse', 'archery', 'stable', 'tower', 'forge', 'workshop', 'academy', 'armoury', 'temple'];
-// The first five are the game. The rest unlock after them.
+export const BUILD_ORDER_UI = ['mine', 'farm', 'market', 'keep', 'barracks', 'tavern', 'foundry', 'village', 'cottage', 'mill', 'warehouse', 'archery', 'stable', 'tower', 'forge', 'workshop', 'academy', 'armoury', 'temple'];
+// The first six are the game (the farm joined them on 2026-10-20). The rest unlock after them.
 export const BASIC_BUILDINGS = ['mine', 'market', 'keep', 'barracks', 'tavern'];
 
 // Which buildings accept which goods from serfs
