@@ -314,3 +314,6 @@ Causes and fixes:
 
 ## T-076 - Two old-style serfs stood at every village's door (fixed 2026-10-20)
 - **Owner: "each village has 2 old style serfs standing at the front of it. get rid of these".** `village()` in render.js drew up to two idle villagers by the door, from the old shared serf sprite, tinted. They are gone: the folk stay indoors. The armed villagers who muster when a village is attacked used the old shared footman. They now draw as levies of the village's lord's people (their painted `recruit`), else the common painted levy.
+
+## T-077 - The donkey was massive (fixed 2026-10-20)
+- **Owner: "the donkey is massive".** Pack animals were drawn at a fixed 62 px width. The camel pictures are wider than tall (about 51 to 53 px high), but the donkey picture is taller than wide, so it stood 75 px high: taller than a mounted knight (66) and half again a footman (50). Pack animals are now sized by height (`PACK_H` in render.js): donkey 40, dromedary 56, Bactrian camel 54. Checked beside a serf, a footman and a knight for the Romans and the Mongols.

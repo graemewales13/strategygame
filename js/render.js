@@ -27,6 +27,9 @@ const RUIN_LIFE = 30;   // seconds a fallen building's painted ruin lies where i
 // the ram's wheel hubs on its painted body: [x, y, radius] as fractions of the body's width/height/width, 'far' wheels behind the body.
 // Fitted to the axle bolts on ram_body.png (left rear bolt, the beam over the log, the near rail, the bottom stub).
 const RAM_WHEELS = [[0.075, 0.625, 0.078, 'far'], [0.73, 0.71, 0.07, 'far'], [0.19, 0.675, 0.08], [0.535, 0.905, 0.088]];
+// pack animals by height, not width (owner, 2026-10-20: the donkey, a tall picture drawn 62 wide, stood taller than a mounted knight):
+// a laden donkey comes to a man's shoulder, the camels stand over him
+const PACK_H = { donkey: 40, dromedary: 56, bactrian: 54 };
 const USCALE = { serf: 34, recruit: 40, scholar: 42, spy: 43, scout: 46, bowman: 49, footman: 50, knight: 66, king: 68 };
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
@@ -749,7 +752,7 @@ export class Renderer {
     let rightArt = false, full = false, sway = false;   // (sway: a stand-in figure with no work frames rocks at his task)   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
     if (u.kind === 'onager' || u.kind === 'trebuchet') { const s2 = SIMG[u.kind]; if (s2) { c = s2; rightArt = true; } else { c = siegeSprite(u.kind, u.team); rightArt = true; } w = (u.kind === 'trebuchet' ? 96 : 82) * z; }
     else if (u.kind === 'ram') { const s2 = SIMG.ram_body && SIMG.ram_wheel ? SIMG.ram_body : SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
-    else if (u.kind === 'camel') { const s2 = SIMG[packOf(u.team).sprite]; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }   // (each people's own pack animal)
+    else if (u.kind === 'camel') { const pk = packOf(u.team).sprite, s2 = SIMG[pk]; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = (c ? c.width / c.height : 1.2) * (PACK_H[pk] || 54) * z; }   // (each people's own pack animal, as tall as it should be beside a man)
     else if (u.kind === 'serf') {   // the house's own serf when its people has one painted (idle, two work frames), else the common one
       fu = FUNIT[HOUSES[u.team]?.faction];
       const woman = WOMEN.has((u.name || '').split(' ')[0]) && fu?.serf_f;
