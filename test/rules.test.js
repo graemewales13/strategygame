@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot, townBell } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -1240,7 +1240,7 @@ test('grid keys (T03): the command card answers to Q W E R / A S D F / Z X C V b
   // hints name the key the player has, not a hard-wired letter (T-067)
   const m = defaultKeys(); rebind(m, 'hall', 'j');
   assert.equal(fillKeys('Press {key:hall} then {key:standings}.', m), 'Press J then T.');
-  for (const o of OBJECTIVES) assert.ok(!/\bPress [A-Z]\b/.test(o.hint), `objective "${o.id}" names a key through the key map`);
+  for (const o of OBJECTIVES) assert.ok(!/\bPress [A-Z]\b|\([A-Z]\)/.test(o.hint), `objective "${o.id}" names a key through the key map`);
   const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
   assert.ok(!/Press <b>[A-Z]<\/b>|<b>[A-Z]<\/b> (then|opens)/.test(ui), 'no HUD hint names a hard-wired letter');
 });
@@ -1432,6 +1432,56 @@ test('town bell (T38): one ring shelters the serfs in the nearest keep or villag
   townBell(a, 1, p1, s1, a.time); assert.ok(p1.bell != null, 'not yet: the quiet has only begun');
   townBell(a, 1, p1, s1, a.time + BELL.quiet + 1); assert.equal(p1.bell, null, 'all clear');
   assert.equal(defaultKeys().bell, 'b');
+});
+
+test('patrol (T39): soldiers walk to a post and back for ever, Shift adds posts, a foe met is fought and the round goes on; saved; any other order ends it; the AI walks its home guard', () => {
+  const g = mk(), seat = g.seatOf(PLAYER);
+  g.units = g.units.filter((u) => u.team !== 1 && u.team !== 2 || u.kind !== 'footman'); g.byId = new Map([...g.units, ...g.buildings, ...g.villages].map((x) => [x.id, x]));
+  const x0 = seat.x + 2, y0 = seat.y + 6;
+  const a = g.addUnit('footman', PLAYER, x0, y0), b = g.addUnit('footman', PLAYER, x0 + 1, y0);
+  g.recomputeWalk();
+  // the far post: walkable ground about 9 tiles east
+  const [wx, wy] = g.nearestWalkable(Math.floor(x0 + 9), Math.floor(y0)), px = wx + 0.5, py = wy + 0.5;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'patrol', ids: [a.id, b.id], x: px, y: py }), true);
+  assert.equal(a.task.type, 'amove'); assert.equal(a.task.patrol.pts.length, 2);
+  assert.ok(Math.hypot(a.task.patrol.pts[0][0] - x0, a.task.patrol.pts[0][1] - y0) < 0.01, 'the round starts where he stood');
+  // there and back, and out again: it never ends on its own
+  let farSeen = false, backSeen = false;
+  for (let s = 0; s < 40; s += 0.1) { g.tick(0.1); if (Math.hypot(a.x - a.task.patrol.pts[1][0], a.y - a.task.patrol.pts[1][1]) < 1) farSeen = true; else if (farSeen && Math.hypot(a.x - x0, a.y - y0) < 1) backSeen = true; }
+  assert.ok(farSeen && backSeen, 'reached the far post and came back');
+  assert.equal(a.task.type, 'amove'); assert.ok(a.task.patrol, 'still patrolling');
+  // Shift adds a third post to the round of those already walking it
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'patrol', ids: [a.id, b.id], x: x0, y: y0 + 4, queue: true }), true);
+  assert.equal(g.patrolOf(a).pts.length, 3);
+  // saved and loaded, the round goes on the same
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(h.patrolOf(h.byId.get(a.id)), g.patrolOf(a));
+  run(g, 3); run(h, 3);
+  assert.ok(Math.abs(h.byId.get(a.id).x - a.x) < 1e-9 && Math.abs(h.byId.get(a.id).y - a.y) < 1e-9, 'a load walks on exactly as before');
+  // a foe met on the round is fought, then the round goes on
+  g.rel[0][1] = g.rel[1][0] = 'war';
+  const foe = g.addUnit('recruit', 1, a.x + 1.2, a.y); foe.hp = 4;
+  run(g, 6);
+  assert.ok(foe.hp <= 0, 'the foe met on patrol is cut down');
+  assert.ok(g.patrolOf(a), 'and the round goes on');
+  // any other order ends it
+  g.applyIntent({ team: PLAYER, type: 'move', ids: [a.id], x: x0, y: y0 });
+  assert.equal(g.patrolOf(a) ?? null, null);
+  g.applyIntent({ team: PLAYER, type: 'stop', ids: [b.id] });
+  assert.equal(g.patrolOf(b) ?? null, null);
+  // serfs are not sent on patrol (they just walk there)
+  const serf = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
+  g.applyIntent({ team: PLAYER, type: 'patrol', ids: [serf.id], x: px, y: py });
+  assert.notEqual(serf.task.type, 'amove');
+  assert.equal(defaultKeys().patrol, 'z');
+  // the AI: at peace, with a home guard to spare, a pair walk a round; no more than PATROL.pair
+  const r = mk(), s1 = r.seatOf(1), p1 = r.players[1];
+  for (let i = 0; i < PATROL.spare + 2; i++) r.addUnit('footman', 1, s1.x + 2 + (i % 3), s1.y + 5 + Math.floor(i / 3));
+  const army = r.militaryOf(1);
+  patrolBounds(r, 1, p1, s1, army, 100);
+  assert.equal(army.filter((u) => r.patrolOf(u)).length, PATROL.pair, 'a pair on patrol');
+  p1.patrolT = 0; patrolBounds(r, 1, p1, s1, army, 200);
+  assert.equal(army.filter((u) => r.patrolOf(u)).length, PATROL.pair, 'never more than the pair');
 });
 
 console.log(`${passed} passed`);

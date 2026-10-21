@@ -229,7 +229,7 @@ export const BUILDINGS = {
 // basic buildings first; the rest unlock as their requirements are built (market -> cottage -> farm -> mill, mine -> warehouse, barracks -> archery ...)
 export const BUILD_ORDER_UI = ['mine', 'farm', 'market', 'keep', 'barracks', 'tavern', 'foundry', 'village', 'cottage', 'mill', 'warehouse', 'archery', 'stable', 'tower', 'forge', 'workshop', 'academy', 'armoury', 'temple'];
 // The first six are the game (the farm joined them on 2026-10-20). The rest unlock after them.
-export const BASIC_BUILDINGS = ['mine', 'market', 'keep', 'barracks', 'tavern'];
+export const BASIC_BUILDINGS = ['mine', 'farm', 'market', 'keep', 'barracks', 'tavern'];
 
 // Which buildings accept which goods from serfs
 export const DROP_OFF = {
@@ -429,6 +429,9 @@ export const STANCES = ['aggressive', 'defensive', 'hold', 'passive'];
 export const STANCE = { leash: 8, label: { aggressive: 'Aggressive', defensive: 'Defensive', hold: 'Hold ground', passive: 'No attack' } };
 // Shift-queued waypoints (T02): how many legs a march can hold after the one it is walking
 export const WAYPOINTS = 12;
+// Patrol (T39): the AI's home guard walks a round between its seat and its nearest held village at peace: `pair` soldiers at most, sent only
+// while `spare` stand idle at the seat, checked every `every` seconds; the village within `reach` tiles, else `out` tiles toward the middle.
+export const PATROL = { pair: 2, spare: 4, every: 20, reach: 26, out: 10 };
 // Formations (T02): where each member of a group sent together stands at the end of its march, and which way it faces. Mass: a tight knot
 // (the old way, and the default). Line: ranks across the line of march, fighters in front, bowmen behind. Box: a square with the fighters
 // on the outside and bowmen and the weak inside. Loose: spread wide, so fewer stand in one blow's way. `gap` and `loose` are tiles apart.

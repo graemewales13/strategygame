@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -253,7 +253,7 @@ function think(game, team, p) {
   }
 
   // 5. contest villages
-  const readyArmy = army.filter((u) => u.task.type === 'idle');
+  const readyArmy = army.filter(onCall);
   let need = army.some((u) => SIEGE.has(u.kind)) ? 4 : 5, firstAt = 90;
   if (pb?.attack) { need = Math.round(clamp(lerp(need, pb.attack.size, wb), 3, 14)); firstAt = clamp(lerp(90, pb.attack.first * 0.85, wb), 60, 1200); }
   if (readyArmy.length >= need && t > firstAt) {
@@ -286,7 +286,7 @@ function think(game, team, p) {
     p.planWar = target ? target.team : null;
     if (target && !pressWar(game, team, target.team)) target = null;   // an ultimatum first; the war comes if it is not answered
     if (target) {
-      const ready = army.filter((u) => u.task.type === 'idle');
+      const ready = army.filter(onCall);
       // march only with the bulk of the army (a band of seven at a time is beaten one band at a time); not while a beaten band regroups
       const fighters = army.filter((u) => game.fighter(u)).length + game.soldiersOf(team).filter((u) => u.inside && !u.drilling && u.kind !== 'recruit').length;
       if (ready.length >= Math.max(7, Math.ceil(fighters * (game.diff.mass || 0))) && t >= (p.regroupUntil || 0)) {
@@ -300,7 +300,26 @@ function think(game, team, p) {
     for (const u of army) if (u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) > 12) game.cmdMove([u], seat.x + (game.roll() - 0.5) * 4, seat.y + 4);
     const guard = army.filter((u) => u.stance !== 'defensive' && u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) <= 12);
     if (guard.length) game.setStance(guard, 'defensive');
+    patrolBounds(game, team, p, seat, army, t);
   }
+}
+
+// soldiers free for a march: standing idle, or walking a patrol (T39), which any new order ends
+const onCall = (u) => u.task.type === 'idle' || (u.task.type === 'amove' && !!u.task.patrol);
+// At peace a house with a home guard to spare sends a pair walking a round (T39) between its seat and its nearest held village (or,
+// with none, toward the middle of the valley), so a raider or spy is met on the road rather than at the keep. Never more than PATROL.pair.
+export function patrolBounds(game, team, p, seat, army, t) {
+  if (t < (p.patrolT || 0)) return;
+  p.patrolT = t + PATROL.every;
+  const walking = army.filter((u) => !u.inside && game.patrolOf(u)).length;
+  if (walking >= PATROL.pair) return;
+  const home = army.filter((u) => game.fighter(u) && !SIEGE.has(u.kind) && u.kind !== 'spy' && !u.inside && u.task.type === 'idle' && Math.hypot(u.x - seat.x, u.y - seat.y) <= 12);
+  if (home.length < PATROL.spare) return;
+  const v = nearestVillage(game, seat, (x) => x.owner === team && x.home !== team && Math.hypot(x.x - seat.x, x.y - seat.y) >= 6, PATROL.reach);
+  let to = v ? [v.x, v.y + 2] : null;
+  if (!to) { const cx = game.W / 2 - seat.x, cy = game.H / 2 - seat.y, d = Math.hypot(cx, cy) || 1; to = [seat.x + (cx / d) * PATROL.out, seat.y + (cy / d) * PATROL.out]; }
+  const go = home.slice(0, PATROL.pair - walking);
+  game.cmdPatrol(go, to[0], to[1]);
 }
 
 // The town bell (T38), the player's button: raiders at the seat who clearly outnumber the guard there send the serfs inside;

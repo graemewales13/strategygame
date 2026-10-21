@@ -16,6 +16,7 @@ export const KEY_ACTIONS = [
   { id: 'army', label: 'Whole army', def: ',', group: 'Select' },
   { id: 'idleArmy', label: 'Idle soldiers', def: 'i', group: 'Select' },
   { id: 'amove', label: 'Attack-move', def: 'f', group: 'Orders' },
+  { id: 'patrol', label: 'Patrol', def: 'z', group: 'Orders' },
   { id: 'charge', label: 'Attack', def: 'g', group: 'Orders' },
   { id: 'retreat', label: 'Retreat', def: 'r', group: 'Orders' },
   { id: 'stop', label: 'Stop', def: 'x', group: 'Orders' },

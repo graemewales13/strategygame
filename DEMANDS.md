@@ -54,7 +54,7 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - The splash and title menu are the painted pictures (`assets/menu/`), with the menu buttons as hotspots over the art. The owner rejected the "clean type over a live valley" title look (reverted 2026-10-08): do not bring it back. Keep `#hContinue/#hNew/#hMap/#hSkirmish/#hOptions/#hQuit` ids as real buttons.
 - The game is 2D only. The owner rejected the Three.js 3D view (reverted 2026-10-08): do not reintroduce it.
 - Units keep room (`Game.separate`): a marching group is never stacked into one body.
-- Idle soldiers within `DEFEND_R` (5) squares of a building, unit or village under attack turn on the attacker (`rallyDefenders`).
+- Idle soldiers within `DEFEND_R` (14 since the owner's 2026-10-16 report; first 5) squares of a building, unit or village under attack turn on the attacker (`rallyDefenders`).
 - While the line lasts a king is always appointed: the next heir is crowned `KING.heir` (20 s) after a king falls, at the seat or wherever the house still holds.
 
 ## Peoples, names and building room

@@ -363,10 +363,19 @@ export class Renderer {
       const k = u.task?.type; let to = null;
       if (k === 'attack') { const e = g.byId.get(u.task.targetId); if (e && e.hp !== 0) to = [e.x, e.y]; }
       else if ((k === 'move' || k === 'amove') && u.path?.length) to = u.pathGoal || u.path[u.path.length - 1];
-      if (!to || Math.hypot(to[0] - u.x, to[1] - u.y) < 0.8) continue;
+      const pt = g.patrolOf(u);
+      if (!pt && (!to || Math.hypot(to[0] - u.x, to[1] - u.y) < 0.8)) continue;
       if (++n > 60) break;
+      // a patrol (T39): its round drawn as a closed amber loop through the posts, a post ringed at each turn
+      if (pt) {
+        const ps = pt.pts.map(([x, y]) => this.toScreen(x, y));
+        ctx.strokeStyle = 'rgba(20,14,8,0.4)'; ctx.lineWidth = Math.max(2, 3 * z); ctx.beginPath(); ps.concat([ps[0]]).forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+        ctx.strokeStyle = 'rgba(240,196,92,0.7)'; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.stroke();
+        for (const [x, y] of ps) { ctx.fillStyle = 'rgba(240,196,92,0.75)'; ctx.beginPath(); ctx.ellipse(x, y, 3.5 * z, 1.75 * z, 0, 0, 7); ctx.fill(); }
+        if (!to || Math.hypot(to[0] - u.x, to[1] - u.y) < 0.8) continue;
+      }
       const [ax, ay] = this.toScreen(u.x, u.y), [bx, by] = this.toScreen(to[0], to[1]);
-      const col = k === 'move' ? 'rgba(159,224,143,0.55)' : 'rgba(232,104,90,0.65)';
+      const col = k === 'move' ? 'rgba(159,224,143,0.55)' : pt ? 'rgba(240,196,92,0.7)' : 'rgba(232,104,90,0.65)';
       // each leg is a dark under-stroke with the coloured dash on top, so it reads on pale sand and snow as well as grass
       const leg = (x0, y0, x1, y1, c, r) => {
         ctx.strokeStyle = 'rgba(20,14,8,0.4)'; ctx.lineWidth = Math.max(2, 3 * z); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();

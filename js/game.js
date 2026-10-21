@@ -456,6 +456,7 @@ export class Game {
     switch (it.type) {
       case 'move': return this.cmdMove(out(), it.x, it.y, !!it.queue);
       case 'amove': return this.cmdAttackMove(out(), it.x, it.y, !!it.queue);
+      case 'patrol': return this.cmdPatrol(out(), it.x, it.y, !!it.queue);
       case 'charge': return this.cmdCharge(out());
       case 'retreat': return this.cmdRetreat(out());
       case 'stance': return this.setStance(mine(), it.stance);
@@ -1104,7 +1105,7 @@ export class Game {
     for (const u of units) {
       if (!this.locked(u)) { free.push(u); continue; }
       const t = this.closestEnemy(u, SALLY.lockR + 1, u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace, face: u.task.face } : null) }; u.path = []; u.repathT = 0; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace, face: u.task.face, patrol: u.task.patrol } : null) }; u.path = []; u.repathT = 0; }
       if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is locked in combat and cannot break off.`, 'warn');
     }
     return free;
@@ -1257,6 +1258,38 @@ export class Game {
     });
     return true;
   }
+  // ---- patrol (T39): attack-move legs that loop -----------------------------------------------------------
+  // Soldiers walk from where they stand to (x, y) and back again for ever, fighting what they meet and walking on (as in AoE II).
+  // Shift adds a post to the round of those already patrolling (up to WAYPOINTS posts); each keeps its place in the group at every post.
+  // Those who do not fight are simply sent there. False if nobody could be sent.
+  patrolOf(u) { return u.task.type === 'amove' ? u.task.patrol : u.task.type === 'attack' ? u.task.then?.patrol : null; }
+  cmdPatrol(units, x, y, queue = false) {
+    if (!units.length || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const pace = this.paceOf(units), slot = this.formSlots(units, x, y, false);
+    let fresh = units;
+    if (queue) fresh = units.filter((u) => { const pt = this.patrolOf(u); if (!pt) return true; if (pt.pts.length < WAYPOINTS) pt.pts.push(slot.at.get(u).map((v) => Math.round(v * 100) / 100)); return false; });
+    fresh = this.freeOf(fresh);
+    for (const u of fresh) {
+      const [tx, ty] = slot.at.get(u);
+      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); continue; }
+      u.task = { type: 'amove', x: tx, y: ty, pace, face: null, patrol: { pts: [[Math.round(u.x * 100) / 100, Math.round(u.y * 100) / 100], [tx, ty]], i: 1 } };
+      u.sally = null; u.aggroT = 0;
+      if (!this.setPath(u, tx, ty)) u.task = { type: 'idle' };
+    }
+    return true;
+  }
+  // a patroller reached its post: on to the next one round the loop (skipping any that cannot be reached). False if none can be.
+  nextPost(u) {
+    const pt = u.task.patrol; if (!pt?.pts?.length) return false;
+    for (let k = 0; k < pt.pts.length; k++) {
+      pt.i = (pt.i + 1) % pt.pts.length;
+      const [px, py] = pt.pts[pt.i];
+      if (Math.hypot(px - u.x, py - u.y) < 0.6) continue;
+      u.task.x = px; u.task.y = py; u.task.next = null;
+      if (this.setPath(u, px, py)) return true;
+    }
+    return false;
+  }
   // who may pick fights of their own (stances and attack-move apply to them)
   fighter(u) { return u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && this.powerOf(u) > 0; }
   stanceOf(u) { return STANCES.includes(u.stance) ? u.stance : 'aggressive'; }
@@ -1285,7 +1318,7 @@ export class Game {
     const back = u.task.resume != null ? this.byId.get(u.task.resume) : null;   // the wall he left to deal with an attacker
     if (back && (back.type === 'village' ? back.owner !== u.team && (back.owner < 0 || this.isEnemy(u.team, back.owner)) : back.hp > 0 && this.isEnemy(u.team, back.team))) { u.task = { type: 'attack', targetId: back.id, then: u.task.then }; u.path = []; u.repathT = 0; return; }
     const th = u.task.then;
-    if (th) { u.task = { type: 'amove', x: th.x, y: th.y, next: th.next, pace: th.pace ?? null, face: th.face }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y) && !this.nextLeg(u)) u.task = { type: 'idle' }; return; }
+    if (th) { u.task = { type: 'amove', x: th.x, y: th.y, next: th.next, pace: th.pace ?? null, face: th.face, patrol: th.patrol }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y) && !this.nextLeg(u) && !this.nextPost(u)) u.task = { type: 'idle' }; return; }
     u.task = { type: 'idle' }; u.path = [];
   }
   doAttackMove(u, dt) {
@@ -1294,9 +1327,9 @@ export class Game {
     if (u.aggroT <= 0) {
       u.aggroT = 0.45;
       const t = this.closestEnemy(u, this.acquireR(u), u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace ?? null, face: u.task.face } }; u.path = []; u.repathT = 0; return; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace ?? null, face: u.task.face, patrol: u.task.patrol } }; u.path = []; u.repathT = 0; return; }
     }
-    if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle', face: u.task.face };
+    if (!this.follow(u, dt) && !this.nextLeg(u) && !this.nextPost(u)) u.task = { type: 'idle', face: u.task.face };
   }
   cmdAttack(units, target) {
     if (!target || !units.length) return false;

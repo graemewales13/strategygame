@@ -170,11 +170,13 @@ export class UI {
     if (e.button === 2) {
       if (this.placing) { this.placing = null; $('game').classList.remove('placing'); return; }
       if (this.amove) { this.setAmove(false); return; }
+      if (this.patrolArm) { this.setPatrol(false); return; }
       this.command(sx, sy, wx, wy, e.shiftKey, e.ctrlKey); return;
     }
     if (e.button !== 0) return;
     if (this.placing) { this.tryPlace(e.shiftKey); return; }
     if (this.amove) { if (!e.shiftKey) this.setAmove(false); this.command(sx, sy, wx, wy, e.shiftKey, true); return; }   // Shift keeps attack-move on to queue more legs
+    if (this.patrolArm) { if (!e.shiftKey) this.setPatrol(false); this.patrolTo(wx, wy, e.shiftKey); return; }   // Shift keeps patrol on to add more posts (T39)
     this.drag = { sx, sy, shift: e.shiftKey };
   }
   onMove(e) {
@@ -240,7 +242,15 @@ export class UI {
     if (!shift) this.clearSel();
   }
   // Attack-move is armed by F or the button; the next left-click (or Ctrl+right-click at any time) fights its way to the spot
-  setAmove(on) { this.amove = !!on; $('game').classList.toggle('placing', this.amove || !!this.placing); }
+  setAmove(on) { this.amove = !!on; if (on) this.patrolArm = false; $('game').classList.toggle('placing', this.amove || this.patrolArm || !!this.placing); }
+  // Patrol (T39) is armed by its key or button; the next left-click sets the far post (Shift-clicks add more posts to the round)
+  setPatrol(on) { this.patrolArm = !!on; if (on) this.amove = false; $('game').classList.toggle('placing', this.amove || this.patrolArm || !!this.placing); }
+  patrolTo(wx, wy, shift) {
+    const units = this.selUnits().filter((u) => u.team === PLAYER && this.game.fighter(u));
+    if (!units.length) return;
+    this.host.send({ type: 'patrol', ids: units.map((u) => u.id), x: wx, y: wy, queue: shift });
+    this.pings.push({ x: wx, y: wy, age: 0, color: '#f0c45c' });
+  }
   command(sx, sy, wx, wy, shift = false, fight = false) {
     const g = this.game, units = this.selUnits().filter((u) => u.team === PLAYER);
     const h = sx == null ? null : this.r.pick(sx, sy), ho = h ? h.o : null;   // the minimap gives world coordinates only
@@ -288,7 +298,7 @@ export class UI {
     const tg = e.target;
     if (tg && (tg.tagName === 'TEXTAREA' || (tg.tagName === 'INPUT' && tg.type !== 'checkbox'))) { if (k === 'enter' || k === 'escape') tg.blur?.(); if (k !== 'escape') return; }
     if (this.rebinding) { e.preventDefault(); return this.takeRebind(k); }   // (Options > Keys: the next key pressed is the new one; Esc cancels)
-    if (k === 'escape') { if (this.amove) return this.setAmove(false); return this.onEsc(); }
+    if (k === 'escape') { if (this.amove) return this.setAmove(false); if (this.patrolArm) return this.setPatrol(false); return this.onEsc(); }
     if (k === 'f5') { e.preventDefault(); return void this.saveGame('manual'); }
     if (k === 'f9') { e.preventDefault(); return void this.loadGame('manual'); }
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
@@ -321,6 +331,7 @@ export class UI {
       case 'charge': if (fighters()) this.onCmd({ act: 'charge' }); break;
       case 'retreat': if (this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' }); break;
       case 'amove': if (fighters()) this.setAmove(!this.amove); break;
+      case 'patrol': if (fighters()) this.setPatrol(!this.patrolArm); break;
       case 'stop': if (this.selUnits().some((u) => u.team === PLAYER)) this.onCmd({ act: 'stop' }); break;
       case 'faster': this.speed = Math.min(4, this.speed * 2); $('btnSpeed').textContent = this.speed + 'x'; break;
       case 'slower': this.speed = Math.max(1, this.speed / 2); $('btnSpeed').textContent = this.speed + 'x'; break;
@@ -334,6 +345,9 @@ export class UI {
     if ($('btnHome')) $('btnHome').title = `Jump to your home village (${kn('hall')})`;
     if ($('btnIdle')) $('btnIdle').title = `Select next idle serf (${kn('idleSerf')})`;
     if ($('btnArmy')) $('btnArmy').title = `Select all soldiers (${kn('army')}); Shift-click or ${kn('idleArmy')}: only the idle ones`;
+    if ($('btnCouncil')) $('btnCouncil').title = `The Council of Houses: stats, treaties, letters (${kn('council')})`;
+    if ($('btnMap')) $('btnMap').title = `Campaign map (${kn('campaign')} / Tab)`;
+    if ($('btnSpeed')) $('btnSpeed').title = `Game speed (${kn('slower')} slower, ${kn('faster')} faster)`;
     if ($('btnBell')) $('btnBell').title = `Town bell (${kn('bell')}): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work`;
     this.sigCmd = ''; if ($('kGrid')) $('kGrid').checked = this.gridKeys;
     if ($('mKeysHint')) $('mKeysHint').textContent = `Right-click to move, gather, sack, infiltrate. Drag to select. ${this.gridKeys ? 'The arrows pan (Grid keys are on: the command card answers to Q W E R / A S D F / Z X C V).' : `${['panUp', 'panLeft', 'panDown', 'panRight'].map(kn).join('')} or the arrows pan.`} ${kn('campaign')} opens the campaign map. ${kn('alert')} jumps to where you are under attack. Esc returns here.`;
@@ -426,6 +440,7 @@ export class UI {
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
       case 'amove': this.setAmove(!this.amove); break;
+      case 'patrol': this.setPatrol(!this.patrolArm); break;
       case 'disguise': this.host.send({ type: 'disguise', ids: this.selUnits().filter((u) => u.team === PLAYER && u.kind === 'spy').map((u) => u.id), as: +d.as }); break;
       case 'charge': this.host.send({ type: 'charge', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id) }); break;
       case 'retreat': this.host.send({ type: 'retreat', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id) }); break;
@@ -779,8 +794,8 @@ export class UI {
     const t = u.task;
     switch (t.type) {
       case 'move': return 'Marching';
-      case 'amove': return 'Attack-moving';
-      case 'attack': return t.auto ? 'Fighting' : 'Attacking';
+      case 'amove': return t.patrol ? 'Patrolling' : 'Attack-moving';
+      case 'attack': if (t.then?.patrol) return t.auto ? 'Fighting on patrol' : 'Attacking'; return t.auto ? 'Fighting' : 'Attacking';
       case 'gather': { const n = this.game.resources[t.nodeId]; return n ? `Gathering ${RES_LABEL[NODE_RES[n.kind]].toLowerCase()}` : 'Gathering'; }
       case 'mine': return 'Digging ore';
       case 'return': return 'Carrying goods home';
@@ -1193,7 +1208,7 @@ export class UI {
       if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
       const kn = (id) => (this.gridKeys ? '' : keyName(this.kmap[id]));   // (the key each order is bound to now, T03; with Grid keys on, the key in the corner says it)
-      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { img: uiArt('orders', 'stop'), glyph: '■', name: 'Stop', sub: kn('stop'), tip: `<b>Stop</b> ${this.gridKeys ? '' : `(${kn('stop')})`}<br>Halt and hold position.`, cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { img: uiArt('orders', 'amove'), glyph: '⚔', name: 'Attack-move', sub: kn('amove'), cls: this.amove ? 'on' : '', tip: `<b>Attack-move</b> (${this.gridKeys ? '' : `${kn('amove')}, or `}Ctrl+right-click)`+'<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { img: uiArt('orders', 'charge'), glyph: '⚑', name: 'Attack', sub: kn('charge'), cls: '', tip: `<b>Attack</b> ${this.gridKeys ? '' : `(${kn('charge')})`}`+'<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { img: uiArt('orders', 'retreat'), glyph: '↩', name: 'Retreat', sub: kn('retreat'), cls: '', tip: `<b>Retreat</b> ${this.gridKeys ? '' : `(${kn('retreat')})`}`+'<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
+      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { img: uiArt('orders', 'stop'), glyph: '■', name: 'Stop', sub: kn('stop'), tip: `<b>Stop</b> ${this.gridKeys ? '' : `(${kn('stop')})`}<br>Halt and hold position.`, cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { img: uiArt('orders', 'amove'), glyph: '⚔', name: 'Attack-move', sub: kn('amove'), cls: this.amove ? 'on' : '', tip: `<b>Attack-move</b> (${this.gridKeys ? '' : `${kn('amove')}, or `}Ctrl+right-click)`+'<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('patrol', { img: uiArt('orders', 'patrol'), glyph: '⟲', name: 'Patrol', sub: kn('patrol'), cls: this.patrolArm ? 'on' : '', tip: `<b>Patrol</b> ${this.gridKeys ? '' : `(${kn('patrol')})`}`+'<br>Click the ground: they walk there and back for ever, fighting every foe they meet and walking on. Hold <b>Shift</b> to add more posts to the round. Any other order ends it.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { img: uiArt('orders', 'charge'), glyph: '⚑', name: 'Attack', sub: kn('charge'), cls: '', tip: `<b>Attack</b> ${this.gridKeys ? '' : `(${kn('charge')})`}`+'<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { img: uiArt('orders', 'retreat'), glyph: '↩', name: 'Retreat', sub: kn('retreat'), cls: '', tip: `<b>Retreat</b> ${this.gridKeys ? '' : `(${kn('retreat')})`}`+'<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
       if (us.some((u) => g.fighter(u))) html += `<div class="hint"><b>Shift</b>+right-click adds waypoints to a march; a group keeps to its slowest member's pace.</div>`;
       if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
       const marchers = us.filter((u) => u.kind !== 'camel');

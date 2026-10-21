@@ -47,6 +47,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Waypoints | **Shift+right-click** the ground adds a leg to a march (up to 12); **Shift** with attack-move (F or Ctrl+right-click) adds an attack-move leg. Soldiers sent together march at the pace of the slowest among them |
 | Rally point | Right-click the field with a training building selected |
 | Attack-move | **F** (or the Attack-move button), then click the ground; or **Ctrl+right-click**. Soldiers march there and fight every foe they meet on the way |
+| Patrol | **Z** (or the Patrol button), then click the ground: soldiers walk from where they stand to there and back for ever, fighting every foe they meet and walking on; **Shift**-click adds more posts to the round (up to 12). Any other order ends it. The round is drawn as an amber loop while they are selected. At peace each rival house sends a pair of its home guard round between its seat and its nearest village |
 | Attack | **G** (or the Attack button): the selected soldiers fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with. |
 | Retreat | **R** (or the Retreat button): off the field to your nearest keep (else your seat), **even out of a fight**. If three or more of them (or your king) were fighting, it is a **rout**: every village of yours loses a fifth of its loyalty, which comes back slowly for three minutes, and every other house reads it as weakness ("your army fled the field") and is more tempted to war on you. The rivals pay the same when they fall back to regroup. |
 | Repair | Select serfs and right-click a damaged building of yours, or press **Repair** on its panel (sends the nearest four serfs). They mend it at two thirds of their building pace, paying half the building's price for the health they put back, as they work; flames and smoke go as it heals. Rivals mend theirs once the foe has gone. |
@@ -62,12 +63,12 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Pause / speed | **P**, **+** / **-** or the speed button |
 | Stop | **X** (or the Stop button): halt and hold position |
 | Change keys | Menu > **Keys** > *Change keys*: click a command, press its new key (a key already in use swaps over; Esc cancels); *Reset keys* restores these defaults. Kept in this browser. Fixed: Esc, F5/F9, Tab, 1-9, the arrows, Home |
-| Grid keys | Menu > **Keys** > *Grid keys* (off by default; Age of Empires IV layout): the command card answers to **Q W E R / A S D F / Z X C V** by place, and **Shift** with them for the next twelve; each button shows its key in its corner. A soldier's card has its orders on Q W E R (Stop, Attack-move, Attack, Retreat), stances on A S D F and formations on Z X C V; a serf's build menu keeps each building on its own key (Mine Q, Market W, Keep E, Barracks R...). The arrows pan; a grid key with no button in its place still does its usual command |
+| Grid keys | Menu > **Keys** > *Grid keys* (off by default; Age of Empires IV layout): the command card answers to **Q W E R / A S D F / Z X C V** by place, and **Shift** with them for the next twelve; each button shows its key in its corner. A soldier's card has its orders on Q W E R (Stop, Attack-move, Attack, Retreat), stances on A S D F and formations on Z X C V; a serf's build menu keeps each building on its own key (Mine Q, Farm W, Market E, Keep R...); Patrol and Captain sit on the Shift page. The arrows pan; a grid key with no button in its place still does its usual command |
 | Idle serf / all soldiers / idle soldiers | **.** / **,** / **I** (or Shift-click **Army**; each press centres on the next idle soldier) |
 | Town bell | **B**, the **Bell** button under the minimap or on a keep: every serf and scholar within 18 tiles of a keep, tower, barracks or village you hold runs inside the nearest one with room; press again for the all-clear and they go back to the trees, mine or site they left. Rivals ring theirs when a raid clearly outnumbers the guard at their seat |
 | Control groups | **Ctrl+1..9** set, **1..9** recall (again: go there). Set groups show as a row over the minimap (number, kind, how many are left); a click selects, a double-click goes there, and a chip flashes red while its men are fighting. Groups are kept in a save and cleared by a new match |
 | Under attack | **Space** or **Home** jumps to where you were last hit (press again for the next place); the minimap shows a pulsing red ring there and your fighting folk blink red |
-| Combat feedback | Selected soldiers show a line to where they are going (green: march; red: attack or attack-move), and on through any queued waypoints. **Damage numbers** over a fight are an Options checkbox, off by default |
+| Combat feedback | Selected soldiers show a line to where they are going (green: march; red: attack or attack-move; amber: a patrol's round), and on through any queued waypoints. **Damage numbers** over a fight are an Options checkbox, off by default |
 | Cancel placement | Right-click or **Esc** |
 | Name a deposit | Hover a rock deposit: it shows its ore (stone, iron, coal, copper, silver or gold) and how much is left |
 | Bring folk out | Any order (move, gather, build, attack) to someone sheltering inside a keep or village brings them out to obey it |
@@ -259,9 +260,10 @@ Set it in the Skirmish panel or with `?diff=easy|mid|hard`. `tools/play.js [min]
 ## Features added on grok
 - **Save / load**: the game autosaves; use the Save and Load buttons or F5 / F9. Saves stay in this browser. A loaded match plays on exactly as it would have without the save: the simulation draws all its chance from the match seed (the groundwork for replays, daily challenges and multiplayer).
 - **Sound**: effects and music with volume and mute in Options (button in the top bar).
-- **Objectives**: a ten-step guide in the top left; hide it in Options.
+- **Objectives**: an eleven-step guide in the top left; hide it in Options.
 - **Economy view**: markets show four pips (supply, works, homes, service). Select a market, or press E, to see its district ring and links.
 - **Stances and attack-move**: per-soldier stances shown on the unit panel; rival houses keep their home guard Defensive at peace and send their war hosts out Aggressive.
+- **Patrol** (Z): soldiers walk a round between posts and fight what they meet; rivals walk a pair of their home guard round at peace.
 - **Board size**: Options, Board size: Small, Standard or Huge. Changing it reloads the page. A save only loads on the board size it was made at.
 
 See ROADMAP.md for what is still to do.
