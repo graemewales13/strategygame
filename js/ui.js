@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -849,6 +849,7 @@ export class UI {
       if (mine && b.built >= 1 && GARRISON[b.kind]) {
         const inn = b.garrison.map((id) => g.byId.get(id)).filter(Boolean);
         html += `<div class="stat"><label>Garrison</label><span>${inn.length}/${GARRISON[b.kind]} inside${b.kind === 'keep' ? ' (heal while inside)' : ''}</span></div>`;
+        if (b.kind === 'keep') { const n = g.keepArrows(b); html += `<div class="stat" data-tip="${encodeURIComponent(`<b>Arrows</b><br>Every ${KEEP_ARROWS.per} folk inside (soldiers, serfs sheltering from the bell, scholars) add an arrow to each volley, up to ${KEEP_ARROWS.cap}, at the nearest foes within ${g.keepRange(b)} tiles: ${KEEP_ARROWS.dmg} damage each, a volley every ${KEEP_ARROWS.cd} s.`)}"><label>Arrows</label><span>${n ? `${n} a volley, range ${g.keepRange(b)}` : `none: it shoots with ${KEEP_ARROWS.per} or more folk inside`}</span></div>`; }
         if (inn.length) html += `<div class="chips">${inn.map((u) => `<span class="chip x ${this.gsel === u.id ? 'on' : ''}" data-act="gsel" data-id="${u.id}" data-tip="${encodeURIComponent(`<b>${esc(u.name || UNITS[u.kind].label)}</b><br>${UNITS[u.kind].label}${u.trait ? ' · ' + TRAITS[u.trait].label : ''} · ${Math.ceil(u.hp)}/${u.maxHp} hp${u.drilling ? '<br>In training' : ''}`)}">${GLYPH[u.kind]?.length === 1 ? GLYPH[u.kind] : ''} ${esc(u.name || UNITS[u.kind].label)}${u.drilling ? ' …' : ''}</span>`).join('')}</div>`;
       }
       if (mine && b.kind === 'keep' && b.built >= 1) {   // the sheds: siege engines stored apart from the garrison
@@ -1017,7 +1018,7 @@ export class UI {
   }
   bellBtn() {
     const on = this.game.players[PLAYER].bell != null, k = this.gridKeys ? '' : keyName(this.kmap.bell);
-    return this.btn('bell', { img: uiArt('orders', 'bell'), glyph: '🔔', name: on ? 'All clear' : 'Town bell', sub: k, cls: on ? 'on' : '', tip: on ? `<b>All clear</b> ${k ? `(${k})` : ''}<br>Everyone the bell sent inside comes out and goes back to the work they left.` : `<b>Town bell</b> ${k ? `(${k})` : ''}<br>Every serf and scholar within ${BELL.r} tiles of a keep, tower, barracks or village you hold runs inside the nearest one with room. Ring again for the all-clear.` });
+    return this.btn('bell', { img: uiArt('orders', 'bell'), glyph: '🔔', name: on ? 'All clear' : 'Town bell', sub: k, cls: on ? 'on' : '', tip: on ? `<b>All clear</b> ${k ? `(${k})` : ''}<br>Everyone the bell sent inside comes out and goes back to the work they left.` : `<b>Town bell</b> ${k ? `(${k})` : ''}<br>Every serf and scholar within ${BELL.r} tiles of a keep, tower, barracks or village you hold runs inside the nearest one with room; a keep shoots one arrow for every ${KEEP_ARROWS.per} inside. Ring again for the all-clear.` });
   }
   keepPanel(b) {
     const g = this.game, p = g.players[PLAYER];

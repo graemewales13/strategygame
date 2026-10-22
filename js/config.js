@@ -206,7 +206,7 @@ export const UNITS = {
 
 // ---- Buildings ---------------------------------------------------------------------------
 export const BUILDINGS = {
-  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 150, stone: 40 }, time: 36, requires: [],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; trains serfs and scouts, more pop.' },
+  keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 150, stone: 40 }, time: 36, requires: [],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; shoots arrows at raiders while folk shelter inside; trains serfs and scouts, more pop.' },
   cottage:   { label: 'Cottage',       size: 2, hp: 380,  sight: 5,  pop: 5, cost: { food: 0, wood: 60, gold: 0 },   time: 12, requires: ['market'],          info: '+5 population.' },
   farm:      { label: 'Farm',          size: 3, hp: 330,  sight: 4,  pop: 0, cost: { food: 0, wood: 70, gold: 0 },   time: 14, requires: [],                   info: 'Steady grain. +25% beside a mill.' },   // (from the start: grain feeds the folk and drafts serfs; owner, 2026-10-20)
   mill:      { label: 'Mill',          size: 2, hp: 480,  sight: 5,  pop: 0, cost: { food: 0, wood: 80, gold: 0 },   time: 16, requires: ['farm'],          info: 'Timber drop-off. Processing: +20% timber delivered.' },
@@ -378,6 +378,10 @@ export const FOG_REVEAL_MS = 0;
 // Units enter a friendly building or village by right-click. Capacity per building kind:
 export const GARRISON = { keep: 8, tower: 3, barracks: 6 };
 export const VILLAGE_GARRISON = 8;
+// A garrisoned keep shoots back (T43, AoE II's town centre arrows): every `per` folk inside (soldiers, serfs sheltering from the bell,
+// scholars; not the engines in the sheds) add one arrow to each volley, up to `cap`, at the nearest foes within `range` (+2 with
+// Engineering, like a tower), one volley every `cd` seconds. An empty keep is silent.
+export const KEEP_ARROWS = { per: 2, cap: 4, range: 8, dmg: 6, cd: 2 };
 // The town bell (T38, as in AoE II): one ring sends every serf and scholar within `r` tiles of a keep, tower, barracks or held village with room
 // inside the nearest of them; a second ring sends them back to the work they left. Rivals ring it when `foes` or more enemy fighters come within
 // `raidR` of their seat and outnumber the guard there by `odds` (a fair fight keeps the serfs out mending), and sound the all-clear after `quiet` seconds with no foe in that ring.

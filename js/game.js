@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -2495,7 +2495,7 @@ export class Game {
         case 'farm': p.food += 0.8 * dt * (FARM_SOIL[this.terrain[Math.floor(b.y) * this.W + Math.floor(b.x)]] || 0.9) * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (this.hasTech(p.team, 'husbandry') ? 1.15 : 1); break;
         case 'foundry': this.smelt(b, p, dt); break;
         case 'mine': this.tickMine(b, dt); break;
-        case 'keep': this.tickKeep(b, dt); break;
+        case 'keep': this.tickKeep(b, dt); this.keepFire(b, dt); break;
         case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; }
           this.earn(b.team, 'tavern', 0.35 * dt); break;
         case 'market': this.earn(b.team, 'market', this.consumerIncome(b) * dt); this.supplyMarket(b, p, dt); this.consumeShelf(b, dt); if (b.glut) for (const k in b.glut) b.glut[k] = Math.max(0, b.glut[k] - SELL.decay * dt); break;
@@ -2544,6 +2544,27 @@ export class Game {
     if (!best) return;
     b.cooldown = s.cd;
     this.projectiles.push({ x: b.x, y: b.y - 0.5, targetId: best.id, dmg: s.dmg, team: b.team }); this.sfx('arrow', b.x, b.y);
+  }
+
+  // a garrisoned keep shoots back (T43): one arrow per KEEP_ARROWS.per folk inside, each at the next nearest foe in range
+  keepArrows(b) { return b.built >= 1 && b.hp > 0 ? Math.min(KEEP_ARROWS.cap, Math.floor((b.garrison?.length || 0) / KEEP_ARROWS.per)) : 0; }
+  keepRange(b) { return KEEP_ARROWS.range + (this.hasTech(b.team, 'engineering') ? 2 : 0); }
+  keepFire(b, dt) {
+    b.arrowT = (b.arrowT || 0) - dt;
+    if (b.arrowT > 0) return;
+    const n = this.keepArrows(b);
+    if (!n) { b.arrowT = 0; return; }
+    const r = this.keepRange(b), foes = [];
+    for (const u of this.units) {
+      if (u.hp <= 0 || u.inside || u.hidden || !this.isEnemy(b.team, u.team) || this.passesFor(u, b.team)) continue;
+      const d = Math.hypot(u.x - b.x, u.y - b.y);
+      if (d < r) foes.push({ u, d });
+    }
+    if (!foes.length) return;
+    foes.sort((a, c) => a.d - c.d || a.u.id - c.u.id);
+    b.arrowT = KEEP_ARROWS.cd;
+    for (let i = 0; i < n; i++) this.projectiles.push({ x: b.x, y: b.y - 1, targetId: foes[i % foes.length].u.id, dmg: KEEP_ARROWS.dmg, team: b.team });
+    this.sfx('arrow', b.x, b.y);
   }
 
   // idle soldiers of the lord standing around a village (an occupation force)
@@ -2666,7 +2687,7 @@ export class Game {
     for (const b of this.buildings) {
       if (b.hp <= 0 || b.kind === 'village' || b.team === team || b.team !== prev || prev < 0) continue;
       if (this.townOf(b) !== v) continue;
-      this.ejectAll(b); b.queue = []; b.rally = null; b.team = team; b.town = v.id; b.flash = 1; n++;
+      this.ejectAll(b); b.queue = []; b.craft = []; b.drills = b.drills && []; b.levy = null; b.rally = null; b.team = team; b.town = v.id; b.flash = 1; n++;
       for (const u of this.units) if (u.team !== team && u.task?.buildingId === b.id) { u.task = { type: 'idle' }; u.path = []; }
     }
     if (n) { this.recomputeWalk?.(); this.updateVisibility?.(true); }
