@@ -11,6 +11,15 @@ jobs:
         with: { node-version: 22 }
       - run: npm test            # syntax check of every module + simulation tests on a small board
       - run: npm run test:big    # full-size board: generation, reachability, speed, save/load
+  art:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install pillow numpy
+      - run: python3 tools/art-lint.py --self-test   # the lint still catches a pink ground, the key, a magenta rim, a figure 20x too big
+      - run: python3 tools/art-lint.py               # every sprite: RGBA, clear corners, no key colour, sized like its kind (T30)
   browser:
     runs-on: ubuntu-latest
     steps:

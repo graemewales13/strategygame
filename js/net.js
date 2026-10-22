@@ -22,6 +22,7 @@
 //   { type:'relation', other, state }     { type:'stop', ids }
 //   { type:'amove', ids, x, y }           // attack-move: fight every foe met on the way
 //   { type:'stance', ids, stance }        // aggressive | defensive | hold | passive
+//   { type:'formation', ids, form }       // mass | line | box | loose (idle members form up where they stand)
 //   { type:'place', kind:'mine', nodeId }  { type:'mine', ids, buildingId }  { type:'unmine', buildingId }
 //   { type:'respond', from, accept }      // answer a treaty offer
 //   { type:'research', tech }  { type:'craft'|'uncraft', buildingId, item|index }  { type:'demolish', buildingId }

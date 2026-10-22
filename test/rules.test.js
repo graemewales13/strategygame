@@ -1,17 +1,21 @@
 // Tests for ratings, kings and diplomacy. Fast: `node test/rules.test.js` (part of `npm test`).
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE } from '../js/config.js';
+import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
+import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 let passed = 0;
 const test = (name, fn) => { try { fn(); passed++; console.log('  ok  ', name); } catch (e) { console.log('  FAIL', name, '\n      ', e.stack.split('\n').slice(0, 4).join('\n       ')); process.exitCode = 1; } };
+const reservedKeyLike = (k) => !/^[a-z]$/.test(k);
 const run = (g, secs, dt = 0.1) => { for (let t = 0; t < secs; t += dt) g.tick(dt); };
 const mk = (opts = {}) => new Game({ seed: 8, houses: 3, ai: false, ...opts });
 
@@ -65,10 +69,10 @@ test('king: a throne is never left empty - an heir is named within moments', () 
   g.players[1].kingId = -1; g.players[1].heirAt = null; run(g, KING.heir + 1); assert.ok(g.kingOf(1), 'even a house whose king vanished without a record is given one');
 });
 
-test('defence: idle soldiers within 5 squares of a building under attack turn on the attacker; those farther off do not', () => {
+test('defence: idle soldiers within DEFEND_R (14) squares of a building under attack turn on the attacker; those farther off do not', () => {
   const g = mk(); const h = g.seatOf(PLAYER);
   const b = g.addBuilding('cottage', PLAYER, h.tx + 8, h.ty, true);
-  const near = g.addUnit('footman', PLAYER, b.x + 3, b.y), far = g.addUnit('footman', PLAYER, b.x + 9, b.y), busy = g.addUnit('footman', PLAYER, b.x - 3, b.y);
+  const near = g.addUnit('footman', PLAYER, b.x + 11, b.y), far = g.addUnit('footman', PLAYER, b.x + 20, b.y), busy = g.addUnit('footman', PLAYER, b.x - 3, b.y);   // (owner, 2026-10-16: the call reaches the town, not just the doorstep)
   busy.task = { type: 'move' };
   g.rel[0][1] = g.rel[1][0] = 'war';
   const foe = g.addUnit('bowman', 1, b.x, b.y + 8); foe.hp = foe.maxHp = 9999;
@@ -89,12 +93,12 @@ test('crowding: a group sent to one spot ends up spread out, never stacked into 
 
 test('peoples: names fit the nation; the player can pick or be dealt any people; the seating is deterministic and survives a save', () => {
   const g0 = mk(); assert.equal(HOUSES[0].faction, 'egyptians'); assert.match(HOUSES[0].short, /Khemet/);
-  const NAT = { egyptians: /Khemet/, romans: /Aurelius/, scottish: /MacAlpin/, british: /Wessex/, mongols: /Borjigin/ };
+  const NAT = { egyptians: /Khemet/, romans: /Aurelius/, scottish: /MacAlpin/, british: /Wessex/, mongols: /Borjigin/, vikings: /Ynglings/, byzantines: /Komnenos/, persians: /Sassan/ };
   for (const f of Object.keys(NAT)) {
     const g = new Game({ seed: 11, houses: 4, ai: false, people: f });
     assert.equal(HOUSES[0].faction, f, 'the player is ' + f); assert.match(HOUSES[0].name, NAT[f], 'and the house name fits: ' + HOUSES[0].name);
     assert.equal(g.players[0].name, HOUSES[0].name);
-    assert.equal(new Set(HOUSES.map((h) => h.faction)).size, 5, 'every people sits once');
+    assert.equal(new Set(HOUSES.map((h) => h.faction)).size, 8, 'every people sits once');
     assert.ok(HOUSES.every((h) => NAT[h.faction].test(h.name)), 'every house name fits its people');
   }
   const a = new Game({ seed: 5, houses: 3, ai: false, people: 'random' }).peopleOrder.join(), b = new Game({ seed: 5, houses: 3, ai: false, people: 'random' }).peopleOrder.join();
@@ -135,14 +139,37 @@ const meet = (g) => { for (let i = 0; i < g.houses; i++) for (let j = 0; j < g.h
 const boost = (g, team, n) => { for (let i = 0; i < n; i++) { const u = g.addUnit('knight', team, 5 + i * 0.1, 5); u.hp = u.maxHp; } };
 const nice = (g, a, b, v = 50) => { g.opinion[a][b] = v; g.players[a].persona.temper = 'honourable'; };
 
+test('peoples: colour and crest go with the people; eight houses seat well apart; an older five-people save still loads its seating', () => {
+  const g = new Game({ seed: 7, houses: 8, ai: false, people: 'scottish' });
+  assert.equal(g.players.length, 8);
+  assert.equal(HOUSES[0].faction, 'scottish'); assert.equal(HOUSES[0].color, 'blue', 'the Scots are blue in any seat'); assert.equal(HOUSES[0].device, 'waves');
+  assert.equal(new Set(HOUSES.map((h) => h.color)).size, 8, 'eight colours'); assert.equal(new Set(HOUSES.map((h) => h.device)).size, 8, 'eight devices');
+  for (const f of ['vikings', 'byzantines', 'persians']) assert.ok(HOUSES.some((h) => h.faction === f), f + ' sit at the table');
+  let near = 1e9; for (let a = 0; a < 8; a++) for (let b = 0; b < a; b++) near = Math.min(near, Math.hypot(g.seatOf(a).x - g.seatOf(b).x, g.seatOf(a).y - g.seatOf(b).y));
+  assert.ok(near > 60, `the closest two halls are ${near.toFixed(0)} tiles apart`);
+  const h = new Game({ seed: 7, houses: 4, ai: false }); h.restore({ ...JSON.parse(JSON.stringify(h.serialize())), peopleOrder: [4, 3, 2, 1, 0] });
+  assert.equal(HOUSES[0].faction, 'mongols'); assert.equal(HOUSES[0].color, 'violet'); assert.ok(HOUSES[7]?.faction, 'the newer peoples fill the seats after');
+});
+
+test('envoy: a treaty offered to an AI house is answered by letter a few seconds later, not at once', () => {
+  const g = mk(); meet(g); g.time = 200; g.players[1].ai = true; nice(g, 1, PLAYER, 60);
+  assert.equal(g.proposeRelation(PLAYER, 1, 'trade'), true, 'the envoy sets out');
+  assert.notEqual(g.rel[PLAYER][1], 'trade', 'no treaty yet'); assert.equal(g.asks.length, 1);
+  assert.equal(g.proposeRelation(PLAYER, 1, 'trade'), false, 'one envoy at a time'); assert.match(g.diploNote, /already on the road/);
+  const saved = JSON.parse(JSON.stringify(g.serialize())); const h = mk(); h.restore(saved); assert.equal(h.asks.length, 1, 'the envoy survives a save');
+  for (let i = 0; i < 100 && g.asks.length; i++) { g.time += 0.1; g.updateDiplomacy(0.1); }
+  assert.equal(g.asks.length, 0, 'the answer came'); assert.equal(g.rel[PLAYER][1], 'trade', 'and it was yes');
+  assert.ok(g.time >= 204, 'after the ride');
+});
+
 test('diplomacy: a gift warms a rival, and a cold house refuses an alliance until it warms', () => {
   const g = mk(); meet(g); g.time = 200; g.players[PLAYER].gold = 500;
-  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance'), false, 'strangers do not ally'); assert.match(g.diploNote, /friend/);
+  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance', true), false, 'strangers do not ally'); assert.match(g.diploNote, /friend/);
   const before = g.opinion[1][PLAYER];
   assert.equal(g.giveGift(PLAYER, 1, 120), true);
   assert.ok(g.opinion[1][PLAYER] > before + 8, 'the gift warms him');
   g.opinion[1][PLAYER] = 40; g.players[1].persona.temper = 'honourable';
-  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance'), true); assert.equal(g.rel[PLAYER][1], 'alliance');
+  assert.equal(g.proposeRelation(PLAYER, 1, 'alliance', true), true); assert.equal(g.rel[PLAYER][1], 'alliance');
   assert.equal(g.isEnemy(PLAYER, 1), false, 'allies are not enemies');
   const m = g.addBuilding('market', 1, 30, 30, true); assert.equal(g.canDeal(PLAYER, m).ok, true, 'allies trade');
 });
@@ -369,7 +396,7 @@ test('ai: a rival lacking an ore that no village can dig founds a mining camp be
   const g = mk(); const t = 1, seat = g.seatOf(t), p = g.players[t];
   Object.assign(p, { food: 2000, wood: 2000, gold: 2000, stone: 300 });
   g.addBuilding('keep', t, Math.round(seat.x) + 6, Math.round(seat.y) + 6, true); g.recomputeWalk();
-  const lone = g.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && n.amount > 40 && !(g.minePower(t, n.x, n.y) > 0) && Math.hypot(n.x - seat.x, n.y - seat.y) < 70);
+  const lone = g.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && n.amount > 40 && !(g.minePower(t, n.x, n.y) > 0) && Math.hypot(n.x - seat.x, n.y - seat.y) < g.diff.reach);   // (how far a house goes for ore it lacks)
   assert.ok(lone.length, 'the test valley has out-of-reach ore');
   g.time = 400; p.campT = 0; p.foundT = 999;
   treasury(g, t, p, seat, []);
@@ -519,10 +546,10 @@ test('science: academies make learning; research follows the tree, and silver pa
   run(g, 3); assert.ok(p.learning > 0 && p.learnRate >= 0.2, 'the academy makes learning');
   g.addUnit('scholar', PLAYER, ac.x + 1, ac.y + 2); g.addUnit('scholar', PLAYER, ac.x - 1, ac.y + 2); run(g, 3);
   assert.ok(p.learnRate > 0.35, 'scholars beside it study faster: ' + p.learnRate);
-  p.learning = 39.9; run(g, 1); assert.ok(g.hasTech(PLAYER, 'masonry') && p.research === null && p.sci === 1);
+  p.learning = TECH.masonry.cost.learning - 0.1; run(g, 1); assert.ok(g.hasTech(PLAYER, 'masonry') && p.research === null && p.sci === 1);   // (prices from the rules: they change)
   p.silver = 0; assert.ok(/silver/.test(g.researchBlock(PLAYER, 'metallurgy')), 'the deeper arts cost silver');
-  p.silver = 10; assert.ok(g.startResearch(PLAYER, 'metallurgy')); assert.equal(p.silver, 6, 'paid up front');
-  assert.ok(g.startResearch(PLAYER, 'husbandry')); assert.equal(p.silver, 10, 'refunded when changed');
+  p.silver = 20; assert.ok(g.startResearch(PLAYER, 'metallurgy')); assert.equal(p.silver, 20 - TECH.metallurgy.cost.silver, 'paid up front');
+  assert.ok(g.startResearch(PLAYER, 'husbandry')); assert.equal(p.silver, 20, 'refunded when changed');
 });
 
 test('weapons: the Armoury needs Metallurgy; it makes kit that soldiers take up, and the kit tells in a fight', () => {
@@ -758,6 +785,84 @@ test('attack-move: fights every foe met on the way, then walks on to the spot; a
   assert.equal(g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: undefined, y: 4 }), false);
 });
 
+test('waypoints (T02): Shift-queued legs are walked in turn, attack-move legs fight on the way, and the queue survives a save', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; quiet(g);
+  const [x, y] = openBand(g, 26);
+  const u = g.addUnit('footman', PLAYER, x, y); u.stance = 'passive';
+  assert.equal(g.applyIntent({ type: 'context', team: PLAYER, ids: [u.id], x: x + 8, y }), true);
+  assert.equal(g.applyIntent({ type: 'context', team: PLAYER, ids: [u.id], x: x + 20, y, queue: true }), true);
+  assert.equal(g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: x + 4, y, queue: true }), true);
+  assert.equal(u.task.type, 'move'); assert.equal(u.task.next.length, 2, 'two legs wait');
+  // a save keeps the legs still to walk
+  const g2 = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(g2.byId.get(u.id).task.next.length, 2);
+  let far = 0; for (let t = 0; t < 30; t += 0.1) { g.tick(0.1); far = Math.max(far, u.x - x); }
+  assert.ok(far > 18, `he went out to the second leg (${far.toFixed(1)} tiles)`);
+  assert.ok(Math.abs(u.x - (x + 4)) < 1.5 && u.task.type === 'idle', `and came back to the third (${(u.x - x).toFixed(1)})`);
+  // a plain order (no Shift) clears the queue
+  g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: x + 12, y }); g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: x + 20, y, queue: true });
+  g.applyIntent({ type: 'move', team: PLAYER, ids: [u.id], x: x + 6, y }); assert.ok(!u.task.next?.length, 'a fresh order starts a fresh march');
+  // an attack-move leg queued after a plain march fights the foe met on it, then walks on
+  const h = mk(); h.rel[0][1] = h.rel[1][0] = 'war'; quiet(h);
+  const a = h.addUnit('footman', PLAYER, x, y); a.stance = 'passive';
+  const foe = h.addUnit('recruit', 1, x + 15, y); foe.stance = 'passive';
+  h.applyIntent({ type: 'move', team: PLAYER, ids: [a.id], x: x + 8, y });
+  h.applyIntent({ type: 'amove', team: PLAYER, ids: [a.id], x: x + 22, y, queue: true });
+  for (let t = 0; t < 2; t += 0.1) h.tick(0.1);
+  assert.ok(foe.hp > 0 && a.task.type === 'move', 'the first leg is a plain march');
+  for (let t = 0; t < 30; t += 0.1) h.tick(0.1);
+  assert.ok(foe.hp <= 0, 'the attack-move leg cut the foe down');
+  assert.ok(Math.hypot(a.x - (x + 22), a.y - y) < 2.5, 'and he walked on to its end');
+});
+
+test('marching together (T02): a mixed group keeps to its slowest member; a lone rider or a group of one kind does not wait', () => {
+  const g = mk(); quiet(g);
+  const [x, y] = openBand(g, 26);
+  const f = g.addUnit('footman', PLAYER, x, y), k = g.addUnit('knight', PLAYER, x, y + 0.9);
+  g.applyIntent({ type: 'move', team: PLAYER, ids: [f.id, k.id], x: x + 22, y });
+  assert.equal(k.task.pace, UNITS.footman.speed);
+  for (let t = 0; t < 4; t += 0.1) g.tick(0.1);
+  assert.ok(Math.abs((k.x - x) - (f.x - x)) < 1.2, `they keep together (footman ${(f.x - x).toFixed(1)}, knight ${(k.x - x).toFixed(1)})`);
+  const lone = g.addUnit('knight', PLAYER, x, y - 0.9);
+  g.applyIntent({ type: 'move', team: PLAYER, ids: [lone.id], x: x + 22, y: y - 1 });
+  assert.ok(!lone.task.pace, 'a lone rider rides at his own speed');
+  const two = [g.addUnit('knight', PLAYER, x, y), g.addUnit('knight', PLAYER, x, y)];
+  g.applyIntent({ type: 'amove', team: PLAYER, ids: two.map((u) => u.id), x: x + 22, y });
+  assert.ok(two.every((u) => !u.task.pace), 'riders together need no pace');
+});
+
+test('formations (T02): a line puts fighters in front across the march and faces it; a box rings the bowmen; loose spreads out; saved', () => {
+  const g = mk(); quiet(g);
+  const [x, y] = openBand(g, 26);
+  const foot = [0, 1, 2, 3].map((i) => g.addUnit('footman', PLAYER, x, y + i * 0.9)), bows = [0, 1, 2, 3].map((i) => g.addUnit('bowman', PLAYER, x + 1, y + i * 0.9));
+  const all = [...bows, ...foot], ids = all.map((u) => u.id);   // bowmen listed first: the formation still puts the footmen in front
+  assert.equal(g.formOf(all), 'mass', 'a group starts in a mass');
+  assert.equal(g.applyIntent({ type: 'formation', team: PLAYER, ids, form: 'line' }), true);
+  assert.equal(g.applyIntent({ type: 'formation', team: PLAYER, ids, form: 'wedge' }), false, 'an unknown formation is refused');
+  assert.ok(all.every((u) => u.form === 'line'));
+  g.applyIntent({ type: 'move', team: PLAYER, ids, x: x + 18, y: y + 1 });
+  run(g, 20);
+  const fx = Math.min(...foot.map((u) => u.x)), bx = Math.max(...bows.map((u) => u.x));
+  assert.ok(fx > bx + 0.5, `footmen stand ahead of the bowmen (front ${fx.toFixed(1)}, back ${bx.toFixed(1)})`);
+  const ys = foot.map((u) => u.y); assert.ok(Math.max(...ys) - Math.min(...ys) > 2.5, 'the front rank stretches across the march');
+  assert.ok(all.every((u) => u.task.type === 'idle' && u.task.face && u.task.face[0] > 0.9), 'and they face the way they marched');
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(Math.hypot(all[i].x - all[j].x, all[i].y - all[j].y) > 0.5, 'nobody stacks');
+  // box: the bowmen inside, the footmen on the edge (nine: one cell in the middle)
+  const box = [g.addUnit('bowman', PLAYER, x, y + 5), ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => g.addUnit('footman', PLAYER, x + (i % 4), y + 6 + Math.floor(i / 4)))];
+  g.setFormation(box, 'box'); const s = g.formSlots(box, x + 10, y + 6), [cx, cy] = s.at.get(box[0]);
+  assert.ok(Math.hypot(cx - (x + 10 - 1.1), cy - (y + 6)) < 0.2, `the bowman takes the middle cell (${cx.toFixed(2)}, ${cy.toFixed(2)})`);
+  // loose spreads wider than mass
+  const spread = (form) => { g.setFormation(foot, form); const at = [...g.formSlots(foot, x + 10, y).at.values()]; return Math.max(...at.map(([a, b]) => Math.hypot(a - x - 10, b - y))); };
+  assert.ok(spread('loose') > spread('mass') * 1.8, 'loose stands wider apart');
+  // kept by a save
+  const g2 = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(g2.byId.get(bows[0].id).form, 'line'); assert.ok(g2.byId.get(bows[0].id).task.face, 'the facing is saved');
+  // idle soldiers form up where they stand when the formation is picked
+  const h = mk(); quiet(h); const loose = [0, 1, 2].map((i) => h.addUnit('footman', PLAYER, x + i * 0.3, y + i * 3));
+  h.applyIntent({ type: 'formation', team: PLAYER, ids: loose.map((u) => u.id), form: 'line' });
+  assert.ok(loose.every((u) => u.task.type === 'move'), 'idle soldiers step into the line');
+});
+
 test('stances: rival houses stand their home guard defensive at peace and send their attacks aggressive', () => {
   const g = new Game({ seed: 8, houses: 3, ai: true }); const t = 1, seat = g.seatOf(t);
   const guard = [0, 1, 2].map((i) => g.addUnit('footman', t, seat.x + i, seat.y + 4));
@@ -797,6 +902,586 @@ test('gaps: the "Raise an army" step counts soldiers garrisoned in a keep (T-050
   assert.equal(step.done(g), true);
   for (const u of us) u.inside = k.id;
   assert.equal(step.done(g), true, 'still an army when inside the keep');
+});
+
+test('the build stamp (T-055): index.html carries an import map that versions every module in js/', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8'), m = html.match(/<script type="importmap">([\s\S]*?)<\/script>/);
+  assert.ok(m, 'index.html has an import map (run node tools/stamp.js)');
+  const imports = JSON.parse(m[1]).imports, build = html.match(/window\.__BUILD = '([^']*)'/)?.[1];
+  for (const f of readdirSync(new URL('../js/', import.meta.url)).filter((f) => f.endsWith('.js'))) assert.equal(imports[`./js/${f}`], `./js/${f}?v=${build}`, `js/${f} is stamped with the build`);
+});
+
+test('playtest 2026-10-14: "not enough goods" names what is missing', () => {
+  const g = mk(), p = g.players[PLAYER]; Object.assign(p, { food: 999, wood: 300, gold: 100, stone: 35 });
+  const r = g.canPlace(PLAYER, 'keep', g.seatOf(PLAYER).tx + 12, g.seatOf(PLAYER).ty + 12);
+  assert.equal(r.ok, false); assert.match(r.reason, /50 coin and 5 stone/);
+  assert.equal(g.lacking(PLAYER, { wood: 10 }), '', 'nothing lacking, nothing said');
+});
+
+test('playtest 2026-10-14: an order to serfs sheltering in a village brings them out to obey (they used to sit inside for ever)', () => {
+  const g = mk(), v = g.seatOf(PLAYER), serfs = g.units.filter((u) => u.team === PLAYER && u.kind === 'serf');
+  for (const u of serfs) { u.inside = v.id; v.garrison.push(u.id); u.task = { type: 'idle' }; }
+  const tree = g.resources.filter((n) => n.kind === 'tree' && n.amount > 0).sort((a, b) => Math.hypot(a.x - v.x, a.y - v.y) - Math.hypot(b.x - v.x, b.y - v.y))[0];
+  g.applyIntent({ team: PLAYER, type: 'gather', ids: [serfs[0].id], nodeId: tree.id });
+  assert.equal(serfs[0].inside, null, 'out of the village'); assert.equal(serfs[0].task.type, 'gather'); assert.ok(!v.garrison.includes(serfs[0].id));
+  g.applyIntent({ team: PLAYER, type: 'move', ids: [serfs[1].id], x: v.x + 6, y: v.y + 6 });
+  assert.equal(serfs[1].inside, null); assert.equal(serfs[1].task.type, 'move');
+  assert.equal(serfs[2].inside, v.id, 'those not ordered stay inside');
+  g.cmdGather([serfs[2]], tree); assert.equal(serfs[2].task.type, 'idle', 'a direct gather call never gives someone inside a task he cannot do');
+});
+
+test('playtest 2026-10-14: an heir is crowned where no raider stands; with nowhere safe, at the seat as before', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war';
+  const seat = g.seatOf(PLAYER), far = g.villages.filter((v) => v.owner == null || v.owner < 0).sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
+  far.owner = PLAYER;
+  const at0 = g.thronePlace(PLAYER); assert.ok(Math.hypot(at0.x - seat.x, at0.y - seat.y) < 6, 'in peace, the seat');
+  for (let i = 0; i < 3; i++) g.addUnit('footman', 1, seat.x + i, seat.y + 4);
+  const at1 = g.thronePlace(PLAYER); assert.ok(Math.hypot(at1.x - far.x, at1.y - far.y) < 6, 'raiders at the seat: crowned at the other village');
+  for (let i = 0; i < 3; i++) g.addUnit('footman', 1, far.x + i, far.y + 4);
+  const at2 = g.thronePlace(PLAYER); assert.ok(Math.hypot(at2.x - seat.x, at2.y - seat.y) < 6, 'raiders everywhere: the seat');
+});
+
+test('playtest 2026-10-14: a struck king always raises his own alarm, saying how many heirs are left', () => {
+  const g = mk(), k = g.kingOf(PLAYER), h = g.seatOf(PLAYER);
+  g.alertPlayer(g.addBuilding('barracks', PLAYER, Math.round(h.x + 8), Math.round(h.y), true), 1);   // a building's alarm first...
+  g.alertPlayer(k, 1);   // ...does not swallow the king's a moment later
+  const last = g.events[g.events.length - 1].text; assert.match(last, /under attack!.*2 heirs left/);
+  g.players[PLAYER].heirs = 0; g.time += 9; g.alertPlayer(k, 1);
+  assert.match(g.events[g.events.length - 1].text, /last of your line/);
+});
+
+
+// ---- espionage: academy spies, rival spies on your villages, watchmen -------------------------------------
+const spyIn = (g, team, v) => { const s = g.addUnit('spy', team, v.x + 0.2, v.y + 0.2); g.cmdInfiltrate([s], v); return s; };
+// an outlying village of the house (far from its castle, where its pull is weak and a spy can make headway)
+const ownVillage = (g, team) => { const h = g.seatOf(team); const v = g.villages.filter((x) => x.owner < 0 && !x.home).sort((a, b) => Math.hypot(b.x - h.x, b.y - h.y) - Math.hypot(a.x - h.x, a.y - h.y))[0]; v.owner = team; v.loyalty = 90; return v; };
+
+test('spies: an academy trains spies as well as a tavern', () => {
+  const g = mk(); const h = g.seatOf(PLAYER); g.players[PLAYER].gold = g.players[PLAYER].food = g.players[PLAYER].wood = 999;
+  const ac = g.addBuilding('academy', PLAYER, h.tx + 12, h.ty + 2); ac.built = 1;
+  assert.equal(g.train(PLAYER, ac.id, 'spy'), true, 'the academy takes the order');
+});
+
+test('spies: a rival spy in your village lowers its loyalty and warns you; a watchman of yours catches spies far sooner', () => {
+  const caughtAfter = (watch, seed) => {
+    const g = mk({ seed }); g.meet(0, 1); const v = ownVillage(g, PLAYER); v.protection = 0;
+    if (watch) spyIn(g, PLAYER, v);
+    const s = spyIn(g, 1, v); let t = 0;
+    while (s.hp > 0 && t < 400) { g.tick(0.25); t += 0.25; }
+    return { t, g, v };
+  };
+  const a = caughtAfter(false, 8);
+  assert.ok(a.g.events.length >= 0 && a.t > 0);
+  const plain = [8, 9, 10, 11].map((sd) => caughtAfter(false, sd).t), watched = [8, 9, 10, 11].map((sd) => caughtAfter(true, sd).t);
+  const avg = (xs) => xs.reduce((p, x) => p + x, 0) / xs.length;
+  assert.ok(avg(watched) * 3 < avg(plain), `watched ${avg(watched).toFixed(0)}s vs unwatched ${avg(plain).toFixed(0)}s`);
+  // the warning and the falling loyalty
+  const g = mk(); g.meet(0, 1); const v = ownVillage(g, PLAYER); v.protection = 0; const l0 = v.loyalty; const seen = [];
+  let low = l0; spyIn(g, 1, v); for (let i = 0; i < 80; i++) { g.tick(0.25); low = Math.min(low, v.loyalty); seen.push(...g.events.splice(0).map((e) => e.text)); }
+  assert.ok(low < l0 - 3, `loyalty fell while the spy worked (${l0} -> ${low.toFixed(1)})`);
+  assert.ok(seen.some((x) => /turning the folk of .* against you/.test(x)), 'the player was warned: ' + seen.slice(-3).join(' | '));
+});
+
+test('spies: right-clicking your own village with a spy posts him there as a watchman', () => {
+  const g = mk(); const v = ownVillage(g, PLAYER); const s = g.addUnit('spy', PLAYER, v.x + 3, v.y + 3);
+  g.contextCommand(PLAYER, [s.id], v.x, v.y);
+  assert.equal(s.task.type, 'infiltrate'); assert.equal(s.task.targetId, v.id);
+  for (let i = 0; i < 60; i++) g.tick(0.25);
+  assert.equal(g.watchmenIn(v), 1, 'he is on watch inside');
+});
+
+// ---- trade needs partners: metal is regional ------------------------------------------------------------------
+test('ore: the land round each hall holds only its own two metals; the others lie in the open ground or with other houses', () => {
+  const metals = ['copper', 'iron', 'coal', 'silver'];
+  for (const seed of [3, 7]) {
+    const g = new Game({ seed, houses: 4, ai: false }), home = g.W * 0.22;
+    let ok = 0, n = 0;
+    for (const r of g.resources) {
+      if (!metals.includes(r.kind)) continue;
+      let best = -1, bd = home; for (let i = 0; i < 4; i++) { const s = g.seatOf(i), d = Math.hypot(r.x - s.x, r.y - s.y); if (d < bd) { bd = d; best = i; } }
+      if (best < 0) continue;   // open ground: anything goes
+      n++; if ([metals[best % 4], metals[(best + 1) % 4]].includes(r.kind)) ok++;
+    }
+    assert.ok(n > 0 && ok / n >= 0.9, `seed ${seed}: ${ok} of ${n} metal deposits in a house's land are its own metals`);
+    assert.ok(g.resources.some((r) => metals.includes(r.kind) && [0, 1, 2, 3].every((i) => Math.hypot(r.x - g.seatOf(i).x, r.y - g.seatOf(i).y) >= home)), 'and there is metal out in the open ground');
+  }
+});
+
+// ---- T31 selection, T-058 reset ------------------------------------------------------------------
+test('selection: idle soldiers are those standing with no order, queued leg or drill; serfs, spies and the garrisoned are not', () => {
+  const g = mk(); const s = g.seatOf(PLAYER);
+  const a = g.addUnit('footman', PLAYER, s.x, s.y + 6), b = g.addUnit('bowman', PLAYER, s.x + 2, s.y + 6), c = g.addUnit('knight', PLAYER, s.x + 4, s.y + 6);
+  g.addUnit('serf', PLAYER, s.x, s.y + 8); g.addUnit('spy', PLAYER, s.x + 1, s.y + 8);
+  b.task = { type: 'move' }; c.task = { type: 'idle', next: [{ x: 1, y: 1 }] };
+  const ids = g.idleArmyOf(PLAYER).map((u) => u.id);
+  assert.ok(ids.includes(a.id), 'a standing footman is idle');
+  assert.ok(!ids.includes(b.id) && !ids.includes(c.id), 'a marching bowman and a knight with a queued leg are not');
+  assert.ok(g.idleArmyOf(PLAYER).every((u) => g.militaryOf(PLAYER).includes(u)), 'only soldiers');
+});
+
+test('reset: a reused Game plays a seed exactly like a fresh one, and old timers do not silence the new match (T-058)', () => {
+  const opts = { seed: 21, houses: 3, ai: true };
+  const fresh = new Game(opts); run(fresh, 40, 0.2);
+  const used = new Game({ seed: 5, houses: 4, ai: true }); run(used, 90, 0.2);
+  used._spyWarn[999] = used.time; used._kingAlertT = used.time; used.log(PLAYER, 'old line');
+  used.reset(opts);
+  assert.deepEqual(used._spyWarn, {}); assert.equal(used._kingAlertT, -99);
+  used.log(PLAYER, 'old line'); assert.ok(used.events.some((e) => e.text === 'old line'), 'a line logged last match is not muted in this one');
+  used.events.length = 0; run(used, 40, 0.2);
+  const strip = (d) => { delete d.saved; return JSON.stringify(d); };
+  assert.equal(strip(used.serialize()), strip(fresh.serialize()), 'same seed, same play');
+});
+
+test('garrison: a soldier who dies inside (deserting for want of pay) leaves the keep\'s roll (T-058)', () => {
+  const g = mk(); const s = g.seatOf(PLAYER);
+  const k = g.addBuilding('keep', PLAYER, Math.round(s.x + 8), Math.round(s.y), true); g.recomputeWalk();
+  const a = g.addUnit('footman', PLAYER, k.x, k.y + 2), b = g.addUnit('footman', PLAYER, k.x + 1, k.y + 2);
+  g.cmdEnter([a, b], k); run(g, 8);
+  assert.equal(k.garrison.length, 2, 'both went in');
+  a.hp = 0; run(g, 0.2);
+  assert.deepEqual(k.garrison, [b.id], 'only the living stay on the roll');
+});
+
+// ---- attack and retreat: a rout costs faith and invites war -------------------------------------------------------
+const brawl = (g) => {   // three of ours trading blows with three of theirs, a little way out from our seat
+  g.meet(0, 1); g.setRelation(0, 1, 'war'); const h = g.seatOf(PLAYER), x = h.x + 14, y = h.y + 10;
+  const ours = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, x + i * 0.6, y)), theirs = [0, 1, 2].map((i) => g.addUnit('footman', 1, x + i * 0.6, y + 1.2));
+  for (const u of [...ours, ...theirs]) { u.hp = u.maxHp = 900; }
+  g.cmdAttack(ours, theirs[0]); for (const u of theirs) g.cmdAttack([u], ours[0]);
+  for (let i = 0; i < 30; i++) g.tick(0.1);
+  return { ours, theirs };
+};
+
+test('retreat: a band ordered off the field breaks out of a fight and heads for home', () => {
+  const g = mk(); const { ours } = brawl(g);
+  assert.ok(ours.some((u) => g.locked(u)), 'they are locked in combat');
+  g.applyIntent({ type: 'retreat', team: PLAYER, ids: ours.map((u) => u.id) });
+  assert.ok(ours.every((u) => u.task.type === 'move' && u.task.retreat), 'every one of them turns for home');
+  for (let i = 0; i < 40; i++) g.tick(0.1);   // struck again as they go, they keep going (a retreat takes the blows)
+  assert.ok(ours.filter((u) => u.hp > 0).every((u) => u.task.type === 'move' && u.task.retreat), 'nobody turned back: ' + ours.map((u) => u.task.type).join(','));
+});
+
+test('retreat: leaving a fight is a rout - villages lose a fifth of their loyalty, regain it slowly, and other kings smell weakness', () => {
+  const g = mk(); const vs = g.villages.filter((v) => v.owner === PLAYER); vs.forEach((v) => { v.loyalty = 80; });
+  const { ours } = brawl(g);
+  const before = vs.map((v) => v.loyalty);
+  g.applyIntent({ type: 'retreat', team: PLAYER, ids: ours.map((u) => u.id) });
+  vs.forEach((v, i) => assert.ok(Math.abs(v.loyalty - before[i] * 0.8) < 0.01, `${v.name}: ${before[i].toFixed(1)} -> ${v.loyalty.toFixed(1)}`));
+  assert.ok(g.events.some((e) => /fled the field/.test(e.text)), 'the player is told');
+  g._stance = {}; const st = stance(g, 1, PLAYER);   // (readings are cached a few seconds; the next one sees the rout)
+  assert.ok(st.reasons.some((r) => /fled the field/.test(r.text)), 'a rival counts it as weakness: ' + st.reasons.map((r) => r.text).join('; '));
+  // a second retreat at once is the same rout, not another
+  const l1 = vs[0].loyalty; g.applyIntent({ type: 'retreat', team: PLAYER, ids: ours.map((u) => u.id) }); assert.equal(vs[0].loyalty, l1);
+});
+
+test('retreat: walking home when nobody is fighting costs nothing; Attack falls on the nearest foe in sight', () => {
+  const g = mk(); const v = g.villages.find((x) => x.owner === PLAYER), l0 = v.loyalty, h = g.seatOf(PLAYER);
+  const band = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, h.x + 10 + i, h.y + 8));
+  g.applyIntent({ type: 'retreat', team: PLAYER, ids: band.map((u) => u.id) });
+  assert.equal(v.loyalty, l0, 'no rout without a fight'); assert.ok(!(g.players[PLAYER].routT > -1e9), 'no rout recorded');
+  g.meet(0, 1); g.setRelation(0, 1, 'war'); const foe = g.addUnit('bowman', 1, h.x + 13, h.y + 9); g.updateVisibility(true);
+  assert.equal(g.applyIntent({ type: 'charge', team: PLAYER, ids: band.map((u) => u.id) }), true);
+  assert.ok(band.every((u) => u.task.type === 'attack' && u.task.targetId === foe.id), 'they go for him');
+});
+
+// ---- spies in disguise: a rival's colours, into its buildings -------------------------------------------------------
+const rivalBuilding = (g, team, kind) => { const s = g.seatOf(team); const b = g.addBuilding(kind, team, Math.round(s.x) + 7, Math.round(s.y) - 2, true); g.recomputeWalk(); return b; };
+
+test('disguise: a spy right-clicked onto a rival building never attacks it; without their colours he is refused, in them he goes in', () => {
+  const g = mk({ fog: false });   // (a building must have been seen to be right-clicked) g.meet(0, 1); g.setRelation(0, 1, 'war');
+  const m = rivalBuilding(g, 1, 'market'), s = g.addUnit('spy', PLAYER, m.x + 3, m.y + 3);
+  g.contextCommand(PLAYER, [s.id], m.x, m.y);
+  assert.notEqual(s.task.type, 'attack', 'a spy does not attack'); assert.notEqual(s.task.type, 'infiltrateB', 'and is not let in undisguised');
+  assert.equal(g.applyIntent({ type: 'disguise', team: PLAYER, ids: [s.id], as: 1 }), true); assert.equal(s.disguise, 1);
+  g.contextCommand(PLAYER, [s.id], m.x, m.y);
+  assert.equal(s.task.type, 'infiltrateB'); assert.equal(s.task.targetId, m.id);
+});
+
+test('disguise: their soldiers let a spy in their colours be; inside their market he skims coin and they are warned', () => {
+  const g = mk(); g.meet(0, 1); g.setRelation(0, 1, 'war');
+  const m = rivalBuilding(g, 1, 'market'), s = g.addUnit('spy', PLAYER, m.x + 2, m.y + 2); s.disguise = 1;
+  const guard = g.addUnit('footman', 1, m.x + 2.5, m.y + 2);
+  assert.equal(g.closestEnemy(guard, 9, 1), null, 'the guard takes him for one of theirs');
+  s.disguise = null; assert.equal(g.closestEnemy(guard, 9, 1), s, 'undisguised, he is a foe'); s.disguise = 1; guard.hp = 0;
+  g.players[1].gold = 500; const mine0 = g.players[PLAYER].gold, theirs0 = g.players[1].gold;
+  g.cmdInfiltrateB([s], m); for (let i = 0; i < 120 && s.hp > 0; i++) g.tick(0.25);
+  if (s.hp > 0) { assert.ok(g.players[PLAYER].gold > mine0 && g.players[1].gold < theirs0, `coin moved: ours ${mine0} -> ${g.players[PLAYER].gold.toFixed(1)}`); assert.ok(g.spiedOn(PLAYER, 1), 'and a spy report came home'); }
+  assert.ok(g.players[1].spied?.[m.id] != null, 'the owner noticed something wrong there');
+});
+
+test('disguise: a spy inside a rival barracks slows its training; a watchman of theirs catches spies far sooner', () => {
+  const trainTime = (spy) => {
+    const g = mk(); g.meet(0, 1); g.setRelation(0, 1, 'war'); const b = rivalBuilding(g, 1, 'barracks');
+    Object.assign(g.players[1], { gold: 999, food: 999, wood: 999 }); g.train(1, b.id, 'footman');
+    if (spy) { const s = g.addUnit('spy', PLAYER, b.x + 0.5, b.y + 0.5); s.disguise = 1; s.hp = s.maxHp = 1e6; g.cmdInfiltrateB([s], b); SPY_COVER.catch = 0; }
+    let t = 0; while (b.queue.length && t < 200) { g.tick(0.25); t += 0.25; }
+    SPY_COVER.catch = 0.006; return t;
+  };
+  assert.ok(trainTime(true) > trainTime(false) * 1.6, 'training took much longer with a spy inside');
+  const caught = (watch, seed) => {
+    const g = mk({ seed }); g.meet(0, 1); const b = rivalBuilding(g, 1, 'academy');
+    if (watch) { const w = g.addUnit('spy', 1, b.x + 0.5, b.y + 0.5); g.cmdInfiltrateB([w], b); }
+    const s = g.addUnit('spy', PLAYER, b.x + 0.5, b.y + 0.5); s.disguise = 1; g.cmdInfiltrateB([s], b); let t = 0;
+    while (s.hp > 0 && t < 600) { g.tick(0.5); t += 0.5; } return t;
+  };
+  const avg = (w) => [8, 9, 10, 11].map((sd) => caught(w, sd)).reduce((a, b) => a + b, 0) / 4;
+  assert.ok(avg(true) * 3 < avg(false), `watched ${avg(true).toFixed(0)}s vs unwatched ${avg(false).toFixed(0)}s`);
+});
+
+// ---- defence, pulling back, repair (owner, 2026-10-16) ----------------------------------------------------------------
+test('defence: idle soldiers well beyond their own sight of the raiders turn out when a building of ours is hit', () => {
+  const g = mk({ fog: false }); g.meet(0, 1); g.setRelation(0, 1, 'war'); const h = g.seatOf(PLAYER);
+  const b = g.addBuilding('barracks', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();
+  const ours = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, b.x - 11 + i * 0.5, b.y + 1));
+  const foes = [0, 1].map((i) => g.addUnit('footman', 1, b.x + 3, b.y - 1 + i)); foes.forEach((f) => { f.hp = f.maxHp = 3000; }); g.cmdAttack(foes, b);
+  for (let i = 0; i < 20; i++) g.tick(0.1);
+  assert.ok(ours.every((u) => u.task.type === 'attack'), 'all three came: ' + ours.map((u) => u.task.type).join(','));
+});
+
+test('pulling back: when the foe turns away, our soldiers obey a move order (no lock, no rout)', () => {
+  const g = mk(); const { ours, theirs } = brawl(g); const v = g.villages.find((x) => x.owner === PLAYER), l0 = v.loyalty;
+  assert.ok(ours.some((u) => g.locked(u)), 'locked while they fight');
+  g.cmdRetreat(theirs);   // they flee
+  const h = g.seatOf(PLAYER); g.cmdMove(ours, h.x + 2, h.y + 2);
+  assert.ok(ours.every((u) => u.task.type === 'move'), 'ours go where sent: ' + ours.map((u) => u.task.type).join(','));
+  for (let i = 0; i < 20; i++) g.tick(0.1);
+  assert.ok(ours.filter((u) => u.hp > 0).every((u) => u.task.type === 'move' || u.task.type === 'idle'), 'and keep going');
+  assert.ok(!(g.players[PLAYER].routT > -1e9) && v.loyalty >= l0 - 2, 'it is no rout of ours');
+});
+
+test('repair: serfs mend a damaged building, paying half its price for the health they restore; the Repair button sends the nearest', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  const b = g.addBuilding('barracks', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();
+  b.hp = b.maxHp * 0.3; Object.assign(p, { food: 999, wood: 999, gold: 999, stone: 999 }); const wood0 = p.wood;
+  for (let i = 0; i < 3; i++) g.addUnit('serf', PLAYER, b.x - 3 + i * 0.5, b.y + 3);
+  assert.equal(g.applyIntent({ type: 'repair', team: PLAYER, buildingId: b.id }), true);
+  for (let i = 0; i < 1200 && b.hp < b.maxHp; i++) g.tick(0.25);
+  assert.equal(b.hp, b.maxHp, 'mended to full');
+  const paid = wood0 - p.wood, want = 0.7 * 0.5 * BUILDINGS.barracks.cost.wood;
+  assert.ok(Math.abs(paid - want) < 2, `paid ${paid.toFixed(1)} timber for 70% of a barracks at half price (${want})`);
+});
+
+test('pack animals: not people (no population, never capped); each people names its own (donkey, Bactrian camel, camel)', () => {
+  const g = mk({ people: 'romans' }); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  const m = g.addBuilding('market', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); Object.assign(p, { food: 999, wood: 999, gold: 999 });
+  const before = g.popUsed(PLAYER); g.addUnit('camel', PLAYER, m.x + 2, m.y + 3);
+  assert.equal(g.popUsed(PLAYER), before, 'a pack animal takes no room');
+  while (g.popUsed(PLAYER) < g.popCap(PLAYER)) g.addUnit('serf', PLAYER, h.x + 2, h.y + 2);
+  assert.equal(g.train(PLAYER, m.id, 'camel'), true, 'trained even at the population cap');
+  assert.equal(packWords('Train a camel; two camels. Camel.', PLAYER), 'Train a donkey; two donkeys. Donkey.');
+  assert.equal(packWords('<button data-act="train" data-kind="camel" data-tip="a camel">Camel</button>', PLAYER), '<button data-act="train" data-kind="camel" data-tip="a camel">Donkey</button>', 'only the words shown change: the button still trains the camel unit');
+  const mg = new Game({ seed: 8, houses: 3, ai: false, people: 'mongols' }); assert.equal(packOf(PLAYER).one, 'Bactrian camel');
+  const eg = new Game({ seed: 8, houses: 3, ai: false, people: 'egyptians' }); assert.equal(packWords('a camel', PLAYER), 'a camel');
+});
+
+test('villages: a village fights back with its folk, shared among its attackers - ten soldiers take a hillfort of ten, not of forty', () => {
+  const attack = (pop) => {
+    const g = mk({ seed: 5, fog: false }); const v = g.villages.find((x) => x.owner < 0 && x.kind === 'hillfort' && !x.home);
+    v.pop = pop; v.protection = v.maxProtection;
+    const us = Array.from({ length: 10 }, (_, i) => g.addUnit('footman', PLAYER, v.x + 3 + (i % 5) * 0.6, v.y + 3 + Math.floor(i / 5) * 0.6)); g.cmdAttack(us, v);
+    let t = 0; while (t < 240 && v.owner !== PLAYER && us.some((u) => u.hp > 0)) { g.tick(0.25); t += 0.25; }
+    return { taken: v.owner === PLAYER, alive: us.filter((u) => u.hp > 0).length };
+  };
+  const small = attack(10), big = attack(40);
+  assert.ok(small.taken && small.alive === 10, `ten folk: taken ${small.taken}, ${small.alive} alive`);
+  assert.ok(!big.taken, 'forty folk behind the walls of a hillfort hold against ten');
+});
+
+test('fighting: a soldier battering a building turns on the foe who strikes him, then goes back to the building', () => {
+  const g = mk({ fog: false }); g.meet(0, 1); g.setRelation(0, 1, 'war'); const s = g.seatOf(1);
+  const b = g.addBuilding('barracks', 1, Math.round(s.x) + 8, Math.round(s.y) + 4, true); g.recomputeWalk();
+  const a = g.addUnit('footman', PLAYER, b.x + 2.5, b.y + 2.5); a.hp = a.maxHp = 400; g.cmdAttack([a], b);
+  for (let i = 0; i < 20; i++) g.tick(0.1);
+  const foe = g.addUnit('footman', 1, a.x + 0.8, a.y); foe.hp = foe.maxHp = 30; g.cmdAttack([foe], a);
+  for (let i = 0; i < 15; i++) g.tick(0.1);
+  assert.equal(a.task.targetId, foe.id, 'he turned on his attacker');
+  for (let i = 0; i < 100 && foe.hp > 0; i++) g.tick(0.1); g.tick(0.1);
+  assert.ok(foe.hp <= 0, 'and beat him'); assert.equal(a.task.type, 'attack'); assert.equal(a.task.targetId, b.id, 'then went back to the barracks');
+});
+
+test('keys (T03): every command has its own default key; rebinding swaps, refuses fixed keys, and is kept in the browser', () => {
+  const d = defaultKeys(), keys = Object.values(d);
+  assert.equal(new Set(keys).size, keys.length, 'no key does two things by default');
+  assert.equal(d.amove, 'f'); assert.equal(d.panLeft, 'a'); assert.equal(actionOf(d, 'G'), 'charge'); assert.equal(actionOf(d, '+'), 'faster');
+  const m = defaultKeys();
+  let r = rebind(m, 'amove', 'A'); assert.ok(r.ok); assert.equal(r.swapped, 'panLeft');
+  assert.equal(m.amove, 'a'); assert.equal(m.panLeft, 'f', 'the pan key takes attack-move\'s old key');
+  for (const k of ['Escape', 'Tab', '3', 'F5', 'ArrowUp', 'Home', 'Shift']) assert.equal(rebind(m, 'stop', k).ok, false, `${k} is fixed`);
+  const mem = new Map(), store = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: (k) => mem.delete(k) };
+  assert.ok(saveKeys(store, m)); assert.deepEqual(JSON.parse(mem.get(KEY_STORE)), { amove: 'a', panLeft: 'f' }, 'only the changes are stored');
+  assert.deepEqual(loadKeys(store), m, 'and come back on the next visit');
+  saveKeys(store, defaultKeys()); assert.equal(mem.has(KEY_STORE), false, 'defaults leave nothing behind');
+  mem.set(KEY_STORE, '{"amove":"g"}'); assert.deepEqual(loadKeys(store), defaultKeys(), 'a stored map with a key used twice falls back to the defaults');
+  mem.set(KEY_STORE, 'not json'); assert.deepEqual(loadKeys(store), defaultKeys());
+  assert.deepEqual(loadKeys({ getItem: () => { throw new Error('private window'); } }), defaultKeys(), 'no storage: defaults');
+  assert.equal(keyName(' '), 'Space'); assert.equal(keyName('='), '+');
+  // the HUD reads every key through the map: no command is left on a hard-wired letter
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8'), onKey = ui.slice(ui.indexOf('  onKey(e) {'), ui.indexOf('  applyKeys() {'));
+  assert.ok(!/k === '[a-z.,=+-]'/.test(onKey), 'onKey compares no letter directly');
+  for (const a of KEY_ACTIONS) assert.ok(onKey.includes(`'${a.id}'`) || a.id.startsWith('pan'), `onKey handles ${a.id}`);
+});
+
+test('grid keys (T03): the command card answers to Q W E R / A S D F / Z X C V by place, Shift for the next twelve; buildings keep their key', () => {
+  assert.equal(GRID_SLOTS, 24);
+  assert.equal(gridSlotOf('q', false), 0); assert.equal(gridSlotOf('V', false), 11); assert.equal(gridSlotOf('Q', true), 12); assert.equal(gridSlotOf('v', true), 23);
+  assert.equal(gridSlotOf('t', false), -1, 'T is not on the grid'); assert.equal(gridSlotOf('1', false), -1);
+  assert.equal(gridLabel(0), 'Q'); assert.equal(gridLabel(7), 'F'); assert.equal(gridLabel(13), '⇧W'); assert.equal(gridLabel(24), '');
+  // a soldier's card: four orders, four stances, four formations fill the three rows
+  assert.deepEqual(assignGrid(Array(12).fill(null)), [...Array(12).keys()]);
+  // a builder's card: buildings keep their place and the locked ones' keys stay free; the rest fill after them; past 24 there is no key
+  const reserved = [...Array(19).keys()], card = [0, 1, 3, 7, null, null, null, null, null, null];   // four unlocked buildings, then six more buttons
+  assert.deepEqual(assignGrid(card, reserved), [0, 1, 3, 7, 19, 20, 21, 22, 23, -1]);
+  assert.deepEqual(assignGrid([null, 2, null]), [0, 2, 1], 'a fixed place is never handed to another button');
+  // remembered in the browser, off by default
+  const mem = new Map(), store = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: (k) => mem.delete(k) };
+  assert.equal(loadGrid(store), false); assert.ok(saveGrid(store, true)); assert.equal(mem.get(GRID_STORE), 'on'); assert.equal(loadGrid(store), true);
+  saveGrid(store, false); assert.equal(mem.has(GRID_STORE), false); assert.equal(loadGrid({ getItem: () => { throw new Error('private'); } }), false);
+  assert.ok(GRID_KEYS.every((k) => !reservedKeyLike(k)), 'every grid key is a plain letter');
+  // hints name the key the player has, not a hard-wired letter (T-067)
+  const m = defaultKeys(); rebind(m, 'hall', 'j');
+  assert.equal(fillKeys('Press {key:hall} then {key:standings}.', m), 'Press J then T.');
+  for (const o of OBJECTIVES) assert.ok(!/\bPress [A-Z]\b|\([A-Z]\)/.test(o.hint), `objective "${o.id}" names a key through the key map`);
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  assert.ok(!/Press <b>[A-Z]<\/b>|<b>[A-Z]<\/b> (then|opens)/.test(ui), 'no HUD hint names a hard-wired letter');
+});
+
+test('pack animals: a rival raises one at the population cap, as the player can (T-063 asymmetry, T-065)', () => {
+  const g = mk({ fog: false }), s = g.seatOf(1), p = g.players[1];
+  const mkt = g.addBuilding('market', 1, Math.round(s.x) + 7, Math.round(s.y) + 3, true);
+  g.addBuilding('mine', 1, Math.round(s.x) - 8, Math.round(s.y) + 6, true); g.recomputeWalk();
+  g.units.filter((u) => u.team === 1 && u.kind === 'camel').forEach((u) => { u.hp = 0; });
+  p.gold = 500; g.popUsed = () => 999;
+  treasury(g, 1, p, s, g.units.filter((u) => u.team === 1 && u.kind === 'serf'));
+  assert.ok(mkt.queue.some((x) => x.kind === 'camel'), 'the market is raising a pack animal although the house is full');
+});
+
+test('a new match forgets the last one\'s repair warning timer (T-058 class, T-065)', () => {
+  const g = mk(); g._repairWarn = 1e9; g.reset({ seed: 8, houses: 3, ai: false });
+  assert.ok(g._repairWarn < 0);
+});
+
+test('control groups (T36): the HUD row counts the living, names the main kind, flashes in a fight, and drops what is not ours', () => {
+  const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war';
+  const h = g.seatOf(PLAYER);
+  const a = g.addUnit('footman', PLAYER, h.x, h.y + 6), b = g.addUnit('footman', PLAYER, h.x + 1, h.y + 6), c = g.addUnit('bowman', PLAYER, h.x + 2, h.y + 6);
+  const foe = g.addUnit('footman', 1, h.x + 20, h.y + 20);
+  const groups = { 3: [c.id], 1: [a.id, b.id, c.id, foe.id, 99999] };
+  let row = groupRow(g, groups);
+  assert.deepEqual(row.map((r) => r.k), ['1', '3'], 'sorted by number');
+  assert.equal(row[0].n, 3, 'a rival unit and a missing id are not counted'); assert.equal(row[0].kind, 'footman'); assert.equal(row[0].fighting, false);
+  assert.deepEqual(groupUnits(g, groups[1]).map((u) => u.id), [a.id, b.id, c.id]);
+  g.damage(c, 1, 1, foe);
+  row = groupRow(g, groups);
+  assert.ok(row[0].fighting && row[1].fighting, 'a member struck just now makes the chip flash');
+  g.time += 7; assert.ok(!groupRow(g, groups)[0].fighting, 'quiet again once the fight is a few seconds past');
+  a.hp = 0; b.hp = 0;
+  row = groupRow(g, groups); assert.equal(row[0].n, 1); assert.equal(row[0].kind, 'bowman', 'the main kind follows the living');
+  c.hp = 0; assert.equal(groupRow(g, groups).length, 0, 'a group with nobody left is not shown');
+  assert.deepEqual(cleanGroups({ 1: [4, 'x', 5], 0: [1], a: [2], 2: 'no' }), { 1: [4, 5] }, 'a save only restores well-formed groups');
+  assert.deepEqual(cleanGroups(undefined), {});
+});
+
+test('control groups and the autosave clock do not outlive a match (UI setGame clears them; a save carries the groups)', () => {
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8'), setGame = ui.slice(ui.indexOf('  setGame(game) {'), ui.indexOf('\n', ui.indexOf('  setGame(game) {')));
+  assert.match(setGame, /this\.groups = \{\}/, 'a new or loaded match starts with no groups');
+  assert.match(setGame, /this\.lastAuto = game\.time/, 'and with the autosave clock at the match time');
+  assert.match(ui, /writeSave\(slot, \{ \.\.\.g\.serialize\(\), groups: this\.groups \}\)/);
+  assert.match(ui, /this\.groups = cleanGroups\(d\.groups\)/);
+});
+
+// ---- the siege line (owner, 2026-10-19) ---------------------------------------------------------------------------------
+test('siege: each engine waits on its research at the academy, and each batters walls harder than the last; the trebuchet is poor against men', () => {
+  const g = mk({ fog: false }); g.meet(0, 1); g.setRelation(0, 1, 'war'); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  Object.assign(p, { food: 9999, wood: 9999, gold: 9999, stone: 9999 });
+  const ws = g.addBuilding('workshop', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();
+  for (const k of ['ram', 'onager', 'trebuchet']) assert.equal(g.train(PLAYER, ws.id, k), null, k + ' needs its research');
+  (p.tech ||= {}).siegecraft = true; assert.equal(g.train(PLAYER, ws.id, 'ram'), true, 'Siegecraft unlocks the ram');
+  const wallDps = (kind) => { const s = UNITS[kind]; return (s.dmg * s.bld) / s.cd; };
+  assert.ok(wallDps('ram') < wallDps('onager') && wallDps('onager') < wallDps('trebuchet'), `ram ${wallDps('ram').toFixed(0)} < onager ${wallDps('onager').toFixed(0)} < trebuchet ${wallDps('trebuchet').toFixed(0)} a second on walls`);
+  assert.ok(UNITS.ram.range < UNITS.onager.range && UNITS.onager.range < UNITS.trebuchet.range, 'and each reaches further');
+  // the trebuchet's boulder rarely finds a man: against troops it does far less than against a wall
+  const e = g.seatOf(1), t = g.addUnit('trebuchet', PLAYER, e.x - 9, e.y), man = g.addUnit('footman', 1, e.x - 2, e.y); man.hp = man.maxHp = 5000;
+  const b = g.addBuilding('barracks', 1, Math.round(e.x) - 3, Math.round(e.y) + 4, true); b.hp = b.maxHp = 50000; g.recomputeWalk();
+  const hit = (target) => { const before = target.hp; t.cooldown = 0; t.task = { type: 'attack', targetId: target.id }; for (let i = 0; i < 400 && target.hp === before; i++) g.tick(0.05); return before - target.hp; };
+  const onMan = hit(man), onWall = hit(b);
+  assert.ok(onWall > onMan * 8, `a boulder does ${onWall.toFixed(0)} to a wall, ${onMan.toFixed(0)} to a man`);
+});
+
+test('siege: spears and the Rus bear-hunter count against every engine, not only the ram (T-073)', () => {
+  const g = mk({ fog: false }); g.meet(0, 1); g.setRelation(0, 1, 'war'); const e = g.seatOf(1);
+  const rus = g.addUnit('footman', PLAYER, e.x - 6, e.y); rus.far = 'rus';
+  for (const k of ['ram', 'onager', 'trebuchet']) { const t = g.addUnit(k, 1, e.x - 5, e.y); assert.ok(g.charMul(rus, t) > 1.5, `the Rus is a horse-breaker against the ${k}`); t.hp = 0; }
+  const hitOnce = (gear) => {
+    const g2 = mk({ fog: false }); g2.meet(0, 1); g2.setRelation(0, 1, 'war'); const s = g2.seatOf(1);
+    const t = g2.addUnit('onager', 1, s.x - 6, s.y); t.hp = t.maxHp = 50000;
+    const u = g2.addUnit('footman', PLAYER, s.x - 6.8, s.y); if (gear) u.gear = { weapon: 'spear' };
+    u.cooldown = 0; u.task = { type: 'attack', targetId: t.id }; const before = t.hp;
+    for (let i = 0; i < 200 && t.hp === before; i++) g2.tick(0.05);
+    return before - t.hp;
+  };
+  const plain = hitOnce(false), spear = hitOnce(true);
+  assert.ok(plain > 0 && spear > plain * 1.6, `a spear strikes an onager for ${spear.toFixed(1)}, a plain footman for ${plain.toFixed(1)}`);
+});
+
+test('siege: a keep stores up to three engines in its sheds, apart from its garrison, mending them; Leave rolls them out', () => {
+  const g = mk({ fog: false }); const h = g.seatOf(PLAYER);
+  const k = g.addBuilding('keep', PLAYER, Math.round(h.x) + 8, Math.round(h.y) + 4, true); g.recomputeWalk();
+  const engines = ['ram', 'onager', 'trebuchet', 'ram'].map((kind, i) => g.addUnit(kind, PLAYER, k.x + 2 + i * 0.7, k.y + 3));
+  engines[0].hp = engines[0].maxHp / 2;
+  g.contextCommand(PLAYER, engines.map((u) => u.id), k.x, k.y);
+  for (let i = 0; i < 200; i++) g.tick(0.1);
+  assert.equal((k.engines || []).length, 3, 'three in the sheds'); assert.equal(k.garrison.length, 0, 'none of them in the garrison');
+  assert.ok(!engines[3].inside, 'the fourth is turned away');
+  assert.ok(engines[0].hp > engines[0].maxHp / 2, 'a stored engine is kept in repair');
+  const ft = g.addUnit('footman', PLAYER, k.x + 2, k.y + 3); g.cmdEnter([ft], k); for (let i = 0; i < 60; i++) g.tick(0.1);
+  assert.equal(k.garrison.length, 1, 'soldiers still have the whole garrison');
+  const bar = g.addBuilding('barracks', PLAYER, Math.round(h.x) - 10, Math.round(h.y) + 4, true); g.recomputeWalk(); assert.equal(g.cmdEnter([engines[3]], bar), false, 'a barracks has no sheds');
+  g.applyIntent({ type: 'leave', team: PLAYER, buildingId: k.id });
+  assert.equal((k.engines || []).length, 0); assert.ok(engines.slice(0, 3).every((u) => !u.inside), 'Leave rolls them out');
+});
+
+test('science: the learning bank holds enough for the dearest research, so every tier can be finished', () => {
+  const dearest = Math.max(...Object.values(TECH).map((t) => t.cost.learning));
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER]; g.addBuilding('academy', PLAYER, h.tx + 9, h.ty - 9, true); g.recomputeWalk();
+  Object.assign(p.tech ||= {}, { masonry: true, metallurgy: true }); p.silver = 99; assert.ok(g.startResearch(PLAYER, 'steelcraft'));
+  p.learning = 0; for (let i = 0; i < 3000 && !g.hasTech(PLAYER, 'steelcraft'); i++) { p.learning = Math.min(p.learning + 2, 9999); g.tick(0.1); }
+  assert.ok(g.hasTech(PLAYER, 'steelcraft'), `a tier-3 research (${dearest} learning) completes`);
+});
+
+test('sites: a half-built building comes down easier than a finished one, and finishing it does not mend the damage (owner, 2026-10-20)', () => {
+  const g = mk(), h = { tx: 30, ty: 30 }; meet(g); g.setRelation(PLAYER, 1, 'war');
+  const hit = (built) => {
+    const b = g.addBuilding('barracks', 1, h.tx + 8, h.ty + 8, built); if (!built) { b.built = 0.5; b.hp = b.maxHp * 0.56; }
+    const u = g.addUnit('footman', PLAYER, b.x + b.size / 2 + 0.4, b.y); u.task = { type: 'attack', targetId: b.id }; u.cooldown = 0; u.cd = 0;
+    const before = b.hp; for (let i = 0; i < 3 && b.hp === before; i++) g.doAttack(u, UNITS.footman, 0.05);
+    const lost = before - b.hp; g.units = g.units.filter((x) => x !== u); g.buildings = g.buildings.filter((x) => x !== b); return lost;
+  };
+  const whole = hit(true), site = hit(false);
+  assert.ok(whole > 0 && site > whole * 2, `a site takes the blow harder (${site} vs ${whole})`);
+  const s = g.addBuilding('tavern', PLAYER, h.tx + 8, h.ty + 8, false); s.built = 0.99; s.hp = s.maxHp * 0.3;
+  const serf = g.addUnit('serf', PLAYER, s.x + 1.2, s.y); serf.task = { type: 'build', targetId: s.id };
+  for (let i = 0; i < 40 && s.built < 1; i++) g.doBuild(serf, 0.5);
+  assert.equal(s.built, 1); assert.ok(s.hp < s.maxHp * 0.6, 'the damage stays for a repair');
+});
+
+test('sizes: a market, forge and armoury are no wider than a tavern (owner, 2026-10-20)', () => {
+  for (const k of ['market', 'forge', 'armoury']) assert.ok(BUILDINGS[k].size <= BUILDINGS.tavern.size, k);
+  assert.ok(BUILDINGS.keep.size > BUILDINGS.barracks.size);
+});
+
+test('peace for coin: the envoy carries a share of the treasury, paid only if they agree; a rival that sues offers coin too (owner, 2026-10-20)', () => {
+  const g = mk(); meet(g); g.time = 2000; g.players[1].ai = true;
+  g.setRelation(PLAYER, 1, 'war'); g.relSince[PLAYER][1] = g.relSince[1][PLAYER] = g.time - 100;
+  for (let i = 0; i < 12; i++) g.addUnit('footman', 1, 30 + i * 0.3, 30);   // they are winning: plain peace is refused
+  g.players[PLAYER].gold = 1000; g.players[1].gold = 200;
+  assert.equal(g.proposeRelation(PLAYER, 1, 'peace', true), false, 'no peace for nothing'); assert.match(g.diploNote, /might take it for about \d+ coin/);
+  const price = g.peacePrice(1, PLAYER);
+  assert.equal(g.proposeRelation(PLAYER, 1, 'peace', true, 5), false, 'a pittance does not buy it');
+  assert.equal(g.players[PLAYER].gold, 1000, 'refused: nothing is paid');
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'relation', other: 1, state: 'peace', coin: price }), true, 'the envoy rides with the coin');
+  assert.equal(g.asks[0].coin, price);
+  for (let i = 0; i < 100 && g.asks.length; i++) { g.time += 0.1; g.updateDiplomacy(0.1); }
+  assert.equal(g.rel[PLAYER][1], 'peace'); assert.equal(g.players[PLAYER].gold, 1000 - price); assert.equal(g.players[1].gold, 200 + price);
+  assert.match(g.letters.map((l) => l.text).join(' '), /coin is received/);
+  // the other way: a losing rival sues the player for peace with coin, paid when accepted
+  const h = mk(); meet(h); h.time = 2000; h.players[1].ai = true; h.players[1].gold = 500; h.players[PLAYER].gold = 0;
+  h.setRelation(PLAYER, 1, 'war'); h.relSince[PLAYER][1] = h.relSince[1][PLAYER] = h.time - 400;
+  for (let i = 0; i < 20; i++) h.addUnit('knight', PLAYER, 20 + i * 0.3, 20);
+  const o = { id: h.nextLetter++, from: 1, to: PLAYER, kind: 'treaty', state: 'peace', amount: 100, t: h.time, expires: h.time + 60 }; h.offers.push(o);
+  assert.equal(h.respondOffer(PLAYER, 1, true, o.id), true); assert.equal(h.rel[PLAYER][1], 'peace');
+  assert.equal(h.players[PLAYER].gold, 100); assert.equal(h.players[1].gold, 400);
+});
+
+test('town bell (T38): one ring shelters the serfs in the nearest keep or village, the next sends them back to the work they left; saved; the AI rings it when raided', () => {
+  const g = mk(), seat = g.seatOf(PLAYER);
+  const keep = g.addBuilding('keep', PLAYER, Math.round(seat.x + 7), Math.round(seat.y - 2), true); g.recomputeWalk();
+  const node = g.resources.filter((r) => r.kind === 'tree' && r.amount > 0 && !r.covered).sort((a, b) => Math.hypot(a.x - keep.x, a.y - keep.y) - Math.hypot(b.x - keep.x, b.y - keep.y))[0];
+  const site = g.addBuilding('tavern', PLAYER, Math.round(keep.x - 1), Math.round(keep.y + 6), false); g.recomputeWalk();
+  const cutter = g.addUnit('serf', PLAYER, keep.x + 3, keep.y + 4), builder = g.addUnit('serf', PLAYER, site.x + 1.5, site.y);
+  assert.ok(g.cmdGather([cutter], node)); assert.ok(g.cmdBuild([builder], site));
+  const far = g.addUnit('serf', PLAYER, Math.min(g.W - 5, keep.x + BELL.r + 40), keep.y);   // out of town: the bell does not reach him
+  const farTask = far.task.type, wt = g.garrisonWeight(keep);
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'bell' }), true);
+  assert.ok(g.players[PLAYER].bell != null, 'rung');
+  run(g, 20);
+  assert.ok(cutter.inside != null && builder.inside != null, 'both serfs shelter');
+  assert.equal(far.inside, null); assert.equal(far.task.type, farTask);
+  assert.equal(g.garrisonWeight(keep), wt, 'sheltering serfs are no garrison');
+  // a save in the middle keeps the bell and the jobs
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  for (const x of [g, h]) {
+    const c = x.byId.get(cutter.id), b = x.byId.get(builder.id);
+    assert.equal(x.applyIntent({ team: PLAYER, type: 'bell' }), true, 'the all-clear');
+    assert.equal(x.players[PLAYER].bell, null);
+    assert.equal(c.inside, null); assert.equal(b.inside, null);
+    assert.equal(c.task.type, 'gather'); assert.equal(c.task.nodeId, node.id, 'back to the same trees');
+    assert.equal(b.task.type, 'build'); assert.equal(b.task.targetId, site.id, 'back to the same site');
+  }
+  // nobody to shelter: refused with a reason, nothing rung
+  const e = mk(); e.units = e.units.filter((u) => u.team !== PLAYER || !BELL.kinds.includes(u.kind)); e.byId = new Map([...e.units, ...e.buildings, ...e.villages].map((x) => [x.id, x]));
+  assert.equal(e.ringBell(PLAYER), false); assert.match(e.diploNote, /No serfs/); assert.equal(e.players[PLAYER].bell ?? null, null);
+  // the AI: raiders at its seat who outnumber the guard ring the bell; quiet for BELL.quiet seconds sounds the all-clear
+  const a = mk(); meet(a); a.players[1].ai = true; a.setRelation(PLAYER, 1, 'war');
+  const s1 = a.seatOf(1), p1 = a.players[1];
+  a.addUnit('serf', 1, s1.x + 2, s1.y + 3);
+  for (const u of a.units) if (u.team === 1 && a.fighter(u)) u.hp = 0;   // no guard at home
+  const raiders = [0, 1, 2].map((i) => a.addUnit('footman', PLAYER, s1.x + 4 + i * 0.6, s1.y + 4));
+  townBell(a, 1, p1, s1, a.time);
+  assert.ok(p1.bell != null, 'the rival rings its bell');
+  raiders.forEach((u) => { u.hp = 0; });
+  townBell(a, 1, p1, s1, a.time); assert.ok(p1.bell != null, 'not yet: the quiet has only begun');
+  townBell(a, 1, p1, s1, a.time + BELL.quiet + 1); assert.equal(p1.bell, null, 'all clear');
+  assert.equal(defaultKeys().bell, 'b');
+});
+
+test('patrol (T39): soldiers walk to a post and back for ever, Shift adds posts, a foe met is fought and the round goes on; saved; any other order ends it; the AI walks its home guard', () => {
+  const g = mk(), seat = g.seatOf(PLAYER);
+  g.units = g.units.filter((u) => u.team !== 1 && u.team !== 2 || u.kind !== 'footman'); g.byId = new Map([...g.units, ...g.buildings, ...g.villages].map((x) => [x.id, x]));
+  const x0 = seat.x + 2, y0 = seat.y + 6;
+  const a = g.addUnit('footman', PLAYER, x0, y0), b = g.addUnit('footman', PLAYER, x0 + 1, y0);
+  g.recomputeWalk();
+  // the far post: walkable ground about 9 tiles east
+  const [wx, wy] = g.nearestWalkable(Math.floor(x0 + 9), Math.floor(y0)), px = wx + 0.5, py = wy + 0.5;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'patrol', ids: [a.id, b.id], x: px, y: py }), true);
+  assert.equal(a.task.type, 'amove'); assert.equal(a.task.patrol.pts.length, 2);
+  assert.ok(Math.hypot(a.task.patrol.pts[0][0] - x0, a.task.patrol.pts[0][1] - y0) < 0.01, 'the round starts where he stood');
+  // there and back, and out again: it never ends on its own
+  let farSeen = false, backSeen = false;
+  for (let s = 0; s < 40; s += 0.1) { g.tick(0.1); if (Math.hypot(a.x - a.task.patrol.pts[1][0], a.y - a.task.patrol.pts[1][1]) < 1) farSeen = true; else if (farSeen && Math.hypot(a.x - x0, a.y - y0) < 1) backSeen = true; }
+  assert.ok(farSeen && backSeen, 'reached the far post and came back');
+  assert.equal(a.task.type, 'amove'); assert.ok(a.task.patrol, 'still patrolling');
+  // Shift adds a third post to the round of those already walking it
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'patrol', ids: [a.id, b.id], x: x0, y: y0 + 4, queue: true }), true);
+  assert.equal(g.patrolOf(a).pts.length, 3);
+  // saved and loaded, the round goes on the same
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(h.patrolOf(h.byId.get(a.id)), g.patrolOf(a));
+  run(g, 3); run(h, 3);
+  assert.ok(Math.abs(h.byId.get(a.id).x - a.x) < 1e-9 && Math.abs(h.byId.get(a.id).y - a.y) < 1e-9, 'a load walks on exactly as before');
+  // a foe met on the round is fought, then the round goes on
+  g.rel[0][1] = g.rel[1][0] = 'war';
+  const foe = g.addUnit('recruit', 1, a.x + 1.2, a.y); foe.hp = 4;
+  run(g, 6);
+  assert.ok(foe.hp <= 0, 'the foe met on patrol is cut down');
+  assert.ok(g.patrolOf(a), 'and the round goes on');
+  // any other order ends it
+  g.applyIntent({ team: PLAYER, type: 'move', ids: [a.id], x: x0, y: y0 });
+  assert.equal(g.patrolOf(a) ?? null, null);
+  g.applyIntent({ team: PLAYER, type: 'stop', ids: [b.id] });
+  assert.equal(g.patrolOf(b) ?? null, null);
+  // serfs are not sent on patrol (they just walk there)
+  const serf = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
+  g.applyIntent({ team: PLAYER, type: 'patrol', ids: [serf.id], x: px, y: py });
+  assert.notEqual(serf.task.type, 'amove');
+  assert.equal(defaultKeys().patrol, 'z');
+  // the AI: at peace, with a home guard to spare, a pair walk a round; no more than PATROL.pair
+  const r = mk(), s1 = r.seatOf(1), p1 = r.players[1];
+  for (let i = 0; i < PATROL.spare + 2; i++) r.addUnit('footman', 1, s1.x + 2 + (i % 3), s1.y + 5 + Math.floor(i / 3));
+  const army = r.militaryOf(1);
+  patrolBounds(r, 1, p1, s1, army, 100);
+  assert.equal(army.filter((u) => r.patrolOf(u)).length, PATROL.pair, 'a pair on patrol');
+  p1.patrolT = 0; patrolBounds(r, 1, p1, s1, army, 200);
+  assert.equal(army.filter((u) => r.patrolOf(u)).length, PATROL.pair, 'never more than the pair');
 });
 
 console.log(`${passed} passed`);

@@ -8,32 +8,33 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mv54cm5x">
-
+<link rel="stylesheet" href="style.css?v=mvk39xit">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mv54cm5x",
-    "./js/art.js": "./js/art.js?v=mv54cm5x",
-    "./js/audio.js": "./js/audio.js?v=mv54cm5x",
-    "./js/config.js": "./js/config.js?v=mv54cm5x",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mv54cm5x",
-    "./js/entities.js": "./js/entities.js?v=mv54cm5x",
-    "./js/game.js": "./js/game.js?v=mv54cm5x",
-    "./js/gfx.js": "./js/gfx.js?v=mv54cm5x",
-    "./js/learn.js": "./js/learn.js?v=mv54cm5x",
-    "./js/main.js": "./js/main.js?v=mv54cm5x",
-    "./js/map.js": "./js/map.js?v=mv54cm5x",
-    "./js/names.js": "./js/names.js?v=mv54cm5x",
-    "./js/net.js": "./js/net.js?v=mv54cm5x",
-    "./js/objectives.js": "./js/objectives.js?v=mv54cm5x",
-    "./js/recorder.js": "./js/recorder.js?v=mv54cm5x",
-    "./js/render.js": "./js/render.js?v=mv54cm5x",
-    "./js/save.js": "./js/save.js?v=mv54cm5x",
-    "./js/terrain.js": "./js/terrain.js?v=mv54cm5x",
-    "./js/trainui.js": "./js/trainui.js?v=mv54cm5x",
-    "./js/ui.js": "./js/ui.js?v=mv54cm5x"
+    "./js/ai.js": "./js/ai.js?v=mvk39xit",
+    "./js/art.js": "./js/art.js?v=mvk39xit",
+    "./js/audio.js": "./js/audio.js?v=mvk39xit",
+    "./js/config.js": "./js/config.js?v=mvk39xit",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mvk39xit",
+    "./js/entities.js": "./js/entities.js?v=mvk39xit",
+    "./js/game.js": "./js/game.js?v=mvk39xit",
+    "./js/gfx.js": "./js/gfx.js?v=mvk39xit",
+    "./js/groups.js": "./js/groups.js?v=mvk39xit",
+    "./js/keys.js": "./js/keys.js?v=mvk39xit",
+    "./js/learn.js": "./js/learn.js?v=mvk39xit",
+    "./js/main.js": "./js/main.js?v=mvk39xit",
+    "./js/map.js": "./js/map.js?v=mvk39xit",
+    "./js/names.js": "./js/names.js?v=mvk39xit",
+    "./js/net.js": "./js/net.js?v=mvk39xit",
+    "./js/objectives.js": "./js/objectives.js?v=mvk39xit",
+    "./js/recorder.js": "./js/recorder.js?v=mvk39xit",
+    "./js/render.js": "./js/render.js?v=mvk39xit",
+    "./js/save.js": "./js/save.js?v=mvk39xit",
+    "./js/terrain.js": "./js/terrain.js?v=mvk39xit",
+    "./js/trainui.js": "./js/trainui.js?v=mvk39xit",
+    "./js/ui.js": "./js/ui.js?v=mvk39xit"
   }
 }
 </script>
@@ -41,7 +42,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mv54cm5x';
+window.__BUILD = 'mvk39xit';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -104,9 +105,10 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
   </main>
 
   <footer id="hud">
+    <div id="groupBar" class="hidden"></div>
     <section id="minimapWrap">
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div id="miniBtns"><button id="btnHome" title="Jump to your home village (H)">Home</button><button id="btnIdle" title="Select next idle serf (.)">Idle</button><button id="btnArmy" title="Select all soldiers (,)">Army</button></div>
+      <div id="miniBtns"><button id="btnHome" title="Jump to your home village (H)">Home</button><button id="btnIdle" title="Select next idle serf (.)">Idle</button><button id="btnArmy" title="Select all soldiers (,); Shift-click or I: idle soldiers">Army</button><button id="btnBell" title="Town bell (B): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work">Bell</button></div>
     </section>
     <section id="selPanel"></section>
     <section id="cmdPanel"></section>
@@ -132,17 +134,17 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     <div class="menuframe">
       <div class="menuleft">
         <h1>Auld World</h1>
-        <p class="sub">Five houses. Sack a village, sit a keep on it, or leave a spy. Last house standing wins.</p>
+        <p class="sub">Up to eight houses. Sack a village, sit a keep on it, or leave a spy. Last house standing wins.</p>
         <button class="big" id="mBegin">Begin the Valley</button>
         <button class="big alt" id="mBack">Back to the menu</button>
         <div class="opt"><span>Houses</span>
-          <div class="seg" id="mHouses"><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button></div>
+          <div class="seg" id="mHouses"><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button><button data-n="7">7</button><button data-n="8">8</button></div>
         </div>
         <div class="opt"><span>Difficulty</span>
           <div class="seg" id="mDiff"><button data-d="easy">Easy</button><button data-d="mid">Mid</button><button data-d="hard">Hard</button></div>
         </div>
         <div class="opt"><span>Your people</span>
-          <div class="seg wrap" id="mPeople"><button data-p="random">Random</button><button data-p="egyptians">Egyptians</button><button data-p="romans">Romans</button><button data-p="scottish">Scots</button><button data-p="british">British</button><button data-p="mongols">Mongols</button></div>
+          <div class="seg wrap" id="mPeople"><button data-p="random">Random</button><button data-p="egyptians">Egyptians</button><button data-p="romans">Romans</button><button data-p="scottish">Scots</button><button data-p="british">British</button><button data-p="mongols">Mongols</button><button data-p="vikings">Vikings</button><button data-p="byzantines">Byzantines</button><button data-p="persians">Persians</button></div>
         </div>
         <div class="opt"><span>Graphics</span>
           <div class="seg" id="mGfx"><button data-q="0">Low</button><button data-q="1">Medium</button><button data-q="2">High</button></div>
@@ -164,6 +166,9 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
           <label class="slid">Music <input type="range" id="sMusic" min="0" max="100"></label>
           <label class="slid">Effects <input type="range" id="sSfx" min="0" max="100"></label>
           <label class="chk"><input type="checkbox" id="sMute"> Mute</label></div>
+        <div class="optrow keysrow"><span class="seedlabel">Keys</span><button class="small" id="kShow">Change keys</button><button class="small" id="kReset">Reset keys</button>
+          <label class="chk" data-tip="%3Cb%3EGrid%20keys%3C%2Fb%3E%20(Age%20of%20Empires%20IV%20layout)%3Cbr%3EThe%20command%20card%20answers%20to%20Q%20W%20E%20R%20%2F%20A%20S%20D%20F%20%2F%20Z%20X%20C%20V%20by%20place%2C%20and%20Shift%20with%20them%20for%20the%20next%20twelve.%20Each%20button%20shows%20its%20key.%20The%20arrows%20pan."><input type="checkbox" id="kGrid"> Grid keys</label>
+          <div id="keyGrid" class="keygrid hidden"></div></div>
         <div class="optrow trainbox" id="trainBox">
           <span class="seedlabel">AI training</span>
           <label class="chk"><input type="checkbox" id="trRec" checked> Learn from my play</label>
@@ -172,7 +177,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
           <div class="trbtns"><button class="small" id="trExport">Export recordings</button><button class="small" id="trImport">Import</button><button class="small" id="trClear">Clear</button><input type="file" id="trFile" accept=".json,application/json" hidden></div>
         </div>
         <button class="big alt" id="mQuit">Quit</button>
-        <p class="tiny">Right-click to move, gather, sack, infiltrate. Drag to select. WASD pans. M opens the campaign map. Space jumps to where you are under attack. Esc returns here.</p>
+        <p class="tiny" id="mKeysHint">Right-click to move, gather, sack, infiltrate. Drag to select. WASD pans. M opens the campaign map. Space jumps to where you are under attack. Esc returns here.</p>
       </div>
       <div class="menuright">
         <div class="valewrap"><canvas id="vale" width="440" height="440"></canvas><div class="valecap">The valley · seed <b id="mSeedShow"></b><br><small id="buildTag"></small></div></div>

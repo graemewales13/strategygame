@@ -1,6 +1,6 @@
 // Auld World - painted art. The sprites are cut from the concept boards (assets/world/*) and recoloured per house at load.
-// Nothing here is drawn procedurally except the ram, which the boards do not show.
-import { HOUSES, GOOD_COLOR, FACTIONS, FACTION_BUILDINGS, GEAR_KEYS, TECH_KEYS, DEEDS, FARLANDS } from './config.js';
+// Drawn in code only as fallbacks: the ram and the siege engines (ramSprite, siegeSprite) when their painted files are missing.
+import { HOUSES, GOOD_COLOR, FACTIONS, FACTION_BUILDINGS, GEAR_KEYS, TECH_KEYS, DEEDS, FARLANDS, STANCES, FORMATIONS } from './config.js';
 
 const LIST = {
   b: ['hall', 'keep', 'keep_blue', 'cottage', 'cottage_thatch', 'farm', 'mill', 'warehouse', 'market', 'forge', 'workshop', 'tavern', 'academy', 'temple', 'barracks', 'archery', 'stable', 'tower', 'village_cluster'],
@@ -13,15 +13,22 @@ export const FIMG = {};
 export const SIMG = {};
 export const VIMG = { '1tile': {}, '4tile': {} };   // independent village art in two footprints, by type
 export const VILLAGE_ART_KEYS = ['hamlet', 'farm', 'fishing', 'mining', 'fortified', 'market'];
-const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet'];
+// the ram as a body and one wheel the game turns (ARTREQUIREMENTS priority 13)
+const RAM_PARTS = true;
+// the onager and trebuchet (ARTREQUIREMENTS priority 13b)
+const SIEGE_ART = true;
+const SHARED = ['units/dromedary', 'units/bactrian', 'units/donkey', 'units/ram', 'units/worker', 'units/recruit', 'units/spy', 'units/scholar', 'villages/hamlet', ...(RAM_PARTS ? ['units/ram_body', 'units/ram_wheel'] : []), ...(SIEGE_ART ? ['units/onager', 'units/trebuchet'] : [])];
 export const factionSprite = (faction, kind) => FIMG[faction]?.[kind] || null;
 // buildings painted in their raising and ruined states too (FIMG[f]['<kind>_build'], FIMG[f]['<kind>_ruin']); others fall back to the clipped sprite
-const STATED = ['armoury'];
+const STATED = ['armoury', 'barracks', 'keep', 'market', 'mine', 'cottage', 'farm', 'forge', 'foundry', 'tower', 'academy', 'tavern', 'temple', 'archery', 'stable', 'mill', 'warehouse', 'workshop'];
 // soldiers painted carrying Armoury kit, per people (FUNIT[f]['footman_spear'] ...). They look right, stand full length, feet on the ground.
 export const FUNIT = {};
 export const ARMED_KEYS = ['footman_spear', 'footman_sword', 'footman_heavy', 'bowman_longbow', 'bowman_crossbow', 'knight_lance'];
 // the plain soldiers repainted per people in the same full-length style (ARTREQUIREMENTS priority 5); used when present, else the old shared art
-export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar'];
+export const PLAIN_KEYS = ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'serf_work1', 'serf_work2', 'serf_f', 'serf_f_work1', 'serf_f_work2', 'king'];
+// the plain soldiers repainted per people (priority 9): helmet, armour, a shield or a drawn bow, the people's colour on the cloth.
+// Every wired key is painted. Drop a key back in here only if a repaint must be hidden again.
+const REPAINT = new Set();
 // the variant a soldier's kit calls for, or null for the plain unit: heavy armour shows first on a footman, then the weapon
 export function armedKey(u) {
   const w = u.gear?.weapon, a = u.gear?.armour;
@@ -30,11 +37,18 @@ export function armedKey(u) {
   if (u.kind === 'knight') return w === 'lance' ? 'knight_lance' : null;
   return null;
 }
-// shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm). UIART[group][key] = Image.
-export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {} };
-export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking' };
-const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS, portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm'] };
+// shared UI art: kit and research icons, portraits (far-landers and rulers), marks (deeds, captain, fugitive, the under-attack alarm, the watchman and the disguise mask). UIART[group][key] = Image.
+export const UIART = { gear: {}, tech: {}, portraits: {}, marks: {}, orders: {} };
+export const RULER_ART = { egyptians: 'pharaoh', romans: 'imperator', british: 'king', mongols: 'khan', scottish: 'highking', vikings: 'jarl', byzantines: 'basileus', persians: 'shahanshah' };
+// research icons not painted yet: empty once siegecraft, torsion and counterweight are in (priority 13b)
+const TECH_UNPAINTED = new Set();
+const UI_KEYS = { gear: GEAR_KEYS, tech: TECH_KEYS.filter((k) => !TECH_UNPAINTED.has(k)), portraits: [...Object.keys(FARLANDS), ...Object.values(RULER_ART)], marks: [...Object.keys(DEEDS), 'captain', 'fugitive', 'alarm', 'watch', 'disguise'],
+  orders: [...STANCES, ...FORMATIONS, 'amove', 'charge', 'retreat', 'stop', 'repair'] };
 export const uiArt = (group, key) => UIART[group]?.[key]?.src || null;
+// painted ore deposits (ARTREQUIREMENTS priority 18): ORE_ART[mineral] and ORE_ART[mineral + '_half'] = Image. All five are painted (ORE_PAINTED); a
+// mineral left out of ORE_PAINTED falls back to the recoloured pile (oreSprite)
+export const ORE_ART = {};
+const ORE_PAINTED = ['stone', 'copper', 'iron', 'coal', 'silver'];
 // painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow
 export const TILE_KINDS = ['grass', 'dry', 'sand', 'rock', 'dirt', 'snow'];
 export const TILES = {};
@@ -48,27 +62,34 @@ export function loadArt() {
     jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { IMG[n] = i; res(); }; i.onerror = () => res(); i.src = `assets/world/${dir}/${n}.png`; }));
   }
   const one = (into, key, src) => jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { into[key] = i; res(); }; i.onerror = () => res(); i.src = src; }));
-  for (const f of Object.keys(FACTIONS)) {
+  for (const f of Object.keys(FACTIONS).filter((k) => FACTIONS[k].kit !== false)) {   // (a people without a kit yet uses the shared art)
     FIMG[f] = {}; FUNIT[f] = {};
     for (const k of FACTION_BUILDINGS) one(FIMG[f], k, `assets/factions/${f}/buildings/${k}.png`);
     for (const k of STATED) for (const st of ['build', 'ruin']) one(FIMG[f], `${k}_${st}`, `assets/factions/${f}/buildings/${k}_${st}.png`);
-    for (const k of [...ARMED_KEYS, ...PLAIN_KEYS]) one(FUNIT[f], k, `assets/factions/${f}/units/${k}.png`);
+    for (const k of [...ARMED_KEYS, ...PLAIN_KEYS].filter((x) => !REPAINT.has(x))) one(FUNIT[f], k, `assets/factions/${f}/units/${k}.png`);
+    // walk cycles (priority 15). Egyptian knights and kings are chariots, so they have no stride.
+    for (const role of ['footman', 'bowman', 'knight', 'scout', 'recruit', 'spy', 'scholar', 'serf', 'king']) {
+      if (f === 'egyptians' && (role === 'knight' || role === 'king')) continue;
+      for (let n = 1; n <= 4; n++) one(FUNIT[f], `${role}_walk${n}`, `assets/factions/${f}/units/${role}_walk${n}.png`);
+    }
   }
   for (const [grp, keys] of Object.entries(UI_KEYS)) for (const k of keys) one(UIART[grp], k, `assets/shared/ui/${grp}/${k}.png`);
+  for (const k of ORE_PAINTED) for (const v of ['', '_half']) one(ORE_ART, k + v, `assets/shared/resources/${k}${v}.png`);
   for (const sz of ['1tile']) for (const k of VILLAGE_ART_KEYS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { VIMG[sz][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/${sz}/${k}.png`; }));
   for (const n of SHARED) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { SIMG[n.split('/')[1]] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/${n}.png`; }));
   return Promise.all(jobs);
 }
 
-// target hue (degrees) per house; the boards' banners are blue, the unit trim is yellow
-const HUE = [46, 2, 214, 124, 284];
+// target hue (degrees) for a seat: its people's own (HOUSES[team].hue). The boards' banners are painted blue, the unit trim yellow.
+const NATIVE_TRIM = 46;
+const hueOf = (team) => (team >= 0 ? HOUSES[team]?.hue ?? null : null);
 function rgb2hsv(r, g, b) { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0; if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h *= 60; if (h < 0) h += 360; } return [h, mx ? d / mx : 0, mx]; }
 function hsv2rgb(h, s, v) { const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c; let r = 0, g = 0, b = 0; const k = Math.floor(h / 60) % 6; if (k === 0) [r, g, b] = [c, x, 0]; else if (k === 1) [r, g, b] = [x, c, 0]; else if (k === 2) [r, g, b] = [0, c, x]; else if (k === 3) [r, g, b] = [0, x, c]; else if (k === 4) [r, g, b] = [x, 0, c]; else [r, g, b] = [c, 0, x]; return [(r + m) * 255, (g + m) * 255, (b + m) * 255]; }
 
 const cache = new Map();
 // mode: 'banner' recolours blue cloth (buildings); 'trim' recolours yellow cloth (units); team -1 = neutral grey-brown cloth
 export function tinted(name, team, mode, flip = false, light = 1) {
-  const key = `${name}|${team}|${mode}|${flip ? 1 : 0}|${light}`;
+  const key = `${name}|${hueOf(team)}|${mode}|${flip ? 1 : 0}|${light}`;   // (keyed by hue, not seat: peoples change seats between games)
   let c = cache.get(key); if (c) return c;
   const img = IMG[name];
   if (!img) return null;
@@ -76,8 +97,8 @@ export function tinted(name, team, mode, flip = false, light = 1) {
   const x = c.getContext('2d');
   if (flip) { x.translate(c.width, 0); x.scale(-1, 1); }
   x.drawImage(img, 0, 0);
-  if ((mode && (team !== 0 || mode === 'banner')) || light !== 1) {
-    const d = x.getImageData(0, 0, c.width, c.height), p = d.data, target = team >= 0 ? HUE[team] : null;
+  if ((mode && (hueOf(team) !== NATIVE_TRIM || mode === 'banner')) || light !== 1) {
+    const d = x.getImageData(0, 0, c.width, c.height), p = d.data, target = hueOf(team);
     for (let i = 0; i < p.length; i += 4) {
       if (p[i + 3] < 8) continue;
       if (mode) {
@@ -85,7 +106,7 @@ export function tinted(name, team, mode, flip = false, light = 1) {
         const hit = mode === 'banner' ? (h > 190 && h < 262 && s > 0.28 && v > 0.16) : (h > 34 && h < 64 && s > 0.45 && v > 0.22);
         if (hit) {
           if (target == null) { const g = hsv2rgb(38, 0.28, v * 0.95); p[i] = g[0]; p[i + 1] = g[1]; p[i + 2] = g[2]; }
-          else if (!(mode === 'trim' && team === 0)) { const g = hsv2rgb(target, Math.min(1, s * (team === 1 ? 1.05 : 1)), v); p[i] = g[0]; p[i + 1] = g[1]; p[i + 2] = g[2]; }
+          else if (!(mode === 'trim' && target === NATIVE_TRIM)) { const g = hsv2rgb(target, Math.min(1, s * (target === 2 ? 1.05 : 1)), v); p[i] = g[0]; p[i + 1] = g[1]; p[i + 2] = g[2]; }
         }
       }
       if (light !== 1) { p[i] = Math.min(255, p[i] * light); p[i + 1] = Math.min(255, p[i + 1] * light); p[i + 2] = Math.min(255, p[i + 2] * light); }
@@ -110,6 +131,25 @@ export function ramSprite(team) {
   cache.set(k, c); return c;
 }
 
+// stand-ins for the onager and trebuchet until they are painted: timber frames in the same hand as the ram, a house-coloured pennant
+export function siegeSprite(kind, team) {
+  const k = kind + team; if (cache.has(k)) return cache.get(k);
+  const f = HOUSES[team] || HOUSES[0], tre = kind === 'trebuchet', c = document.createElement('canvas'); c.width = 150; c.height = tre ? 170 : 110; const x = c.getContext('2d'), H = c.height;
+  const beam = (x0, y0, x1, y1, w, col) => { x.strokeStyle = col; x.lineWidth = w; x.lineCap = 'round'; x.beginPath(); x.moveTo(x0, y0); x.lineTo(x1, y1); x.stroke(); };
+  x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.ellipse(75, H - 12, 62, 9, 0, 0, 7); x.fill();
+  beam(18, H - 30, 132, H - 30, 10, '#5a4022'); beam(18, H - 44, 132, H - 44, 7, '#6a4a2a');   // the bed
+  for (const wx of [34, 116]) { x.fillStyle = '#2a1c0e'; x.beginPath(); x.arc(wx, H - 22, 12, 0, 7); x.fill(); x.strokeStyle = '#7a5a30'; x.lineWidth = 2; x.stroke(); }
+  if (tre) {   // an A-frame, a long throwing beam, the counterweight box and the sling
+    beam(50, H - 44, 75, 30, 8, '#4d3820'); beam(100, H - 44, 75, 30, 8, '#4d3820'); beam(75, 30, 75, H - 44, 5, '#3a2a16');
+    beam(22, 70, 132, 18, 7, '#6a4a2a'); x.fillStyle = '#3d4046'; x.fillRect(112, 18, 26, 30); x.strokeStyle = '#1e1409'; x.lineWidth = 2; x.strokeRect(112, 18, 26, 30);
+    beam(22, 70, 14, 104, 2, '#c9b27a'); x.fillStyle = '#8a8a80'; x.beginPath(); x.arc(14, 108, 6, 0, 7); x.fill();
+  } else {   // the onager: an upright frame, the throwing arm with its sling cup, the torsion skein
+    beam(98, H - 44, 98, 34, 8, '#4d3820'); beam(58, H - 44, 98, 34, 6, '#4d3820'); beam(40, H - 46, 92, 22, 7, '#6a4a2a');
+    x.fillStyle = '#8a8a80'; x.beginPath(); x.arc(92, 20, 7, 0, 7); x.fill(); x.fillStyle = '#7a5a30'; x.fillRect(32, H - 52, 18, 14);
+  }
+  x.fillStyle = f.primary; x.beginPath(); x.moveTo(132, H - 44); x.lineTo(132, H - 76); x.lineTo(148, H - 68); x.lineTo(132, H - 60); x.fill();   // house pennant
+  cache.set(k, c); return c;
+}
 // the camel: nothing in the boards, so a painted pack animal in house colours, facing right
 export function camelSprite(team) {
   const k = 'camel' + team; if (cache.has(k)) return cache.get(k);
@@ -131,7 +171,8 @@ export function camelSprite(team) {
 }
 
 // ---- ore deposits and the mine: recoloured from the board's gold pile and rock, assembled on a small canvas ----------
-const ORE_LOOK = { copper: [24, 0.82, 0.95], iron: [212, 0.22, 0.66], silver: [210, 0.07, 1.18] };
+// iron is dark rust red, so it never passes for grey stone (owner, 2026-10-16); copper bright orange; silver pale
+const ORE_LOOK = { copper: [24, 0.82, 0.95], iron: [10, 0.62, 0.6], silver: [210, 0.07, 1.18] };
 export function oreSprite(kind, flip = false) {
   const key = `ore|${kind}|${flip ? 1 : 0}`; let c = cache.get(key); if (c) return c;
   if (kind === 'stone') return (cache.set(key, tinted('rock', 0, null, flip, 1.12)), cache.get(key));

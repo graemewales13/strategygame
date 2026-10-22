@@ -24,7 +24,11 @@ def hsv(a):
 def clean(path):
     im = Image.open(path).convert('RGBA'); a = np.asarray(im).copy()
     h, s, v = hsv(a[..., :3]); al = a[..., 3]
-    key = (al > 0) & (h >= 285) & (h <= 345) & (s > 0.28) & (v > 0.32)           # the key colour and its bright haze
+    # the key colour and its bright haze. An opaque pixel must also sit close to #FF00FF (red and blue far above green):
+    # the Byzantine rose (#A8366E) and Mongol violet are in the same hue band and are painted cloth, not key (T-054).
+    rgb0 = a[..., :3].astype(int)
+    mag = np.minimum(rgb0[..., 0], rgb0[..., 2]) - rgb0[..., 1]
+    key = (al > 0) & (h >= 285) & (h <= 345) & (s > 0.28) & (v > 0.32) & ((al < 64) | (mag > 110))
     if key.sum() < 12: return 0
     a[key, 3] = 0
     # despill: opaque pixels within 2 px of a hole or edge that lean magenta lose the excess red/blue
@@ -33,9 +37,9 @@ def clean(path):
     for _ in range(2):
         n = near.copy(); n[1:] |= near[:-1]; n[:-1] |= near[1:]; n[:, 1:] |= near[:, :-1]; n[:, :-1] |= near[:, 1:]; near = n
     h2, s2, v2 = hsv(a[..., :3])
-    lean = near & (a[..., 3] > 0) & (h2 >= 270) & (h2 <= 355) & (s2 > 0.12)
     rgb = a[..., :3].astype(int)
     excess = np.maximum(np.minimum(rgb[..., 0], rgb[..., 2]) - rgb[..., 1], 0)
+    lean = near & (a[..., 3] > 0) & (h2 >= 270) & (h2 <= 355) & (s2 > 0.12) & (excess > 70)   # (rose and violet cloth lean less)
     for c in (0, 2): rgb[..., c] = np.where(lean, rgb[..., c] - excess, rgb[..., c])
     a[..., :3] = np.clip(rgb, 0, 255).astype(np.uint8)
     Image.fromarray(a).save(path, optimize=True)

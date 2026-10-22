@@ -4,7 +4,8 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 
 ## Identity and look
 - The game is **Auld World** (not Seven Holds). Art is painted, AoE II style, never cartoony.
-- Five peoples only: Egyptians, Romans, British, Mongols, Scottish. No Vikings. *(branch `grok`)*
+- Eight peoples: Egyptians, Romans, British, Mongols, Scottish, Vikings, Byzantines, Persians; up to eight houses a match (owner's rule 2026-10-12, replacing "five peoples, no Vikings"). *(branch `grok`)*
+- **Colours belong to the people, not the seat.** The Scots are always blue, whoever plays them (owner's rule 2026-10-12).
 
 ## Winning and losing
 - **Conquest is the only win.** The royal line of every rival house must end. Trading, wealth or holding villages must never win the game.
@@ -53,19 +54,19 @@ Everyone working on this repo (people and agents) keeps to these. They come stra
 - The splash and title menu are the painted pictures (`assets/menu/`), with the menu buttons as hotspots over the art. The owner rejected the "clean type over a live valley" title look (reverted 2026-10-08): do not bring it back. Keep `#hContinue/#hNew/#hMap/#hSkirmish/#hOptions/#hQuit` ids as real buttons.
 - The game is 2D only. The owner rejected the Three.js 3D view (reverted 2026-10-08): do not reintroduce it.
 - Units keep room (`Game.separate`): a marching group is never stacked into one body.
-- Idle soldiers within `DEFEND_R` (5) squares of a building, unit or village under attack turn on the attacker (`rallyDefenders`).
+- Idle soldiers within `DEFEND_R` (14 since the owner's 2026-10-16 report; first 5) squares of a building, unit or village under attack turn on the attacker (`rallyDefenders`).
 - While the line lasts a king is always appointed: the next heir is crowned `KING.heir` (20 s) after a king falls, at the seat or wherever the house still holds.
 
 ## Peoples, names and building room
 - Characters must never stack into what looks like one person: keep at least about a tile between them. Camels with work available must not stand idle unless the player stopped them.
-- House names must fit their nation (Khemet, Aurelius, MacAlpin, Wessex, Borjigin). The player is not always the same people: Skirmish setup has "Your people" (Random by default, seeded; the seating is saved with the game).
+- House names must fit their nation (Khemet, Aurelius, MacAlpin, Wessex, Borjigin, Ynglings, Komnenos, Sassan). The player is not always the same people: Skirmish setup has "Your people" (Random by default, seeded; the seating is saved with the game).
 - Buildings keep a one-tile lane between them (`BUILD_GAP`, mines excepted) so tall sprites never pile onto each other.
 
 ## Rulers, ratings and rival houses
 - Every house is led by a named **king** character; soldiers carry **ratings** (ranks) that matter in combat and in influence over villages.
 - Information and interaction with other houses must be rich, like a real strategy game: stats (size, money, influence, power), trade/war/alliance, and rival leaders who **send letters** (alliance offers, calls to join wars against third houses, tribute demands, aid requests). Keep this on the Council screen (C) and the house panel.
 - An AI that makes peace must not re-declare war within moments; a house with only a village left must still be attacked to finish it (an idle player must lose).
-- In a fight characters must not simply run away (serfs excepted). When something in a town is attacked, garrisoned soldiers leave their buildings and fight, then assess the town, fight on if needed, otherwise return inside.
+- In a fight characters must not simply run away (serfs excepted). The one way out is the **Retreat** order (owner, 2026-10-15), and it costs: a band of three or more (or the king) leaving a fight is a rout, so every village of the house loses a fifth of its loyalty, regains it slowly for three minutes, and the other kings read it as weakness. The rivals' regrouping pays the same price. When something in a town is attacked, garrisoned soldiers leave their buildings and fight, then assess the town, fight on if needed, otherwise return inside.
 
 ## Characters and views
 - People are characters, not counters: every fighter keeps a service record and earns deeds; far-landers (peoples with no house on the board) turn up in taverns with gifts of their homeland; Elite soldiers can be made captains. See `CHARACTERS.md`.

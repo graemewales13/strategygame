@@ -6,11 +6,10 @@ import {
   MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, setPeoples, seatPeoples, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
+  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WANDERER_NAMES, TRAITS, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN,
-} from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -43,6 +42,7 @@ export class Game {
   reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, humans = [0] } = {}) {
     this.humans = humans.slice();   // the seats people play (the rest are AI); a networked match has several
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
+    this.asks = [];   // the player's envoys on the road to rival houses: { from, to, state, coin, at } (coin: offered with a peace)
     this.losses = {}; this.spyIntel = {}; this._stance = {};   // nothing of the last match's wars or spies carries over
     this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
     this.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, houses));
@@ -69,6 +69,9 @@ export class Game {
     this.wanderers = [];
     this.projectiles = [];
     this._crewT = 0;
+    // timers and caches of the last match must not carry over: a reused Game would play a seed differently from a fresh one, and the
+    // last match's times would silence the spy warning, the king's alarm and repeated log lines for minutes (T-058)
+    this._refitT = 0; this._sallyT = 0; this._crewV = undefined; this._infl = undefined; this._spyWarn = {}; this._kingAlertT = -99; this._repairWarn = -99; this._lastLog = new Map();
     this.floaters = []; this.fx = [];   // fx: collapse/poof effects for the renderer (only queued when a UI is attached)
     this.alerts = [];   // where the player is being hit, for the minimap and the Space key (UI only, like fx)
     this.byId = new Map();
@@ -131,6 +134,7 @@ export class Game {
   }
   isHuman(team) { return (this.humans || [0]).includes(team); }
   log(team, text, kind = 'info') {
+    if (team === PLAYER) text = packWords(text, PLAYER);   // (a donkey is a donkey to the house that keeps donkeys)
     // the same line twice within a few seconds is one line (orders re-issued every tick would otherwise flood the feed)
     this._lastLog ||= new Map();
     const last = this._lastLog.get(text);
@@ -150,7 +154,7 @@ export class Game {
     u.aggroT = this.roll() * 0.5;
     { const set = (this.named[team] ||= new Set()); u.name = pickName(HOUSES[team]?.faction, set, () => this.rnd()); set.add(u.name); }
     if (this.hasTech(team, 'drill') && kind !== 'serf' && kind !== 'camel') { u.maxHp = Math.round(u.maxHp * 1.15); u.hp = u.maxHp; } // Drill
-    if (kind === 'ram' && this.hasTech(team, 'mechanics')) { u.maxHp = Math.round(u.maxHp * 1.3); u.hp = u.maxHp; } // Mechanics
+    if (SIEGE.has(kind) && this.hasTech(team, 'mechanics')) { u.maxHp = Math.round(u.maxHp * 1.3); u.hp = u.maxHp; } // Mechanics
     u.born = this.time || 0; u.kills = 0;   // service record: when they joined and how many foes they have felled
     this.units.push(u);
     this.byId.set(u.id, u);
@@ -187,11 +191,13 @@ export class Game {
   // ------------------------------------------------------------------ queries
   alive(team) { return this.players[team]?.alive; }
   isEnemy(a, b) { return a !== b && b >= 0 && this.rel[a][b] === 'war'; }
+  // a spy in `team`'s colours passes for one of theirs: their soldiers and towers let him be
+  passesFor(u, team) { return u.kind === 'spy' && u.disguise === team; }
   hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
   popUsed(team) {
     let n = 0;
-    for (const u of this.units) if (u.team === team && u.hp > 0 && u.kind !== 'king') n++;
-    for (const b of this.buildings) if (b.team === team) n += b.queue.length;
+    for (const u of this.units) if (u.team === team && u.hp > 0 && u.kind !== 'king' && !UNITS[u.kind]?.nopop) n++;   // (pack animals are not people)
+    for (const b of this.buildings) if (b.team === team) n += b.queue.filter((q) => !UNITS[q.kind]?.nopop).length;
     return n;
   }
   popCap(team) {
@@ -205,6 +211,12 @@ export class Game {
     for (const k in cost) if (cost[k] && (p[k] || 0) < cost[k]) return false;
     return true;
   }
+  // what a house still lacks for `cost`, in words ("5 stone and 20 timber"), so a refusal says what to fetch rather than just "not enough"
+  lacking(team, cost) {
+    const p = this.players[team], miss = Object.keys(cost).filter((k) => cost[k] && (p[k] || 0) < cost[k]).map((k) => `${Math.ceil(cost[k] - (p[k] || 0))} ${(GOOD_LABEL[k] || k).toLowerCase()}`);
+    return miss.length > 1 ? miss.slice(0, -1).join(', ') + ' and ' + miss[miss.length - 1] : miss[0] || '';
+  }
+  shortfall(team, cost, what = '') { return `Not enough goods${what}: you need ${this.lacking(team, cost)} more.`; }
   pay(team, cost, sign = 1) {
     const p = this.players[team];
     for (const k in cost) if (cost[k]) p[k] -= cost[k] * sign;
@@ -218,6 +230,8 @@ export class Game {
   villagesOf(team) { return this.villages.filter((v) => v.owner === team); }
   // every soldier a house has, in the field or inside its buildings (what the panels count; militaryOf is those free to march)
   soldiersOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king'); }
+  // soldiers standing about with no order (no march, fight, queued leg or drill): what the idle-army key picks (T31)
+  idleArmyOf(team) { return this.militaryOf(team).filter((u) => u.task.type === 'idle' && !u.task.next?.length && !u.drilling); }
   militaryOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king' && !u.inside); }
   // does `viewer` have a spy's fresh report on house `t`?
   spiedOn(viewer, t) { const at = this.spyIntel?.[viewer + '>' + t]; return at != null && this.time - at <= SPY_INTEL.fresh; }
@@ -303,7 +317,7 @@ export class Game {
   closestEnemy(from, range, team) {
     let best = null, bd = range;
     for (const u of this.units) {
-      if (u.hp <= 0 || u.inside || !this.isEnemy(team, u.team)) continue;
+      if (u.hp <= 0 || u.inside || u.hidden || !this.isEnemy(team, u.team) || this.passesFor(u, team)) continue;
       const d = Math.hypot(u.x - from.x, u.y - from.y);
       if (d < bd) { best = u; bd = d; }
     }
@@ -425,6 +439,7 @@ export class Game {
   follow(u, dt) {
     if (!u.path.length) return false;
     let step = u.speed ?? UNITS[u.kind].speed;
+    if (u.task.pace && (u.task.type === 'move' || u.task.type === 'amove')) step = Math.min(step, u.task.pace);   // marching with a slower group (T02)
     if (u.kind === 'camel' && this._aura?.caravan.length && this.auraNear('caravan', u, PERK.caravanR)) step *= PERK.caravan;
     const tileIdx = Math.floor(u.y) * this.W + Math.floor(u.x);
     step *= (1 / GROUND_COST[this.terrain[tileIdx]]) * dt;
@@ -447,10 +462,16 @@ export class Game {
     const team = it.team;
     if (this.outcome || !this.alive(team)) return null;
     const mine = () => (it.ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
+    // an order given to someone sheltering inside brings them out to obey it (they used to take the order and sit inside for ever: playtest 2026-10-14)
+    const out = () => { const us = mine(); for (const u of us) if (u.inside && !u.drilling) this.eject(u, this.byId.get(u.inside)); return us; };
     switch (it.type) {
-      case 'move': return this.cmdMove(mine(), it.x, it.y);
-      case 'amove': return this.cmdAttackMove(mine(), it.x, it.y);
+      case 'move': return this.cmdMove(out(), it.x, it.y, !!it.queue);
+      case 'amove': return this.cmdAttackMove(out(), it.x, it.y, !!it.queue);
+      case 'patrol': return this.cmdPatrol(out(), it.x, it.y, !!it.queue);
+      case 'charge': return this.cmdCharge(out());
+      case 'retreat': return this.cmdRetreat(out());
       case 'stance': return this.setStance(mine(), it.stance);
+      case 'formation': return this.formUp(mine(), it.form);
       case 'stop': mine().forEach((u) => { u.route = null; u.parked = true; u.task = { type: 'idle' }; u.path = []; }); return true;
       case 'route': return this.cmdRoute(mine(), this.byId.get(it.targetId), it.want);
       case 'stoproute': return this.stopRoute(mine());
@@ -458,12 +479,15 @@ export class Game {
       case 'draft': return this.draft(team, it.villageId, it.n || 1, it.role || 'serf') > 0;
       case 'sell': return this.sellGoods(team, it.marketId, it.good, it.amount) > 0;
       case 'attack':
-      case 'pillage': return this.cmdAttack(mine(), this.byId.get(it.targetId));
-      case 'infiltrate': return this.cmdInfiltrate(mine(), this.byId.get(it.villageId ?? it.targetId));
-      case 'gather': return this.cmdGather(mine(), this.resources[it.nodeId]);
-      case 'build': return this.cmdBuild(mine(), this.byId.get(it.buildingId), !!it.queue);
+      case 'pillage': return this.cmdAttack(out(), this.byId.get(it.targetId));
+      case 'infiltrate': { const t = this.byId.get(it.villageId ?? it.targetId); return t?.type === 'building' ? this.cmdInfiltrateB(out(), t) : this.cmdInfiltrate(out(), t); }
+      case 'disguise': return this.disguise(mine(), it.as);
+      case 'gather': return this.cmdGather(out(), this.resources[it.nodeId]);
+      case 'build': return this.cmdBuild(out(), this.byId.get(it.buildingId), !!it.queue);
+      case 'repair': return this.repairWith(team, this.byId.get(it.buildingId));
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
+      case 'bell': return this.ringBell(team);
       case 'hire': return this.hire(team, it.buildingId, it.index);
       case 'seat': return this.setSeat(it);
       case 'research': return this.startResearch(team, it.tech);
@@ -474,7 +498,7 @@ export class Game {
       case 'levy': return this.setLevy(team, it.buildingId, it.villageId);
       case 'settle': return this.settle(team, it.villageId);
       case 'drill': return this.drill(team, it.buildingId, it.unitId, it.kind);
-      case 'place': return this.place(team, it.kind, it.tx, it.ty, it.ids, it.nodeId ?? null);
+      case 'place': out(); return this.place(team, it.kind, it.tx, it.ty, it.ids, it.nodeId ?? null);
       case 'mine': return this.cmdMine(mine(), this.byId.get(it.buildingId));
       case 'unmine': return this.unassignMine(team, it.buildingId);
       case 'respond': return this.respondOffer(team, it.from, !!it.accept, it.id ?? null);
@@ -484,7 +508,7 @@ export class Game {
       case 'load': return this.load(team, it.unitId, it.good, it.amount);
       case 'unload': return this.unloadShelf(team, it.unitId);
       case 'role': return this.assignRole(team, it.ids, it.role);
-      case 'relation': return this.proposeRelation(team, it.other, it.state);
+      case 'relation': return this.proposeRelation(team, it.other, it.state, false, it.coin || 0);
       case 'gift': return this.giveGift(team, it.other, it.amount || 50);
       case 'demand': return this.askOf(team, it.other, 'demand', { amount: it.amount || 60 });
       case 'askwar': return this.askOf(team, it.other, 'askwar', { target: it.target });
@@ -500,19 +524,20 @@ export class Game {
     const all = (ids || []).map((id) => this.byId.get(id)).filter((u) => u && u.type === 'unit' && u.team === team && u.hp > 0);
     if (!all.length) return false;
     // camels trade: right-click a market or village; anywhere else they just walk
-    const camels = all.filter((u) => u.kind === 'camel'), units = all.filter((u) => u.kind !== 'camel');
+    const camels = all.filter((u) => u.kind === 'camel'); let units = all.filter((u) => u.kind !== 'camel');
     if (camels.length) {
       const tgt = this.tradeTargetAt(team, x, y);
       if (tgt) this.cmdRoute(camels, tgt, want); else { camels.forEach((c) => { c.route = null; }); this.cmdMove(camels, x, y); }
       if (!units.length) return true;
     }
     const eu = this.unitAt(x, y, 0.75);
-    if (eu && eu.team !== team && this.canSee(team, eu.x, eu.y)) return this.cmdAttack(units, eu);
+    if (eu && eu.team !== team && this.canSee(team, eu.x, eu.y)) { const fs = units.filter((u) => u.kind !== 'spy'); return fs.length ? this.cmdAttack(fs, eu) : false; }   // (spies do not brawl)
     const v = this.villageAt(x, y);
     if (v && v.owner === team) {
       const carriers = units.filter((u) => u.kind === 'serf' && u.carry && ['food', 'wood', 'gold'].includes(u.carry.kind));
       carriers.forEach((u) => { u.task = { type: 'return', resume: null }; this.setPathToEntity(u, v); });
-      const rest = units.filter((u) => !carriers.includes(u));
+      const watchers = units.filter((u) => u.kind === 'spy'); if (watchers.length) this.cmdInfiltrate(watchers, v);   // a spy sent to a village of ours keeps watch there
+      const rest = units.filter((u) => !carriers.includes(u) && u.kind !== 'spy');
       return rest.length ? this.cmdEnter(rest, v) : true;
     }
     if (v && v.owner !== team && this.wasSeen(team, v.x, v.y)) {
@@ -520,28 +545,40 @@ export class Game {
       if (spies.length) this.cmdInfiltrate(spies, v);
       if (rest.length) this.cmdAttack(rest, v);
       const others = units.filter((u) => u.kind === 'serf' || u.kind === 'scholar');
-      if (others.length) this.cmdMove(others, x, y);
+      if (others.length) this.cmdMove(others, x, y, queue);
       return true;
     }
     const b = this.buildingAt(x, y);
-    if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) return this.cmdAttack(units, b);
+    if (b && b.team !== team && this.wasSeen(team, b.x, b.y)) {
+      const spies = units.filter((u) => u.kind === 'spy'), rest = units.filter((u) => u.kind !== 'spy');
+      if (spies.length) this.cmdInfiltrateB(spies, b);   // a spy goes in, in their colours (he never attacks)
+      return rest.length ? this.cmdAttack(rest, b) : !!spies.length;
+    }
     if (b && b.team === team && b.built < 1) {
       const serfs = units.filter((u) => BUILDERS[u.kind]);
-      if (serfs.length) { this.cmdBuild(serfs, b, queue); const rest = units.filter((u) => !BUILDERS[u.kind]); if (rest.length) this.cmdMove(rest, x, y); return true; }
+      if (serfs.length) { this.cmdBuild(serfs, b, queue); const rest = units.filter((u) => !BUILDERS[u.kind]); if (rest.length) this.cmdMove(rest, x, y, queue); return true; }
     }
     if (b && b.team === team && b.kind === 'mine') {
       const serfs = units.filter((u) => u.kind === 'serf');
       if (serfs.length) this.cmdMine(serfs, b);
       const rest = units.filter((u) => u.kind !== 'serf');
-      if (rest.length) this.cmdMove(rest, x, y);
+      if (rest.length) this.cmdMove(rest, x, y, queue);
       return true;
+    }
+    if (b && b.team === team && b.built >= 1 && b.hp < b.maxHp && units.some((u) => BUILDERS[u.kind] && !(u.carry && u.carry.amount > 0.5))) {   // serfs to a damaged building of ours mend it
+      const menders = units.filter((u) => BUILDERS[u.kind] && !(u.carry && u.carry.amount > 0.5)); this.cmdRepair(menders, b);
+      const rest = units.filter((u) => !menders.includes(u)); if (!rest.length) return true; units = rest;
+    }
+    if (b && b.team === team && b.built >= 1 && units.some((u) => u.kind === 'spy')) {   // a spy sent into one of our buildings keeps watch there
+      this.cmdInfiltrateB(units.filter((u) => u.kind === 'spy'), b);
+      const rest = units.filter((u) => u.kind !== 'spy'); if (!rest.length) return true; units = rest;
     }
     if (b && b.team === team && b.built >= 1) {
       const carriers = units.filter((u) => u.kind === 'serf' && u.carry && DROP_OFF[b.kind]?.includes(u.carry.kind));
       if (carriers.length) carriers.forEach((u) => { u.task = { type: 'return', resume: null }; this.setPathToEntity(u, b); });
       const rest = units.filter((u) => !carriers.includes(u));
       if (rest.length && GARRISON[b.kind]) this.cmdEnter(rest, b);
-      else if (rest.length) this.cmdMove(rest, x, y);
+      else if (rest.length) this.cmdMove(rest, x, y, queue);
       return true;
     }
     const node = this.nodeAt(x, y);
@@ -549,10 +586,10 @@ export class Game {
       const serfs = units.filter((u) => u.kind === 'serf');
       if (serfs.length) this.cmdGather(serfs, node);
       const rest = units.filter((u) => u.kind !== 'serf');
-      if (rest.length) this.cmdMove(rest, x, y);
+      if (rest.length) this.cmdMove(rest, x, y, queue);
       return true;
     }
-    return this.cmdMove(units, x, y);
+    return this.cmdMove(units, x, y, queue);
   }
 
   // ---- garrisons: right-click a friendly keep, tower, barracks or village to go inside --------------------
@@ -564,7 +601,7 @@ export class Game {
     units = this.freeOf(units);
     let sent = 0;
     for (const u of units) {
-      if (u.hp <= 0 || u.inside || u.kind === 'ram') continue;
+      if (u.hp <= 0 || u.inside || (SIEGE.has(u.kind) && t.kind !== 'keep')) continue;   // (engines go only into a keep's sheds)
       u.buildQ = [];
       u.task = { type: 'enter', targetId: t.id };
       this.setPathToEntity(u, t);
@@ -580,6 +617,10 @@ export class Game {
       this.follow(u, dt);
       return;
     }
+    if (SIEGE.has(u.kind)) {   // into the keep's sheds, apart from the garrison
+      if (t.kind !== 'keep' || (t.engines ||= []).length >= SIEGE_STORE) { u.task = { type: 'idle' }; u.path = []; if (u.team === PLAYER) this.log(PLAYER, `The keep's sheds hold ${SIEGE_STORE} engines and are full.`, 'warn'); return; }
+      u.path = []; u.inside = t.id; u.task = { type: 'idle' }; t.engines.push(u.id); return;
+    }
     if (t.garrison.length >= this.garrisonCap(t)) { u.task = { type: 'idle' }; u.path = []; if (u.team === PLAYER) this.log(PLAYER, `${t.type === 'village' ? t.name : BUILDINGS[t.kind].label} is full.`, 'warn'); return; }
     u.path = []; u.carry = null;
     u.inside = t.id; u.task = { type: 'idle' };
@@ -594,7 +635,7 @@ export class Game {
   }
   eject(u, t) {
     u.inside = null; u.task = { type: 'idle' }; u.path = [];
-    if (t) { t.garrison = t.garrison.filter((id) => id !== u.id); }
+    if (t) { t.garrison = t.garrison.filter((id) => id !== u.id); if (t.engines) t.engines = t.engines.filter((id) => id !== u.id); }
     const ref = t || u;
     if (t && t.tx != null) {   // the ring of open tiles round the footprint, front (south and east) first, and the least crowded of them
       const ring = [];
@@ -613,11 +654,58 @@ export class Game {
   leave(team, id) {
     const t = this.byId.get(id);
     if (!t || (t.type === 'building' ? t.team : t.owner) !== team) return false;
-    const ids = t.garrison.slice();
+    const ids = [...t.garrison, ...(t.engines || [])];   // everyone, and the engines out of the sheds
     for (const uid of ids) { const u = this.byId.get(uid); if (u && !u.drilling) { this.eject(u, t); if (t.rally && t.type === 'building') this.cmdMove([u], t.rally.x, t.rally.y); } }
     return ids.length > 0;
   }
-  ejectAll(t) { for (const uid of t.garrison.slice()) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; }
+  ejectAll(t) { for (const uid of [...t.garrison, ...(t.engines || [])]) { const u = this.byId.get(uid); if (u) this.eject(u, t); } t.garrison = []; t.engines = []; }
+
+  // ---- the town bell (T38): the first ring shelters the house's workers, the second sends them back to what they were doing -------------
+  shelters(team) {
+    return [...this.buildings.filter((b) => b.team === team && b.built >= 1 && b.hp > 0 && GARRISON[b.kind]), ...this.villages.filter((v) => v.owner === team)];
+  }
+  ringBell(team) {
+    const p = this.players[team]; if (!p || !this.alive(team)) return false;
+    if (p.bell != null) return this.allClear(team);
+    const room = new Map(this.shelters(team).map((t) => [t, this.garrisonCap(t) - t.garrison.length]));
+    const folk = this.units.filter((u) => u.team === team && u.hp > 0 && !u.inside && BELL.kinds.includes(u.kind) && u.task.type !== 'enter');
+    let sent = 0;
+    for (const u of folk) {
+      let best = null, bd = BELL.r;
+      for (const [t, n] of room) { if (n <= 0) continue; const d = distTo(u.x, u.y, t); if (d < bd) { bd = d; best = t; } }
+      if (!best) continue;
+      const k = u.task, job = { type: k.type, nodeId: k.nodeId, targetId: k.targetId, resume: k.resume, buildQ: [...(u.buildQ || [])], afterBuild: u.afterBuild || null };
+      if (!this.cmdEnter([u], best)) continue;
+      u.bellJob = { ...job, post: best.id }; room.set(best, room.get(best) - 1); sent++;
+    }
+    if (!sent) { if (team === PLAYER) this.deny(team, `No serfs within ${BELL.r} tiles of a keep, tower, barracks or village with room.`); return false; }
+    p.bell = this.time;
+    this.log(team === PLAYER ? PLAYER : -1, team === PLAYER ? `The town bell rings: ${sent} of your folk run for shelter. Ring it again to send them back to work.` : `${p.name} rings the town bell.`, team === PLAYER ? 'warn' : 'info');
+    if (team === PLAYER) this.sfx('alarm', this.seatOf(team)?.x, this.seatOf(team)?.y);
+    return true;
+  }
+  // the all-clear: everyone the bell sent in comes out and takes up the work they left (anyone given other orders since keeps them)
+  allClear(team) {
+    const p = this.players[team]; if (!p || p.bell == null) return false;
+    p.bell = null; p.bellQuiet = null;
+    let back = 0;
+    for (const u of this.units) {
+      const j = u.bellJob; if (!j || u.team !== team) continue;
+      u.bellJob = null;
+      const post = this.byId.get(j.post);
+      if (u.hp <= 0 || !BELL.kinds.includes(u.kind)) continue;
+      if (u.inside === j.post) this.eject(u, post);
+      else if (u.task.type === 'enter' && u.task.targetId === j.post) { u.task = { type: 'idle' }; u.path = []; }
+      else if ((!post || post.type === 'building' && post.hp <= 0 || post.type === 'village' && post.owner !== team) && u.task.type === 'idle' && !u.inside) { /* the shelter fell and turned them out: they go back too */ }
+      else continue;   // (left or re-ordered while the bell rang: their new orders stand)
+      back++;
+      const t = j.targetId != null ? this.byId.get(j.targetId) : null, node = this.resources[j.type === 'gather' ? j.nodeId : j.resume];
+      if ((j.type === 'build' || j.type === 'repair') && t && t.hp > 0 && t.team === team) { this.cmdBuild([u], t); u.buildQ = j.buildQ.filter((id) => this.byId.get(id)?.hp > 0); if (j.afterBuild) u.afterBuild = j.afterBuild; }
+      else if ((j.type === 'gather' || j.type === 'return') && node && node.amount > 0) { if (u.kind === 'serf') this.cmdGather([u], node); }
+    }
+    this.log(team === PLAYER ? PLAYER : -1, team === PLAYER ? `All clear: ${back} of your folk go back to work.` : `${p.name} sounds the all-clear.`, 'info');
+    return true;
+  }
 
   // ---- science: learning and research ----------------------------------------------------------------------------------
   hasTech(team, key) {
@@ -667,7 +755,7 @@ export class Game {
     if (!b || b.team !== team || b.kind !== 'armoury' || b.built < 1 || b.hp <= 0) return 'Needs a finished Armoury.';
     if (!this.hasTech(team, g.tech)) return `Research ${TECH[g.tech].label} first.`;
     if ((b.craft || []).length >= CRAFT_QUEUE) return 'The armoury is busy: wait for the work in hand.';
-    if (!this.canAfford(team, g.cost)) return 'Not enough goods.';
+    if (!this.canAfford(team, g.cost)) return this.shortfall(team, g.cost);
     return null;
   }
   craft(team, buildingId, item) {
@@ -760,7 +848,7 @@ export class Game {
     const b = this.byId.get(buildingId), say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
     if (!b || b.team !== team || b.kind !== 'tavern' || b.built < 1 || b.hp <= 0 || !b.roster?.[index]) return null;
     const w = b.roster[index];
-    if (!this.canAfford(team, w.cost)) return say('Not enough goods to hire.');
+    if (!this.canAfford(team, w.cost)) return say(this.shortfall(team, w.cost, ' to hire'));
     if (this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');
     this.pay(team, w.cost);
     const u = this.addUnit('recruit', team, b.x + (this.roll() - 0.5) * 1.2, b.ty + b.size + 0.7);
@@ -801,7 +889,7 @@ export class Game {
     let m = 1;
     for (const d of u.deeds || []) m += (DEEDS[d]?.dmg || 0) + (t && t.type === 'building' ? DEEDS[d]?.bld || 0 : 0);
     if (u.far === 'norse') m += PERK.berserk * Math.max(0, 1 - u.hp / u.maxHp);
-    if (u.far === 'rus' && t && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || t.kind === 'ram')) m += PERK.breaker;
+    if (u.far === 'rus' && t && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || SIEGE.has(t.kind))) m += PERK.breaker;
     if (u.far === 'nihon' && t && t.type === 'unit' && (t.rank || 0) >= 1) m += PERK.duel;
     if (this.captainNear(u)) m += CAPTAIN.dmg;
     return m;
@@ -978,7 +1066,7 @@ export class Game {
     if (u.kind !== 'recruit' && u.kind !== 'serf') return say('Only recruits and serfs can be drilled.');
     if (u.drilling) return say('Already training.');
     if (b.drills.length >= 4) return say('The drill yard is full.');
-    if (!this.canAfford(team, d.cost)) return say('Not enough goods to drill.');
+    if (!this.canAfford(team, d.cost)) return say(this.shortfall(team, d.cost, ' to drill'));
     this.pay(team, d.cost);
     u.drilling = true; b.drills.push({ uid: u.id, kind, t: 0 });
     return true;
@@ -993,7 +1081,7 @@ export class Game {
         if (q.t >= DRILL[q.kind].time) {
           b.drills.shift();
           const st = UNITS[q.kind], ratio = u.hp / u.maxHp, was = u.kind;
-          u.kind = q.kind; u.drilling = false;
+          u.kind = q.kind; u.drilling = false; u.drilledAt = this.time;
           u.gear = null; u.maxHp = this.maxHpFor(u); u.hp = Math.max(1, u.maxHp * ratio); u.speed = st.speed + (u.spdAdd || 0); this.equip(u);
           if (b.team === PLAYER) this.log(PLAYER, `${u.name || (was === 'serf' ? 'A serf' : 'A recruit')} is drilled into a ${st.label.toLowerCase()}.`, 'good');
         }
@@ -1019,7 +1107,8 @@ export class Game {
   // turn into fighting on): he finishes the foe first. Serfs, scouts, spies and camels may still run.
   locked(u) {
     if (!(this.time - (u.engagedT ?? -99) < SALLY.lockFor) || !this.ranked(u) || u.kind === 'scout' || u.inside) return false;
-    for (const o of this.units) if (o.hp > 0 && !o.inside && o.team !== u.team && this.isEnemy(u.team, o.team) && Math.hypot(o.x - u.x, o.y - u.y) <= SALLY.lockR) return true;
+    // a foe who has turned away (retreating, or marching off elsewhere) no longer holds you: your men may go where they are sent
+    for (const o of this.units) if (o.hp > 0 && !o.inside && o.team !== u.team && this.isEnemy(u.team, o.team) && !o.task.retreat && o.task.type !== 'move' && Math.hypot(o.x - u.x, o.y - u.y) <= SALLY.lockR) return true;
     return false;
   }
   // locked fighters among `units` turn on the nearest foe; the rest are returned
@@ -1028,32 +1117,190 @@ export class Game {
     for (const u of units) {
       if (!this.locked(u)) { free.push(u); continue; }
       const t = this.closestEnemy(u, SALLY.lockR + 1, u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y } : null) }; u.path = []; u.repathT = 0; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, anchor: u.task.anchor || [u.x, u.y], then: u.task.then || (u.task.type === 'amove' ? { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace, face: u.task.face, patrol: u.task.patrol } : null) }; u.path = []; u.repathT = 0; }
       if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is locked in combat and cannot break off.`, 'warn');
     }
     return free;
   }
-  cmdMove(units, x, y) {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-    units = this.freeOf(units);
-    units.forEach((u, i) => {
-      const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)];
-      u.task = { type: 'move' }; u.sally = null; if (u.kind === 'camel') u.parked = true;   // sent by hand: it waits there until given work
-      this.setPath(u, x + ox * 0.9, y + oy * 0.9);
-    });
+  // Attack: fall on the nearest foe the band can see (soldiers first, then their buildings, then a village of a house we are at war with)
+  cmdCharge(units) {
+    const us = units.filter((u) => this.fighter(u) || u.kind === 'king'); if (!us.length) return false;
+    const team = us[0].team, cx = us.reduce((a, u) => a + u.x, 0) / us.length, cy = us.reduce((a, u) => a + u.y, 0) / us.length;
+    const near = (o) => Math.hypot(o.x - cx, o.y - cy);
+    const foe = this.units.filter((o) => o.hp > 0 && !o.inside && this.isEnemy(team, o.team) && this.canSee(team, o.x, o.y) && near(o) < 18).sort((a, b) => near(a) - near(b))[0]
+      || this.buildings.filter((b) => b.hp > 0 && b.team !== team && this.isEnemy(team, b.team) && this.canSee(team, b.x, b.y) && near(b) < 22).sort((a, b) => near(a) - near(b))[0]
+      || this.villages.filter((v) => v.owner >= 0 && v.owner !== team && this.isEnemy(team, v.owner) && this.wasSeen(team, v.x, v.y) && near(v) < 22).sort((a, b) => near(a) - near(b))[0];
+    if (!foe) { if (team === PLAYER) this.log(PLAYER, 'No foe in sight to attack. Use Attack-move to march out and fight what you meet.', 'info'); return false; }
+    this.setStance(us, 'aggressive');
+    return this.cmdAttack(us, foe);
+  }
+  // Retreat: off the field to the nearest keep of ours (else the seat), even out of a fight. Leaving a fight with a band is a rout (RETREAT).
+  cmdRetreat(units) {
+    const us = units.filter((u) => this.fighter(u) || u.kind === 'king' || u.kind === 'scout'); if (!us.length) return false;
+    const team = us[0].team, cx = us.reduce((a, u) => a + u.x, 0) / us.length, cy = us.reduce((a, u) => a + u.y, 0) / us.length;
+    const keep = this.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0).sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0];
+    const to = keep || this.seatOf(team); if (!to) return false;
+    const inFight = us.filter((u) => this.time - (u.engagedT ?? -99) < RETREAT.engaged || this.locked(u));
+    const pace = this.paceOf(us), slot = this.formSlots(us, to.x + 1, to.y + (to.size || 2) / 2 + 2, false);
+    for (const u of us) { const [tx, ty] = slot.at.get(u); u.task = { type: 'move', pace, retreat: true }; u.sally = null; u.engagedT = -99; this.setPath(u, tx, ty); }   // (the lock is broken: they turn and go)
+    if (inFight.length >= RETREAT.min || inFight.some((u) => u.kind === 'king')) this.rout(team);
     return true;
   }
-  // Attack-move: march to (x, y), turning on any foe met on the way and walking on once it is dealt with. Those who do not fight just walk.
-  cmdAttackMove(units, x, y) {
-    if (!units.length || !Number.isFinite(x) || !Number.isFinite(y)) return false;
-    units = this.freeOf(units);
-    units.forEach((u, i) => {
-      const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)], tx = x + ox * 0.9, ty = y + oy * 0.9;
-      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); return; }
-      u.task = { type: 'amove', x: tx, y: ty }; u.sally = null; u.aggroT = 0;
+  // a house's army left the field: its villages lose faith, slowly regained, and every other house smells weakness
+  rout(team) {
+    const p = this.players[team]; if (!p || this.time - (p.routT ?? -1e9) < RETREAT.cool) return;
+    p.routT = this.time; p.routs = (p.routs || 0) + 1;
+    for (const v of this.villages) if (v.owner === team) v.loyalty = Math.max(0, v.loyalty * (1 - RETREAT.loyalty));
+    if (team === PLAYER) this.log(PLAYER, `Your army fled the field. Your villages lose faith in you (a fifth of their loyalty, slow to come back), and the other houses smell weakness.`, 'bad');
+    else if (this.known[PLAYER][team]) this.log(PLAYER, `${this.players[team].name}'s army fled the field. Their villages waver.`, 'good');
+  }
+  cmdMove(units, x, y, queue = false) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const pace = this.paceOf(units), slot = this.formSlots(units, x, y, queue), face = slot.face;
+    // Shift: a march under way takes the spot as its next leg; the others go there now
+    units = this.freeOf(queue ? units.filter((u) => !this.queueLeg(u, slot.at.get(u), face, false)) : units);
+    units.forEach((u) => {
+      const [tx, ty] = slot.at.get(u);
+      u.task = { type: 'move', pace, face }; u.sally = null; if (u.kind === 'camel') u.parked = true;   // sent by hand: it waits there until given work
       this.setPath(u, tx, ty);
     });
     return true;
+  }
+  // ---- formations (T02) ----------------------------------------------------------------------------------
+  // The formation a group marches in: the one most of its members are set to (ties go to the first in FORMATIONS), else mass.
+  formOf(units) {
+    const n = {}; for (const u of units) { const f = FORMATIONS.includes(u.form) ? u.form : 'mass'; n[f] = (n[f] || 0) + 1; }
+    return FORMATIONS.reduce((best, f) => ((n[f] || 0) > (n[best] || 0) ? f : best), 'mass');
+  }
+  setFormation(units, form) {
+    if (!FORMATIONS.includes(form) || !units.length) return false;
+    for (const u of units) u.form = form;
+    return true;
+  }
+  // Where each member of a group stands at the end of a march to (x, y), and the way they face (the line of march).
+  // Mass and loose keep the order the group was given in (mass is exactly the old knot); line and box put the fighters in front or outside.
+  formSlots(units, x, y, queue = false, dir = null) {
+    const form = this.formOf(units), at = new Map(), n = units.length;
+    if (!dir) {   // from where the group is (or, for a Shift-queued leg, where its march will end) to the spot
+      let ox = 0, oy = 0;
+      for (const u of units) { const [ex, ey] = queue ? this.marchEnd(u) : [u.x, u.y]; ox += ex; oy += ey; }
+      dir = [x - ox / Math.max(1, n), y - oy / Math.max(1, n)];
+    }
+    const m = Math.hypot(dir[0], dir[1]), fx = m > 0.3 ? dir[0] / m : 1, fy = m > 0.3 ? dir[1] / m : 0, face = [Math.round(fx * 100) / 100, Math.round(fy * 100) / 100];
+    if (form === 'mass' || form === 'loose') {
+      const k = FORMATION[form];
+      units.forEach((u, i) => { const [ox, oy] = SPIRAL[Math.min(i, SPIRAL.length - 1)]; at.set(u, [x + ox * k, y + oy * k]); });
+      return { at, face, form };
+    }
+    const role = (u) => (u.kind === 'bowman' ? 1 : this.fighter(u) || u.kind === 'king' ? 0 : 2);
+    const order = units.map((u, i) => [u, i]).sort((a, b) => role(a[0]) - role(b[0]) || a[1] - b[1]).map((e) => e[0]);
+    const g = FORMATION.gap, rx = -fy, ry = fx;   // across the line of march
+    const put = (u, across, back) => at.set(u, [x + rx * across * g - fx * back * g, y + ry * across * g - fy * back * g]);
+    if (form === 'line') {
+      const cols = Math.min(n, Math.max(4, Math.ceil(Math.sqrt(n * 3))));
+      let r0 = 0;   // each kind starts its own rank: fighters, then bowmen, then the rest
+      for (const k of [0, 1, 2]) {
+        const grp = order.filter((u) => role(u) === k);
+        grp.forEach((u, i) => { const r = Math.floor(i / cols), c = i % cols, len = Math.min(cols, grp.length - r * cols); put(u, c - (len - 1) / 2, r0 + r); });
+        r0 += Math.ceil(grp.length / cols);
+      }
+    } else {   // box: the outermost cells of a square first, so the first in order (the fighters) stand on its edge
+      const side = Math.ceil(Math.sqrt(n)), h = (side - 1) / 2, cells = [];
+      for (let j = 0; j < side; j++) for (let i = 0; i < side; i++) cells.push([i - h, j - h]);
+      cells.sort((a, b) => Math.max(Math.abs(b[0]), Math.abs(b[1])) - Math.max(Math.abs(a[0]), Math.abs(a[1])));   // a stable sort: ties keep grid order
+      order.forEach((u, i) => put(u, cells[i][0], cells[i][1] + h));
+    }
+    return { at, face, form };
+  }
+  // The player picks a formation: the group keeps it for its next marches, and those standing idle form up in it where they stand,
+  // facing the way they last marched.
+  formUp(units, form) {
+    if (!this.setFormation(units, form)) return false;
+    const idle = units.filter((u) => u.task.type === 'idle' && !u.inside && !u.drilling && u.kind !== 'camel');
+    if (idle.length > 1) {
+      const cx = idle.reduce((a, u) => a + u.x, 0) / idle.length, cy = idle.reduce((a, u) => a + u.y, 0) / idle.length;
+      const slot = this.formSlots(idle, cx, cy, false, idle.find((u) => u.task.face)?.task.face || [1, 0]);
+      for (const u of idle) { const [tx, ty] = slot.at.get(u); u.task = { type: 'move', face: slot.face }; u.sally = null; this.setPath(u, tx, ty); }
+    }
+    return true;
+  }
+  // where a unit's march ends: the last queued leg, else the end of the path it walks, else where it stands
+  marchEnd(u) {
+    const k = u.task.type, tail = k === 'move' || k === 'amove' ? u.task : k === 'attack' ? u.task.then : null;
+    const q = tail?.next; if (q?.length) return [q[q.length - 1].x, q[q.length - 1].y];
+    if (tail && u.path.length) return u.path[u.path.length - 1];
+    return [u.x, u.y];
+  }
+  // ---- waypoints and marching together (T02) -------------------------------------------------------------
+  // A group sent together keeps together: every member walks at the slowest one's pace (a lone unit, or a group all of one speed, has none).
+  paceOf(units) {
+    const sp = units.filter((u) => u.kind !== 'camel').map((u) => u.speed ?? UNITS[u.kind].speed);
+    return sp.length > 1 && Math.min(...sp) < Math.max(...sp) ? Math.min(...sp) : null;
+  }
+  // Shift-click adds a leg to a march, an attack-move, or the attack-move a fight broke into; up to WAYPOINTS legs wait their turn.
+  // Each member keeps its place in the group (the same spiral offset as a fresh order). False if the unit has no march to add to.
+  queueLeg(u, [x, y], face, fight) {
+    const k = u.task.type, tail = k === 'move' || k === 'amove' ? u.task : k === 'attack' && u.task.then ? u.task.then : null;
+    if (!tail) return false;
+    tail.next ||= [];
+    if (tail.next.length < WAYPOINTS) tail.next.push({ x, y, a: !!fight && this.fighter(u), f: face });
+    return true;
+  }
+  // a leg is done: take the next one, if any (skipping any that cannot be reached). False when the march is over.
+  nextLeg(u) {
+    const q = u.task.next, pace = u.task.pace ?? null;
+    while (q?.length) {
+      const w = q.shift();
+      u.task = w.a && this.fighter(u) ? { type: 'amove', x: w.x, y: w.y, next: q, pace, face: w.f } : { type: 'move', next: q, pace, face: w.f };
+      if (w.a) u.aggroT = 0;
+      if (this.setPath(u, w.x, w.y)) return true;
+    }
+    return false;
+  }
+  // Attack-move: march to (x, y), turning on any foe met on the way and walking on once it is dealt with. Those who do not fight just walk.
+  cmdAttackMove(units, x, y, queue = false) {
+    if (!units.length || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const pace = this.paceOf(units), slot = this.formSlots(units, x, y, queue), face = slot.face;
+    units = this.freeOf(queue ? units.filter((u) => !this.queueLeg(u, slot.at.get(u), face, true)) : units);
+    units.forEach((u) => {
+      const [tx, ty] = slot.at.get(u);
+      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); if (pace) u.task.pace = pace; u.task.face = face; return; }
+      u.task = { type: 'amove', x: tx, y: ty, pace, face }; u.sally = null; u.aggroT = 0;
+      this.setPath(u, tx, ty);
+    });
+    return true;
+  }
+  // ---- patrol (T39): attack-move legs that loop -----------------------------------------------------------
+  // Soldiers walk from where they stand to (x, y) and back again for ever, fighting what they meet and walking on (as in AoE II).
+  // Shift adds a post to the round of those already patrolling (up to WAYPOINTS posts); each keeps its place in the group at every post.
+  // Those who do not fight are simply sent there. False if nobody could be sent.
+  patrolOf(u) { return u.task.type === 'amove' ? u.task.patrol : u.task.type === 'attack' ? u.task.then?.patrol : null; }
+  cmdPatrol(units, x, y, queue = false) {
+    if (!units.length || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const pace = this.paceOf(units), slot = this.formSlots(units, x, y, false);
+    let fresh = units;
+    if (queue) fresh = units.filter((u) => { const pt = this.patrolOf(u); if (!pt) return true; if (pt.pts.length < WAYPOINTS) pt.pts.push(slot.at.get(u).map((v) => Math.round(v * 100) / 100)); return false; });
+    fresh = this.freeOf(fresh);
+    for (const u of fresh) {
+      const [tx, ty] = slot.at.get(u);
+      if (!this.fighter(u)) { this.cmdMove([u], tx, ty); continue; }
+      u.task = { type: 'amove', x: tx, y: ty, pace, face: null, patrol: { pts: [[Math.round(u.x * 100) / 100, Math.round(u.y * 100) / 100], [tx, ty]], i: 1 } };
+      u.sally = null; u.aggroT = 0;
+      if (!this.setPath(u, tx, ty)) u.task = { type: 'idle' };
+    }
+    return true;
+  }
+  // a patroller reached its post: on to the next one round the loop (skipping any that cannot be reached). False if none can be.
+  nextPost(u) {
+    const pt = u.task.patrol; if (!pt?.pts?.length) return false;
+    for (let k = 0; k < pt.pts.length; k++) {
+      pt.i = (pt.i + 1) % pt.pts.length;
+      const [px, py] = pt.pts[pt.i];
+      if (Math.hypot(px - u.x, py - u.y) < 0.6) continue;
+      u.task.x = px; u.task.y = py; u.task.next = null;
+      if (this.setPath(u, px, py)) return true;
+    }
+    return false;
   }
   // who may pick fights of their own (stances and attack-move apply to them)
   fighter(u) { return u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && this.powerOf(u) > 0; }
@@ -1070,9 +1317,20 @@ export class Game {
   // how far an idle fighter looks for a fight of its own
   acquireR(u) { return u.kind === 'king' ? 4.5 : Math.max(6.5, this.rangeOf(u) + 2); }
   // a fight is over (the foe is dead, gone or no longer a foe): walk on if it was met on an attack-move, else stand
+  // a fighter battering a building or village who is struck by a foe turns on him (owner, 2026-10-16: he used to keep hitting the wall
+  // and die); once that foe is dealt with he goes back to the wall (`resume`)
+  turnOnAttacker(u, by) {
+    if (u.type !== 'unit' || !by || by.type !== 'unit' || by.hp <= 0 || u.hp <= 0 || !this.fighter(u) || u.task.type !== 'attack') return;
+    const cur = this.byId.get(u.task.targetId);
+    if (!cur || cur.type === 'unit' || !this.isEnemy(u.team, by.team) || this.stanceOf(u) === 'passive') return;
+    if (this.stanceOf(u) === 'hold' && distTo(u.x, u.y, by) > this.rangeOf(u) + 0.15) return;
+    u.task = { type: 'attack', targetId: by.id, auto: true, resume: cur.id, then: u.task.then, anchor: u.task.anchor }; u.path = []; u.repathT = 0;
+  }
   endFight(u) {
+    const back = u.task.resume != null ? this.byId.get(u.task.resume) : null;   // the wall he left to deal with an attacker
+    if (back && (back.type === 'village' ? back.owner !== u.team && (back.owner < 0 || this.isEnemy(u.team, back.owner)) : back.hp > 0 && this.isEnemy(u.team, back.team))) { u.task = { type: 'attack', targetId: back.id, then: u.task.then }; u.path = []; u.repathT = 0; return; }
     const th = u.task.then;
-    if (th) { u.task = { type: 'amove', x: th.x, y: th.y }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y)) u.task = { type: 'idle' }; return; }
+    if (th) { u.task = { type: 'amove', x: th.x, y: th.y, next: th.next, pace: th.pace ?? null, face: th.face, patrol: th.patrol }; u.aggroT = 0.45; if (!this.setPath(u, th.x, th.y) && !this.nextLeg(u) && !this.nextPost(u)) u.task = { type: 'idle' }; return; }
     u.task = { type: 'idle' }; u.path = [];
   }
   doAttackMove(u, dt) {
@@ -1081,9 +1339,9 @@ export class Game {
     if (u.aggroT <= 0) {
       u.aggroT = 0.45;
       const t = this.closestEnemy(u, this.acquireR(u), u.team);
-      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y } }; u.path = []; u.repathT = 0; return; }
+      if (t) { u.task = { type: 'attack', targetId: t.id, auto: true, then: { x: u.task.x, y: u.task.y, next: u.task.next, pace: u.task.pace ?? null, face: u.task.face, patrol: u.task.patrol } }; u.path = []; u.repathT = 0; return; }
     }
-    if (!this.follow(u, dt)) u.task = { type: 'idle' };
+    if (!this.follow(u, dt) && !this.nextLeg(u) && !this.nextPost(u)) u.task = { type: 'idle', face: u.task.face };
   }
   cmdAttack(units, target) {
     if (!target || !units.length) return false;
@@ -1111,6 +1369,27 @@ export class Game {
     }
     return true;
   }
+  // put on a house's colours (or take them off: as < 0 or our own). Only houses we have met.
+  disguise(units, as) {
+    const spies = units.filter((u) => u.kind === 'spy'); if (!spies.length) return false;
+    const team = spies[0].team, to = as == null || as < 0 || as === team ? null : +as;
+    if (to != null && (!this.known[team][to] || !this.alive(to))) return false;
+    for (const u of spies) { if (u.disguise !== to && u.task.type === 'infiltrateB') { u.task = { type: 'idle' }; u.path = []; } u.disguise = to; }   // (a change of coat inside would be noticed: he steps out)
+    if (team === PLAYER) this.log(PLAYER, to == null ? 'Your spy wears your own colours again.' : `Your spy now wears the colours of ${HOUSES[to].short}: their soldiers will take him for one of theirs. Right-click one of their buildings to send him in.`, 'info');
+    return true;
+  }
+  // into a building: a rival's only in its colours; one of our own to keep watch
+  cmdInfiltrateB(spies, b) {
+    if (!b || b.type !== 'building' || b.hp <= 0) return false;
+    let ok = false;
+    for (const u of spies) {
+      if (u.kind !== 'spy') continue;
+      if (b.team !== u.team && u.disguise !== b.team) { if (u.team === PLAYER) this.log(PLAYER, `${shortName(u.name)} would be seen at once: disguise him as ${HOUSES[b.team].short} first (Disguise, on the spy's panel).`, 'warn'); continue; }
+      if (b.team !== u.team && !SPY_COVER.kinds.includes(b.kind)) { if (u.team === PLAYER) this.log(PLAYER, `There is nothing for a spy to do in a ${BUILDINGS[b.kind].label.toLowerCase()}: try their keep, barracks, market or academy.`, 'warn'); continue; }
+      u.task = { type: 'infiltrateB', targetId: b.id }; this.setPathToEntity(u, b); ok = true;
+    }
+    return ok;
+  }
   cmdGather(units, node) {
     if (!node || node.amount <= 0 || (node.covered && !this.buildings.some((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(node.id)))) return false;   // covered by a village: out of reach (a mine's deposit is handled below)
     if (MINEABLE.includes(node.kind)) {
@@ -1128,7 +1407,7 @@ export class Game {
       return false;
     }
     for (const u of units) {
-      if (u.kind !== 'serf') continue;
+      if (u.kind !== 'serf' || u.inside) continue;
       const res = NODE_RES[node.kind];
       if (u.carry && u.carry.kind !== res) u.carry = null; // drop whatever else was in hand
       u.task = { type: 'gather', nodeId: node.id };
@@ -1211,6 +1490,7 @@ export class Game {
     return b._haul;
   }
   cmdBuild(units, b, queue = false) {
+    if (b && b.type === 'building' && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp) return this.cmdRepair(units, b);   // finished but damaged: mend it
     if (!b || b.type !== 'building' || b.built >= 1) return false;
     for (const u of units) {
       if (!BUILDERS[u.kind] || u.inside) continue;
@@ -1242,7 +1522,7 @@ export class Game {
     if (!s || !s.cost) return { ok: false, reason: 'Unknown building' };
     { const miss = this.missingFor(team, kind); if (miss.length) return { ok: false, reason: `Needs a ${miss[0]}` }; }
     if (kind === 'village' && this.villages.filter((v) => v.owner === team && v.founded).length + this.buildings.filter((b) => b.team === team && b.kind === 'village' && b.hp > 0).length >= FOUND.limit) return { ok: false, reason: `A house may found only ${FOUND.limit} villages: win the rest` };
-    if (!this.canAfford(team, s.cost)) return { ok: false, reason: 'Not enough goods' };
+    if (!this.canAfford(team, s.cost)) return { ok: false, reason: this.shortfall(team, s.cost) };
     const { W, H } = this;
     if (tx < 1 || ty < 1 || tx + s.size > W - 1 || ty + s.size > H - 1) return { ok: false, reason: 'Out of bounds' };
     for (let y = ty; y < ty + s.size; y++) for (let x = tx; x < tx + s.size; x++) {
@@ -1382,8 +1662,9 @@ export class Game {
     const say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
     if (!b || b.type !== 'building' || b.team !== team || b.built < 1 || b.hp <= 0 || !s) return null;
     if (!s.from.includes(b.kind)) return say(`A ${BUILDINGS[b.kind].label} cannot train that.`);
-    if (!this.canAfford(team, s.cost)) return say('Not enough goods.');
-    if (this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');
+    if (s.tech && !this.hasTech(team, s.tech)) return say(`Research ${TECH[s.tech].label} at an academy first.`);
+    if (!this.canAfford(team, s.cost)) return say(this.shortfall(team, s.cost));
+    if (!s.nopop && this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');   // (pack animals are not people)
     if (b.queue.length >= 5) return say('Training queue is full.');
     this.pay(team, s.cost);
     b.queue.push({ kind, t: 0 });
@@ -1745,7 +2026,7 @@ export class Game {
     const marg = (k, i) => {
       const W = RES_VALUE[k] / RES_VALUE.gold, pS = this.pmAt(S, k, (sh[k] || 0) - i), pN = nOwn ? this.pmAt(N, k, this.stockOf(N, k) + i) : this.priceMul(N, k);
       let g, c = 0;
-      if (sOwn) g = nOwn ? ROUTE.arb * W * (pN - pS) : W * (pN * (1 - fee) - 1);
+      if (sOwn) g = nOwn ? ROUTE.arb * ROUTE.home * W * (pN - pS) : W * (pN * (1 - fee) - 1);
       else { c = pS * (1 + fee) * W; g = nOwn ? W * (1 - pS * (1 + fee)) + ROUTE.arb * W * (pN - pS) : W * (pN * (1 - fee) - pS * (1 + fee)); }
       return { g, c, pS, pN, W };
     };
@@ -1785,7 +2066,7 @@ export class Game {
         if (n <= 0.01) { delete u.cargo[g]; continue; }
         let sum = 0; const have = shelf[g] || 0;
         for (let i = 0; i < Math.floor(n); i++) sum += this.pmAt(S, g, have + i);
-        bounty += ROUTE.arb * W(g) * Math.max(0, sum - (u.src[g] ?? sum));
+        bounty += ROUTE.arb * ROUTE.home * W(g) * Math.max(0, sum - (u.src[g] ?? sum));   // (goods moved between our own towns: a small carrier's fee, not a merchant's profit)
         const capS = this.near(S, ['warehouse']) ? SHELF_CAP + 40 : SHELF_CAP, put = Math.min(n, Math.max(0, capS - have));
         if (n - put > 0.01) this.depotStore(S, g, n - put);   // a full shelf spills into a warehouse; what even that cannot hold is bought up by the townsfolk
         shelf[g] = have + put;
@@ -1924,22 +2205,36 @@ export class Game {
       }
     }
   }
-  // Treaties. Peace/trade need a house you have met; the other side must grant it (AI houses answer at once, a human gets an offer to accept).
+  // Treaties. Peace/trade need a house you have met; the other side must grant it (an AI house answers the player by letter once the envoy arrives, ASK_DELAY; a human gets an offer to accept).
   meet(a, b) { this.known[a][b] = this.known[b][a] = 1; }
   // Why the last treaty request was refused, for the interface to show (cleared by whoever reads it).
-  deny(a, text) { this.diploNote = text; if (a === PLAYER) this.log(PLAYER, text, 'warn'); return false; }
+  deny(a, text) { this.diploNote = text; if (a === PLAYER && !this._envoy) this.log(PLAYER, text, 'warn'); return false; }
   // seconds before a house that went to war will hear of peace again
   parleyIn(a, b) { return this.rel[a][b] === 'war' ? Math.max(0, WAR_MIN - (this.time - this.relSince[a][b])) : 0; }
   // would an AI house b take peace from a? Yes once the war has cooled and it is not winning clearly.
-  willMakePeace(b, a) {
-    const mine = this.militaryOf(b).length, theirs = this.militaryOf(a).length;
+  // Coin offered with the peace sweetens it: at peacePrice it buys the peace outright, less lowers the bar.
+  peacePrice(b, a) { const mine = this.militaryOf(b).length, theirs = this.militaryOf(a).length; return Math.round((150 + this.players[b].gold * 0.4 + 25 * Math.max(0, mine - theirs)) / 10) * 10; }
+  willMakePeace(b, a, coin = 0) {
+    const mine = this.militaryOf(b).length, theirs = this.militaryOf(a).length, s = coin / this.peacePrice(b, a);
+    if (s >= 1) return true;                                                   // paid well enough
     const heldB = this.villages.filter((v) => v.owner === b).length, heldA = this.villages.filter((v) => v.owner === a).length;
     if (this.time - this.relSince[a][b] > 600) return true;                  // a long war wears everyone out
-    if (dip.stance(this, b, a).peace >= 0.35) return true;                    // weary, or outmatched
-    return mine <= theirs * 1.25 || heldB < heldA * 0.7;                       // outgunned, or being outgrown
+    if (dip.stance(this, b, a).peace >= 0.35 - 0.3 * s) return true;          // weary, or outmatched
+    return mine <= theirs * (1.25 + s) || heldB < heldA * (0.7 + 0.3 * s);   // outgunned, or being outgrown
   }
-  proposeRelation(a, b, state) {
+  // the coin that comes with a peace: paid by `from` to `to` (what they still have), and remembered as a tie (they paid us to keep the peace)
+  payPeace(from, to, amount) {
+    const amt = Math.max(0, Math.min(Math.floor(amount || 0), Math.floor(this.players[from].gold)));
+    if (!amt) return 0;
+    this.players[from].gold -= amt; this.players[to].gold += amt;
+    (this.players[from].appeased ||= {})[to] = this.time; this._stance = {};
+    const text = `${this.players[from].name} pays ${amt} coin to ${HOUSES[to].short} for the peace.`;
+    dip.record(this, from, to, 'gift', text, 'note'); this.log(from === PLAYER || to === PLAYER ? PLAYER : -1, text, 'info');
+    return amt;
+  }
+  proposeRelation(a, b, state, now = false, coin = 0) {
     this.diploNote = '';
+    coin = state === 'peace' && this.rel[a]?.[b] === 'war' ? Math.max(0, Math.min(Math.floor(coin || 0), Math.floor(this.players[a]?.gold || 0))) : 0;   // coin only buys a peace from war
     if (!this.alive(b) || a === b) return false;
     const B = this.players[b].name, human = !this.players[b].ai;
     if (state === 'war') { if (this.rel[a][b] !== 'war') this.setRelation(a, b, 'war'); return true; }
@@ -1947,14 +2242,21 @@ export class Game {
     if (state === 'peace' && (this.rel[a][b] === 'trade' || this.rel[a][b] === 'alliance')) { this.setRelation(a, b, 'peace'); return true; } // either side may cancel a treaty
     if (state === 'trade' && this.rel[a][b] === 'alliance') return true;   // allies trade freely
     if (!this.known[a][b]) return this.deny(a, `You have not met ${B} yet. Scout toward them.`);
+    if (this.isHuman(a) && this.players[b].ai && !now) {   // (any human seat: online every copy must agree) the player's envoy rides to them; their ruler answers by letter in a few seconds
+      if ((this.asks ||= []).some((x) => x.from === a && x.to === b)) return this.deny(a, `Your envoy is already on the road to ${B}.`);
+      this.asks.push({ from: a, to: b, state, coin, at: this.time + ASK_DELAY.min + this.roll() * (ASK_DELAY.max - ASK_DELAY.min) });
+      this.log(PLAYER, `Your envoy rides to ${B} with the offer of ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : coin ? `peace and ${coin} coin` : 'peace'}. Their answer will come by letter.`, 'info');
+      return true;
+    }
     if (this.rel[a][b] === 'war') {
       const wait = this.parleyIn(a, b);
       if (wait > 0) return this.deny(a, `${B} will not parley for ${Math.ceil(wait)} more seconds.`);
       if (state !== 'peace') return this.deny(a, `Make peace with ${B} first, then propose ${state === 'alliance' ? 'an alliance' : 'trade'}.`);
       if (state === 'peace' && this.players[b].ai) {
-        const j = dip.judge(this, 'peace', a, b);
+        const j = dip.judge(this, 'peace', a, b, { coin });
         if (!j.ok) { this.snub[b][a] = this.time; return this.deny(a, j.why); }
-        if (!this.willMakePeace(b, a)) { this.snub[b][a] = this.time; return this.deny(a, `${B} refuses peace: they think they are winning. Beat their army or wait.`); }
+        if (!this.willMakePeace(b, a, coin)) { this.snub[b][a] = this.time; return this.deny(a, `${B} refuses peace${coin ? `, even with ${coin} coin` : ''}: they think they are winning. Beat their army, wait, or offer more (they might take it for about ${this.peacePrice(b, a)} coin).`); }
+        if (coin) this.payPeace(a, b, coin);
       }
     }
     // a pending offer from them to us is simply accepted
@@ -1971,8 +2273,8 @@ export class Game {
       return true;
     }
     if (this.offers.some((o) => o.from === a && o.to === b && (o.kind || 'treaty') === 'treaty' && o.state === state)) return this.deny(a, `Your offer to ${B} is still waiting.`);
-    this.offers.push({ id: this.nextLetter++, from: a, to: b, kind: 'treaty', state, t: this.time, expires: this.time + dip.DIPLO.expire.treaty });
-    this.log(b === PLAYER ? PLAYER : -1, `${this.players[a].name} offers ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : 'peace'}.`, 'info');
+    this.offers.push({ id: this.nextLetter++, from: a, to: b, kind: 'treaty', state, amount: coin || undefined, t: this.time, expires: this.time + dip.DIPLO.expire.treaty });
+    this.log(b === PLAYER ? PLAYER : -1, `${this.players[a].name} offers ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : coin ? `peace and ${coin} coin` : 'peace'}.`, 'info');
     return 'pending';
   }
   // The answer to a letter waiting on `team`. Several kinds: a treaty, an invitation into a war, a demand for tribute, a plea for aid.
@@ -1990,7 +2292,9 @@ export class Game {
     }
     if (!this.alive(from)) { settle('lapsed'); return false; }
     if (kind === 'treaty') {
+      const buys = o.state === 'peace' && o.amount > 0 && this.rel[o.from][o.to] === 'war';   // a peace that comes with coin: the one who asked pays
       if (o.state === 'alliance') dip.exec(this, 'alliance', from, team); else this.setRelation(o.from, o.to, o.state);
+      if (buys) this.payPeace(o.from, o.to, o.amount);
       settle('accepted'); return true;
     }
     if (kind === 'tribute' || kind === 'aid') {
@@ -2009,6 +2313,16 @@ export class Game {
   }
   // letters left unanswered lapse; ignoring a demand or a call to arms counts as refusing it
   updateDiplomacy(dt) {
+    for (const x of (this.asks || []).filter((q) => this.time >= q.at)) {   // envoys come back with an answer
+      this.asks = this.asks.filter((q) => q !== x);
+      if (!this.alive(x.to) || !this.alive(x.from)) continue;
+      this._envoy = true; const ok = this.proposeRelation(x.from, x.to, x.state, true, x.coin || 0); this._envoy = false;   // (the refusal comes in the letter, not twice)
+      const who = `${dip.leaderName(this, x.to)} of ${HOUSES[x.to].short}`;
+      const yes = { trade: 'Our markets are open to your caravans, and yours to ours. Let the trade begin.', alliance: 'You have my hand and my word. Our houses stand together.', peace: x.coin ? 'Your coin is received. Let the swords rest; there is peace between us.' : 'Let the swords rest. There is peace between us.' }[x.state];
+      const text = ok ? `${who}: "${yes}"` : `${who} declines your offer of ${x.state === 'trade' ? 'a trade treaty' : x.state === 'alliance' ? 'an alliance' : 'peace'}: ${this.diploNote || 'no reason given.'}`;
+      if (x.state !== 'alliance' || !ok) dip.record(this, x.to, x.from, x.state, text, ok ? 'accepted' : 'declined');   // (an accepted alliance writes its own letter)
+      this.log(PLAYER, text, ok ? 'good' : 'warn');
+    }
     this._opT -= dt;
     if (this._opT <= 0) { this._opT = dip.DIPLO.opinionEvery; dip.drift(this); }
     for (let i = this.offers.length - 1; i >= 0; i--) {
@@ -2210,7 +2524,7 @@ export class Game {
       }
       if (b.queue.length) {
         const q = b.queue[0];
-        q.t += dt;
+        q.t += dt * (this.time - (b._spyT ?? -9) < 1 ? SPY_COVER.slow : 1);   // (a rival's spy inside slows the work)
         if (q.t >= UNITS[q.kind].time) {
           b.queue.shift();
           const u = this.addUnit(q.kind, b.team, b.x + (this.roll() - 0.5) * 1.2, b.ty + b.size + 0.7);
@@ -2235,7 +2549,7 @@ export class Game {
     const s = BUILDINGS.tower;
     let best = null, bd = s.range + (this.hasTech(b.team, 'engineering') ? 2 : 0);
     for (const u of this.units) {
-      if (u.hp <= 0 || u.inside || !this.isEnemy(b.team, u.team)) continue;
+      if (u.hp <= 0 || u.inside || u.hidden || !this.isEnemy(b.team, u.team) || this.passesFor(u, b.team)) continue;
       const d = Math.hypot(u.x - b.x, u.y - b.y);
       if (d < bd) { best = u; bd = d; }
     }
@@ -2334,7 +2648,7 @@ export class Game {
         const vd = this.districtAt(v.owner, v.x, v.y), own = pulls[v.owner] + 0.12 * Math.min(6, this.garrisonWeight(v) + this.watchersOf(v)) + (vd ? 0.06 * vd.score : 0);   // soldiers billeted in or standing watch over the village steady it
         const net = own - bp;
         if (own === 0 && bp === 0) v.loyalty = Math.max(0, v.loyalty - 0.06 * dt); // a lord far away is slowly forgotten
-        else v.loyalty = Math.max(0, Math.min(100, v.loyalty + net * LOYALTY_RATE * dt));
+        else v.loyalty = Math.max(0, Math.min(100, v.loyalty + net * (net > 0 && this.time - (this.players[v.owner].routT ?? -1e9) < RETREAT.shame ? RETREAT.regain : 1) * LOYALTY_RATE * dt));   // (after a rout faith comes back slowly)
         if (v.loyalty <= 8) {
           const lost = v.owner;
           this.ejectAll(v);
@@ -2422,6 +2736,7 @@ export class Game {
         const c = cells.get(ax * 4096 + ay); if (!c) continue;
         for (const o of c) {
           if (o === u) continue;
+          if (o.team === u.team && !u.path.length !== !o.path.length) continue;   // a walker slips past a friend standing still (so a formation can sort itself: T02); two walkers, or two standing, keep apart
           let dx = u.x - o.x, dy = u.y - o.y, d = Math.hypot(dx, dy);
           if (d >= R) continue;
           if (d < 0.01) { const a = ((u.id + o.id) * 2.399) % 6.283, sg = u.id > o.id ? 1 : -1; dx = Math.cos(a) * sg; dy = Math.sin(a) * sg; d = 0.01; }   // stacked exactly: the pair part in opposite directions
@@ -2457,14 +2772,16 @@ export class Game {
       u.repathT -= dt;
       u.anim += dt * (u.path.length ? 8 : 2);
       switch (u.task.type) {
-        case 'move': if (u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt)) u.task = { type: 'idle' }; break;
+        case 'move': if (!u.task.retreat && u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle', face: u.task.face }; break;   // (a retreat does not turn back when struck: it takes the blows)
         case 'attack': this.doAttack(u, s, dt); break;
         case 'amove': this.doAttackMove(u, dt); break;
         case 'gather': this.doGather(u, dt); break;
         case 'mine': u.task = { type: 'idle' }; u.path = []; break;   // old saves: serfs no longer dig, the villagers do
         case 'return': this.doReturn(u, dt); break;
         case 'build': this.doBuild(u, dt); break;
+        case 'repair': this.doRepair(u, dt); break;
         case 'infiltrate': this.doInfiltrate(u, dt); break;
+        case 'infiltrateB': this.doInfiltrateB(u, dt); break;
         case 'enter': this.doEnter(u, dt); break;
         case 'caravan': if (u.task.route) this.doRoute(u, dt); else this.doCaravan(u, dt); break;
         default: this.doIdle(u, s, dt);
@@ -2526,12 +2843,13 @@ export class Game {
     if (this.players[u.team].leaderless) dmg *= KING.leaderless;
     if (this.players[u.team].broke) dmg *= BROKE.fight;
     dmg *= this.charMul(u, t);
-    { const w = this.gearOf(u, 'weapon'); if (w) { dmg += w.dmg || 0; if (w.vsHorse && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || t.kind === 'ram')) dmg *= 1 + w.vsHorse; } }   // the kit from the armoury
+    { const w = this.gearOf(u, 'weapon'); if (w) { dmg += w.dmg || 0; if (w.vsHorse && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || SIEGE.has(t.kind))) dmg *= 1 + w.vsHorse; } }   // the kit from the armoury
     if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
-    if (t.type === 'building') dmg *= s.bld;
-    if (s.range > 1.6) { this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team, by: u.id }); this.sfx('arrow', u.x, u.y); }
+    if (t.type === 'building') dmg *= s.bld * (t.built < 1 ? SITE_FRAGILE : 1);   // scaffolding comes down far easier than finished walls
+    if (t.type === 'unit' && s.unit != null) dmg *= s.unit;   // (a siege engine's shot is made for walls)
+    if (s.range > 1.6) { this.projectiles.push({ x: u.x, y: u.y - 0.3, targetId: t.id, dmg, team: u.team, by: u.id, stone: SIEGE.has(u.kind) || undefined }); this.sfx('arrow', u.x, u.y); }
     else this.damage(t, dmg, u.team, u);
   }
 
@@ -2543,8 +2861,10 @@ export class Game {
     this.rallyDefenders(v, u, u.team); this.alertPlayer(v, u.team);
     const loot = Math.min(2, v.stores.gold || 0);
     if (loot) { v.stores.gold -= loot; this.earn(u.team, 'loot', loot * 0.6); }
-    // the folk fight back: the sturdier the village, the harder it bites
-    u.hp -= (v.maxProtection / 32) * s.cd * (1 + MILITIA.bite * m);
+    // the folk fight back: its fighting folk (more with walls, more when armed), their blows shared among all who attack it
+    const foes = Math.max(1, this.units.filter((o) => o.hp > 0 && o.team === u.team && o.task.type === 'attack' && o.task.targetId === v.id && distTo(o.x, o.y, v) <= this.rangeOf(o) + 0.6).length);
+    const back = MILITIA.dps * Math.max(1, v.pop * MILITIA.share) * (v.maxProtection / 220) * (1 + MILITIA.bite * m);
+    u.hp -= (back * s.cd) / foes;
     if (u.hp <= 0) u.hp = 0;
     if (v.protection <= 0) this.submit(v, u.team, 'pillage');
   }
@@ -2571,8 +2891,12 @@ export class Game {
     return ax != null && Math.hypot(u.x - ax, u.y - ay) <= KING.aura;
   }
   // where an heir is crowned: the house's seat, else any village or building it still holds, else beside its largest band of fighters
+  // (not into the arms of raiders: the first holding with no hostile soldier within KING.safeR, else the seat as before. In play an heir
+  // crowned at a seat under attack died at once, and the next one too: three kings lost in five minutes, playtest 2026-10-14)
   thronePlace(team) {
-    const s = this.seatOf(team) || this.villagesOf(team)[0] || this.buildings.find((b) => b.team === team && b.hp > 0 && b.built >= 1);
+    const held = [this.seatOf(team), ...this.villagesOf(team), ...this.buildings.filter((b) => b.team === team && b.hp > 0 && b.built >= 1)].filter(Boolean);
+    const raided = (s) => this.units.some((u) => u.hp > 0 && !u.inside && u.kind !== 'serf' && u.kind !== 'camel' && this.isEnemy(team, u.team) && Math.hypot(u.x - s.x, u.y - s.y) < KING.safeR);
+    const s = held.find((h) => !raided(h)) || held[0];
     if (s) return { x: s.x + 0.4, y: (s.ty != null ? s.ty + (s.size || 3) : s.y) + 0.8 };
     const u = this.units.find((x) => x.team === team && x.hp > 0 && !x.inside && x.kind !== 'camel');
     return u ? { x: u.x + 0.6, y: u.y + 0.6 } : null;
@@ -2621,7 +2945,7 @@ export class Game {
     if (u.team === PLAYER) this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is promoted to ${RANKS[r].label}.`, 'good');
     return r;
   }
-  garrisonWeight(t) { let n = 0; for (const id of t.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0) n += this.guardWeight(u); } return n; }
+  garrisonWeight(t) { let n = 0; for (const id of t.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0 && this.ranked(u)) n += this.guardWeight(u); } return n; }   // (serfs sheltering from the bell are no garrison)
   // worth of one soldier for the standing guard of a keep or village (1 for a rookie)
   guardWeight(u) { return (u.kind === 'king' ? 2 : u.captain ? CAPTAIN.guard : 1) * (1 + RANK_BONUS.guard * (u.rank || 0)); }
   // fighting power of one unit: health times damage per second, 1.0 for a rookie footman; archers count double for fighting from range
@@ -2636,6 +2960,7 @@ export class Game {
     if (t.hp <= 0) return;
     const before = t.hp;
     if (t.type === 'unit' && byTeam >= 0) { t.engagedT = this.time; if (by) by.engagedT = this.time; }
+    this.turnOnAttacker(t, by);
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
     if (this.dmgNums && this.sfxOn && amt >= 0.5 && this.floaters.length < 60 && (t.team === PLAYER || byTeam === PLAYER || !this.fogOn || this.vis[PLAYER][Math.floor(t.y) * this.W + Math.floor(t.x)])) this.floaters.push({ x: t.x, y: t.y - 0.4, text: `-${Math.round(amt)}`, res: t.team === PLAYER ? 'hurt' : 'hit', age: 0 });   // optional damage numbers (Options)
     if (byTeam >= 0 && (t.type === 'building' || t.type === 'unit') && t.hp > 0) this.rallyDefenders(t, by, byTeam);
@@ -2671,6 +2996,13 @@ export class Game {
   alertPlayer(t, byTeam) {
     if ((t.type === 'village' ? t.owner : t.team) !== PLAYER || byTeam === PLAYER) return;
     if (this.sfxOn) { const a = this.alerts.find((p) => Math.hypot(p.x - t.x, p.y - t.y) < 8); if (a) { a.time = this.time; a.x = t.x; a.y = t.y; } else if (this.alerts.length < 12) this.alerts.push({ x: t.x, y: t.y, time: this.time, born: this.time }); }
+    if (t.type === 'unit' && t.kind === 'king') {   // the king is the game: his alarm never waits behind a mine's, and says what is at stake
+      if (this.time - (this._kingAlertT ?? -99) <= 8) return;
+      this._kingAlertT = this.alertT[PLAYER] = this.time;
+      const left = this.players[PLAYER].heirs ?? KING.heirs;
+      this.log(PLAYER, `Your ${t.title || 'King'} is under attack! ${left ? `${left} heir${left > 1 ? 's' : ''} left` : 'He is the last of your line: if he dies, your house falls'}. Get him inside a keep or your village.`, 'bad'); this.sfx('alarm', t.x, t.y);
+      return;
+    }
     if (this.time - this.alertT[PLAYER] <= 8) return;
     this.alertT[PLAYER] = this.time;
     this.log(PLAYER, t.type === 'village' ? `Your village of ${t.name} is under attack!` : `Your ${t.type === 'unit' ? UNITS[t.kind].label : BUILDINGS[t.kind].label} is under attack!`, 'bad'); this.sfx('alarm', t.x, t.y);
@@ -2777,6 +3109,35 @@ export class Game {
     if (node && Math.hypot(node.x - seat.x, node.y - seat.y) < 24) this.cmdGather([u], node);
   }
 
+  // serfs to a damaged building of ours: they mend it, paying as they go (REPAIR)
+  cmdRepair(units, b) {
+    let ok = false;
+    for (const u of units) {
+      if (!BUILDERS[u.kind] || u.inside || b.team !== u.team) continue;
+      if (u.task.type === 'gather' || u.task.type === 'return') u.afterBuild = u.task.type === 'gather' ? { nodeId: u.task.nodeId } : { nodeId: u.task.resume };
+      u.buildQ = []; u.task = { type: 'repair', targetId: b.id }; this.setPathToEntity(u, b); ok = true;
+    }
+    return ok;
+  }
+  // the Repair button: the nearest few serfs who are not raising something else
+  repairWith(team, b, n = 4) {
+    if (!b || b.team !== team || b.built < 1 || b.hp >= b.maxHp || b.hp <= 0) return false;
+    const ss = this.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0 && !u.inside && u.task.type !== 'build' && u.task.type !== 'repair')
+      .sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y)).slice(0, n);
+    if (!ss.length) { if (team === PLAYER) this.log(PLAYER, 'No serf is free to repair it.', 'warn'); return false; }
+    return this.cmdRepair(ss, b);
+  }
+  doRepair(u, dt) {
+    const b = this.byId.get(u.task.targetId), p = this.players[u.team];
+    if (!b || b.hp <= 0 || b.team !== u.team || b.hp >= b.maxHp) { u.task = { type: 'build', targetId: b?.id ?? -1 }; return this.doBuild(u, dt); }   // done: on to the next job, as after building
+    if (distTo(u.x, u.y, b) > 1.25) { if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, b); this.follow(u, dt); return; }
+    u.path = [];
+    const gain = Math.min(b.maxHp - b.hp, (b.maxHp * dt * (BUILDERS[u.kind] || 1) * REPAIR.pace) / BUILDINGS[b.kind].time), share = (gain / b.maxHp) * REPAIR.cost, cost = BUILDINGS[b.kind].cost;
+    for (const k in cost) if ((p[k] || 0) < cost[k] * share) { if (u.team === PLAYER && this.time - (this._repairWarn ?? -99) > 10) { this._repairWarn = this.time; this.log(PLAYER, `Repairs to your ${BUILDINGS[b.kind].label.toLowerCase()} have stopped: not enough ${GOOD_LABEL[k]?.toLowerCase() || k}.`, 'warn'); } u.task = { type: 'idle' }; return; }
+    for (const k in cost) p[k] -= cost[k] * share;
+    b.hp += gain;
+    if (b.hp >= b.maxHp && u.team === PLAYER) this.log(PLAYER, `${BUILDINGS[b.kind].label} repaired.`, 'good');
+  }
   doBuild(u, dt) {
     const b = this.byId.get(u.task.targetId);
     if (!b || b.hp <= 0 || b.built >= 1) {
@@ -2811,7 +3172,7 @@ export class Game {
     b.built = Math.min(1, b.built + (dt * rate) / time);
     b.hp = Math.min(b.maxHp, b.hp + (b.maxHp * 0.88 * dt * rate) / time);
     if (b.built >= 1) {
-      b.hp = b.maxHp;
+      if (b.hp > b.maxHp * 0.99) b.hp = b.maxHp;   // (finishing does not mend the damage the site took)
       if (b.kind === 'village') { this.foundVillage(b); return; }
       if (b.team === PLAYER) { this.log(PLAYER, `${BUILDINGS[b.kind].label} complete.`, 'good'); this.sfx('built', b.x, b.y); }
     }
@@ -2829,10 +3190,13 @@ export class Game {
     u.hidden = true;
     if (v.owner === u.team) { v.loyalty = Math.min(100, v.loyalty + SPY_RATE * 0.4 * dt); return; }
     if (v.owner >= 0) (this.spyIntel ||= {})[u.team + '>' + v.owner] = this.time;   // inside a rival's village: word of their house reaches us
-    // Spies can be caught: sturdier villages watch harder
-    if (this.roll() < (SPY_CATCH + v.protection / 16000) * dt) {
+    // Spies can be caught: sturdier villages watch harder, and every spy of the lord's posted inside as a watchman watches harder still
+    const watch = v.owner >= 0 ? this.watchmenIn(v) : 0;
+    if (v.owner >= 0) this.spiedOnVillage(v, u);
+    if (this.roll() < (SPY_CATCH + v.protection / 16000 + SPY_WATCH.watch * watch) * dt) {
       u.hp = 0;
-      this.log(u.team === PLAYER || v.owner === PLAYER ? PLAYER : -1, u.team === PLAYER ? `Your spy was caught in ${v.name}!` : `A spy of ${HOUSES[u.team].short} was caught in ${v.name}.`, u.team === PLAYER ? 'bad' : 'good');
+      const by = watch ? (v.owner === PLAYER ? 'Your watchman' : `A watchman of ${HOUSES[v.owner].short}`) : '';
+      this.log(u.team === PLAYER || v.owner === PLAYER ? PLAYER : -1, u.team === PLAYER ? `Your spy was caught in ${v.name}${watch ? ' by their watchman' : ''}!` : `${by ? by + ' caught' : 'They caught'} a spy of ${HOUSES[u.team].short} in ${v.name}.`, u.team === PLAYER ? 'bad' : 'good');
       if (v.owner >= 0 && v.owner !== u.team) this.opinionShift(v.owner, u.team, SPY_INTEL.caught, 'sent spies among us');   // the lord of the village hears of it
       return;
     }
@@ -2842,10 +3206,55 @@ export class Game {
       v.loyalty = Math.min(100, v.loyalty + SPY_RATE * dt);
       v.protection = Math.max(v.maxProtection * 0.5, v.protection - 0.5 * dt);
     } else {
-      v.loyalty = Math.max(0, v.loyalty - SPY_RATE * dt);
+      v.loyalty = Math.max(0, v.loyalty - SPY_RATE * SPY_WATCH.owned * dt);   // a village with a lord resists: time for him to hear of it and post a watchman
       v.spyFlip = u.team;
       v.lean = u.team;
     }
+  }
+
+  // a spy inside a building: ours, he keeps watch; a rival's (in its colours), he sends word home and works against them
+  doInfiltrateB(u, dt) {
+    const b = this.byId.get(u.task.targetId);
+    if (!b || b.hp <= 0 || (b.team !== u.team && u.disguise !== b.team)) { u.task = { type: 'idle' }; return; }
+    if (Math.hypot(u.x - b.x, u.y - b.y) > b.size / 2 + 2) { if (!u.path.length || u.repathT <= 0) this.setPathToEntity(u, b); this.follow(u, dt); return; }
+    u.path = []; u.hidden = true;
+    if (b.team === u.team) return;   // on watch in a building of ours
+    const O = b.team, T = u.team, po = this.players[O], pt = this.players[T];
+    (this.spyIntel ||= {})[T + '>' + O] = this.time;
+    if (this.roll() < (SPY_COVER.catch + SPY_WATCH.watch * this.watchmenInB(b)) * dt) {
+      u.hp = 0;
+      const what = BUILDINGS[b.kind].label.toLowerCase();
+      this.log(T === PLAYER || O === PLAYER ? PLAYER : -1, T === PLAYER ? `Your spy was unmasked in ${HOUSES[O].short}'s ${what}!` : O === PLAYER ? `A spy of ${HOUSES[T].short} was unmasked in your ${what}.` : `A spy of ${HOUSES[T].short} was unmasked in ${HOUSES[O].short}'s ${what}.`, T === PLAYER ? 'bad' : 'good');
+      this.opinionShift(O, T, SPY_INTEL.caught, 'sent spies among us');
+      return;
+    }
+    b._spyT = this.time;   // (training here goes slowly while he is inside)
+    let lost = '';
+    if (b.kind === 'market' && po.gold > 1) { const c = Math.min(po.gold, SPY_COVER.coin * dt); po.gold -= c; pt.gold += c; lost = 'coin is going missing'; }
+    else if (b.kind === 'academy' && (po.learning || 0) > 0) { const l = Math.min(po.learning, SPY_COVER.learning * dt); po.learning -= l; pt.learning = Math.min(LEARNING.cap, (pt.learning || 0) + l); lost = 'the scholars\' notes are being copied'; }
+    else if (b.queue.length) lost = 'training is going slowly';
+    this.spiedOnBuilding(b, lost || 'strangers are about');
+  }
+  watchmenInB(b) { return this.units.filter((w) => w.kind === 'spy' && w.hp > 0 && w.team === b.team && w.hidden && w.task.type === 'infiltrateB' && w.task.targetId === b.id).length; }
+  spiedOnBuilding(b, what) {
+    (this.players[b.team].spied ||= {})[b.id] = this.time;
+    if (b.team !== PLAYER) return;
+    this._spyWarn ||= {};
+    if (this.time - (this._spyWarn['b' + b.id] ?? -1e9) < SPY_WATCH.warnEvery) return;
+    this._spyWarn['b' + b.id] = this.time;
+    this.log(PLAYER, `Something is wrong at your ${BUILDINGS[b.kind].label.toLowerCase()}: ${what}. ${this.watchmenInB(b) ? 'Your watchman is looking for the spy.' : 'Post a spy of yours inside as a watchman (right-click it with a spy) to catch them.'}`, 'warn');
+  }
+  // the village's own lord's spies posted inside it (infiltrating a village of their own house = keeping watch)
+  watchmenIn(v) { return this.units.filter((w) => w.kind === 'spy' && w.hp > 0 && w.team === v.owner && w.hidden && w.task.type === 'infiltrate' && w.task.targetId === v.id).length; }
+  // a rival spy is at work in one of a house's villages: its loyalty falls, so the lord notices (without knowing whose spy until one is caught)
+  spiedOnVillage(v, spy) {
+    const lord = this.players[v.owner]; if (!lord) return;
+    (lord.spied ||= {})[v.id] = this.time;   // (the AI posts a watchman where this is fresh)
+    if (v.owner !== PLAYER) return;
+    this._spyWarn ||= {};
+    if (this.time - (this._spyWarn[v.id] ?? -1e9) < SPY_WATCH.warnEvery) return;
+    this._spyWarn[v.id] = this.time;
+    this.log(PLAYER, this.watchmenIn(v) ? `Someone is turning the folk of ${v.name} against you. Your watchman is hunting them.` : `Someone is turning the folk of ${v.name} against you (loyalty ${Math.round(v.loyalty)}). Post a spy there as a watchman to catch them.`, 'warn');
   }
 
   // ------------------------------------------------------------------ fog of war
@@ -2892,7 +3301,11 @@ export class Game {
   cleanup() {
     let rebuilt = false;
     if (this.units.some((u) => u.hp <= 0)) {
-      for (const u of this.units) if (u.hp <= 0) this.byId.delete(u.id);
+      for (const u of this.units) if (u.hp <= 0) {
+        // one who dies inside (a soldier deserting for want of pay from a keep) leaves its roll too, or the keep counts him for ever (T-058)
+        if (u.inside != null) { const t = this.byId.get(u.inside); if (t?.garrison) t.garrison = t.garrison.filter((id) => id !== u.id); if (t?.engines) t.engines = t.engines.filter((id) => id !== u.id); }
+        this.byId.delete(u.id);
+      }
       this.units = this.units.filter((u) => u.hp > 0);
     }
     if (this.buildings.some((b) => b.hp <= 0)) {
@@ -2954,12 +3367,12 @@ export class Game {
     const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
     return {
       v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
-      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, humans: this.humans || [0], forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {},
+      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, humans: this.humans || [0], forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {}, asks: this.asks || [],
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
       resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle),
-      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl }),
+      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {} }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
   }
   restore(d) {
@@ -2967,7 +3380,7 @@ export class Game {
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
     if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
     this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder, humans: d.humans || [0] });
-    this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this._stance = {};
+    this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this.asks = d.asks || []; this._stance = {};
     this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;
     this.alertT = d.alertT; this.winHold = d.winHold; this.richHold = d.richHold; this.named = d.named.map((x) => new Set(x));

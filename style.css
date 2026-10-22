@@ -510,7 +510,54 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .cbtn.far .g { color: #ffe08a; }
 
 /* painted UI art (assets/shared/ui): small inline icons, armoury queue slots, ruler portraits on the Council card */
-.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; }
+img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; }   /* (img only: the top bar's drawn .ico spans keep their 18 px) */
+#resources .ico, .res .ico { flex: none; }
 .qslot .qico { width: 26px; height: 26px; object-fit: contain; }
 .rport { float: left; width: 46px; height: 58px; object-fit: cover; object-position: top; border: 1px solid #6d4d27; border-radius: 3px; margin: 0 8px 4px 0; background: #111; }
 .toast img.ico { width: 22px; height: 22px; border: 0; vertical-align: -5px; margin-right: 6px; }
+
+/* rivals, condensed (eight houses fit): crest, a relation pip and the villages held; name and detail are in the tip */
+#houses { gap: 3px; flex-wrap: nowrap; min-width: 0; }
+.hchip.rv { position: relative; gap: 2px; padding: 1px 5px 1px 2px; }
+.hchip.rv .vc { font-size: 11px; color: var(--ink); min-width: 9px; text-align: center; }
+.hchip.rv .pip { position: absolute; left: 15px; top: 15px; width: 8px; height: 8px; border-radius: 50%; border: 1px solid #1a1209; background: #6d6152; }
+.hchip.rv .pip.peace { background: #9fb7d8; } .hchip.rv .pip.trade { background: #e2c15e; } .hchip.rv .pip.alliance { background: #8fd48a; } .hchip.rv .pip.war { background: #d4574a; box-shadow: 0 0 4px #d4574a; }
+.hchip.rv .pip.unmet { background: #3a2f22; }
+.hchip.rv.fallen { text-decoration: none; }
+#crests { gap: 4px; } .crestcard { min-width: 0; padding: 4px 1px; } .crestcard b { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#holdbar.empty { display: none; }
+.hchip.rv { padding: 1px 3px 1px 1px; border-color: #4f381c; }
+@media (max-width: 1600px) { #brand span { display: none; } }
+
+/* playtest 2026-10-14: a treaty card shares the class name of the Council's .treaty row (a flex row), which squeezed its text into a column
+   and pushed Decline and Intel off the screen; the setup buttons had a fixed 54 px that cut "Egyptians", "Medium", "Standard" short */
+.offer, .offer.treaty { display: block; }
+.seg button { width: auto; min-width: 54px; padding: 7px 8px; }
+#mHouses button { min-width: 0; width: 38px; padding: 7px 0; }
+#mPeople button { width: auto; }
+.toast.news { font-size: 12.5px; font-weight: 600; padding: 4px 12px; opacity: .85; border-color: #6d4d27; color: #d9c79a; }
+.offer .ostake { font-size: 11.5px; color: #f0a890; margin: 2px 0 4px; } .offer .ostake b { color: #ffd0b8; }
+.endbox p.chron { font-size: 13px; color: #cdbb8a; margin: 10px 0 14px; } .endbox p.chron i { color: #e8d9ae; }
+/* Options > Keys (T03) */
+.optrow.keysrow { flex-wrap: wrap; }
+.keygrid { flex-basis: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 3px 14px; max-height: 260px; overflow-y: auto; padding: 4px 2px; }
+.keygrid .kgrp { grid-column: 1 / -1; font-weight: 600; opacity: 0.8; margin-top: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+.keygrid .krow { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.keygrid .krow button { min-width: 64px; }
+.keygrid .krow button.on { outline: 2px solid #e8c25a; }
+.keygrid .krow button.moved { color: #e8c25a; }
+.keygrid .tiny { grid-column: 1 / -1; }
+/* Grid keys (T03): the key that presses a command-card button, in its corner */
+.cbtn .hk { position: absolute; top: 1px; right: 2px; font-size: 8px; font-weight: 700; line-height: 1; color: rgba(255, 240, 200, .78); text-shadow: 0 1px 0 #000; pointer-events: none; }
+.cbtn.mini .hk { top: -1px; right: 1px; }
+
+/* control groups over the minimap (T36) */
+#groupBar { position: absolute; bottom: calc(100% + 3px); left: 4px; display: flex; gap: 3px; z-index: 6; }
+#groupBar .grp { position: relative; width: 38px; height: 38px; padding: 0; background: linear-gradient(180deg, #4a3319, #24180c); border: 1px solid var(--brass); border-radius: 3px; color: var(--ink); cursor: pointer; overflow: hidden; }
+#groupBar .grp b { position: absolute; left: 2px; top: 0; font-size: 11px; text-shadow: 0 1px 0 #000; z-index: 1; }
+#groupBar .grp i { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-style: normal; font-weight: 700; text-shadow: 0 1px 0 #000; z-index: 1; }
+#groupBar .grp .gi { position: absolute; inset: 3px 3px 2px 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+#groupBar .grp .gi img { max-width: 100%; max-height: 100%; }
+#groupBar .grp.on { border-color: #ffe08a; box-shadow: 0 0 0 1px #ffe08a; }
+#groupBar .grp.fight { animation: grpFight 0.8s steps(2) infinite; }
+@keyframes grpFight { 50% { background: linear-gradient(180deg, #a3271c, #4a0f0a); } }

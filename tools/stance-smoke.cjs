@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1400, height: 850 } });
   const errs = []; p.on('pageerror', (e) => errs.push('PAGE ' + e));
-  await p.goto('http://localhost:8123/'); await p.waitForTimeout(2500);
+  await p.goto('http://localhost:8123/'); await p.waitForTimeout(2500); await p.waitForFunction(() => window.__seven, null, { timeout: 30000 });   // (wait for the game to load, not a fixed time: a slow machine takes about 7 s)
   await p.mouse.click(700, 425); await p.waitForTimeout(900);
   const r = await p.locator('#hSkirmish').boundingBox(); await p.mouse.click(r.x + r.width / 2, r.y + r.height / 2); await p.waitForTimeout(700);
   await p.click('#mBegin'); await p.waitForTimeout(1200);
@@ -21,7 +21,104 @@ const { chromium } = require('playwright');
   await p.mouse.click(900, 300); await p.waitForTimeout(300);
   console.log('after ground click', JSON.stringify(await unit()), '| armed', await p.evaluate(() => window.__seven.ui.amove));
   await p.keyboard.press('f'); console.log('F arms', await p.evaluate(() => window.__seven.ui.amove)); await p.keyboard.press('Escape'); console.log('Esc disarms', !(await p.evaluate(() => window.__seven.ui.amove)));
+  // T02: Shift+right-click queues waypoints; Shift with attack-move adds an attack-move leg and keeps attack-move armed
+  const legs = () => p.evaluate((i) => { const u = window.__seven.game.byId.get(i); return { task: u.task.type, legs: (u.task.next || []).map((w) => (w.a ? 'amove' : 'move')) }; }, id);
+  // open ground the footman can reach, 6-12 tiles away, in three directions, as page coordinates
+  const spots = await p.evaluate((i) => {
+    const { game: g, renderer: r } = window.__seven, u = g.byId.get(i), cv = document.getElementById('game').getBoundingClientRect(), out = [];
+    r.centerOn(u.x, u.y);
+    for (let k = 0; k < 16 && out.length < 3; k++) for (let d = 5, dx = Math.cos(k * Math.PI / 8), dy = Math.sin(k * Math.PI / 8); d <= 12; d++) {
+      const x = Math.floor(u.x + dx * d) + 0.5, y = Math.floor(u.y + dy * d) + 0.5;
+      if (!g.walk[Math.floor(y) * g.W + Math.floor(x)] || g.nodeAt(x, y) || g.buildingAt(x, y) || g.villageAt(x, y) || !g.setPath({ ...u, path: [] }, x, y)) continue;
+      const [sx, sy] = r.toScreen(x, y); if (sx < 60 || sy < 60 || sx > cv.width - 300 || sy > cv.height - 200) continue;
+      out.push([cv.left + sx, cv.top + sy]); break;
+    }
+    return out;
+  }, id);
+  if (spots.length < 3) errs.push('no open ground for the waypoint check');
+  const [s1, s2, s3] = spots.length >= 3 ? spots : [[760, 330], [1000, 420], [820, 560]];
+  await p.mouse.click(s1[0], s1[1], { button: 'right' }); await p.waitForTimeout(150); console.log(' march', JSON.stringify(await legs()));
+  await p.keyboard.down('Shift');
+  await p.mouse.click(s2[0], s2[1], { button: 'right' }); await p.waitForTimeout(150); console.log(' +leg', JSON.stringify(await legs()));
+  await p.keyboard.press('f'); await p.mouse.click(s3[0], s3[1]); await p.waitForTimeout(150);
+  const armed = await p.evaluate(() => window.__seven.ui.amove);
+  await p.keyboard.up('Shift'); await p.keyboard.press('Escape');
+  const q = await legs(); console.log('waypoints', JSON.stringify(q), '| attack-move still armed under Shift', armed);
+  if (q.legs.join() !== 'move,amove' || !armed) errs.push('waypoints not queued: ' + JSON.stringify(q));
+  await p.waitForTimeout(600); await p.screenshot({ path: 'logs/waypoints.png' });
+  console.log(' lines', await p.evaluate((i) => { const u = window.__seven.game.byId.get(i); return JSON.stringify({ x: u.x, y: u.y, path: u.path.length, goal: u.pathGoal, next: u.task.next }); }, id));
   const mm = await p.locator('#minimap').boundingBox(); await p.mouse.click(mm.x + mm.width * 0.5, mm.y + mm.height * 0.5, { button: 'right' }); await p.waitForTimeout(300);
   console.log('minimap right-click', JSON.stringify(await unit()));
+  // T02 formations: a group of footmen and bowmen, the Line button, then a march; the screenshot shows the ranks facing the march
+  const grp = await p.evaluate(() => { const { game: g, ui, renderer: r } = window.__seven, s = g.seatOf(0), us = [];
+    for (let i = 0; i < 5; i++) us.push(g.addUnit('footman', 0, s.x - 2 + i, s.y + 6)); for (let i = 0; i < 4; i++) us.push(g.addUnit('bowman', 0, s.x - 1.5 + i, s.y + 7));
+    ui.setUnits(us); r.centerOn(s.x, s.y + 7); return us.map((u) => u.id); });
+  await p.waitForTimeout(400);
+  await p.locator('button[data-act="formation"][data-form="line"]').first().click(); await p.waitForTimeout(250);
+  const forms = await p.evaluate((ids) => ids.map((i) => window.__seven.game.byId.get(i).form), grp), lit = await p.locator('button[data-act="formation"][data-form="line"].on').count();
+  console.log('formation line ->', forms.join(','), '| lit', lit > 0);
+  if (!forms.every((f) => f === 'line') || !lit) errs.push('formation button did not take: ' + forms.join());
+  await p.waitForTimeout(2500); await p.screenshot({ path: 'logs/formation.png' });
+  // T31: I selects every idle soldier (the formation group stands formed, the first footman marches); a double-click on a bowman picks
+  // the bowmen on screen; Ctrl+double-click every bowman in the valley, one far away included
+  await p.evaluate(() => { const { game: g } = window.__seven, s = g.seatOf(0); g.addUnit('bowman', 0, s.x + 30, s.y - 30); });
+  await p.keyboard.press('i'); await p.waitForTimeout(200);
+  const idleSel = await p.evaluate(() => { const { game: g, ui } = window.__seven; return { sel: ui.selUnits().length, idle: g.idleArmyOf(0).length, allIdle: ui.selUnits().every((u) => u.task.type === 'idle') }; });
+  console.log('I idle soldiers', JSON.stringify(idleSel)); if (!idleSel.sel || idleSel.sel !== idleSel.idle || !idleSel.allIdle) errs.push('I did not select the idle soldiers: ' + JSON.stringify(idleSel));
+  // two lone bowmen on open ground, the screen centred on them, a click on the first (found by the renderer's own pick)
+  const bid = await p.evaluate(() => { const { game: g, renderer: r } = window.__seven, s = g.seatOf(0);
+    for (let d = 10; d < 40; d++) for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) { const x = Math.floor(s.x + dx * d) + 0.5, y = Math.floor(s.y + dy * d) + 0.5;
+      if (!g.walk[Math.floor(y) * g.W + Math.floor(x)] || !g.walk[Math.floor(y) * g.W + Math.floor(x) + 2] || g.nodeAt(x, y) || g.buildingAt(x, y) || g.villageAt(x, y) || g.units.some((u) => Math.hypot(u.x - x, u.y - y) < 4)) continue;
+      const u = g.addUnit('bowman', 0, x, y); g.addUnit('bowman', 0, x + 2, y); r.centerOn(x, y); return u.id; }
+    return null; });
+  await p.waitForTimeout(400);
+  const bow = await p.evaluate((i) => { const { game: g, renderer: r } = window.__seven, u = g.byId.get(i), cv = document.getElementById('game').getBoundingClientRect(), [sx, sy] = r.toScreen(u.x, u.y);
+    for (let lift = 0; lift < 60; lift += 2) { const h = r.pick(sx, sy - lift, ['unit']); if (h && h.o === u) return [cv.left + sx, cv.top + sy - lift]; } return [0, 0]; }, bid);
+  await p.waitForTimeout(200); await p.mouse.click(bow[0], bow[1]); await p.mouse.click(bow[0], bow[1]); await p.waitForTimeout(200);
+  const kinds = () => p.evaluate(() => { const us = window.__seven.ui.selUnits(); return { n: us.length, kinds: [...new Set(us.map((u) => u.kind))].join(), all: window.__seven.game.units.filter((u) => u.team === 0 && u.kind === 'bowman' && u.hp > 0 && !u.inside).length }; });
+  const onScreen = await kinds(); console.log('double-click bowman', JSON.stringify(onScreen));
+  await p.keyboard.down('Control'); await p.mouse.click(bow[0], bow[1]); await p.mouse.click(bow[0], bow[1]); await p.keyboard.up('Control'); await p.waitForTimeout(200);
+  const valley = await kinds(); console.log('ctrl+double-click bowman', JSON.stringify(valley));
+  if (onScreen.kinds !== 'bowman' || onScreen.n >= onScreen.all || valley.kinds !== 'bowman' || valley.n !== valley.all) errs.push('double-click selection wrong: ' + JSON.stringify({ onScreen, valley }));
+  // T03: Options > Keys - rebind Attack-move to A (Pan left swaps to F), back in the field A arms attack-move, then Reset keys
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
+  const ho = await p.locator('#hOptions').boundingBox(); if (ho) { await p.mouse.click(ho.x + ho.width / 2, ho.y + ho.height / 2); await p.waitForTimeout(500); }
+  await p.click('#kShow'); await p.waitForTimeout(150); await p.click('#keyGrid button[data-key="amove"]'); await p.waitForTimeout(100);
+  const asking = await p.locator('#keyGrid button[data-key="amove"]').textContent();
+  await p.keyboard.press('a'); await p.waitForTimeout(150);
+  const km = await p.evaluate(() => ({ ...window.__seven.ui.kmap, stored: localStorage.getItem('auld-world.keys') }));
+  console.log('rebind', JSON.stringify({ asking, amove: km.amove, panLeft: km.panLeft, stored: km.stored }));
+  if (km.amove !== 'a' || km.panLeft !== 'f' || !/"amove":"a"/.test(km.stored || '')) errs.push('rebinding did not take: ' + JSON.stringify(km));
+  await p.click('#mBack').catch(() => {}); await p.waitForTimeout(300); await p.keyboard.press('Enter'); await p.waitForTimeout(400);
+  await p.evaluate((i) => { const { game: g, ui } = window.__seven; ui.closeMenu?.(); ui.setUnits([g.byId.get(i)].filter((u) => u && u.hp > 0)); }, id); await p.waitForTimeout(200);
+  await p.keyboard.press('a'); const armedA = await p.evaluate(() => window.__seven.ui.amove); await p.keyboard.press('Escape');
+  const sub = await p.evaluate(() => document.querySelector('button[data-act="amove"]')?.textContent || '');
+  console.log('A arms attack-move', armedA, '| button reads', JSON.stringify(sub.trim()));
+  if (!armedA) errs.push('the rebound key did not arm attack-move');
+  await p.evaluate(() => document.getElementById('kReset').click()); const back = await p.evaluate(() => ({ amove: window.__seven.ui.kmap.amove, stored: localStorage.getItem('auld-world.keys') }));
+  console.log('reset keys', JSON.stringify(back)); if (back.amove !== 'f' || back.stored) errs.push('reset keys failed: ' + JSON.stringify(back));
+  // T03 grid half: Grid keys on, the soldier's card is lettered by place (stances on A S D F); S sets Defensive; a serf's Q raises a mine
+  await p.evaluate(() => { const c = document.getElementById('kGrid'); if (!c.checked) c.click(); }); await p.waitForTimeout(100);
+  await p.evaluate((i) => { const { game: g, ui } = window.__seven; ui.setUnits([g.byId.get(i)].filter((u) => u && u.hp > 0)); }, id); await p.waitForTimeout(400);
+  const lettered = await p.evaluate(() => [...document.querySelectorAll('#cmdPanel .cbtn')].filter((b) => /^(stop|amove|charge|retreat|stance)$/.test(b.dataset.act)).map((b) => b.querySelector('.hk')?.textContent).join(' '));
+  await p.keyboard.press('s'); await p.waitForTimeout(200); const gridStance = (await unit()).stance;
+  const serfPlace = await p.evaluate(() => { const { game: g, ui } = window.__seven; ui.setUnits(g.units.filter((u) => u.team === 0 && u.kind === 'serf').slice(0, 1)); return true; }); await p.waitForTimeout(400);
+  const mineKey = await p.evaluate(() => document.querySelector('#cmdPanel button[data-act="place"][data-kind="mine"] .hk')?.textContent || '');
+  await p.keyboard.press('q'); await p.waitForTimeout(200); const placing = await p.evaluate(() => window.__seven.ui.placing); await p.keyboard.press('Escape');
+  console.log('grid keys', JSON.stringify({ lettered, gridStance, mineKey, placing, stored: await p.evaluate(() => localStorage.getItem('auld-world.gridkeys')) }));
+  if (lettered !== 'Q W E R A S D F' || gridStance !== 'defensive' || mineKey !== 'Q' || placing !== 'mine' || !serfPlace) errs.push('grid keys failed');
+  await p.evaluate(() => document.getElementById('kGrid').click()); if (await p.evaluate(() => window.__seven.ui.gridKeys || localStorage.getItem('auld-world.gridkeys'))) errs.push('grid keys did not switch off');
+  // T36: Ctrl+1 stores the formation group; the row over the minimap shows it; a click on the chip selects it again; a blow makes it flash
+  await p.evaluate((ids) => { const { game: g, ui } = window.__seven; ui.setUnits(ids.map((i) => g.byId.get(i)).filter((u) => u && u.hp > 0)); }, grp); await p.waitForTimeout(150);
+  await p.keyboard.down('Control'); await p.keyboard.press('1'); await p.keyboard.up('Control'); await p.waitForTimeout(400);
+  await p.evaluate(() => window.__seven.ui.clearSel()); await p.waitForTimeout(300);
+  const chip = await p.evaluate(() => { const c = document.querySelector('#groupBar .grp[data-grp="1"]'); return c ? { shown: !document.getElementById('groupBar').classList.contains('hidden'), n: c.querySelector('i').textContent, img: !!c.querySelector('img') } : null; });
+  await p.click('#groupBar .grp[data-grp="1"]'); await p.waitForTimeout(200);
+  const picked = await p.evaluate(() => window.__seven.ui.selUnits().length);
+  await p.evaluate((ids) => { const { game: g } = window.__seven; g.byId.get(ids[0]).engagedT = g.time; }, grp); await p.waitForTimeout(400);
+  const flash = await p.locator('#groupBar .grp.fight').count();
+  console.log('control group row', JSON.stringify({ chip, picked, flash }));
+  if (!chip || !chip.shown || chip.n !== '9' || picked !== 9 || !flash) errs.push('control group row failed: ' + JSON.stringify({ chip, picked, flash }));
+  await p.setViewportSize({ width: 1366, height: 768 }); await p.waitForTimeout(500); await p.screenshot({ path: 'logs/groups.png' });
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length ? 1 : 0);
 })();

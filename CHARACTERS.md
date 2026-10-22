@@ -42,7 +42,7 @@ Each has a painted portrait (`assets/shared/ui/portraits/<key>.png`), shown on t
 | Parthian rider | Parthia, beyond the salt deserts | **Outrider**: +1.1 speed, +50% sight |
 | Greek physician | the Isles of the Middle Sea | **Physician**: heals friends within 4 tiles, even on the march |
 | Han drillmaster | the Middle Kingdom | **Drillmaster**: soldiers within 6 tiles learn 50% faster |
-| Rus bear-hunter | the river forests of the Rus | **Horse-breaker**: +75% damage against knights, kings and rams |
+| Rus bear-hunter | the river forests of the Rus | **Horse-breaker**: +75% damage against knights, kings and siege engines (ram, onager, trebuchet) |
 | Moorish caravaneer | the Maghreb | **Caravaneer**: your camels within 8 tiles walk 25% faster |
 | Aksumite envoy | Aksum, across the Red Sea | **Envoy**: sways villages within 10 tiles, like a lesser king |
 | Wandering swordsman | the Eastern Isles | **Duellist**: +40% damage against rated foes |

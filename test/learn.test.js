@@ -97,13 +97,13 @@ test('ai: a house with a playbook raises the army the player raised, and a house
   const army = (pbk) => {
     seedRng(99); const g = new Game({ seed: 11, houses: 3, ai: true, diff: 'hard' }); g.playbook = null;
     g.players.forEach((p, i) => { p.ai = i === 1; if (i === 1) p.playbook = pbk; });
-    g.players[1].gold = 4000; g.players[1].food = 3000; g.players[1].wood = 3000;
-    run(g, 330); return g.militaryOf(1).length;
+    g.players[1].gold = 600; g.players[1].food = 3000; g.players[1].wood = 3000;   // (a modest purse: with thousands every house hits the difficulty's cap and the playbook decides nothing)
+    run(g, 330); return g.soldiersOf(1).filter((u) => u.kind !== 'recruit').length;   // (drilled soldiers, in the field or posted in a keep or barracks)
   };
   const big = learnPlaybook(Array.from({ length: 6 }, (_, i) => fake('big' + i, ORDER_A, { rate: 9, dur: 900 })));
   const none = learnPlaybook(Array.from({ length: 6 }, (_, i) => fake('none' + i, ORDER_A, { rate: 0.2, dur: 900 })));
   const a = army(none), b = army(big), c = army(null), d = army(undefined);
-  assert.ok(b >= a, `army with a big-army playbook (${b}) is not smaller than with a tiny one (${a})`);
+  assert.ok(b > a, `a big-army playbook (${b}) drills more soldiers than a tiny one (${a})`);
   assert.equal(c, d, 'null and undefined playbooks both play the default game');
 });
 

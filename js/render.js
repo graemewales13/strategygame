@@ -1,11 +1,11 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, MINE_JOBS,
-} from './config.js';
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf, SIEGE } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, armedKey, factionSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, ORE_ART, armedKey, factionSprite, siegeSprite } from './art.js';
+import { WOMEN } from './names.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
 const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -22,7 +22,15 @@ const VART = { hamlet: 'hamlet', mine: 'mining', market: 'market', hillfort: 'fo
 const VWIDE = { '1tile': 3.4 };
 const SMOKE = { cottage: [[0.6, 0.03]], forge: [[0.23, 0.04]], foundry: [[0.23, 0.04], [0.62, 0.12]] };
 const RUIN_LIFE = 30;   // seconds a fallen building's painted ruin lies where it stood, fading over the last third
-const USCALE = { recruit: 44, serf: 40, scout: 46, footman: 45, bowman: 45, knight: 58, king: 62, spy: 46, scholar: 48 }; // drawn height at zoom 1
+// drawn height at zoom 1. The order says who matters in a fight: serfs smallest, levies and folk of the house next, soldiers a head taller,
+// riders and the king tallest (see the character guide in ARTREQUIREMENTS.md)
+// the ram's wheel hubs on its painted body: [x, y, radius] as fractions of the body's width/height/width, 'far' wheels behind the body.
+// Fitted to the axle bolts on ram_body.png (left rear bolt, the beam over the log, the near rail, the bottom stub).
+const RAM_WHEELS = [[0.075, 0.625, 0.078, 'far'], [0.73, 0.71, 0.07, 'far'], [0.19, 0.675, 0.08], [0.535, 0.905, 0.088]];
+// pack animals by height, not width (owner, 2026-10-20: the donkey, a tall picture drawn 62 wide, stood taller than a mounted knight):
+// a laden donkey comes to a man's shoulder, the camels stand over him
+const PACK_H = { donkey: 40, dromedary: 56, bactrian: 54 };
+const USCALE = { serf: 34, recruit: 40, scholar: 42, spy: 43, scout: 46, bowman: 49, footman: 50, knight: 66, king: 68 };
 // villages are small compositions of the same art: [sprite, world dx, world dy, width in tiles]
 const VCOMP = {
   hamlet: [['village_cluster', 0, 0.35, 3.9]],
@@ -143,6 +151,7 @@ export class Renderer {
     for (const p of g.projectiles) {
       if (!isVis(p.x, p.y)) continue;
       const [sx, sy] = this.toScreen(p.x, p.y), a = p.ang || 0;
+      if (p.stone) { ctx.fillStyle = '#6a665e'; ctx.strokeStyle = '#2a2622'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx, sy - 22 * z, 4.5 * z, 0, 7); ctx.fill(); ctx.stroke(); ctx.strokeStyle = '#f3e2a0'; ctx.lineWidth = 2; continue; }   // a siege stone, high in its arc
       const dx = (Math.cos(a) - Math.sin(a)) * HW, dy = (Math.cos(a) + Math.sin(a)) * HH, l = Math.hypot(dx, dy) || 1;
       ctx.beginPath(); ctx.moveTo(sx - (dx / l) * 9 * z, sy - 14 * z - (dy / l) * 9 * z); ctx.lineTo(sx, sy - 14 * z); ctx.stroke();
     }
@@ -319,9 +328,10 @@ export class Renderer {
       this.sprite(ctx, tinted('gold', 0, null, h > 0.5), sx, sy + 4 * z, 50 * z, false, a);
       this.hit(n, 'node', sx - 22 * z, sy - 24 * z, sx + 22 * z, sy + 4 * z);
     } else if (MATS.includes(n.kind)) {
-      const c = oreSprite(n.kind, h > 0.5), w = (n.kind === 'stone' ? 46 : 54) * z;
+      const art = (n.amount < (n.max || 1) / 2 && ORE_ART[n.kind + '_half']) || ORE_ART[n.kind];   // (painted deposits, full and half-dug, once delivered: priority 18)
+      const c = art || oreSprite(n.kind, h > 0.5), w = (n.kind === 'stone' ? 46 : 54) * z;
       this.shadowAt(ctx, sx, sy, 22 * z, 6 * z, 0.3 * a);
-      this.sprite(ctx, c, sx, sy + 4 * z, w, false, a);
+      this.sprite(ctx, c, sx, sy + 4 * z, w, art ? h > 0.5 : false, a);
       this.hit(n, 'node', sx - 22 * z, sy - 22 * z, sx + 22 * z, sy + 4 * z);
     } else {
       this.shadowAt(ctx, sx, sy, 20 * z, 5 * z, 0.3 * a);
@@ -353,12 +363,34 @@ export class Renderer {
       const k = u.task?.type; let to = null;
       if (k === 'attack') { const e = g.byId.get(u.task.targetId); if (e && e.hp !== 0) to = [e.x, e.y]; }
       else if ((k === 'move' || k === 'amove') && u.path?.length) to = u.pathGoal || u.path[u.path.length - 1];
-      if (!to || Math.hypot(to[0] - u.x, to[1] - u.y) < 0.8) continue;
+      const pt = g.patrolOf(u);
+      if (!pt && (!to || Math.hypot(to[0] - u.x, to[1] - u.y) < 0.8)) continue;
       if (++n > 60) break;
+      // a patrol (T39): its round drawn as a closed amber loop through the posts, a post ringed at each turn
+      if (pt) {
+        const ps = pt.pts.map(([x, y]) => this.toScreen(x, y));
+        ctx.strokeStyle = 'rgba(20,14,8,0.4)'; ctx.lineWidth = Math.max(2, 3 * z); ctx.beginPath(); ps.concat([ps[0]]).forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+        ctx.strokeStyle = 'rgba(240,196,92,0.7)'; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.stroke();
+        for (const [x, y] of ps) { ctx.fillStyle = 'rgba(240,196,92,0.75)'; ctx.beginPath(); ctx.ellipse(x, y, 3.5 * z, 1.75 * z, 0, 0, 7); ctx.fill(); }
+        if (!to || Math.hypot(to[0] - u.x, to[1] - u.y) < 0.8) continue;
+      }
       const [ax, ay] = this.toScreen(u.x, u.y), [bx, by] = this.toScreen(to[0], to[1]);
-      const col = k === 'move' ? 'rgba(159,224,143,0.55)' : 'rgba(232,104,90,0.65)';
-      ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-      ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(bx, by, 4 * z, 2 * z, 0, 0, 7); ctx.fill();
+      const col = k === 'move' ? 'rgba(159,224,143,0.55)' : pt ? 'rgba(240,196,92,0.7)' : 'rgba(232,104,90,0.65)';
+      // each leg is a dark under-stroke with the coloured dash on top, so it reads on pale sand and snow as well as grass
+      const leg = (x0, y0, x1, y1, c, r) => {
+        ctx.strokeStyle = 'rgba(20,14,8,0.4)'; ctx.lineWidth = Math.max(2, 3 * z); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+        ctx.strokeStyle = c; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+        ctx.fillStyle = 'rgba(20,14,8,0.4)'; ctx.beginPath(); ctx.ellipse(x1, y1, r * 1.3 * z, r * 0.65 * z, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(x1, y1, r * z, r * 0.5 * z, 0, 0, 7); ctx.fill();
+      };
+      leg(ax, ay, bx, by, col, 4);
+      // the legs still to come (Shift-queued waypoints, T02), each from the end of the last
+      let px = bx, py = by;
+      for (const w of k === 'attack' ? (u.task.then ? [{ x: u.task.then.x, y: u.task.then.y, a: true }, ...(u.task.then.next || [])] : []) : u.task.next || []) {
+        const [cx, cy] = this.toScreen(w.x, w.y);
+        leg(px, py, cx, cy, w.a ? 'rgba(232,104,90,0.6)' : 'rgba(159,224,143,0.55)', 3.5);
+        px = cx; py = cy;
+      }
     }
     ctx.restore();
   }
@@ -437,21 +469,20 @@ export class Renderer {
     let top = 1e9, midx = 0, left = 1e9, right = -1e9, bottom = -1e9;
     if (dim) ctx.globalAlpha = 0.78;
     for (const p of parts) {
-      const [sx, sy] = this.toScreen(cx + p.dx + 0.7, cy + p.dy + 0.7);
+      // a painted village is its own ground diamond, p.w tiles across: its bottom corner sits p.w/2 below the centre of the village's square, so
+      // the painting lies on its square (owner, 2026-10-20: pinned at 0.9 it floated most of a tile north, over the bushes behind it)
+      const off = p.img ? p.w / 2 : 0.7, [sx, sy] = this.toScreen(cx + (p.img ? 0 : p.dx) + off, cy + (p.img ? 0 : p.dy) + off);
       const c = p.img || (p.name === 'village_cluster' && SIMG.hamlet ? SIMG.hamlet : tinted(p.name, team, 'banner', false));
       if (p.name === 'gold') this.shadowAt(ctx, sx, sy, p.w * HW * z * 0.5, 7 * z, 0.3);
       if (c && p.name !== 'gold' && !dim) this.castShadow(ctx, c, sx, sy, p.w * 2 * HW * z, (c.height / c.width) * p.w * 2 * HW * z * 0.9, false, 0.28, 0.8);
       const h = this.sprite(ctx, c, sx, sy, p.w * 2 * HW * z, false, 1);
       if (h != null) { const ww = p.w * 2 * HW * z; top = Math.min(top, sy - h); left = Math.min(left, sx - ww / 2); right = Math.max(right, sx + ww / 2); bottom = Math.max(bottom, sy); }
     }
-    // the folk mostly stay indoors: one or two idle by the door; a quarter muster outside, facing the attackers
+    // the folk stay indoors (owner, 2026-10-20: the two old-style serfs idling at every door are gone); when the village is attacked, a
+    // quarter muster outside, facing the attackers, drawn as levies of the village's lord's people (else the common painted levy)
     if (!dim) {
       const tin = v.owner >= 0 ? v.owner : -1, g = this.game, folk = [];
-      const calm = Math.min(2, Math.floor(v.pop / 7)), out = v.militia || 0;
-      for (let i = 0; i < calm && !out; i++) {
-        const h1 = hash(v.id * 7 + i, 3), sp = 0.1 + h1 * 0.08, ph = h1 * 40;
-        folk.push({ x: v.tx + v.size * (0.35 + 0.3 * i) + Math.sin(t * sp + ph) * 0.3, y: v.ty + v.size + 0.15 + Math.cos(t * sp * 0.8 + ph) * 0.15, flip: Math.cos(t * sp + ph) < 0, w: 36 });
-      }
+      const out = v.militia || 0;
       if (out > 0) {
         let ax = 1, ay = 1, best = 1e9;
         for (const u of g.units) if (u.hp > 0 && (u.task?.targetId === v.id || (v.owner >= 0 && g.isEnemy(v.owner, u.team)))) { const d = Math.hypot(u.x - v.x, u.y - v.y); if (d < best && d < 14) { best = d; ax = u.x - v.x; ay = u.y - v.y; } }
@@ -463,9 +494,9 @@ export class Renderer {
       }
       folk.sort((a, b) => a.x + a.y - (b.x + b.y));
       for (const f of folk) {
-        const [fx, fy] = this.toScreen(f.x, f.y), c = f.mil ? tinted('footman', tin, 'trim', f.flip, 1.15) : tinted('serf', tin, 'trim', f.flip, 1.35);
+        const [fx, fy] = this.toScreen(f.x, f.y), c = (tin >= 0 && FUNIT[HOUSES[tin]?.faction]?.recruit) || SIMG.recruit || tinted('footman', tin, 'trim', f.flip, 1.15);
         this.shadowAt(ctx, fx, fy, 5 * z, 2 * z, 0.3);
-        if (c) this.sprite(ctx, c, fx, fy + 1 * z, (c.width / c.height) * f.w * z, false, 1);
+        if (c) { ctx.save(); ctx.translate(fx, fy + 1 * z); if (!f.flip) ctx.scale(-1, 1); const w = (c.width / c.height) * USCALE.recruit * z; ctx.drawImage(c, -w / 2, -USCALE.recruit * z, w, USCALE.recruit * z); ctx.restore(); }   // (painted levies look right; turned to face the foe)
       }
     }
     if (v.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, v.flash); this.diamond(ctx, v.tx, v.ty, v.size, v.size); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
@@ -515,6 +546,15 @@ export class Renderer {
     ctx.globalAlpha = Math.max(0, Math.min(1, age / 1.5, (RUIN_LIFE - age) / (RUIN_LIFE / 3)));
     ctx.drawImage(img, bx - w / 2, by - h + f.size * HH * z * 0.34, w, h);
     ctx.globalAlpha = 1;
+  }
+  // a small name plate under a mine: a swatch of the mineral's colour and its name
+  oreLabel(ctx, x, y, ore, z) {
+    const s = Math.max(9, Math.round(10.5 * Math.min(1.3, z))), text = GOOD_LABEL[ore] || ore;
+    ctx.font = `bold ${s}px Georgia, serif`; const tw = ctx.measureText(text).width, pw = tw + s * 1.6, ph = s * 1.45;
+    ctx.fillStyle = 'rgba(20,14,8,0.78)'; ctx.beginPath(); ctx.roundRect(x - pw / 2, y, pw, ph, 3); ctx.fill();
+    ctx.strokeStyle = GOOD_COLOR[ore] || '#cdbb8a'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = GOOD_COLOR[ore] || '#cdbb8a'; ctx.beginPath(); ctx.arc(x - pw / 2 + s * 0.65, y + ph / 2, s * 0.32, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f0e2b0'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x - pw / 2 + s * 1.15, y + ph / 2 + 1); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
   }
   // ---------------------------------------------------------------- buildings
   building(ctx, b, dim, ui, t, z) {
@@ -572,6 +612,7 @@ export class Renderer {
     }
     if (b.flash > 0 && c) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.7, b.flash * 2); ctx.drawImage(c, bx - w / 2, dy, w, h); ctx.restore(); }
     if (b.garrison?.length && b.team === PLAYER) this.badge(ctx, bx + w * 0.34, dy + h * 0.12, b.garrison.length, f, z);
+    if (b.kind === 'mine' && b.ore && z >= 0.55) this.oreLabel(ctx, bx, by + 3 * z, b.ore, z);   // what it digs, in the mineral's colour
     if (b.hp < b.maxHp && prog >= 1) this.bar(ctx, bx - w * 0.3, dy - 6, w * 0.6, 4, b.hp / b.maxHp, this.hpColor(b.hp / b.maxHp));
     if (b.queue.length && b.team === PLAYER) this.bar(ctx, bx - w * 0.3, by + 4 * z, w * 0.6, 3, b.queue[0].t / UNITS[b.queue[0].kind].time, '#7ac1ff');
     if (ui?.isSelected(b)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, b.tx - 0.1, b.ty - 0.1, b.size + 0.2, b.size + 0.2); ctx.stroke(); ctx.setLineDash([]); }
@@ -650,6 +691,38 @@ export class Renderer {
       }
     }
   }
+  // legs that move, from one still painting: the figure is cut at the hip and the part below swings from it while the body stays
+  // level. A person's left and right legs swing in opposite phase (a scissor stride); a horse's hind and fore legs do (a trot).
+  // `g` is the gait from gaitOf(); `ph` the stride phase.
+  strideBody(ctx, c, w, h, top, g, ph) {
+    const iw = c.width, ih = c.height, hipY = top + h * g.hip, k = Math.sin(ph) * g.amp;
+    for (const [s0, s1, kk] of [[0, g.split, k], [g.split, 1, -k]]) {
+      ctx.save(); ctx.transform(1, 0, kk, 1, -kk * hipY, 0);
+      ctx.drawImage(c, s0 * iw, g.hip * ih, (s1 - s0) * iw, (1 - g.hip) * ih, -w / 2 + s0 * w, hipY, (s1 - s0) * w, h * (1 - g.hip));
+      ctx.restore();
+    }
+    ctx.drawImage(c, 0, 0, iw, g.hip * ih + 1, -w / 2, top, w, h * g.hip + 1);   // (one pixel over the cut, so no seam shows)
+  }
+  // how a figure walks: null for anything that should not stride (a chariot rolls, a ram has wheels, a serf at work)
+  gaitOf(u, c, fac) {
+    if (SIEGE.has(u.kind) || u.kind === 'camel') return null;
+    const mounted = c.width / c.height > 0.8;   // a horse and rider is wider than tall; a man on foot is not
+    if (mounted) return fac === 'egyptians' && (u.kind === 'knight' || u.kind === 'king') ? null : { hip: 0.64, split: 0.5, amp: 0.34, rate: 0.7 };
+    const robed = u.kind === 'spy' || u.kind === 'scholar';   // long robes and cloaks: the hem sways rather than the legs scissoring
+    return { hip: robed ? 0.62 : 0.56, split: 0.5, amp: robed ? 0.1 : 0.24, rate: 0.55 };
+  }
+  // a ram painted as a body and one separate wheel (ARTREQUIREMENTS priority 13): the wheels turn with the distance it rolls.
+  // RAM_WHEELS are the hub centres and radii as fractions of the body picture, far wheels first (drawn behind the body).
+  ramBody(ctx, body, wheel, w, h, top, u) {
+    const spin = (u.anim || 0) * 0.9;
+    const one = ([fx, fy, fr]) => {
+      ctx.save(); ctx.translate(-w / 2 + fx * w, top + fy * h); ctx.scale(0.62, 1); ctx.rotate(spin);   // (a wheel seen three-quarter on is an upright ellipse)
+      ctx.drawImage(wheel, -fr * w, -fr * w, fr * w * 2, fr * w * 2); ctx.restore();
+    };
+    for (const wh of RAM_WHEELS.filter((x) => x[3] === 'far')) one(wh);
+    ctx.drawImage(body, -w / 2, top, w, h);
+    for (const wh of RAM_WHEELS.filter((x) => x[3] !== 'far')) one(wh);
+  }
   // dust kicked up behind a camel on the move
   dust(ctx, sx, sy, sgn, t, z, id) {
     for (let i = 0; i < 4; i++) {
@@ -661,6 +734,7 @@ export class Renderer {
   // ---------------------------------------------------------------- units
   unit(ctx, u, ui, t, z) {
     const st = UNITS[u.kind], [sx, sy] = this.toScreen(u.x, u.y);
+    const look = u.kind === 'spy' && u.disguise != null ? u.disguise : u.team;   // a spy in disguise wears another house's colours
     // turning: the art looks left. Face the way it travels on screen (or toward its work); horizontal turns squash through the
     // middle, moving up the screen shows its back (darker), moving toward the camera shows it full-on.
     const moving = u.path.length > 0;
@@ -671,6 +745,7 @@ export class Renderer {
     else if (!moving) {
       const k = u.task, tg = k.type === 'gather' ? this.game.resources[k.nodeId] : (k.type === 'mine' || k.type === 'build' || k.type === 'attack' || k.type === 'infiltrate') ? this.game.byId.get(k.buildingId ?? k.targetId) : null;
       if (tg) { const [tx, ty] = this.toScreen(tg.x + (tg.size ? 0 : 0.5), tg.y + (tg.size ? 0 : 0.5)); vx = tx - sx; vy = ty - sy; }
+      else if (k.type === 'idle' && k.face) { vx = (k.face[0] - k.face[1]) * HW; vy = (k.face[0] + k.face[1]) * HH; }   // a march's end: face the way it went (T02)
     }
     u._lx = u.x; u._ly = u.y;
     if (vx || vy) { const m = Math.hypot(vx, vy) || 1; u._dx = (u._dx ?? vx / m) * 0.8 + (vx / m) * 0.2; u._dy = (u._dy ?? vy / m) * 0.8 + (vy / m) * 0.2; }
@@ -682,39 +757,60 @@ export class Renderer {
     const flip = u._fx > 0, sxScale = Math.abs(u._fx), light = away ? 0.7 : 1;
     const striking = st.dmg > 0 && u.cooldown > st.cd - 0.25;
     const working = !moving && (u.task.type === 'gather' || u.task.type === 'build' || u.task.type === 'mine');
-    let c, w, h;
-    let rightArt = false, full = false;   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
-    if (u.kind === 'ram') { const s2 = SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
-    else if (u.kind === 'camel') { const fac = HOUSES[u.team].faction, s2 = fac === 'mongols' ? SIMG.bactrian : fac === 'romans' ? SIMG.donkey : SIMG.dromedary; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = 62 * z; }
-    else if (u.kind === 'serf') { c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light); w = (c ? c.width / c.height : 1) * 40 * z; }
+    let c, w, h, fu = null, spriteKey = null;
+    let rightArt = false, full = false, sway = false;   // (sway: a stand-in figure with no work frames rocks at his task)   // the painted animals and armed soldiers look right, the older art left; `full` art stands feet-on-ground
+    if (u.kind === 'onager' || u.kind === 'trebuchet') { const s2 = SIMG[u.kind]; if (s2) { c = s2; rightArt = true; } else { c = siegeSprite(u.kind, u.team); rightArt = true; } w = (u.kind === 'trebuchet' ? 96 : 82) * z; }
+    else if (u.kind === 'ram') { const s2 = SIMG.ram_body && SIMG.ram_wheel ? SIMG.ram_body : SIMG.ram; if (s2) { c = s2; rightArt = true; } else c = ramSprite(u.team); w = 78 * z; }
+    else if (u.kind === 'camel') { const pk = packOf(u.team).sprite, s2 = SIMG[pk]; if (s2) { c = s2; rightArt = true; } else c = camelSprite(u.team); w = (c ? c.width / c.height : 1.2) * (PACK_H[pk] || 54) * z; }   // (each people's own pack animal, as tall as it should be beside a man)
+    else if (u.kind === 'serf') {   // the house's own serf when its people has one painted (idle, two work frames), else the common one
+      fu = FUNIT[HOUSES[u.team]?.faction];
+      const woman = WOMEN.has((u.name || '').split(' ')[0]) && fu?.serf_f;
+      const base = woman ? 'serf_f' : 'serf';
+      spriteKey = base;
+      const key = working ? ((Math.floor(t * 2 + u.id) & 1) ? `${base}_work2` : `${base}_work1`) : base, own = fu?.[key] || fu?.[base] || fu?.serf || fu?.recruit;
+      if (own) { c = own; rightArt = true; full = true; sway = !fu?.[`${base}_work1`]; } else c = tinted(working && (Math.floor(t * 2 + u.id) & 1) ? 'serf_dig2' : 'serf_dig1', u.team, 'trim', false, light);
+      w = (c ? c.width / c.height : 1) * USCALE.serf * z;
+    }
     else {
-      const fu = FUNIT[HOUSES[u.team]?.faction], ak = armedKey(u), armed = (ak && fu?.[ak]) || fu?.[u.kind];   // painted with the Armoury kit he carries, or his people's own plain figure
-      if (armed) { c = armed; rightArt = true; full = true; } else c = tinted(st.art || u.kind, u.team, 'trim', false, light);
+      fu = FUNIT[HOUSES[look]?.faction]; const ak = armedKey(u), armed = (ak && fu?.[ak]) || fu?.[u.kind] || (u.kind === 'king' ? fu?.knight : null);
+      spriteKey = (ak && fu?.[ak]) ? ak : (fu?.[u.kind] ? u.kind : null);
+      if (armed) { c = armed; rightArt = true; full = true; } else c = tinted(st.art || u.kind, look, 'trim', false, light);
       const hh = USCALE[u.kind] * z; w = (c ? c.width / c.height : 1) * hh;
+    }
+    let paintedWalk = false;
+    if (moving && !working && fu && spriteKey && fu[`${spriteKey}_walk1`]) {
+      const wf = fu[`${spriteKey}_walk${(Math.floor((u.anim || 0) * 0.36) % 4) + 1}`] || fu[`${spriteKey}_walk1`];
+      if (wf) { c = wf; paintedWalk = true; const hh = (USCALE[u.kind] || 40) * z; w = (c.width / c.height) * hh; }
     }
     if (!c) return;
     h = (c.height / c.width) * w;
-    const bob = moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;
+    const wheeled = SIEGE.has(u.kind);   // a cart on four wheels: it rumbles over the ground instead of bobbing like a walker, and its shadow spans the wheelbase
+    const gait = paintedWalk ? null : (moving && full && gfx.q >= 1 ? this.gaitOf(u, c, HOUSES[u.team]?.faction) : null), sph = gait ? u.anim * gait.rate : 0;   // (striding painted figures; a real walk cycle is used instead when its frames are loaded)
+    const bob = wheeled ? (moving ? Math.abs(Math.sin(u.anim * 2.1)) * 0.6 * z : 0) : paintedWalk ? 0 : gait ? (1 - Math.abs(Math.sin(sph))) * 1.6 * z : moving ? Math.abs(Math.sin(u.anim * 0.55)) * 3 * z : working ? Math.abs(Math.sin(t * 6 + u.id)) * 1.5 * z : 0;   // (a striding body rises as the legs pass; a painted cycle already has its own rise)
     const lunge = striking ? 5 * z * (u.cooldown > st.cd - 0.12 ? 1 : 0.5) : 0;
-    this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
-    if (moving && gfx.q >= 1 && (u.kind === 'camel' || u.kind === 'ram')) this.dust(ctx, sx, sy, u._sg || 1, t, z, u.id);
-    if (gfx.q >= 1 && !ui?.isSelected(u) && u.kind !== 'camel') { ctx.strokeStyle = HOUSES[u.team]?.primary || '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 9 * z, 4.2 * z, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
-    this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
+    if (wheeled) this.shadowAt(ctx, sx, sy - h * 0.13, w * 0.5, h * 0.17, 0.42);   // (the three-quarter art puts the rear wheels well up the picture)
+    else this.shadowAt(ctx, sx, sy + 1 * z, w * 0.3, 4.5 * z, 0.34);
+    if (moving && gfx.q >= 1 && (u.kind === 'camel' || SIEGE.has(u.kind))) this.dust(ctx, sx, sy, u._sg || 1, t, z, u.id);
+    if (gfx.q >= 1 && !ui?.isSelected(u) && u.kind !== 'camel') { ctx.strokeStyle = HOUSES[look]?.primary || '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); if (wheeled) ctx.ellipse(sx, sy - h * 0.13, w * 0.44, h * 0.15, 0, 0, 7); else ctx.ellipse(sx, sy + 1 * z, 9 * z, 4.2 * z, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+    this.castShadow(ctx, c, sx, sy, w * (flip !== rightArt ? 1 : 1), h * (SIEGE.has(u.kind) || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9), (flip !== rightArt), 0.28, 0.8);
     ctx.save();
     ctx.translate(sx + (flip ? lunge : -lunge), sy);
-    ctx.rotate(moving ? Math.sin(u.anim * 0.55) * 0.045 : 0);
+    ctx.rotate(paintedWalk ? 0 : gait ? Math.sin(sph * 2) * 0.012 : moving && !wheeled ? Math.sin(u.anim * 0.55) * 0.045 : working && sway ? Math.sin(t * 6 + u.id) * 0.07 : 0);
     ctx.scale((flip !== rightArt) ? -sxScale : sxScale, 1);
-    const foot = full ? 0.985 : u.kind === 'ram' || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
+    const foot = full ? 0.985 : SIEGE.has(u.kind) || u.kind === 'serf' || u.kind === 'camel' ? 1.0 : 0.9;
     const top = -h * foot - bob;
     if (u.kind === 'camel' && rightArt && gfx.q >= 1) this.camelBody(ctx, c, w, h, top, moving, u, t, z);
+    else if (gait) this.strideBody(ctx, c, w, h, top, gait, sph);
+    else if (wheeled && c === SIMG.ram_body) this.ramBody(ctx, c, SIMG.ram_wheel, w, h, top, u);
     else ctx.drawImage(c, -w / 2, top, w, h);
-    if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
+    if (u.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, u.flash * 2); if (gait) this.strideBody(ctx, c, w, h, top, gait, sph); else ctx.drawImage(c, -w / 2, -h * foot - bob, w, h); }
     ctx.restore();
     this.hit(u, 'unit', sx - w * 0.4, sy - h * foot - bob, sx + w * 0.4, sy + 3 * z);
     if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }
     if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
     if (u.name && (ui?.isSelected(u) || z >= 1.15) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
-    if (u.kind === 'king') this.crownAt(ctx, sx, sy - h * foot - 2 - bob, z, HOUSES[u.team].accent);
+    if (u.kind === 'spy' && u.disguise != null && u.team === PLAYER && !this.mark(ctx, 'disguise', sx, sy - h * foot - 4 - bob, 16 * z)) { ctx.font = `${Math.round(12 * Math.min(1.4, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#f0e2a0'; ctx.strokeStyle = 'rgba(20,12,4,.9)'; ctx.lineWidth = 3; ctx.strokeText('🎭', sx, sy - h * foot - 4 - bob); ctx.fillText('🎭', sx, sy - h * foot - 4 - bob); ctx.textAlign = 'start'; }   // (only you see the mask)
+    if (u.kind === 'king' && !FUNIT[HOUSES[u.team]?.faction]?.king) this.crownAt(ctx, sx, sy - h * foot - 2 - bob, z, HOUSES[u.team].accent);
     if (u.kind === 'king' && u.team >= 0 && !this.game.seatOf(u.team)) this.mark(ctx, 'fugitive', sx, sy - h * foot - 10 * z - bob, 16 * z);   // a fugitive king, seen by all
     if (u.captain) { const mx = sx - Math.max(20, w * 0.7) / 2 - 4 * z, my = sy - h * foot - bob; if (!this.mark(ctx, 'captain', mx, my, 18 * z, HOUSES[u.team].primary)) { ctx.strokeStyle = '#2a1c0e'; ctx.lineWidth = Math.max(1, 1.4 * z); ctx.beginPath(); ctx.moveTo(mx, my + 14 * z); ctx.lineTo(mx, my - 6 * z); ctx.stroke(); this.pennant(ctx, mx, my - 6 * z, z * 0.7, t, HOUSES[u.team].primary, HOUSES[u.team].accent, u.id); } }
     if (u.rank > 0) this.chevrons(ctx, sx + (u.hp < u.maxHp || ui?.isSelected(u) ? Math.max(20, w * 0.7) / 2 + 6 * z : 0), sy - h * foot - 6 - bob, u.rank, z, u.kind === 'king');
@@ -799,11 +895,22 @@ export function drawCrest(ctx, cx, cy, s, idx) {
   ctx.fillStyle = h.primary; ctx.fill();
   ctx.lineWidth = Math.max(1.5, s * 0.07); ctx.strokeStyle = '#e2c15e'; ctx.stroke();
   ctx.fillStyle = h.accent; ctx.strokeStyle = h.accent; ctx.lineWidth = Math.max(1.5, s * 0.06);
-  switch (idx) {
-    case 0: ctx.beginPath(); ctx.arc(0, -s * 0.05, s * 0.17, 0, 7); ctx.fill(); for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * s * 0.22, -s * 0.05 + Math.sin(a) * s * 0.22); ctx.lineTo(Math.cos(a) * s * 0.34, -s * 0.05 + Math.sin(a) * s * 0.34); ctx.stroke(); } break;
-    case 1: ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.lineTo(0, s * 0.4); ctx.moveTo(-s * 0.2, -s * 0.1); ctx.lineTo(s * 0.2, -s * 0.1); ctx.stroke(); break;
-    case 2: for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 0.2 + i * s * 0.2); ctx.quadraticCurveTo(-s * 0.15, -s * 0.34 + i * s * 0.2, 0, -s * 0.2 + i * s * 0.2); ctx.quadraticCurveTo(s * 0.15, -s * 0.06 + i * s * 0.2, s * 0.3, -s * 0.2 + i * s * 0.2); ctx.stroke(); } break;
-    case 3: ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.lineTo(s * 0.26, s * 0.0); ctx.lineTo(-s * 0.26, s * 0.0); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(0, -s * 0.2); ctx.lineTo(s * 0.3, s * 0.25); ctx.lineTo(-s * 0.3, s * 0.25); ctx.closePath(); ctx.fill(); break;
+  switch (h.device) {   // each people bears its own device wherever it sits
+    case 'sun': ctx.beginPath(); ctx.arc(0, -s * 0.05, s * 0.17, 0, 7); ctx.fill(); for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * s * 0.22, -s * 0.05 + Math.sin(a) * s * 0.22); ctx.lineTo(Math.cos(a) * s * 0.34, -s * 0.05 + Math.sin(a) * s * 0.34); ctx.stroke(); } break;
+    case 'sword': ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.lineTo(0, s * 0.4); ctx.moveTo(-s * 0.2, -s * 0.1); ctx.lineTo(s * 0.2, -s * 0.1); ctx.stroke(); break;
+    case 'waves': for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 0.2 + i * s * 0.2); ctx.quadraticCurveTo(-s * 0.15, -s * 0.34 + i * s * 0.2, 0, -s * 0.2 + i * s * 0.2); ctx.quadraticCurveTo(s * 0.15, -s * 0.06 + i * s * 0.2, s * 0.3, -s * 0.2 + i * s * 0.2); ctx.stroke(); } break;
+    case 'tree': ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.lineTo(s * 0.26, s * 0.0); ctx.lineTo(-s * 0.26, s * 0.0); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(0, -s * 0.2); ctx.lineTo(s * 0.3, s * 0.25); ctx.lineTo(-s * 0.3, s * 0.25); ctx.closePath(); ctx.fill(); break;
+    case 'ship':   // a longship: hull, dragon prow and stern, square sail
+      ctx.beginPath(); ctx.moveTo(-s * 0.36, s * 0.12); ctx.quadraticCurveTo(0, s * 0.36, s * 0.36, s * 0.12); ctx.lineTo(s * 0.3, s * 0.2); ctx.quadraticCurveTo(0, s * 0.42, -s * 0.3, s * 0.2); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(s * 0.34, s * 0.14); ctx.quadraticCurveTo(s * 0.42, -s * 0.06, s * 0.3, -s * 0.12); ctx.moveTo(-s * 0.34, s * 0.14); ctx.quadraticCurveTo(-s * 0.42, -s * 0.06, -s * 0.3, -s * 0.1); ctx.moveTo(0, s * 0.22); ctx.lineTo(0, -s * 0.42); ctx.stroke();
+      ctx.fillRect(-s * 0.2, -s * 0.36, s * 0.4, s * 0.38); break;
+    case 'crown':   // a closed imperial crown with a cross
+      ctx.beginPath(); ctx.moveTo(-s * 0.3, s * 0.22); ctx.lineTo(-s * 0.3, -s * 0.12); ctx.lineTo(-s * 0.15, s * 0.02); ctx.lineTo(0, -s * 0.2); ctx.lineTo(s * 0.15, s * 0.02); ctx.lineTo(s * 0.3, -s * 0.12); ctx.lineTo(s * 0.3, s * 0.22); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, -s * 0.22); ctx.lineTo(0, -s * 0.44); ctx.moveTo(-s * 0.08, -s * 0.35); ctx.lineTo(s * 0.08, -s * 0.35); ctx.stroke(); break;
+    case 'wings':   // the winged sun
+      ctx.beginPath(); ctx.arc(0, -s * 0.08, s * 0.12, 0, 7); ctx.fill();
+      for (const d of [-1, 1]) for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(d * s * 0.12, -s * 0.1 + i * s * 0.06); ctx.quadraticCurveTo(d * s * 0.3, -s * 0.2 + i * s * 0.08, d * (s * 0.42 - i * s * 0.07), -s * 0.24 + i * s * 0.12); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(-s * 0.1, s * 0.06); ctx.lineTo(0, s * 0.32); ctx.lineTo(s * 0.1, s * 0.06); ctx.closePath(); ctx.fill(); break;
     default: ctx.beginPath(); ctx.moveTo(0, -s * 0.42); ctx.quadraticCurveTo(s * 0.34, -s * 0.05, s * 0.12, s * 0.28); ctx.quadraticCurveTo(0, s * 0.1, -s * 0.12, s * 0.28); ctx.quadraticCurveTo(-s * 0.34, -s * 0.05, 0, -s * 0.42); ctx.fill();
   }
   ctx.restore();
@@ -856,7 +963,7 @@ export class Minimap {
     const blink = (g.time * 4) % 1 < 0.5;
     for (const u of g.units) {
       if (u.team !== PLAYER && (!g.fogOn || !vis[Math.floor(u.y) * g.W + Math.floor(u.x)])) continue;
-      ctx.fillStyle = u.team === PLAYER && blink && g.time - (u.engagedT ?? -99) < 1.5 ? '#ff4a3a' : HOUSES[u.team].primary; ctx.fillRect(u.x * sx - 1, u.y * sy - 1, 3, 3);   // ours in a fight blink red (T06)
+      ctx.fillStyle = u.team === PLAYER && blink && g.time - (u.engagedT ?? -99) < 1.5 ? '#ff4a3a' : HOUSES[u.team !== PLAYER && u.kind === 'spy' && u.disguise != null ? u.disguise : u.team].primary; ctx.fillRect(u.x * sx - 1, u.y * sy - 1, 3, 3);   // ours in a fight blink red (T06)
     }
     // where we are being hit: a pulsing red ring for ten seconds after the last blow (Space jumps there)
     for (const a of g.alerts || []) {

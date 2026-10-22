@@ -12,7 +12,7 @@ const heldVillages = (g) => g.villages.filter((v) => v.owner === PLAYER && v.hom
 export const OBJECTIVES = [
   { id: 'timber', title: 'Cut timber', hint: 'Drag a box round your three serfs, then right-click a tree. They carry timber home.',
     done: (g) => g.players[PLAYER].wood > 500 * g.diff.playerMul || anyBuilt(g) },
-  { id: 'serfs', title: 'Draft more serfs', hint: 'Press H to open your home village and draft serfs. More hands, faster work.',
+  { id: 'serfs', title: 'Draft more serfs', hint: 'Press {key:hall} to open your home village and draft serfs. More hands, faster work.',
     done: (g) => serfs(g) >= 6 || anyBuilt(g) },
   { id: 'mine', title: 'Raise a mine', hint: 'Open the build menu, choose Mine and place it on a deposit (the glints in the rock). Villagers from villages within 16 tiles dig for it; with no village near it has no workers.',
     done: (g) => mine(g, 'mine') },
@@ -22,15 +22,16 @@ export const OBJECTIVES = [
     done: (g) => g.buildings.some((b) => b.team === PLAYER && b.kind === 'market' && b.built >= 1 && g.district(b).score >= 3) },
   { id: 'keep', title: 'Raise a keep and barracks', hint: 'The keep sways nearby villages and drills soldiers. The barracks trains them.',
     done: (g) => mine(g, 'keep') && mine(g, 'barracks') },
+  // (the army comes straight after the barracks: in play the first rival demand came at 7 minutes and its army at 12, while this step was ninth)
+  { id: 'army', title: 'Raise an army', hint: 'Train eight soldiers at the barracks. From about minute 7 rival houses demand tribute from the weak and march on those who refuse. Keep your king safe: when his line ends, your house falls. The Council ({key:council}) shows how each house reads you.',
+    done: (g) => soldiers(g) >= 8 },
   { id: 'camel', title: 'Send a camel trading', hint: 'Train a camel at the market, select it, then press All my markets or Trade partners (or click markets on the map). It loops for ever, hauling goods.',
     done: (g) => g.units.some((u) => u.team === PLAYER && u.kind === 'camel' && u.route && u.route.stops.length) || g.players[PLAYER].trips > 0 },
   { id: 'village', title: 'Win a village', hint: 'Station soldiers or a keep beside an independent village, or send a spy, until its loyalty turns. You can also sack it.',
     done: (g) => heldVillages(g) >= 1 },
-  { id: 'army', title: 'Raise an army', hint: 'Drill eight soldiers. A neighbour goes to war when it fears you or thinks you weak: open the Council (C) to see how each house reads you.',
-    done: (g) => soldiers(g) >= 8 },
-  { id: 'arms', title: 'Study and arm', hint: 'Raise an Academy and choose research (Masonry, then Metallurgy). Metallurgy unlocks the Armoury: order spears and mail there, and your soldiers take them up.',
+  { id: 'arms', title: 'Study and arm', hint: 'Raise an Academy and choose research (Masonry, then Metallurgy). Metallurgy unlocks the Armoury (it also needs a Forge): order spears and mail there, and your soldiers take them up.',
     done: (g) => mine(g, 'armoury') || g.units.some((u) => u.team === PLAYER && u.hp > 0 && u.gear) },
-  { id: 'conquer', title: 'Rule the valley', hint: 'A house falls when the last of its royal line dies (a king and two heirs). Kill every rival line, and guard your own. Press T for standings.',
+  { id: 'conquer', title: 'Rule the valley', hint: 'A house falls when the last of its royal line dies (a king and two heirs). Kill every rival line, and guard your own. Press {key:standings} for standings.',
     done: () => false },
 ];
 
