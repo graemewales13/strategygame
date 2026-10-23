@@ -529,3 +529,8 @@ Causes and fixes:
 - **Why.** The test match used 3 ms turns and a 60 s game-time cap. A fast machine plays 600 turns in under two real seconds, so the match had ended before those tests ran. A slower PC hid the race.
 - **Fix.** The test match's cap is now out of reach (3600 s). The end-of-match test puts the referee's clock just short of the cap, so the next turn ends the match by its own rule.
 - **Lesson.** Before pushing server work, also run `npm test` in a Linux container (`git archive HEAD | docker run -i node:22.20.0-alpine3.22 ...`), and check GitHub's runs.
+
+## T-096 - The image failed the vulnerability scan (network branch, 2026-10-24)
+- **What happened.** CI's new `deploy-checks` failed at the Trivy scan. Locally Trivy listed 21 fixable high or critical vulnerabilities in the base image's Alpine packages, and one in npm's own bundled libraries (`pacote`).
+- **Fix** (`Dockerfile`): `apk upgrade` takes the base system's latest fixes. npm, npx, corepack and yarn are removed: nothing is installed at run time.
+- **Result:** 0 high or critical fixable vulnerabilities. The image still serves the game and runs as user 1000.
