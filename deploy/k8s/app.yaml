@@ -1,0 +1,146 @@
+# One environment of Auld World (production or staging) in its own namespace: the api (one copy: SQLite has one writer), its database on
+# the server's disk, copied to S3 by Litestream, and the rights it needs to start each hourly match as a Job. Rendered by render.mjs
+# (placeholders in double braces); never applied raw. The Secret auld-secrets is made on the server from SSM Parameter Store (deploy/host/deploy.sh).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{NAMESPACE}}
+  labels: { app.kubernetes.io/part-of: auld-world, auld/env: "{{ENV}}" }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: auld-api, namespace: {{NAMESPACE}} }
+automountServiceAccountToken: true
+---
+# the api may start, read and remove match Jobs and their Services in its own namespace, and nothing else
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: auld-api, namespace: {{NAMESPACE}} }
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: auld-api, namespace: {{NAMESPACE}} }
+subjects: [{ kind: ServiceAccount, name: auld-api, namespace: {{NAMESPACE}} }]
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: auld-api }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: auld-data, namespace: {{NAMESPACE}} }
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources: { requests: { storage: 1Gi } }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: auld-config, namespace: {{NAMESPACE}} }
+data:
+  NODE_ENV: "{{NODE_ENV}}"
+  PUBLIC_URL: "{{PUBLIC_URL}}"
+  DB_FILE: /data/auld.db
+  LAUNCHER: k8s
+  K8S_NAMESPACE: "{{NAMESPACE}}"
+  MATCH_IMAGE: "{{IMAGE}}"
+  MATCH_SECRET_NAME: auld-secrets
+  API_INTERNAL_URL: "http://api.{{NAMESPACE}}.svc.cluster.local:8080"
+  TRUST_PROXY: "1"
+  AWS_REGION: "{{REGION}}"
+  MAIL: "{{MAIL}}"
+  MAIL_FROM: "{{MAIL_FROM}}"
+  AUTH_DEV: "{{AUTH_DEV}}"
+  EVERY_MIN: "{{EVERY_MIN}}"
+  MATCH_CAP_S: "{{MATCH_CAP_S}}"
+  MATCH_HOUSES: "8"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: auld-litestream, namespace: {{NAMESPACE}} }
+data:
+  litestream.yml: |
+    dbs:
+      - path: /data/auld.db
+        replicas:
+{{REPLICA}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api, namespace: {{NAMESPACE}}, labels: { app: auld-api } }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }          # never two copies on one SQLite file
+  selector: { matchLabels: { app: auld-api } }
+  template:
+    metadata: { labels: { app: auld-api }, annotations: { auld/version: "{{VERSION}}" } }
+    spec:
+      serviceAccountName: auld-api
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 20
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      initContainers:
+        - name: restore                  # a new server (or a lost disk): bring the database back from S3 before the api starts
+          image: litestream/litestream:0.3.13
+          args: ["restore", "-if-db-not-exists", "-if-replica-exists", "-config", "/etc/litestream/litestream.yml", "/data/auld.db"]
+          volumeMounts: [{ name: data, mountPath: /data }, { name: litestream, mountPath: /etc/litestream }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 512Mi } }   # (only while it starts; at 128Mi a restore was killed for memory: T-093)
+      containers:
+        - name: api
+          image: {{IMAGE}}
+          imagePullPolicy: IfNotPresent
+          envFrom: [{ configMapRef: { name: auld-config } }]
+          env:
+            - { name: AULD_VERSION, value: "{{VERSION}}" }
+            - { name: SESSION_SECRET, valueFrom: { secretKeyRef: { name: auld-secrets, key: session-secret } } }
+            - { name: MATCH_SECRET, valueFrom: { secretKeyRef: { name: auld-secrets, key: match-secret } } }
+            - { name: GOOGLE_CLIENT_ID, valueFrom: { secretKeyRef: { name: auld-secrets, key: google-client-id, optional: true } } }
+            - { name: GOOGLE_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: auld-secrets, key: google-client-secret, optional: true } } }
+            - { name: DISCORD_CLIENT_ID, valueFrom: { secretKeyRef: { name: auld-secrets, key: discord-client-id, optional: true } } }
+            - { name: DISCORD_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: auld-secrets, key: discord-client-secret, optional: true } } }
+            - { name: GITHUB_CLIENT_ID, valueFrom: { secretKeyRef: { name: auld-secrets, key: github-client-id, optional: true } } }
+            - { name: GITHUB_CLIENT_SECRET, valueFrom: { secretKeyRef: { name: auld-secrets, key: github-client-secret, optional: true } } }
+            - { name: DISCORD_WEBHOOK_URL, valueFrom: { secretKeyRef: { name: auld-secrets, key: discord-webhook-url, optional: true } } }
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 }, periodSeconds: 5, timeoutSeconds: 3 }
+          livenessProbe: { httpGet: { path: /healthz, port: 8080 }, periodSeconds: 20, timeoutSeconds: 5, failureThreshold: 6 }   # (busy for two minutes before it is restarted: the hour's rush)
+          volumeMounts: [{ name: data, mountPath: /data }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          resources: { requests: { cpu: 50m, memory: 96Mi }, limits: { cpu: "1", memory: 384Mi } }
+        - name: litestream               # copies every change of the database to S3 within seconds
+          image: litestream/litestream:0.3.13
+          args: ["replicate", "-config", "/etc/litestream/litestream.yml"]
+          volumeMounts: [{ name: data, mountPath: /data }, { name: litestream, mountPath: /etc/litestream }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 256Mi } }
+      volumes:
+        - { name: data, persistentVolumeClaim: { claimName: auld-data } }
+        - { name: litestream, configMap: { name: auld-litestream } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: api, namespace: {{NAMESPACE}} }
+spec:
+  selector: { app: auld-api }
+  ports: [{ name: http, port: 8080, targetPort: 8080 }]
+---
+# a match's server talks to nothing but the api (its result) and the cluster's DNS: no internet
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: match-egress, namespace: {{NAMESPACE}} }
+spec:
+  podSelector: { matchLabels: { app: auld-match } }
+  policyTypes: ["Egress"]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: auld-api } } }]
+      ports: [{ port: 8080, protocol: TCP }]
+    - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } } }]
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]

@@ -6,10 +6,11 @@ const { chromium } = require('playwright');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 
-const PORT = +process.env.SMOKE_PORT || 8131, BASE = `http://localhost:${PORT}`;
+// SMOKE_URL=http://host:port: use a server already running (a local k3s, or staging with the test sign-in on) instead of starting one
+const PORT = +process.env.SMOKE_PORT || 8131, BASE = process.env.SMOKE_URL || `http://localhost:${PORT}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
-  const api = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', path.join(__dirname, '..', 'server', 'api.js')], {
+  const api = process.env.SMOKE_URL ? { kill() {}, stdout: { on() {} }, stderr: { on() {} } } : spawn(process.execPath, ['--disable-warning=ExperimentalWarning', path.join(__dirname, '..', 'server', 'api.js')], {
     env: { ...process.env, PORT: String(PORT), PUBLIC_URL: BASE, AUTH_DEV: '1', NODE_ENV: 'test', EVERY_MIN: '1', OPENS_MIN: '1', MATCH_HOUSES: '3', MATCH_CAP_S: '90', MATCH_GRACE_S: '60' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

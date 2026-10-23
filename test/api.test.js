@@ -34,7 +34,10 @@ await new Promise((r) => fake.listen(0, r));
 const F = `http://127.0.0.1:${fake.address().port}`;
 
 // ---- the api, with a clock the test moves, mail caught, matches run here --------------------------------------------------------
-let clock = Date.UTC(2026, 9, 23, 13, 40);   // 13:40, twenty minutes before the 14:00 match (sign-up opens at 13:30)
+// The test's clock is moved by hand, around the next real hour H (the match server checks its tickets against the real time, so the
+// tickets must be for a match about now; a fixed date would turn the test into a time bomb). Sign-up opens at H - 30 min.
+const H = Math.ceil((Date.now() + 1) / 3600e3) * 3600e3, MIN = 60e3, SEASON = new Date(H).toISOString().slice(0, 7);
+let clock = H - 20 * MIN;   // twenty minutes before the match
 const mail = [];
 const reported = [];
 const api = await createApi({
@@ -135,7 +138,7 @@ await test('test sign-in is off unless switched on, and can never be switched on
 let matchId;
 await test('sign-up: opens thirty minutes before; first come first seated; a player can leave; the next match is made on its own', async () => {
   const s = (await ann.call('/api/schedule')).body;
-  assert.equal(s.next.startsAt, Date.UTC(2026, 9, 23, 14, 0)); assert.equal(s.next.open, true); assert.equal(s.next.houses, 3);
+  assert.equal(s.next.startsAt, H); assert.equal(s.next.open, true); assert.equal(s.next.houses, 3);
   matchId = s.next.id;
   assert.equal((await browser().call('/api/join', { method: 'POST', body: {} })).status, 401);
   const a = await ann.call('/api/join', { method: 'POST', body: {} }); assert.equal(a.status, 200); assert.equal(a.body.seat, 0);
@@ -143,14 +146,14 @@ await test('sign-up: opens thirty minutes before; first come first seated; a pla
   await bob.call('/api/leave', { method: 'POST', body: {} });
   assert.deepEqual((await ann.call('/api/schedule')).body.next.seats.map((x) => x.name), ['Ann_of_Ayr']);
   assert.equal((await bob.call('/api/join', { method: 'POST', body: {} })).body.seat, 1);
-  clock = Date.UTC(2026, 9, 23, 13, 10);
+  clock = H - 50 * MIN;
   assert.match((await browser().call('/api/schedule')).body.next.open ? 'open' : 'closed', /closed/);
-  clock = Date.UTC(2026, 9, 23, 13, 59, 50);
+  clock = H - 10e3;
 });
 
 let A, B;
 await test('the hour: the match is launched for its players; each gets a ticket and plays it through the api; the copies agree', async () => {
-  clock = Date.UTC(2026, 9, 23, 14, 0, 2);
+  clock = H + 2e3;
   await api.service.tick(clock);
   assert.equal(api.db.prepare('SELECT status FROM matches WHERE id = ?').get(matchId).status, 'live');
   assert.equal((await browser().call('/api/play')).status, 401);
@@ -162,34 +165,34 @@ await test('the hour: the match is launched for its players; each gets a ticket 
   const n = Math.min(A.next, B.next) - 1; while (A.next <= n) A.step(1); while (B.next <= n) B.step(1);
   assert.equal(A.next, B.next); assert.equal(stateHash(A.game), stateHash(B.game), 'both copies are the same after the same turns');
   assert.equal(A.seat, 0); assert.deepEqual(A.config.humans, [0, 1]);
-  assert.equal((await browser().call('/api/schedule')).body.next.startsAt, Date.UTC(2026, 9, 23, 15, 0), 'the next hour is on the board');
+  assert.equal((await browser().call('/api/schedule')).body.next.startsAt, H + 60 * MIN, 'the next hour is on the board');
 });
 
 await test('the end: the result is recorded once; points reach the league, this month and all time; recent matches name the players', async () => {
   await until(() => { A.step(400); B.step(400); return A.result && B.result; }, 60000, 'the end');
   await until(() => api.db.prepare('SELECT status FROM matches WHERE id = ?').get(matchId).status === 'finished', 5000, 'the result');
-  const rows = (await browser().call('/api/league?season=2026-10')).body.rows;
+  const rows = (await browser().call(`/api/league?season=${SEASON}`)).body.rows;
   assert.equal(rows.length, 2); assert.deepEqual(rows.map((r) => r.name).sort(), ['Ann_of_Ayr', 'Bob']);
   assert.ok(rows.every((r) => r.played === 1 && r.points > 0));
-  assert.deepEqual((await browser().call('/api/league?season=2026-09')).body.rows, []);
+  assert.deepEqual((await browser().call('/api/league?season=2000-01')).body.rows, []);
   assert.equal((await browser().call('/api/league')).body.rows.length, 2);
   const recent = (await browser().call('/api/recent')).body.matches[0];
   assert.equal(recent.id, matchId); assert.equal(recent.places.filter((p) => p.name).length, 2);
-  const page = await (await fetch(`${base}/league?season=2026-10`)).text(); assert.match(page, /Ann_of_Ayr/);
+  const page = await (await fetch(`${base}/league?season=${SEASON}`)).text(); assert.match(page, /Ann_of_Ayr/);
   // a replayed or forged result changes nothing
   const text = api.db.prepare('SELECT result FROM matches WHERE id = ?').get(matchId).result;
   const again = await fetch(`${base}/internal/results`, { method: 'POST', body: text, headers: { 'X-Auld-Sig': signBody('dev-match-secret', text) } });
   assert.equal(again.status, 200);
   const forged = await fetch(`${base}/internal/results`, { method: 'POST', body: text.replace('"points":', '"points":9'), headers: { 'X-Auld-Sig': 'nope' } });
   assert.equal(forged.status, 403);
-  assert.deepEqual((await browser().call('/api/league?season=2026-10')).body.rows.map((r) => r.points), rows.map((r) => r.points));
+  assert.deepEqual((await browser().call(`/api/league?season=${SEASON}`)).body.rows.map((r) => r.points), rows.map((r) => r.points));
   A.close(); B.close();
 });
 
 await test('names in the league are written safely on the page', async () => {
   const id = api.db.prepare("SELECT id FROM users WHERE username = 'Bob'").get().id;
   api.db.prepare("UPDATE users SET username = '<b>x</b>' WHERE id = ?").run(id);   // (cannot be chosen; written here to prove the page escapes)
-  const page = await (await fetch(`${base}/league?season=2026-10`)).text();
+  const page = await (await fetch(`${base}/league?season=${SEASON}`)).text();
   assert.ok(!page.includes('<b>x</b>') && page.includes('&lt;b&gt;x&lt;/b&gt;'));
   api.db.prepare("UPDATE users SET username = 'Bob' WHERE id = ?").run(id);
 });
@@ -198,7 +201,7 @@ await test('deleting an account: signed out, the address and sign-ins gone, the 
   assert.equal((await bob.call('/api/me/delete', { method: 'POST', body: {} })).status, 400, 'asks for confirmation');
   assert.equal((await bob.call('/api/me/delete', { method: 'POST', body: { confirm: 'DELETE' } })).status, 200);
   assert.equal((await bob.call('/api/me')).body.user, null);
-  const rows = (await browser().call('/api/league?season=2026-10')).body.rows;
+  const rows = (await browser().call(`/api/league?season=${SEASON}`)).body.rows;
   assert.ok(rows.some((r) => /^Fallen house #\d+$/.test(r.name))); assert.ok(!rows.some((r) => r.name === 'Bob'));
   assert.equal(api.db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'bob@example.com'").get().n, 0);
 });

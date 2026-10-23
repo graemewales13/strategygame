@@ -4,7 +4,8 @@
 // Kubernetes the front door (Caddy) sends straight to the match, and which this api also passes through (local runs, and as a fallback).
 import http from 'node:http';
 import net from 'node:net';
-import { readFile, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
@@ -80,7 +81,7 @@ export async function createApi(s = {}) {
     }
     const need = () => { if (!user) { json(res, 401, { error: 'Sign in first.' }); return false; } return true; };
 
-    if (method === 'GET' && path === '/api/config') return json(res, 200, { signIns: ['email', ...Object.keys(providers)], dev: env.AUTH_DEV === '1', everyMin: +env.EVERY_MIN || 60, capS: +env.MATCH_CAP_S || MATCH.capS, mail: mailer.mode });
+    if (method === 'GET' && path === '/api/config') return json(res, 200, { version: env.AULD_VERSION || 'dev', signIns: ['email', ...Object.keys(providers)], dev: env.AUTH_DEV === '1', everyMin: +env.EVERY_MIN || 60, capS: +env.MATCH_CAP_S || MATCH.capS, mail: mailer.mode });
     if (method === 'GET' && path === '/api/me') return json(res, 200, { user: auth.userView(user) });
 
     if (method === 'POST' && path === '/api/auth/email/start') {
@@ -159,18 +160,25 @@ export async function createApi(s = {}) {
     const rel = normalize(p).replace(/^[\\/]+/, '').split(sep).join('/');
     if (rel.includes('..') || !PUBLIC.some((x) => (x.endsWith('/') ? rel.startsWith(x) : rel === x))) { res.writeHead(404, headers({ 'Content-Type': 'text/plain' })).end('not found'); return; }
     const f = join(ROOT, rel);
-    try {
-      const st = await stat(f); if (!st.isFile()) throw new Error('not a file');
-      const data = await readFile(f), type = TYPES[extname(f).toLowerCase()] || 'application/octet-stream';
-      res.writeHead(200, headers({ 'Content-Type': type, 'Cache-Control': rel === 'index.html' ? 'no-cache' : 'public, max-age=3600', ...(type.startsWith('text/html') ? { 'Content-Security-Policy': CSP } : {}) }));
-      res.end(req.method === 'HEAD' ? undefined : data);
-    } catch { res.writeHead(404, headers({ 'Content-Type': 'text/plain' })).end('not found'); }
+    let st; try { st = await stat(f); if (!st.isFile()) throw new Error('not a file'); } catch { res.writeHead(404, headers({ 'Content-Type': 'text/plain' })).end('not found'); return; }
+    // Cached by the browser: code with the build's ?v= stamp for a year (a new build has a new stamp), the art for a day, the page itself
+    // always asked again. Every answer carries a fingerprint (ETag), so a browser that has a file gets "not modified" instead of the file.
+    // Files are streamed, never read whole: at the top of the hour everyone loads the painted art at once.
+    const type = TYPES[extname(f).toLowerCase()] || 'application/octet-stream', etag = `W/"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
+    const cache = rel === 'index.html' ? 'no-cache' : url.searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'public, max-age=86400';
+    const h = headers({ 'Content-Type': type, 'Cache-Control': cache, ETag: etag, 'Last-Modified': st.mtime.toUTCString(), ...(type.startsWith('text/html') ? { 'Content-Security-Policy': CSP } : {}) });
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, h); res.end(); return; }
+    res.writeHead(200, { ...h, 'Content-Length': st.size });
+    if (req.method === 'HEAD') { res.end(); return; }
+    const s = createReadStream(f);
+    s.on('error', () => res.destroy()); res.on('close', () => s.destroy());
+    s.pipe(res);
   }
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     try {
-      if (url.pathname === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }).end('ok'); return; }
+      if (url.pathname === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }).end(`ok ${env.AULD_VERSION || 'dev'}`); return; }
       if (url.pathname === '/internal/results' && req.method === 'POST') { const text = await rawBody(req); const code = service.result(text, req.headers['x-auld-sig']); res.writeHead(code).end(); return; }
       if (url.pathname.startsWith('/internal/')) { res.writeHead(404).end(); return; }
       if (url.pathname === '/league') { res.writeHead(200, headers({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'Content-Security-Policy': CSP })).end(leaguePage(service, url.searchParams.get('season') || monthOf(now()))); return; }

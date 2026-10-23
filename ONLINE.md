@@ -285,7 +285,7 @@ Proposed list (easy to change):
 | 2 | Match container: tickets, 8 seats, referee, repair on desync, preset messages, result. **Done** 2026-10-23: `server/match.js`, `server/ticket.js`, `server/ws.js`, `js/online.js`; `test/match.test.js` | network |
 | 3 | api: database, sign-in (email code, Google, Discord, GitHub), usernames, sessions, scheduler, launcher, results, points, league. **Done** 2026-10-23: `server/api.js`, `auth.js`, `db.js`, `service.js`, `launch.js`, `mail.js`, `names.js`; `test/api.test.js` | network |
 | 4 | Online menu in the game: sign in, username, next match and countdown, join, league table, messages panel, results screen. **Done** 2026-10-23: `js/onlineui.js`, `main.js` (hourly matches, reconnecting); `tools/online-smoke.cjs` in CI | network |
-| 5 | Image, Kubernetes manifests, Caddy, Litestream | network |
+| 5 | Image, Kubernetes manifests, Caddy, Litestream. **Done** 2026-10-23: `Dockerfile`, `deploy/k8s/` (app, edge, render.mjs), `deploy/host/deploy.sh`, `server/aws.js`; proven on a local k3s (T-093) | network |
 | 6 | Terraform (replaces the current single-server compose setup) | network |
 | 7 | GitHub Actions: CI, release to staging, promotion to production, Terraform | network |
 | 8 | Docs and runbook, then a staging rehearsal with real browsers | network |

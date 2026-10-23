@@ -1,3 +1,4 @@
+# The Dockerfile copies named folders only; these keep the build context small and keep work-in-progress art out.
 .git
 .github
 node_modules
@@ -5,8 +6,10 @@ legacy
 logs
 test
 tools
+deploy
 assets/art-drop
 *.log
+*.md
 .vscode
 .idea
-deploy/terraform
+.claude

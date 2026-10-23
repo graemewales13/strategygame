@@ -1,0 +1,66 @@
+# The front door for both environments: Caddy on the server's ports 80 and 443 (hostPort: no cloud load balancer to pay for), with
+# free certificates from Let's Encrypt, renewed by itself and kept on the server's disk. A match's WebSocket (/m/<id>/ws) goes straight
+# to that match's Service, so restarting the api never drops a match; everything else goes to the api. /internal/ is not reachable from
+# outside. Rendered by render.mjs (placeholders in double braces).
+apiVersion: v1
+kind: Namespace
+metadata: { name: edge, labels: { app.kubernetes.io/part-of: auld-world } }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: caddy, namespace: edge }
+data:
+  Caddyfile: |
+    {
+    	email {{ACME_EMAIL}}
+    }
+    (auld) {
+    	@internal path /internal/*
+    	respond @internal 404
+    	@match path_regexp m ^/m/([a-z0-9]{8})/ws$
+    	reverse_proxy @match match-{re.m.1}.{args[0]}.svc.cluster.local:8080
+    	encode zstd gzip
+    	# the api's address is looked up once a minute and kept, not at every request (look-ups failed under load: T-093)
+    	reverse_proxy {
+    		dynamic a api.{args[0]}.svc.cluster.local 8080 {
+    			refresh 1m
+    		}
+    		lb_try_duration 10s
+    	}
+    }
+    {{PROD_SITE}} {
+    	import auld auld
+    }
+    {{STAGING_SITE}} {
+    	import auld auld-staging
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: caddy, namespace: edge, labels: { app: caddy } }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }          # one copy holds ports 80 and 443
+  selector: { matchLabels: { app: caddy } }
+  template:
+    metadata: { labels: { app: caddy }, annotations: { auld/caddyfile: "{{CADDY_HASH}}" } }
+    spec:
+      # An ordinary pod holding the server's ports through hostPort (not the host's network): its look-ups of the api and of each match
+      # go through the cluster's DNS like any pod's. On the host network they failed under load (T-093).
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      containers:
+        - name: caddy
+          image: caddy:2.10.0-alpine
+          args: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+          ports: [{ containerPort: 80, hostPort: 80 }, { containerPort: 443, hostPort: 443 }]
+          volumeMounts:
+            - { name: config, mountPath: /etc/caddy }
+            - { name: data, mountPath: /data }
+            - { name: state, mountPath: /config }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"], add: ["NET_BIND_SERVICE"] } }
+          resources: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 192Mi } }
+      volumes:
+        - { name: config, configMap: { name: caddy } }
+        - { name: data, hostPath: { path: /var/lib/auld/caddy, type: DirectoryOrCreate } }   # the certificates: kept across restarts
+        - { name: state, emptyDir: {} }

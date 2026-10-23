@@ -468,3 +468,21 @@ Causes and fixes:
   3. exchange a Herald message
   4. see the results, and appear in the league
   - The referee never had to correct either browser.
+
+## T-093 - The container and the Kubernetes set-up, tried on a real k3s (network branch, 2026-10-23; ONLINE.md step 5)
+- **The image** (`Dockerfile`) is one image for the api and every match, `node:22.20.0-alpine3.22`, running as user 1000. It copies only the game's files and `server/`, and records the release in `AULD_VERSION`, which `/healthz` and `/api/config` report. No npm packages at all: SES is called with our own request signing (`server/aws.js`), which reproduces AWS's published worked example byte for byte (`test/aws.test.js`), using the server's role through IMDSv2.
+- **The manifests** (`deploy/k8s/`, filled in by `render.mjs`, checked by `test/deploy.test.js`):
+  - **Each environment in its own namespace:** the api (one copy, `Recreate`, read-only root filesystem, all capabilities dropped), its SQLite on a 1 Gi volume, and Litestream copying it to `s3://<bucket>/db/<env>/`. A start-up step restores the database from S3 on a new server.
+  - **The api's permissions:** a Role to create, read and delete match Jobs and Services in its own namespace only.
+  - **A network policy:** a match pod can talk only to the api and to DNS.
+  - **The front door** (`edge`): Caddy on ports 80 and 443 with Let's Encrypt. A match's WebSocket `/m/<id>/ws` goes straight to `match-<id>`, so an api restart never drops a match. Everything else goes to the api, and `/internal/` answers 404.
+  - **The server-side script:** `deploy/host/deploy.sh` (run through SSM) applies a release's rendered manifests from S3 with the secrets from SSM Parameter Store, and in production waits out the minutes round the hour.
+- **Tried end to end on k3s v1.33.4 in Docker on this PC.** Image, manifests, Caddy, Litestream, a match launched as a Job, a WebSocket through Caddy to it, the result back past the network policy into the league, finished Jobs and Services removed, and the database wiped and restored. That found five problems, all fixed:
+  1. **Liveness probe under load.** While browsers loaded the 190 MB of art, the api answered `/healthz` too slowly for the default 1 s probe and was restarted. Files are now streamed, not read whole, and cached properly: code with the build stamp for a year, art for a day, every file with an ETag answered with 304. The probes allow 5 s and two minutes of failures.
+  2. **Caddy on the host network.** Its look-ups of the api's name failed under load ("operation not permitted", then timeouts). Caddy is now an ordinary pod holding ports 80 and 443 through `hostPort`.
+  3. **A DNS look-up for every request.** Caddy now looks up the api's address once a minute (`dynamic a ... refresh 1m`). A match's address is looked up only when a player connects.
+  4. **The restore was killed for memory.** Litestream's restore needed more than 128 Mi, so a new server could never have come up. It now has 512 Mi while it runs; the sidecar has 256 Mi.
+  5. **A match pod takes a few seconds to start**, and a ticket can arrive first. The game already retries; `tools/cluster-check.mjs` now does too.
+- **`tools/cluster-check.mjs <url>`** plays a whole match against a running deployment without browsers: two test players, a ticket each, the WebSocket through the front door, turns, a Herald message, the result and the league. CI runs it on staging after each deploy. On a busy PC two game-rendering browsers on top of k3s were too much (load average 20), so the browser test (`online-smoke`) runs in CI against the plain api.
+- **Also fixed:** the api test used a fixed date (14:00 today). Once the real clock passed that ticket's expiry it failed: a time bomb. It now works round the next real hour.
+- **Removed:** `deploy/docker-compose.yml` and `deploy/Caddyfile` (the single-server setup this replaces).
