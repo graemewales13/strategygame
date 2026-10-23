@@ -443,3 +443,28 @@ Causes and fixes:
   - The test sign-in (`AUTH_DEV=1`) refuses to start in production, as do missing secrets.
 - **Database:** one SQLite file through Node's built-in `node:sqlite` (no native packages; run with `--disable-warning=ExperimentalWarning`). Migrations are numbered in `server/db.js`.
 - **Tests:** `test/api.test.js` (13). It runs a whole hour against a fake OAuth provider, with two players signing in, signing up, playing through the api's WebSocket pass-through, and the result reaching the league.
+
+## T-092 - The online screens (network branch, 2026-10-23; ONLINE.md step 4)
+- **The plaque.** A "Play online" plaque sits on the main menu's landscape, below the house banners, with the next match's time. It shows only when the page was served by the api (`/api/config` answers), so plain file serving stays single-player. It is CSS (wood, brass, Cinzel) until the painted plaque arrives (ARTREQUIREMENTS priority 22).
+- **The online screen** (`js/onlineui.js`) holds:
+  - sign-in (an email code, or a provider button for each one configured; the test sign-in only when the api allows it)
+  - choosing a username
+  - the next match (its time, a countdown, who has signed up, Join and Leave)
+  - the league (this month and all time, with a Report link beside other players' names)
+  - recent matches, Sign out, and Delete my account (type DELETE)
+  - **Joining.** A player who has signed up is pulled into the match when it starts. The screen checks every second around the start and every 5 s otherwise.
+- **In the match** (`main.js`):
+  - `playHourly` connects with the ticket, and shows who is here and how long the match waits for the rest.
+  - The Herald button sends preset messages to everyone or one player, naming a house where the message needs one. Messages appear in a feed, and any player can be muted.
+  - A dropped connection is retried with a fresh ticket (1 s, 2 s, 4 s ... up to 30 s), and the server's state brings the screen back to the match.
+  - At the end, the results screen lists every house's place and each player's points.
+- **Fixed while building it:**
+  - **Typing was wiped.** The screen redraws every few seconds, which wiped what a player was typing. It now keeps the fields' contents, focus and cursor.
+  - **Players could be missed at the start.** A match waited for its players from the hour, not from when its server came up. A launch up to 15 s late plus a starting pod could make players miss the start. The wait now counts from the later of the two, and the api checks the timetable every 5 s instead of 15.
+  - **"Two hours were up"** showed for any time limit. It now reads "Time was up", with seconds for short matches.
+- **Test** (`tools/online-smoke.cjs`, in CI). The real api and match server run with one-minute matches and a 90 s cap. Two browsers:
+  1. sign in, and join the same match (the test avoids signing up across the minute's boundary, where each would rightly be in a different match)
+  2. are pulled in when it starts
+  3. exchange a Herald message
+  4. see the results, and appear in the league
+  - The referee never had to correct either browser.

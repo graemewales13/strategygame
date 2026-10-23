@@ -43,3 +43,5 @@ jobs:
           node tools/mp-smoke.cjs | tee mp.txt
           grep -q "page errors: \[\]" mp.txt
           ! grep -q '"desync":true' mp.txt
+      - name: Two browsers play an hourly match through the api and the match server
+        run: node tools/online-smoke.cjs

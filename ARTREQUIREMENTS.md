@@ -67,7 +67,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | — | Control groups on the HUD (T36, 2026-10-18): a row of chips over the minimap | **No painting needed.** Each chip shows the existing unit card of the kind most in the group (the glyph where a kind has no card), with the number and count printed over it; the fight flash is drawn in CSS |
 | — | Keep arrows (T43, 2026-10-22): a garrisoned keep shoots back | **No painting needed.** The volleys are drawn as the tower's arrows are; the keep panel's Arrows row is text |
 | — | Grid keys (T03, 2026-10-17): the command card pressed by place (Q W E R / A S D F / Z X C V) | **No painting needed.** The key is printed in each button's top-right corner; painted button icons must leave that corner clear (priority 14) |
-| 22 | Online play: lobby, seat banners, connection marks | **Requested** (below). The lobby is a plain panel for now |
+| 22 | **Online play: the Play-online plaque and the Herald icon** (2, new 2026-10-23; the older lobby, seat banner and connection-mark brief is priority 8) | **Requested** (below). The plaque is drawn in CSS (wood, brass, Cinzel) and the Herald button is text until delivered; neither is probed until wired |
 
 ## How the game uses delivered art
 
@@ -637,3 +637,26 @@ ORDER ICON, a short loop of trodden earth path curling back on itself, two worn 
 ```
 
 Deliver: `assets/shared/ui/orders/patrol.png`. Wiring (Claude, on delivery): key it (`tools/chromakey.py`, `tools/defringe.py`), run `tools/art-lint.py`, and add `'patrol'` to `UI_KEYS.orders` in `js/art.js`; the button already asks for `uiArt('orders', 'patrol')`.
+
+## Priority 22: online play, the hourly matches (2, new 2026-10-23)
+
+The game now has hourly online matches (ONLINE.md). Two things on screen want painting. Each has a stand-in until delivered, so nothing waits on the art:
+
+| Asset | Count | Size and path | Where it shows | Until delivered |
+|---|---|---|---|---|
+| **Play-online plaque** | 1 | 640x220, `assets/menu/online-plaque.png` (keyed, transparent background) | On the main menu's painted landscape, below the house banners (about 63% across, 79% down the menu picture, 24% of its width). The game writes "PLAY ONLINE" and the next match's time over it, so **paint no words** | A CSS plaque: dark wood gradient, brass border, the menu's Cinzel lettering |
+| **Herald icon** | 1 | 128x128, `assets/shared/ui/orders/herald.png` | The Herald button in the top bar (preset messages to other players) | The word "Herald" |
+
+Plaque: the same wood, grain and brass as the menu's big board, as if a small signboard hung from a post among the banners: a horizontal oak board with bevelled edges, brass corner fittings, two short chains or a bracket at the top, the middle left plain and slightly lighter so gold lettering reads on it. It must sit naturally on the green hillside of the menu picture: light from the upper left, warm evening tones.
+
+```text
+PAINTED SIGNBOARD, a horizontal oak plank signboard with bevelled edges and small brass corner fittings, hanging from two short iron chains, plain lighter centre with no lettering, warm evening light from the upper left, the same hand-painted medieval storybook style as the Auld World menu board (dark carved oak, brass trim), transparent background, 640x220 px
+```
+
+Herald icon: in the order-icon set (priority 14), the top-right eighth left empty for the key label.
+
+```text
+ORDER ICON, a long brass herald's trumpet with a small square pennant hanging from it in plain gold cloth, angled upwards to the right, painted in the same hand-painted medieval style as the kit and research icons: brass, cloth and leather, soft shadow, readable at 32 px, transparent background, 128x128 px, top-right eighth empty
+```
+
+Wiring (Claude, on delivery): key both (`tools/chromakey.py`, `tools/defringe.py`) and run `tools/art-lint.py`. Plaque: set it as the `.onlineplaque` background in `style.css` and drop the CSS wood gradient. Herald: add `'herald'` to `UI_KEYS.orders` in `js/art.js` and draw it on `#btnHerald`.

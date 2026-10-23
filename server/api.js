@@ -39,8 +39,8 @@ export async function createApi(s = {}) {
   }
   const report = async (result) => { const body = JSON.stringify(result); const { signBody } = await import('./ticket.js'); const code = service.result(body, signBody(matchSecret, body)); if (code !== 200) throw new Error(`result refused (${code})`); };
   const launcher = s.launcher || (env.LAUNCHER === 'k8s'
-    ? k8sLauncher({ namespace: env.K8S_NAMESPACE, image: env.MATCH_IMAGE, apiUrl: env.API_INTERNAL_URL, secretName: env.MATCH_SECRET_NAME || 'auld-secrets', log })
-    : localLauncher({ secret: matchSecret, report, log, ...(s.matchOpts || {}) }));
+    ? k8sLauncher({ namespace: env.K8S_NAMESPACE, image: env.MATCH_IMAGE, apiUrl: env.API_INTERNAL_URL, secretName: env.MATCH_SECRET_NAME || 'auld-secrets', capS: +env.MATCH_CAP_S || undefined, graceS: +env.MATCH_GRACE_S || undefined, log })
+    : localLauncher({ secret: matchSecret, report, log, ...(+env.MATCH_CAP_S ? { capS: +env.MATCH_CAP_S } : {}), ...(+env.MATCH_GRACE_S ? { graceS: +env.MATCH_GRACE_S } : {}), ...(s.matchOpts || {}) }));
   const webhook = env.DISCORD_WEBHOOK_URL;
   const service = makeService({
     db, secret: matchSecret, launcher, log, everyMin: +env.EVERY_MIN || undefined, opensMin: env.OPENS_MIN !== undefined ? +env.OPENS_MIN : undefined,
@@ -195,7 +195,7 @@ export async function createApi(s = {}) {
     up.on('error', close); socket.on('error', close); up.on('close', close); socket.on('close', close);
   });
 
-  const timer = setInterval(() => service.tick(now()).catch((e) => log(`[schedule] ${e.stack || e.message}`)), s.tickMs || 15000);
+  const timer = setInterval(() => service.tick(now()).catch((e) => log(`[schedule] ${e.stack || e.message}`)), s.tickMs || 5000);   // (a match is launched within 5 s of its hour)
   return new Promise((resolve) => server.listen(s.port ?? (+env.PORT || 8080), () => resolve({
     port: server.address().port, db, service, launcher,
     close: () => { clearInterval(timer); launcher.stopAll?.(); server.closeAllConnections?.(); server.close(); },

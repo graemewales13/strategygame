@@ -3,6 +3,7 @@ import { DEFAULT_HOUSES, PLAYER, setLocalPlayer, MAP_SIZES, MAP_W, MIN_HOUSES, M
 import { Game } from './game.js';
 import { LocalHost, LockstepClient, NET } from './net.js';
 import { matchGame } from './online.js';
+import { initOnline } from './onlineui.js';
 import { Renderer, Minimap, drawCrest } from './render.js';
 import { UI } from './ui.js';
 import { loadArt } from './art.js';
@@ -23,8 +24,9 @@ await Promise.race([loadArt(), new Promise((r) => setTimeout(r, 10000))]);   // 
 const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people });
 // Online (groundwork): ?mp=<room>&name=<you> joins a room on the relay that served this page (node relay.js), or on ?relay=ws://...
 const mpRoom = params.get('mp');
-let net = null, mpStarted = false;
-const host = mpRoom ? { send: (intent) => net?.send(intent) ?? false } : new LocalHost(game);   // online, orders go to the relay and come back on their turn
+let net = null, mpStarted = false, hourly = null;   // hourly: { match, ticket, ws } while in an hourly match (js/onlineui.js)
+const local = new LocalHost(game);
+const host = { send: (intent) => (mpRoom || mpStarted ? net?.send(intent) ?? false : local.send(intent)) };   // online, orders go to the server and come back on their turn
 const renderer = new Renderer(document.getElementById('game'), game);
 // the rivals learn from the player: every match is recorded, and the playbook is re-learned between matches (never mid-match)
 let store = null; try { store = localStorage; } catch {}
@@ -68,6 +70,7 @@ ui.refreshMenu();
 drawCrest(document.getElementById('brandCrest').getContext('2d'), 18, 20, 34, 0);
 const wasPending = pendingClick();
 window.__boot = { ready: true, pending: false };
+const online = await initOnline({ ui, getGame: () => game, getNet: () => net, onPlay: (t) => playHourly(t) });   // (the plaque and online menu: only when the api served this page)
 if (mpRoom) joinOnline();
 else if (params.get('start') === '1') ui.closeMenu();
 else if (wasPending) document.getElementById('splash').click();   // they clicked while it loaded: open the menu now
@@ -131,7 +134,7 @@ function drawLobby(note = '') {
     <div class="row">Difficulty ${['easy', 'mid', 'hard'].map((d) => `<button data-mp="diff" data-v="${d}" ${c.diff === d ? 'style="border-color:#e8c35a"' : ''}>${d}</button>`).join('')}</div>
     <div class="row"><button data-mp="start">Start the match</button></div>` : net?.started ? '' : '<div class="row">Waiting for the host to start. Empty seats are played by the AI.</div>';
   el.innerHTML = `<b>Online room “${esc(mpRoom)}”</b> <small>(experimental)</small><div style="margin:6px 0">${seats || 'Connecting…'}</div>${hostCtl}${note ? `<div class="row" style="color:#e0866a">${esc(note)}</div>` : ''}`;
-  el.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:60;min-width:280px;' + (net?.started ? 'display:none' : '');
+  el.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:60;min-width:280px;' + (net?.started || hourly ? 'display:none' : '');
   void me;
 }
 function onLobbyClick(d) {
@@ -152,24 +155,64 @@ async function joinOnline() {
   net.onError = (m) => drawLobby(m.msg);
   net.onDesync = (m) => ui.toast(`Out of step with the other players at turn ${m.n}. Reload the page to rejoin the match.`, 'bad');
   net.onClose = () => { if (mpStarted) ui.toast('Lost the connection to the relay. Reload the page to rejoin.', 'bad'); else drawLobby('Lost the connection to the relay.'); };
-  net.onStart = (c) => {
-    const size = MAP_SIZES[c.size];
-    if (size && size !== MAP_W) { try { localStorage.setItem('auld-world.mapsize', c.size); } catch {} location.reload(); return; }   // the board size is read at load
-    setLocalPlayer(net.seat >= 0 ? net.seat : (c.humans?.[0] ?? 0));   // watchers see through the first player's eyes
-    matchGame(game, c);   // (the same build as every other copy and the server's referee: js/online.js)
-    ui.setGame(game); net.attach(game); renderer.resetWorld?.();
-    const splash = document.getElementById('splash'); if (splash && !splash.classList.contains('hidden')) { splash.classList.add('gone', 'hidden'); }   // the match is on: no title screens
-    mpStarted = true; ui.online = true; ui.speed = 1; ui.paused = false; drawLobby(); ui.closeMenu(); centerOnHall();
-    ui.toast(net.seat >= 0 ? `Online: you are ${game.players[PLAYER].name}.` : 'Online: watching the match.', 'good');
-  };
+  net.onStart = (c) => beginOnline(c);
   drawLobby();
   try { await net.connect(); try { sessionStorage.setItem(key, net.token); } catch {} drawLobby(); }
   catch (e) { drawLobby(`Could not join: ${e.message || e}. Start the relay with "node relay.js" and open the page it serves.`); }
+}
+// a match begins on this screen (an open room or an hourly match; also after a rejoin, when the server's state follows in attach)
+function beginOnline(c, { rejoin = false } = {}) {
+  const size = MAP_SIZES[c.size];
+  if (size && size !== MAP_W) { try { localStorage.setItem('auld-world.mapsize', c.size); } catch {} location.reload(); return; }   // the board size is read at load
+  if (!mpStarted) recorder.finish('quit');   // (an online match is not recorded for the rivals to learn from)
+  game.tap = null;
+  setLocalPlayer(net.seat >= 0 ? net.seat : (c.humans?.[0] ?? 0));   // watchers see through the first player's eyes
+  matchGame(game, c);   // (the same build as every other copy and the server's referee: js/online.js)
+  ui.setGame(game); net.attach(game); renderer.resetWorld?.();
+  const splash = document.getElementById('splash'); if (splash && !splash.classList.contains('hidden')) { splash.classList.add('gone', 'hidden'); }   // the match is on: no title screens
+  const first = !mpStarted;
+  mpStarted = true; ui.online = true; ui.speed = 1; ui.paused = false; drawLobby(); ui.closeMenu();
+  if (first || !rejoin) centerOnHall();
+  online.herald.show(!!hourly);
+  if (first) ui.toast(net.seat >= 0 ? `Online: you are ${game.players[PLAYER].name}.` : 'Online: watching the match.', 'good');
+}
+// an hourly match (ONLINE.md): the ticket the api gave, the match server's WebSocket; a dropped connection is retried with a fresh ticket
+let retry = { n: 0, timer: null };
+async function playHourly(t, again = false) {
+  hourly = t; clearTimeout(retry.timer);
+  const old = net;
+  if (old) { old.onClose = () => {}; old.close(); }
+  net = new LockstepClient({ url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${t.ws}`, ticket: t.ticket, room: t.match, build: window.__BUILD || '' });
+  net.onStart = (c) => beginOnline(c, { rejoin: again });
+  net.onLobby = (m) => { if (!net.started) drawWaiting(m); };
+  net.onSaid = (m) => online.herald.said(m);
+  net.onEnd = (r) => { online.herald.show(false); online.showResult(r); };
+  net.onResync = () => { ui.setGame(game); renderer.resetWorld?.(); };   // (the server's state replaced this copy's: the screen follows)
+  net.onError = (m) => ui.toast(m.msg, 'bad');
+  net.onClose = () => reconnect();
+  try { await net.connect(); retry.n = 0; if (!net.started) drawWaiting({ members: net.members }); }
+  catch (e) { ui.toast(`Could not reach the match: ${e.message || e}`, 'bad'); reconnect(); }
+}
+function reconnect() {
+  if (!hourly || net?.result) return;   // (the match is over: nothing to rejoin)
+  const wait = Math.min(30000, 1000 * 2 ** retry.n++);
+  ui.toast(`Lost the connection to the match. Trying again in ${Math.round(wait / 1000)} s...`, 'warn');
+  retry.timer = setTimeout(async () => {
+    try { const r = await fetch('/api/play', { headers: { 'X-Auld': '1' }, credentials: 'same-origin' }); if (r.status === 404) { ui.toast('That match has ended.', 'info'); return; } if (!r.ok) throw new Error(String(r.status)); playHourly(await r.json(), true); }
+    catch { reconnect(); }
+  }, wait);
+}
+// before an hourly match starts: who is here, and how long it waits for the rest
+function drawWaiting(m) {
+  const el = lobbyEl(), here = (m.members || []).filter((x) => x.connected).length, all = (m.members || []).length;
+  el.innerHTML = `<b>The match is gathering</b><div style="margin:6px 0">${(m.members || []).map((x) => `<div>${esc(x.name)}${x.you ? ' · you' : ''} · ${x.connected ? 'here' : '<i>not here yet</i>'}</div>`).join('')}</div>`
+    + `<div class="row">${here} of ${all} here. It starts when everyone is in${m.startsIn ? `, or in ${m.startsIn} s without the rest (the AI holds their houses until they come)` : ''}.</div>`;
+  el.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:60;min-width:300px;';
 }
 function mpStatus() {
   if ((mpStatus.t = (mpStatus.t || 0) - 1) > 0) return; mpStatus.t = 20;
   let el = document.getElementById('mpStatus');
   if (!el) { el = document.createElement('div'); el.id = 'mpStatus'; el.style.cssText = 'position:fixed;right:8px;bottom:calc(clamp(214px, 31vh, 320px) + 8px);z-index:30;font:12px Georgia,serif;color:#e8d9ae;background:rgba(20,14,8,.75);padding:2px 8px;border:1px solid #6d4d27;border-radius:3px'; document.body.appendChild(el); }
   const lag = net.behind();
-  el.innerHTML = `Online · ${esc(mpRoom)} · ${net.seat >= 0 ? `seat ${net.seat + 1}` : 'watching'} · turn ${net.next}${lag > 5 ? ` · catching up ${lag}` : ''}${net.desynced ? ' · <b style="color:#e0866a">out of step</b>' : ''}`;
+  el.innerHTML = `Online · ${esc(mpRoom || (hourly ? `match ${hourly.match}` : ''))} · ${net.seat >= 0 ? `seat ${net.seat + 1}` : 'watching'} · turn ${net.next}${lag > 5 ? ` · catching up ${lag}` : ''}${net.desynced ? ' · <b style="color:#e0866a">out of step</b>' : ''}`;
 }

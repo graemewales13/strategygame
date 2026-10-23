@@ -28,6 +28,7 @@ export function createMatch({ id, config, seats, secret, port = 8080, turnMs = N
   awayMs = MATCH.awayMs, report = async () => {}, log = console.log, retryMs = 5000, retries = 60, lingerMs = 30000, now = () => Date.now() } = {}) {
   if (!/^[a-z0-9]{8}$/.test(id || '')) throw new Error('match id must be 8 lowercase letters or digits');
   if (!secret) throw new Error('no MATCH_SECRET');
+  startAt = Math.max(startAt, now());   // the wait for players counts from when this server is up, not only from the hour (a launch and a pod take a little while)
   const houses = config.houses, roster = new Map();
   for (const s of seats) {
     if (!Number.isInteger(s.seat) || s.seat < 0 || s.seat >= houses || roster.has(s.seat)) throw new Error(`bad seat ${s.seat}`);
@@ -191,7 +192,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv
     if (!r.ok) throw new Error(`the api answered ${r.status}`);
   };
   const { seats = [], ...rest } = config;
-  createMatch({ id: env.MATCH_ID, config: rest, seats, secret, port: +env.PORT || 8080, startAt: +env.MATCH_START_AT || Date.now(), report }).then((m) => {
+  createMatch({ id: env.MATCH_ID, config: rest, seats, secret, port: +env.PORT || 8080, startAt: +env.MATCH_START_AT || Date.now(), report,
+    capS: +env.MATCH_CAP_S || undefined, graceS: +env.MATCH_GRACE_S || undefined }).then((m) => {   // (a shorter cap and wait: staging tests only)
     console.log(`[match ${env.MATCH_ID}] listening on ${m.port}; ${seats.length} player(s) signed up`);
     process.on('SIGTERM', () => { console.log(`[match ${env.MATCH_ID}] SIGTERM: ending the match`); m.stop(); });
     m.done.then(() => process.exit(0));

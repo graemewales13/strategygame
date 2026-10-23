@@ -67,7 +67,7 @@ export function makeService({ db, secret, launcher, log = console.log, everyMin 
     return { match: r.id, seat: r.seat, ws: `/m/${r.id}/ws`, ticket: signTicket(secret, { m: r.id, u: user.id, s: r.seat, n: user.username, exp }) };
   }
 
-  // every 15 s: launch what is due, give up on what was missed, and fail matches that never reported
+  // every few seconds: launch what is due, give up on what was missed, and fail matches that never reported
   let busy = false;
   async function tick(now = Date.now()) {
     if (busy) return; busy = true;

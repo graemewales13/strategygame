@@ -561,3 +561,42 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 #groupBar .grp.on { border-color: #ffe08a; box-shadow: 0 0 0 1px #ffe08a; }
 #groupBar .grp.fight { animation: grpFight 0.8s steps(2) infinite; }
 @keyframes grpFight { 50% { background: linear-gradient(180deg, #a3271c, #4a0f0a); } }
+
+/* ---- online (ONLINE.md step 4): the plaque on the main menu, the online screen, the Herald, hourly results ----------------------------- */
+/* The plaque stands in for painted art (ARTREQUIREMENTS: online plaque); the lettering is the menu's own Cinzel and gold. */
+.onlineplaque { position: absolute; left: 63%; top: 79%; width: 24%; padding: 1.1% 1.4%; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer;
+  background: linear-gradient(180deg, #4a321a, #2c1c0d 60%, #1f1308); border: 2px solid var(--brass); border-radius: 5px; box-shadow: 0 6px 18px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,230,160,.25);
+  color: #d9b45c; font-family: Cinzel, Georgia, serif; text-shadow: 0 2px 0 #000; }
+.onlineplaque span { font-size: clamp(14px, 2.1vw, 26px); font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+.onlineplaque small { font-family: Georgia, serif; font-size: clamp(10px, 1vw, 13px); color: var(--ink); letter-spacing: 0; text-transform: none; }
+.onlineplaque:hover { border-color: var(--brass-hi); color: #f3d27a; }
+#online { background: linear-gradient(180deg, rgba(6,8,10,.45), rgba(6,8,10,.8)), url(assets/ui/valley.jpg) center/cover; }
+.onlineframe .menuleft { width: 360px; }
+.onlineframe h2 { font-family: Cinzel, Georgia, serif; font-size: 20px; margin: 14px 0 8px; color: var(--brass-hi); }
+.olbox { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--brass); border-radius: 4px; background: rgba(20,13,6,.55); }
+.olbox form { display: flex; flex-direction: column; gap: 8px; }
+.olbox input, .oldev input { background: #1b1209; color: var(--ink); border: 1px solid var(--brass); border-radius: 3px; padding: 9px 10px; font: 15px Georgia, serif; }
+.olbox input:focus { outline: 2px solid var(--brass-hi); }
+a.big { display: block; text-align: center; text-decoration: none; background: linear-gradient(180deg, #4e381d, #31210f); color: var(--ink); border: 2px solid var(--brass); border-radius: 4px; padding: 8px 14px; font-size: 14px; font-weight: 700; }
+a.big:hover { color: #fff; border-color: var(--brass-hi); }
+.olor { text-align: center; color: var(--dim); font-style: italic; font-size: 13px; }
+.oldev { display: flex; gap: 6px; margin-top: 6px; } .oldev input { flex: 1; padding: 5px 8px; font-size: 13px; }
+.olerr { padding: 8px 10px; border: 1px solid #b0503a; background: rgba(90,24,12,.5); color: #f0c2b0; border-radius: 3px; font-size: 14px; }
+.olnext { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 15px; } .olnext > b { font-family: Cinzel, Georgia, serif; font-size: 26px; color: var(--brass-hi); }
+.olseats { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; } .olseat { padding: 3px 8px; border: 1px solid var(--brass); border-radius: 12px; font-size: 13px; } .olseat.you { background: rgba(185,138,58,.35); }
+.olseats .tiny { flex-basis: 100%; }
+.olacct { margin-top: 4px; }
+button.link { background: none; border: 0; padding: 0; color: var(--brass-hi); text-decoration: underline; font: inherit; cursor: pointer; }
+.olhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; } .olhead h2 { margin: 0; } .olhead .seg button { width: auto; padding: 5px 12px; font-size: 13px; }
+.oltable { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+.oltable th, .oltable td { padding: 6px 6px; border-bottom: 1px solid rgba(185,138,58,.3); text-align: left; } .oltable th { color: var(--dim); font-weight: normal; }
+.oltable td.n, .oltable th.n { text-align: right; font-variant-numeric: tabular-nums; } .oltable tr.you td { background: rgba(185,138,58,.2); }
+.olrecent { font-size: 13px; padding: 4px 0; border-bottom: 1px solid rgba(185,138,58,.2); }
+.olplaces { margin: 10px 0 14px; max-height: 40vh; overflow: auto; text-align: left; }
+#herald { position: fixed; z-index: 40; top: 54px; right: 12px; width: min(360px, 92vw); max-height: 70vh; overflow: auto; padding: 10px; background: rgba(24,16,8,.96); border: 1px solid var(--brass); border-radius: 4px; box-shadow: 0 8px 22px rgba(0,0,0,.6); }
+#herald .hdhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-family: Cinzel, Georgia, serif; }
+#herald .hdto { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 8px; font-size: 13px; } #herald .small.on { background: linear-gradient(180deg, #d8b552, #a67f2c); color: #1a1008; }
+#herald .hdgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; } #herald .hdgrid .small { text-align: left; white-space: normal; padding: 6px 8px; }
+#heraldFeed { position: fixed; z-index: 25; left: 12px; bottom: calc(clamp(214px, 31vh, 320px) + 10px); width: min(380px, 70vw); display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+#heraldFeed .hdmsg, #heraldFeed .tiny { pointer-events: auto; padding: 4px 8px; background: rgba(20,14,8,.82); border-left: 4px solid var(--brass); border-radius: 2px; font-size: 13px; color: var(--ink); }
+@media (max-width: 760px) { .onlineframe .menuleft { width: auto; } #herald .hdgrid { grid-template-columns: 1fr; } }

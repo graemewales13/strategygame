@@ -43,7 +43,7 @@ export function matchManifests(m, { image, apiUrl, secretName = 'auld-secrets', 
             command: ['node', '--disable-warning=ExperimentalWarning', 'server/match.js'],
             env: [
               { name: 'MATCH_ID', value: m.id }, { name: 'MATCH_CONFIG', value: config }, { name: 'MATCH_START_AT', value: String(m.startsAt) },
-              { name: 'API_URL', value: apiUrl }, { name: 'PORT', value: '8080' },
+              { name: 'API_URL', value: apiUrl }, { name: 'PORT', value: '8080' }, { name: 'MATCH_CAP_S', value: String(capS) }, { name: 'MATCH_GRACE_S', value: String(graceS) },
               { name: 'MATCH_SECRET', valueFrom: { secretKeyRef: { name: secretName, key: 'match-secret' } } },
             ],
             ports: [{ containerPort: 8080, name: 'ws' }],
@@ -71,12 +71,12 @@ function k8sRequest({ base = 'https://kubernetes.default.svc', tokenFile = '/var
   });
 }
 
-export function k8sLauncher({ namespace, image, apiUrl, secretName, request = k8sRequest(), log = console.log }) {
+export function k8sLauncher({ namespace, image, apiUrl, secretName, capS, graceS, request = k8sRequest(), log = console.log }) {
   if (!namespace || !image || !apiUrl) throw new Error('k8s launcher needs namespace, image and apiUrl');
   return {
     kind: 'k8s',
     async start(m) {
-      const { job, service } = matchManifests(m, { image, apiUrl, secretName, namespace });
+      const { job, service } = matchManifests(m, { image, apiUrl, secretName, namespace, ...(capS ? { capS } : {}), ...(graceS ? { graceS } : {}) });
       const j = await request('POST', `/apis/batch/v1/namespaces/${namespace}/jobs`, job);
       if (j.status === 409) log(`[launch] ${job.metadata.name} already exists`);
       else if (j.status >= 300) throw new Error(`creating the Job failed (${j.status}: ${j.body?.message || ''})`);

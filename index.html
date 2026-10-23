@@ -8,34 +8,35 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mvl0sg6w">
+<link rel="stylesheet" href="style.css?v=mvl5n00l">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mvl0sg6w",
-    "./js/art.js": "./js/art.js?v=mvl0sg6w",
-    "./js/audio.js": "./js/audio.js?v=mvl0sg6w",
-    "./js/config.js": "./js/config.js?v=mvl0sg6w",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mvl0sg6w",
-    "./js/entities.js": "./js/entities.js?v=mvl0sg6w",
-    "./js/game.js": "./js/game.js?v=mvl0sg6w",
-    "./js/gfx.js": "./js/gfx.js?v=mvl0sg6w",
-    "./js/groups.js": "./js/groups.js?v=mvl0sg6w",
-    "./js/keys.js": "./js/keys.js?v=mvl0sg6w",
-    "./js/learn.js": "./js/learn.js?v=mvl0sg6w",
-    "./js/main.js": "./js/main.js?v=mvl0sg6w",
-    "./js/map.js": "./js/map.js?v=mvl0sg6w",
-    "./js/names.js": "./js/names.js?v=mvl0sg6w",
-    "./js/net.js": "./js/net.js?v=mvl0sg6w",
-    "./js/objectives.js": "./js/objectives.js?v=mvl0sg6w",
-    "./js/online.js": "./js/online.js?v=mvl0sg6w",
-    "./js/recorder.js": "./js/recorder.js?v=mvl0sg6w",
-    "./js/render.js": "./js/render.js?v=mvl0sg6w",
-    "./js/save.js": "./js/save.js?v=mvl0sg6w",
-    "./js/terrain.js": "./js/terrain.js?v=mvl0sg6w",
-    "./js/trainui.js": "./js/trainui.js?v=mvl0sg6w",
-    "./js/ui.js": "./js/ui.js?v=mvl0sg6w"
+    "./js/ai.js": "./js/ai.js?v=mvl5n00l",
+    "./js/art.js": "./js/art.js?v=mvl5n00l",
+    "./js/audio.js": "./js/audio.js?v=mvl5n00l",
+    "./js/config.js": "./js/config.js?v=mvl5n00l",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mvl5n00l",
+    "./js/entities.js": "./js/entities.js?v=mvl5n00l",
+    "./js/game.js": "./js/game.js?v=mvl5n00l",
+    "./js/gfx.js": "./js/gfx.js?v=mvl5n00l",
+    "./js/groups.js": "./js/groups.js?v=mvl5n00l",
+    "./js/keys.js": "./js/keys.js?v=mvl5n00l",
+    "./js/learn.js": "./js/learn.js?v=mvl5n00l",
+    "./js/main.js": "./js/main.js?v=mvl5n00l",
+    "./js/map.js": "./js/map.js?v=mvl5n00l",
+    "./js/names.js": "./js/names.js?v=mvl5n00l",
+    "./js/net.js": "./js/net.js?v=mvl5n00l",
+    "./js/objectives.js": "./js/objectives.js?v=mvl5n00l",
+    "./js/online.js": "./js/online.js?v=mvl5n00l",
+    "./js/onlineui.js": "./js/onlineui.js?v=mvl5n00l",
+    "./js/recorder.js": "./js/recorder.js?v=mvl5n00l",
+    "./js/render.js": "./js/render.js?v=mvl5n00l",
+    "./js/save.js": "./js/save.js?v=mvl5n00l",
+    "./js/terrain.js": "./js/terrain.js?v=mvl5n00l",
+    "./js/trainui.js": "./js/trainui.js?v=mvl5n00l",
+    "./js/ui.js": "./js/ui.js?v=mvl5n00l"
   }
 }
 </script>
@@ -43,7 +44,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mvl0sg6w';
+window.__BUILD = 'mvl5n00l';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -91,6 +92,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
       <button id="btnSound" title="Sound on / off">Sound on</button>
       <button id="btnCouncil" title="The Council of Houses: stats, treaties, letters (C)">Council</button>
       <button id="btnMap" title="Campaign map (M / Tab)">Map</button>
+      <button id="btnHerald" class="hidden" title="Send a message to the other players (a fixed list: no free chat)">Herald</button>
       <button id="btnMenu" title="Menu (Esc)">Menu</button>
     </div>
   </header>
@@ -126,6 +128,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
       <button class="hot" id="hSkirmish" style="top:53.7%" aria-label="Skirmish"></button>
       <button class="hot" id="hOptions" style="top:62.4%" aria-label="Options"></button>
       <button class="hot" id="hQuit" style="top:71.0%" aria-label="Quit"></button>
+      <button id="hOnline" class="onlineplaque hidden" aria-label="Play online"><span>Play online</span><small id="hOnlineNext">The hourly match</small></button>
     </div>
     <div id="savebar"><span id="sbInfo"></span><button id="sbSave">Save game (F5)</button><button id="sbLoad">Load saved game (F9)</button><button id="sbAuto">Load autosave</button></div>
   </div>
@@ -198,6 +201,8 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     </div>
   </div>
 
+  <div id="herald" class="hidden"></div><div id="heraldFeed"></div>
+  <div id="online" class="screen hidden"><div class="menuframe onlineframe"><div class="menuleft" id="olLeft"></div><div class="menuright" id="olRight"></div></div></div>
   <div id="end" class="screen hidden"><div class="endbox"><h2 id="endTitle"></h2><p id="endText"></p><div><button class="big" id="eNew">New Valley</button><button class="big alt" id="eStay">Keep looking</button></div></div></div>
   <div id="quit" class="screen hidden"><div class="endbox"><h2>The gates are shut.</h2><p>You may close this tab. Reload to ride out again.</p></div></div>
 </div>
