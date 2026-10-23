@@ -77,7 +77,7 @@ await test('end rule: in an hourly match a fallen person does not end it for eve
 const reports = [];
 const id = 'm0000001';
 const M = await createMatch({ id, config: { seed: 4242, houses: 3, diff: 'mid', people: 'classic', fog: true }, seats: [{ seat: 0, user: 10, name: 'Ann' }, { seat: 1, user: 11, name: 'Bob' }],
-  secret: SECRET, port: 0, startAt: Date.now(), graceS: 30, capS: 60, awayMs: 150, report: async (r) => { reports.push(r); }, ...fast });
+  secret: SECRET, port: 0, startAt: Date.now(), graceS: 30, capS: 3600, awayMs: 150, report: async (r) => { reports.push(r); }, ...fast });
 let A, B;
 
 await test('joining: only a ticket signed for this match, this seat and this user gets in; nobody can name their own seat', async () => {
@@ -138,6 +138,9 @@ await test('rejoin: a player who drops is held by the AI, comes back with the sa
 });
 
 await test('the end: at the cap the referee\'s placings and points go to every player and, signed, to the api; the server closes', async () => {
+  // The cap is set beyond reach (a fast machine plays a minute of game in under two real seconds, and the match would end mid-test):
+  // here the referee's clock is put just short of it, so the next turn ends the match by its own rule.
+  M.referee().time = 3600 - 0.05;
   await until(() => { pumpAll(A, B); return A.result && B.result; }, 60000, 'the end of the match');
   const r = A.result;
   assert.equal(r.reason, 'cap'); assert.equal(r.match, id); assert.equal(r.places.length, 3);

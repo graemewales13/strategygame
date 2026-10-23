@@ -523,3 +523,9 @@ Causes and fixes:
     - on failure, puts back the previous release
 - **Staging** now runs a match every 5 minutes, 5 minutes long, so CI's match on staging takes about 10 minutes.
 - **DEPLOY.md** is rewritten as the runbook: one-time setup, a domain, OAuth apps, day to day, rolling back, logs, backups, secrets, local runs.
+
+## T-095 - The match tests failed on GitHub but passed here (network branch, 2026-10-24)
+- **What happened.** CI failed `npm test` on the network branch from step 4 on; on this PC every suite passed. Reproduced in a Linux `node:22.20.0-alpine3.22` container: `test/match.test.js` failed "preset messages" and "rejoin".
+- **Why.** The test match used 3 ms turns and a 60 s game-time cap. A fast machine plays 600 turns in under two real seconds, so the match had ended before those tests ran. A slower PC hid the race.
+- **Fix.** The test match's cap is now out of reach (3600 s). The end-of-match test puts the referee's clock just short of the cap, so the next turn ends the match by its own rule.
+- **Lesson.** Before pushing server work, also run `npm test` in a Linux container (`git archive HEAD | docker run -i node:22.20.0-alpine3.22 ...`), and check GitHub's runs.
