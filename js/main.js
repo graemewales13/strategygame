@@ -2,6 +2,7 @@
 import { DEFAULT_HOUSES, PLAYER, setLocalPlayer, MAP_SIZES, MAP_W, MIN_HOUSES, MAX_HOUSES, PEOPLE_KEYS } from './config.js';
 import { Game } from './game.js';
 import { LocalHost, LockstepClient, NET } from './net.js';
+import { matchGame } from './online.js';
 import { Renderer, Minimap, drawCrest } from './render.js';
 import { UI } from './ui.js';
 import { loadArt } from './art.js';
@@ -155,8 +156,7 @@ async function joinOnline() {
     const size = MAP_SIZES[c.size];
     if (size && size !== MAP_W) { try { localStorage.setItem('auld-world.mapsize', c.size); } catch {} location.reload(); return; }   // the board size is read at load
     setLocalPlayer(net.seat >= 0 ? net.seat : (c.humans?.[0] ?? 0));   // watchers see through the first player's eyes
-    game.reset({ seed: c.seed, houses: c.houses, fog: c.fog, diff: c.diff, people: c.people, humans: c.humans });
-    game.playbook = c.playbook || null;
+    matchGame(game, c);   // (the same build as every other copy and the server's referee: js/online.js)
     ui.setGame(game); net.attach(game); renderer.resetWorld?.();
     const splash = document.getElementById('splash'); if (splash && !splash.classList.contains('hidden')) { splash.classList.add('gone', 'hidden'); }   // the match is on: no title screens
     mpStarted = true; ui.online = true; ui.speed = 1; ui.paused = false; drawLobby(); ui.closeMenu(); centerOnHall();

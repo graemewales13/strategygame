@@ -4,7 +4,8 @@
 // The relay never runs the simulation: it keeps the turn clock, stamps every order with its sender's seat, broadcasts turns,
 // compares state fingerprints (desync check) and lets a dropped player rejoin. Protocol: see js/net.js.
 import http from 'node:http';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { wsAccept } from './server/ws.js';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,44 +13,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 // limits for a public server: rooms, people per room (five seats and a few watchers), message size (a learned playbook is the largest)
-const MAX_ROOMS = 500, MAX_MEMBERS = 8, MAX_MESSAGE = 1 << 20, PING_MS = 25000, DEAD_MS = 70000;
+const MAX_ROOMS = 500, MAX_MEMBERS = 8, PING_MS = 25000, DEAD_MS = 70000;
 const MAX_SEATS = 5, MAX_INTENTS_PER_TURN = 40, CONFIG_KEYS = ['seed', 'houses', 'diff', 'people', 'size', 'fog', 'playbook'];
-
-// ---- a minimal WebSocket (RFC 6455): text frames, ping/pong, close; client frames are masked, server frames are not -------------
-function wsAccept(req, socket, onOpen) {
-  const key = req.headers['sec-websocket-key'];
-  if (!key || (req.headers.upgrade || '').toLowerCase() !== 'websocket') { socket.destroy(); return; }
-  const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
-  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
-  socket.setNoDelay(true);
-  const conn = { open: true, seen: Date.now(), socket, onmessage: () => {}, onclose: () => {}, send: (text) => sendFrame(socket, 0x1, Buffer.from(text)), ping: () => sendFrame(socket, 0x9, Buffer.alloc(0)), close: () => { if (conn.open) { sendFrame(socket, 0x8, Buffer.alloc(0)); socket.end(); } } };
-  let buf = Buffer.alloc(0), parts = [];
-  socket.on('data', (chunk) => {
-    buf = Buffer.concat([buf, chunk]); conn.seen = Date.now();
-    for (;;) {
-      if (buf.length < 2) return;
-      const fin = buf[0] & 0x80, op = buf[0] & 0x0f, masked = buf[1] & 0x80; let len = buf[1] & 0x7f, at = 2;
-      if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); at = 4; }
-      else if (len === 127) { if (buf.length < 10) return; len = Number(buf.readBigUInt64BE(2)); at = 10; }
-      if (len > MAX_MESSAGE) { socket.destroy(); return; }   // nobody sends a megabyte of orders
-      const need = at + (masked ? 4 : 0) + len; if (buf.length < need) return;
-      let data = buf.subarray(at + (masked ? 4 : 0), need);
-      if (masked) { const m = buf.subarray(at, at + 4); data = Buffer.from(data); for (let i = 0; i < data.length; i++) data[i] ^= m[i & 3]; }
-      buf = buf.subarray(need);
-      if (op === 0x8) { conn.close(); return; }
-      if (op === 0x9) { sendFrame(socket, 0xa, data); continue; }
-      if (op === 0x1 || op === 0x0) { parts.push(data); if (fin) { const text = Buffer.concat(parts).toString('utf8'); parts = []; try { conn.onmessage(text); } catch (e) { console.error('[relay]', e); } } }
-    }
-  });
-  const gone = () => { if (conn.open) { conn.open = false; conn.onclose(); } };
-  socket.on('close', gone); socket.on('end', gone); socket.on('error', gone);
-  onOpen(conn);
-}
-function sendFrame(socket, op, data) {
-  if (socket.destroyed) return;
-  const n = data.length, head = n < 126 ? Buffer.from([0x80 | op, n]) : n < 65536 ? Buffer.from([0x80 | op, 126, n >> 8, n & 255]) : (() => { const h = Buffer.alloc(10); h[0] = 0x80 | op; h[1] = 127; h.writeBigUInt64BE(BigInt(n), 2); return h; })();
-  socket.write(Buffer.concat([head, data]));
-}
 
 // ---- rooms -----------------------------------------------------------------------------------------------------------------------
 export function createRelay({ port = 8080, turnMs = 100, serveFiles = true, log = console.log, awayMs = 30000 } = {}) {

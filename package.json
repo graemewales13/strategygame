@@ -6,8 +6,8 @@
   "scripts": {
     "serve": "python3 -m http.server 8000",
     "stamp": "node tools/stamp.js",
-    "check": "for f in js/*.js relay.js serve.js; do node --check $f || exit 1; done",
-    "test": "npm run check && node test/rules.test.js && node test/learn.test.js && AULD_MAP=112 node test/sim.test.js && node test/perf.test.js && node test/net.test.js",
+    "check": "for f in js/*.js server/*.js relay.js serve.js; do node --check $f || exit 1; done",
+    "test": "npm run check && node test/rules.test.js && node test/learn.test.js && AULD_MAP=112 node test/sim.test.js && node test/perf.test.js && node test/net.test.js && AULD_MAP=112 node test/match.test.js",
     "test:big": "node test/big.test.js",
     "lint:art": "python3 tools/art-lint.py"
   },

@@ -45,8 +45,9 @@ export class Game {
   // title screens show the whole valley under the menu: the view ignores fog until the match begins (never affects the sim)
   get fogOn() { return this._fog && !this.titleView; }
   set fogOn(v) { this._fog = v; }
-  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, humans = [0] } = {}) {
-    this.humans = humans.slice();   // the seats people play (the rest are AI); a networked match has several
+  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, humans = [0], endRule = null } = {}) {
+    this.humans = humans.slice();
+    this.endRule = endRule === 'conquest' ? 'conquest' : null;   // 'conquest' (hourly online matches): only the last house standing ends it; the match server ends it otherwise   // the seats people play (the rest are AI); a networked match has several
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
     this.asks = [];   // the player's envoys on the road to rival houses: { from, to, state, coin, at } (coin: offered with a peace)
     this.losses = {}; this.spyIntel = {}; this._stance = {};   // nothing of the last match's wars or spies carries over
@@ -3522,6 +3523,10 @@ export class Game {
   // Victory is conquest only: the royal line of every rival house must end. Wealth and village share no longer win the game (they still count in the standings).
   checkEnd(dt) {
     const living = this.players.filter((p) => p.alive).map((p) => p.team), humans = this.humans || [0];
+    if (this.endRule === 'conquest') {   // an hourly match: people who fall watch on; the match server ends it at the cap or when every person has fallen
+      if (living.length === 1) this.outcome = { result: humans.includes(living[0]) ? 'victory' : 'defeat', kind: 'conquest', winner: living[0], reason: 'The last king of every rival house is dead.' };
+      return;
+    }
     // one person: the match ends with their line. Several (a networked match): it ends when every person's line is gone or one house is
     // left, and a person whose house falls watches on. `winner` lets each screen say victory or defeat for its own seat.
     if (humans.length <= 1 && !this.players[humans[0] ?? 0].alive) { this.outcome = { result: 'defeat', kind: 'fallen', winner: living.length === 1 ? living[0] : null, reason: 'The last of your royal line is dead.' }; return; }
@@ -3544,7 +3549,7 @@ export class Game {
     const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
     return {
       v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
-      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, humans: this.humans || [0], forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {}, asks: this.asks || [],
+      time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, humans: this.humans || [0], endRule: this.endRule || null, forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {}, asks: this.asks || [],
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
@@ -3556,7 +3561,7 @@ export class Game {
     this.titleView = false;
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
     if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
-    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder, humans: d.humans || [0] });
+    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder, humans: d.humans || [0], endRule: d.endRule || null });
     this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this.asks = d.asks || []; this._stance = {};
     this._ug = null; this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;

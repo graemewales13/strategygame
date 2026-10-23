@@ -67,8 +67,10 @@ export function stateHash(g) {
  * Hooks: onLobby(msg), onStart(config), onDesync(msg), onError(msg), onClose().
  */
 export class LockstepClient {
-  constructor({ url, room, name = 'Player', build = '', token = null, WebSocketImpl = globalThis.WebSocket }) {
-    Object.assign(this, { url, room, name, build, token, WS: WebSocketImpl });
+  constructor({ url, room, name = 'Player', build = '', token = null, ticket = null, WebSocketImpl = globalThis.WebSocket }) {
+    Object.assign(this, { url, room, name, build, token, ticket, WS: WebSocketImpl });   // ticket: an hourly match (server/match.js); room/token: an open room (relay.js)
+    this.pendingSnap = null; this.resyncs = 0; this.result = null; this.phase = null;
+    this.onResync = this.onSaid = this.onEnd = () => {};
     this.seat = -1; this.isHost = false; this.config = null; this.members = [];
     this.game = null; this.turns = new Map(); this.next = 0; this.latest = -1; this.desynced = null; this.started = false;
     this.onLobby = this.onStart = this.onDesync = this.onError = this.onClose = () => {};
@@ -76,7 +78,7 @@ export class LockstepClient {
   connect() {
     return new Promise((resolve, reject) => {
       const ws = (this.ws = new this.WS(this.url));
-      ws.onopen = () => this.raw({ t: 'hello', room: this.room, name: this.name, build: this.build, token: this.token, v: NET.version });
+      ws.onopen = () => this.raw({ t: 'hello', room: this.room, name: this.name, build: this.build, token: this.token, ticket: this.ticket || undefined, v: NET.version });
       ws.onerror = (e) => reject(e?.error || new Error('could not reach the relay'));
       ws.onclose = () => this.onClose();
       ws.onmessage = (e) => {
@@ -90,16 +92,27 @@ export class LockstepClient {
   raw(m) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); }
   receive(m) {
     switch (m.t) {
-      case 'welcome': this.seat = m.seat; this.isHost = !!m.host; this.token = m.token; this.members = m.members || []; this.config = m.config; break;
-      case 'lobby': this.members = m.members; this.config = m.config; this.isHost = !!m.members.find((x) => x.you)?.host; this.onLobby(m); break;
+      case 'welcome': this.seat = m.seat; this.isHost = !!m.host; this.token = m.token ?? this.token; this.members = m.members || []; this.config = m.config; this.phase = m.phase ?? null; break;
+      case 'lobby': this.members = m.members; if (m.config) this.config = m.config; this.isHost = !!m.members.find((x) => x.you)?.host; this.onLobby(m); break;
       case 'start': this.config = m.config; this.started = true; this.turns.clear(); this.next = 0; this.latest = -1; this.onStart(m.config); break;
-      case 'catchup':   // a rejoin: the whole match so far, to replay
+      case 'catchup':   // a rejoin. An hourly match sends the referee's state (snap, after turn n); an open room, every turn so far to replay
+        if (m.snap) {
+          this.config = m.config; this.started = true; this.turns.clear(); this.pendingSnap = m.snap; this.next = m.n + 1; this.latest = m.n;
+          if (this.game) this.attach(this.game);   // (already playing: take the state at once)
+          this.onStart(m.config, { rejoin: true }); break;
+        }
         this.config = m.config; this.started = true; this.turns.clear(); this.next = 0; this.latest = m.now - 1;
         for (let n = 0; n < m.now; n++) this.turns.set(n, []);
         for (const [n, intents] of m.turns) this.turns.set(n, intents);
         this.onStart(m.config, { rejoin: true }); break;
       case 'turn': this.turns.set(m.n, m.intents); this.latest = Math.max(this.latest, m.n); break;
       case 'desync': this.desynced = m; this.onDesync(m); break;
+      case 'resync':   // this copy drifted from the referee's: take the referee's state (after turn n) and carry on from the next turn
+        if (this.game) this.game.restore(m.snap); else this.pendingSnap = m.snap;
+        for (const k of [...this.turns.keys()]) if (k <= m.n) this.turns.delete(k);
+        this.next = m.n + 1; this.latest = Math.max(this.latest, m.n); this.resyncs++; this.desynced = null; this.onResync(m); break;
+      case 'said': this.onSaid(m); break;   // a preset message: { from, id, house, to }; the words come from js/online.js QUICK
+      case 'end': this.result = m.result; this.onEnd(m.result); break;   // an hourly match is over: placings and points
       case 'error': this.onError(m); break;
     }
   }
@@ -107,7 +120,9 @@ export class LockstepClient {
   send(intent) { const { team, ...rest } = intent; this.raw({ t: 'intent', intent: rest }); return true; }
   configure(config) { this.raw({ t: 'config', config }); }
   start() { this.raw({ t: 'start' }); }
-  attach(game) { this.game = game; }
+  attach(game) { this.game = game; if (this.pendingSnap) { game.restore(this.pendingSnap); this.pendingSnap = null; } }
+  // a preset message (js/online.js QUICK): its id, the house it names (a seat number) if it names one, and to whom (-1: everyone)
+  say(id, house = null, to = -1) { this.raw({ t: 'say', id, house: house ?? undefined, to }); }
   behind() { return this.latest - this.next + 1; }
   /** Apply every turn that has arrived, in order (at most `max` this call). Returns how many were applied. */
   step(max = NET.maxPerFrame) {

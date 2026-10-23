@@ -398,3 +398,24 @@ Causes and fixes:
 - **Result** (8 AI houses, standard board, on a 4-core Intel N95 mini PC): minute 30 took 50 s of computing per simulated minute, now about 25 s; the longest ticks fell from 0.6 s to about 0.2 s. A typical laptop core is roughly twice as fast, so a long 8-house match needs about a fifth to a quarter of one core. The path search opens 2.7 times fewer squares (6 minutes: 7.68M before, 2.89M now).
 - **Kept from creeping back:** `test/big.test.js` counts the work (squares the path search opens, searches, influence reckonings) over 6 minutes of 8 houses and fails past a budget. Counted, not timed, so it gives the same answer on any machine.
 - **Still to do (T18):** run the simulation in a Web Worker so a slow tick never stutters the drawing; the AI's building-spot search (`findSpot`) and the per-tick unit separation are the next largest costs.
+
+## T-090 - The hourly match server (network branch, 2026-10-23; ONLINE.md step 2)
+- **What it is.** `server/match.js` runs one hourly match:
+  - It starts from `MATCH_ID`, `MATCH_CONFIG`, `MATCH_SECRET`, `MATCH_START_AT` and `API_URL`.
+  - Only players with a ticket signed for that match get in (`server/ticket.js`), each to the seat the ticket names.
+  - It starts when everyone is in, or after `MATCH.graceS` without the missing. Their houses start under the AI and are handed back when they arrive.
+  - The server plays its own copy of the match on the same turns: the **referee**.
+  - A browser whose fingerprint differs from the referee's is sent the referee's state (`resync`). A player who rejoins is sent it too, instead of replaying every turn.
+  - Preset messages travel as ids only (`js/online.js` `QUICK`), checked and limited to one every 2 s and 15 a minute.
+  - The match ends on conquest, when every player who came has fallen, or at the two-hour cap. Placings and points (`placings`, `pointsFor`) go to the players and, signed, to the api, retried until it answers.
+- **The end rule.** `Game` has a new `endRule: 'conquest'` (saved with the match): only the last house standing ends it on each copy, and the match server decides the rest.
+  - The older rule also had an edge case: with every player away, `humans` was empty and it checked seat 0.
+- **Shared building.** `matchGame(game, config)` in `js/online.js` builds a match the same way in the browser, the referee and the tests.
+- **Fixed while testing.** The client copied a lobby update's missing config over the one it was started with. A lobby message without a config now leaves it alone, and the match server sends it anyway.
+- **Tests.** `test/match.test.js` (14) covers:
+  - forged, expired and wrong-match tickets
+  - lockstep against the referee, and a tampered copy put right
+  - messages and floods
+  - rejoining, and a late player
+  - the end at the cap with points and a signed report, an abandoned match, and a report retried
+- The WebSocket code moved from `relay.js` to `server/ws.js` (shared). It now also limits the size of a message sent in fragments.
