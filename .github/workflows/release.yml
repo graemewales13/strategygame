@@ -1,13 +1,13 @@
-# A release (ONLINE.md section 7): after CI passes on the network branch, build the image for arm64 and amd64, publish it with its SBOM and
+# A release (ONLINE.md section 7): every push to the network branch runs CI (ci.yml, called below); when it passes, build the image for arm64 and amd64, publish it with its SBOM and
 # provenance, tag the release, and deploy it to staging, where a whole match is then played (tools/cluster-check.mjs).
 # Production is a separate, manual step: .github/workflows/deploy-production.yml.
 # The deploy needs the repository variables Terraform printed (github_variables) and the GitHub environment "staging". Until they exist,
 # the staging job is skipped and the release stops at the image.
 name: Release
+# (A push trigger, not workflow_run: GitHub fires workflow_run and the Run-workflow button only for workflows on the default branch,
+# which is main; this one lives on network. T-097.)
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [network]
   workflow_dispatch: {}
 concurrency:
@@ -19,8 +19,11 @@ permissions:
   id-token: write      # signing in to AWS (OIDC) and the provenance attestation
   attestations: write
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   image:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: ci
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -29,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
       - name: Version
         id: v
         run: |
@@ -52,7 +55,7 @@ jobs:
           build-args: VERSION=${{ steps.v.outputs.version }}
           tags: |
             ${{ steps.v.outputs.image }}:${{ steps.v.outputs.version }}
-            ${{ steps.v.outputs.image }}:sha-${{ github.event.workflow_run.head_sha || github.sha }}
+            ${{ steps.v.outputs.image }}:sha-${{ github.sha }}
           provenance: mode=max
           sbom: true
       - name: Scan the published image (fails on critical vulnerabilities that have a fix)
@@ -61,7 +64,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ steps.v.outputs.version }}" --target "${{ github.event.workflow_run.head_sha || github.sha }}" --generate-notes \
+          gh release create "v${{ steps.v.outputs.version }}" --target "${{ github.sha }}" --generate-notes \
             --notes "Image: \`${{ steps.v.outputs.image }}@${{ steps.build.outputs.digest }}\`. Deploy to production: Actions, Deploy to production, version ${{ steps.v.outputs.version }}."
 
   staging:

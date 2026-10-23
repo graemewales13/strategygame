@@ -1,7 +1,10 @@
 name: CI
+# On the network branch a push runs CI inside the Release workflow (release.yml calls this one), so it is not run twice there.
 on:
   push:
+    branches-ignore: [network]
   pull_request:
+  workflow_call: {}
 jobs:
   test:
     runs-on: ubuntu-latest

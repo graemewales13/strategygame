@@ -534,3 +534,12 @@ Causes and fixes:
 - **What happened.** CI's new `deploy-checks` failed at the Trivy scan. Locally Trivy listed 21 fixable high or critical vulnerabilities in the base image's Alpine packages, and one in npm's own bundled libraries (`pacote`).
 - **Fix** (`Dockerfile`): `apk upgrade` takes the base system's latest fixes. npm, npx, corepack and yarn are removed: nothing is installed at run time.
 - **Result:** 0 high or critical fixable vulnerabilities. The image still serves the game and runs as user 1000.
+
+## T-097 - The release workflow never ran (network branch, 2026-10-24)
+- **What happened.** CI passed on `network`, but Release did not start, and GitHub listed only the CI workflow.
+- **Why.** GitHub fires `workflow_run` triggers, and offers the "Run workflow" button (`workflow_dispatch`), only for workflow files on the repository's default branch. That is `main`; these files live on `network`.
+- **Fix:**
+  - **Release** now runs on every push to `network`. Its first job calls CI as a reusable workflow (`workflow_call`), and the image is built only when CI passes.
+  - **CI** no longer runs separately on plain pushes to `network`, so the tests do not run twice. Pull requests and other branches are unchanged.
+  - **Production** is promoted by pushing a tag `production-<version>` (anything after the version is ignored, so the same release can be deployed again). A tag push runs the workflow file in the tagged commit, whatever the default branch.
+  - The button form still works once the file is also on the default branch.

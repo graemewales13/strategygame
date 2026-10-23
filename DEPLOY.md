@@ -81,7 +81,12 @@ The exact provider versions (AWS 6.70.0, random 3.9.1) are pinned in `.terraform
 
 ### 6. Production
 
-Actions, **Deploy to production**, Run workflow, the version (for example `1.0.3`), then approve. It deploys that release, checks the site answers with that version, and records it as production's release. If the check fails, it puts the previous release back.
+Promote a release by pushing a tag named `production-<version>`, then approve the run in Actions:
+```powershell
+git fetch --tags; git tag production-1.0.3 v1.0.3; git push origin production-1.0.3
+```
+ It deploys that release, checks the site answers with that version, and records it as production's release. If the check fails, it puts the previous release back.
+(The "Run workflow" button for **Deploy to production** appears only once the workflow file is also on the repository's default branch, `main`. GitHub runs button and follow-on workflows only from the default branch. Tags work from any branch.)
 
 ## Adding a domain (and with it, email codes and Google sign-in)
 
@@ -114,15 +119,15 @@ aws ssm put-parameter --name /auld/production/google-client-secret --type Secure
 # discord-client-id, discord-client-secret, github-client-id, github-client-secret
 # and optionally discord-webhook-url (each match's result posted to a Discord channel)
 ```
-Then deploy again (Deploy to production, same version). The button appears on the online screen once both values are there.
+Then deploy the same release again with a new tag name: `git tag production-1.0.3-again v1.0.3; git push origin production-1.0.3-again` (anything after the version is ignored). The button appears on the online screen once both values are there.
 
 ## Day to day
 
 | Task | How |
 |---|---|
 | **Release** | Merge or push to `network`. CI tests, then Release builds, publishes and deploys to staging, and plays a match there |
-| **Production** | Actions, Deploy to production, the version, approve. It waits out minutes :58 to :01 of each hour, while the match is launched |
-| **Roll back** | Deploy to production with the earlier version. Every release's manifests stay in S3 for 180 days |
+| **Production** | Push the tag `production-<version>`, approve the run. It waits out minutes :58 to :01 of each hour, while the match is launched |
+| **Roll back** | Push a tag for the earlier version: `git tag production-1.0.2-back v1.0.2; git push origin production-1.0.2-back`. Every release's manifests stay in S3 for 180 days |
 | **Look at the server** | `terraform output shell` gives the command. Then, on the server: `sudo kubectl -n auld get pods`, `sudo kubectl -n auld logs deploy/api -c api`, `sudo kubectl -n auld get jobs` (the matches) |
 | **A match's log** | `sudo kubectl -n auld logs job/match-<id>`. Jobs are removed 10 minutes after they end |
 | **Backups** | Continuous: Litestream, to `s3://<bucket>/db/<env>/`, with 7 days of history. A new server restores by itself. To practise a restore, replace the server (`terraform apply -replace=aws_instance.server`), release, and check the league is still there |
