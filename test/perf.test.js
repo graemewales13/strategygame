@@ -1,6 +1,7 @@
 // Speed work (ROADMAP T18) must not change what the simulation does. Each shortcut is checked against the plain way it replaced.
 // Fast: `node test/perf.test.js` (part of `npm test`).
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { Game } from '../js/game.js';
 import { VISION_MUL, UNITS, BUILDINGS, PERK, KING } from '../js/config.js';
 
@@ -81,6 +82,40 @@ test('nearby buildings and villages: the gap rules give the same answer through 
     const kind = ['keep', 'cottage', 'mine', 'village', 'tower', 'farm'][k % 6], tx = 2 + Math.floor(g.rnd() * (g.W - 8)), ty = 2 + Math.floor(g.rnd() * (g.H - 8)), team = k % g.houses;
     assert.deepEqual(g.canPlace(team, kind, tx, ty), Game.prototype.canPlace.call(plain, team, kind, tx, ty), `${kind} at ${tx},${ty}`);
   }
+});
+
+test('villages by lord: the index lists what a scan finds, in order, through play and changes of hands; every line that sets an owner drops it', () => {
+  const g = match(4); play(g, 150);
+  const check = () => { for (let t = -1; t < g.houses; t++) assert.deepEqual(g.vOwn(t).map((v) => v.id), g.villages.filter((v) => v.owner === t).map((v) => v.id)); };
+  check();
+  const v = g.villages.find((x) => x.owner < 0); g.submit(v, 1, 'castle'); check();
+  play(g, 30); check();
+  const src = readFileSync(new URL('../js/game.js', import.meta.url), 'utf8').split(/\r?\n/);
+  const sets = src.filter((l) => /\bv\.owner = /.test(l));
+  assert.ok(sets.length >= 5);
+  for (const l of sets) assert.match(l, /this\._vOwn = null/, `a village changes hands without dropping the index: ${l.trim().slice(0, 90)}`);
+});
+
+test('villages worked out a quarter at a time: they fill, grow and pay at the same rates (each village every fourth tick with the time gathered)', () => {
+  const g = match(4); play(g, 30);
+  const v = g.villages.find((x) => x.owner < 0 && x.stores.gold !== undefined) || g.villages[0];
+  v.stores.gold = 0; v._vdt = 0;
+  const before = g.time; play(g, 20);
+  const t0 = v._vdt;   // (time it has gathered but not yet used)
+  assert.ok(t0 >= 0 && t0 < 0.2 + 1e-9, 'a village is never more than four ticks behind');
+  assert.ok(v.stores.gold > 0, 'its purse refills');
+  // every village was worked out about 100 times in 20 s
+  assert.ok(Math.abs(g.time - before - 20) < 1e-6);
+  for (const x of g.villages) assert.ok(x._vdt < 0.2 + 1e-9, `village ${x.id} waits ${x._vdt}s`);
+  // the same with longer ticks (tests and slow frames step 0.1 s): no village is left out
+  const h = match(4); for (let i = 0; i < 100; i++) h.tick(0.1);
+  for (const x of h.villages) assert.ok(x._vdt < 0.2 + 1e-9, `village ${x.id} waits ${x._vdt}s with 0.1 s ticks`);
+});
+
+test('influence on a village: through the nearby index it comes out exactly as summed over every building and village', () => {
+  const g = match(4); play(g, 240);
+  const plain = Object.create(g); plain.fixedNearSorted = (list) => list;
+  for (const v of g.villages) assert.deepEqual(g.pullsFor(v), Game.prototype.pullsFor.call(plain, v), v.name);
 });
 
 console.log(`${passed} passed`);

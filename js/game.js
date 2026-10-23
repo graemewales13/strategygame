@@ -30,6 +30,8 @@ const mix32 = (a) => { let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t +
 
 const NONE = Object.freeze([]);
 const UCELL = 8;
+const VILLAGE_STEP = 0.2;   // (seconds between working out each village: see updateVillages)
+const INF_REACH = Math.max(...Object.values(INFLUENCE).map((i) => i.r)) + Math.max(...Object.values(BUILDINGS).map((b) => b.size || 0));   // (how far from a village a building can lean on it: see pullsFor)
 const FIXED_REACH = Math.max(VILLAGE_SIZE, ...Object.values(BUILDINGS).map((b) => b.size || 0)) + BUILD_GAP + 3;   // (canPlace's search window, beyond its own size)   // (tiles to a side of a cell of the unit grid: see unitsNear)   // (an empty list shared by every lookup that finds nothing)
 
 export class Game {
@@ -112,7 +114,7 @@ export class Game {
       // no hall: a house begins in its home village of thirty folk, with three serfs already at work
       const names = FOUNDED[HOUSES[team].faction] || FOUNDED.british;
       const v = this.addVillage({ kind: 'hamlet', name: names[0], tx: sx, ty: sy });
-      v.owner = team; v.lean = team; v.home = team; v.founded = true; v.loyalty = FOUND.loyalty + 10;
+      v.owner = team; this._vOwn = null; v.lean = team; v.home = team; v.founded = true; v.loyalty = FOUND.loyalty + 10;
       v.pop = HOME_POP; v.popMax = FOUND.max; v.stores = { food: 140, wood: 10, gold: 10 };
       v.protection = v.maxProtection = 320; v.hp = v.maxHp = 320;
       this.addUnit('serf', team, sx + 1.2, sy + 3.6);
@@ -275,10 +277,14 @@ export class Game {
       for (const e of list) { const k = Math.floor(e.ty / UCELL) * cols + Math.floor(e.tx / UCELL); let l = cells.get(k); if (!l) cells.set(k, (l = [])); l.push(e); }
       g = this[key] = { arr: list, len: list.length, cols, cells };
     }
-    const out = [], x0 = Math.floor((tx - reach) / UCELL), x1 = Math.floor((tx + reach) / UCELL), y0 = Math.floor((ty - reach) / UCELL), y1 = Math.floor((ty + reach) / UCELL);
+    const rows = Math.ceil(this.H / UCELL) + 1, out = [];
+    const x0 = Math.max(0, Math.floor((tx - reach) / UCELL)), x1 = Math.min(g.cols - 1, Math.floor((tx + reach) / UCELL));
+    const y0 = Math.max(0, Math.floor((ty - reach) / UCELL)), y1 = Math.min(rows - 1, Math.floor((ty + reach) / UCELL));   // (each cell once: no corner lies outside the board)
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const l = g.cells.get(cy * g.cols + cx); if (l) for (const e of l) out.push(e); }
     return out;
   }
+  // the same in the list's own order (ids rise along both lists), for sums that must come out as before to the last bit
+  fixedNearSorted(list, x, y, reach) { return this.fixedNear(list, x, y, reach).sort((a, b) => a.id - b.id); }
   teamB(team) { return this.bIdx().team.get(team) || NONE; }
   kindB(team, kind) { return this.bIdx().kind.get(team + '|' + kind) || NONE; }
   hasBuilding(team, kind) { return this.kindB(team, kind).some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
@@ -315,7 +321,17 @@ export class Game {
       || this.kindB(team, 'keep').find((b) => b.team === team && b.kind === 'keep' && b.hp > 0)
       || this.villages.find((v) => v.owner === team);
   }
-  villagesOf(team) { return this.villages.filter((v) => v.owner === team); }
+  villagesOf(team) { return this.vOwn(team).slice(); }
+  // Speed (T18): the villages each house holds, in the order of this.villages. Every line that sets a village's owner drops it
+  // (this._vOwn = null; test/perf.test.js checks there is one beside each), and it is rebuilt when next asked.
+  vOwn(team) {
+    let c = this._vOwn;
+    if (!c || c.arr !== this.villages || c.len !== this.villages.length) {
+      c = this._vOwn = { arr: this.villages, len: this.villages.length, m: new Map() };
+      for (const v of this.villages) { let l = c.m.get(v.owner); if (!l) c.m.set(v.owner, (l = [])); l.push(v); }
+    }
+    return c.m.get(team) || NONE;
+  }
   // every soldier a house has, in the field or inside its buildings (what the panels count; militaryOf is those free to march)
   soldiersOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king'); }
   // soldiers standing about with no order (no march, fight, queued leg or drill): what the idle-army key picks (T31)
@@ -396,7 +412,7 @@ export class Game {
       const d = distTo(u.x, u.y, b);
       if (d < bd) { best = b; bd = d; }
     }
-    if (res === 'food' || res === 'wood' || res === 'gold') for (const v of this.villages) {   // a village you hold takes goods too
+    if (res === 'food' || res === 'wood' || res === 'gold') for (const v of this.vOwn(u.team)) {   // a village you hold takes goods too
       if (v.owner !== u.team) continue;
       const d = distTo(u.x, u.y, v);
       if (d < bd) { best = v; bd = d; }
@@ -443,6 +459,7 @@ export class Game {
     if (!walk[gy * W + gx]) { const n = this.nearestWalkable(gx, gy, 8, sx, sy); if (!n) return null; [gx, gy] = n; }
     if (sx === gx && sy === gy) return [];
     { const comp = this.walkComp(); if (comp[sy * W + sx] !== comp[gy * W + gx]) return null; }   // no way through: A* would only prove it the long way
+    const work = (this.work ||= { paths: 0, nodes: 0, pulls: 0 }); work.paths++;   // (counted for the speed budget in test/perf.test.js; never saved)
     const run = ++this._run;
     const g = this._g, came = this._came, stamp = this._stamp, closed = this._closed;
     const terrain = this.terrain;
@@ -484,7 +501,7 @@ export class Game {
         out.reverse(); out.shift();
         return out;
       }
-      closed[cur] = run;
+      closed[cur] = run; work.nodes++;
       const cx = cur % W, cy = (cur / W) | 0;
       for (let k = 0; k < 8; k++) {
         const nx = cx + DX[k], ny = cy + DY[k];
@@ -507,7 +524,7 @@ export class Game {
     const p = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(x), Math.floor(y));
     u.path = p ? (p.length ? p : [[x, y]]) : [];   // same tile: still walk to the exact point (edge-hugging units never arrive otherwise)
     u.pathGoal = [x, y];
-    u.repathT = 0.9;
+    u.repathT = 0.9 + Math.min(1.6, Math.max(0, (u.path.length - 12) * 0.04));   // Speed (T18): a long way to go is planned again less often (2.5 s at most)
     return !!p;
   }
   // head toward the footprint of a building/village: goal is the free tile beside it, on the unit's side
@@ -525,7 +542,11 @@ export class Game {
     }
     if (!cands.length) { const n = this.nearestWalkable(cx, cy, R, ux, uy); cands.push(n ? [n[0], n[1], 0] : null); if (!n) { u.path = []; return false; } }
     cands.sort((a, b) => a[2] - b[2]);
-    for (let i = 0; i < Math.min(8, cands.length); i++) if (this.setPath(u, cands[i][0] + 0.5, cands[i][1] + 0.5)) { if (u.kind === 'camel') u._front = { id: t.id, x: cands[i][0] + 0.5, y: cands[i][1] + 0.5 }; return true; }
+    for (let i = 0; i < Math.min(8, cands.length); i++) if (this.setPath(u, cands[i][0] + 0.5, cands[i][1] + 0.5)) {
+      if (u.kind === 'camel') u._front = { id: t.id, x: cands[i][0] + 0.5, y: cands[i][1] + 0.5 };
+      u.repathT = 0.9 + Math.min(3.1, Math.max(0, (u.path.length - 12) * 0.06));   // a building or village does not move: a long way to it is planned again every 4 s at most
+      return true;
+    }
     u.path = []; return false;
   }
 
@@ -1091,7 +1112,7 @@ export class Game {
     b.hp = 0; b.founded = true;
     const ore = this.depositsNear(b.x, b.y, FOUND.campR), camp = ore.length > 0;   // raised beside ore: a mining camp, its folk dig from the first day
     const v = this.addVillage({ kind: camp ? 'mine' : 'hamlet', name, tx: b.tx, ty: b.ty });
-    v.owner = team; v.lean = team; v.loyalty = FOUND.loyalty; v.founded = true;
+    v.owner = team; this._vOwn = null; v.lean = team; v.loyalty = FOUND.loyalty; v.founded = true;
     v.pop = camp ? FOUND.campPop : FOUND.pop; v.popMax = FOUND.max; v.stores = { food: 70, wood: 10, gold: 10 };
     v.protection = v.maxProtection = 260; v.hp = v.maxHp = 260;
     if (team === PLAYER) this.log(PLAYER, camp ? `${name} is founded as a mining camp beside ${[...new Set(ore.map((n) => GOOD_LABEL[n.kind].toLowerCase()))].join(', ')}: raise a mine on the deposit and its folk will dig.` : `${name} is founded. Its folk will grow to ${FOUND.max}: draft them as serfs, miners or soldiers.`, 'good');
@@ -1833,7 +1854,7 @@ export class Game {
   consumerIncome(b) {
     let n = 0;
     for (const o of this.kindB(b.team, 'cottage')) if (o.team === b.team && o.kind === 'cottage' && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - b.x, o.y - b.y) <= MARKET_RADIUS) n++;
-    for (const v of this.villages) if (v.owner === b.team && Math.hypot(v.x - b.x, v.y - b.y) <= MARKET_RADIUS) n += 2;
+    for (const v of this.vOwn(b.team)) if (v.owner === b.team && Math.hypot(v.x - b.x, v.y - b.y) <= MARKET_RADIUS) n += 2;
     return (CONSUMERS.base + CONSUMERS.each * Math.min(CONSUMERS.max, n)) * this.district(b).mult;   // a rounded community earns more than the same buildings scattered
   }
   near(b, kinds, r = MARKET_RADIUS) { return kinds.some((k) => this.kindB(b.team, k).some((o) => o.team === b.team && o.built >= 1 && o.hp > 0 && kinds.includes(o.kind) && Math.hypot(o.x - b.x, o.y - b.y) <= r)); }   // (a yes or no: the order looked in does not matter)
@@ -2502,9 +2523,10 @@ export class Game {
     if (team === PLAYER && amt >= 3 && (src === 'trade' || src === 'sales' || src === 'loot')) { const m = this.seatOf(PLAYER); if (m) this.sfx('coin', m.x, m.y); }
   }
   // the army's pay: due every second, taken from the purse; an empty purse breeds trouble
-  payWages(p, dt) {
+  payWages(p, dt, paid = null) {
     let rate = 0, n = 0, list = [];
-    for (const u of this.units) if (u.team === p.team && u.hp > 0 && WAGE[u.kind]) { n++; list.push(u); }
+    if (paid) { list = paid; n = list.length; }   // (Speed, T18: updateEconomy lists every house's paid men in one pass, in the units' order)
+    else for (const u of this.units) if (u.team === p.team && u.hp > 0 && WAGE[u.kind]) { n++; list.push(u); }
     if (n > WAGE_FREE) { list.sort((a, b) => WAGE[b.kind] - WAGE[a.kind]); for (let i = WAGE_FREE; i < n; i++) rate += WAGE[list[i].kind]; }
     p.wageRate = rate;
     p.wageDebt += rate * dt;
@@ -2539,9 +2561,11 @@ export class Game {
   }
 
   updateEconomy(dt) {
+    const paid = new Map();
+    for (const u of this.units) if (u.hp > 0 && WAGE[u.kind]) { let l = paid.get(u.team); if (!l) paid.set(u.team, (l = [])); l.push(u); }
     for (const p of this.players) {
       if (!p.alive) continue;
-      this.payWages(p, dt);
+      this.payWages(p, dt, paid.get(p.team) || []);
       p.rateT = (p.rateT || 0) + dt;
       if (p.rateT >= 1) {   // smoothed income by source, per second
         for (const k of INCOME_SOURCES) { p.inc[k] = (p.inc[k] || 0) * 0.92 + ((p.acc[k] || 0) / p.rateT) * 0.08; p.acc[k] = 0; }
@@ -2607,7 +2631,7 @@ export class Game {
         case 'temple': if (this.hasBuilding(b.team, 'academy')) this.earn(b.team, 'temple', 0.3 * dt); break;
         case 'academy': {
           let n = 0;
-          for (const u of this.units) if (u.team === b.team && u.kind === 'scholar' && u.hp > 0 && Math.hypot(u.x - b.x, u.y - b.y) < 8) n++;
+          for (const u of this.unitsNear(b.x, b.y, 8)) if (u.team === b.team && u.kind === 'scholar' && u.hp > 0 && Math.hypot(u.x - b.x, u.y - b.y) < 8) n++;
           b.scholars = Math.min(4, n);
           break;
         }
@@ -2687,8 +2711,9 @@ export class Game {
   }
   // influence of each house on a village: sum over its seats, falling off linearly with distance
   pullsFor(v) {
+    (this.work ||= { paths: 0, nodes: 0, pulls: 0 }).pulls++;
     const pulls = new Array(this.houses).fill(0);
-    for (const b of this.buildings) {
+    for (const b of this.fixedNearSorted(this.buildings, v.x, v.y, INF_REACH)) {   // (Speed, T18: those that can reach it, in the same order)
       const inf = INFLUENCE[b.kind];
       if (!inf || b.hp <= 0 || b.built < 1) continue;
       const d = Math.hypot(v.x - b.x, v.y - b.y);
@@ -2698,8 +2723,8 @@ export class Game {
       if (b.kind === 'academy') p *= 1 + 0.3 * (b.scholars || 0);
       pulls[b.team] += p;
     }
-    for (const b of this.buildings) if (b._crew && b.kind === 'mine') for (const c of b._crew.list) if (c.v === v) pulls[b.team] += c.n * MINE_JOBS.pull;   // jobs at the mine win the village's goodwill
-    for (const o of this.villages) {   // villages you hold lean on the ones around them, steadier with soldiers inside
+    for (let t = 0; t < this.houses; t++) for (const b of this.kindB(t, 'mine')) if (b._crew && b.kind === 'mine') for (const c of b._crew.list) if (c.v === v) pulls[b.team] += c.n * MINE_JOBS.pull;   // jobs at the mine win the village's goodwill
+    for (const o of this.fixedNearSorted(this.villages, v.x, v.y, INFLUENCE_HOME.r + VILLAGE_SIZE)) {   // villages you hold lean on the ones around them, steadier with soldiers inside
       if (o === v || o.owner < 0) continue;
       const d = Math.hypot(v.x - o.x, v.y - o.y), inf = INFLUENCE_HOME;
       if (d >= inf.r) continue;
@@ -2717,9 +2742,24 @@ export class Game {
     return pulls;
   }
 
+  // Speed (T18, part 2): each village is worked out every VILLAGE_STEP seconds (four ticks) with all the time it has gathered
+  // since, so rates and totals are as before and a village notices a change at most 0.15 s later. Each keeps its own countdown
+  // (saved with it), started a quarter-step apart by its id so a quarter of them are worked out each tick, whatever the tick's
+  // length. Its flash (drawing only) still fades every tick.
   updateVillages(dt) {
     for (const v of this.villages) {
       v.flash = Math.max(0, v.flash - dt);
+      v._vdt = (v._vdt || 0) + dt;
+      if (v._vw === undefined) v._vw = (v.id % 4) * (VILLAGE_STEP / 4);
+      v._vw -= dt;
+      if (v._vw > 1e-9) continue;
+      v._vw = Math.max(0, v._vw + VILLAGE_STEP);
+      const vdt = v._vdt; v._vdt = 0;
+      this.updateVillage(v, vdt);
+    }
+  }
+  updateVillage(v, dt) {
+    {
       { // villages restock slowly: mining camps dig more ore than they started with
         const base = VILLAGE_KINDS[v.kind].stores;
         // the village purse refills from its folk's trade: bigger villages pay out more coin
@@ -2766,7 +2806,7 @@ export class Game {
         if (v.loyalty <= 8) {
           const lost = v.owner;
           this.ejectAll(v);
-          v.owner = -1; v.lean = best; v.loyalty = 18; v.spyFlip = -1;
+          v.owner = -1; this._vOwn = null; v.lean = best; v.loyalty = 18; v.spyFlip = -1;
           this.log(lost, `${v.name} slips from its lord.`, 'warn');
         } else {
           const spec = VILLAGE_KINDS[v.kind].tribute, rate = (0.4 + (0.8 * v.loyalty) / 100) * (0.5 + 0.7 * (v.pop / v.popMax)), p = this.players[v.owner];
@@ -2803,7 +2843,7 @@ export class Game {
     if (v.owner === team) return;
     const prev = v.owner;
     this.ejectAll(v);
-    v.owner = team; v.lean = team; v.spyFlip = -1; if (team === PLAYER) this.sfx('fanfare', v.x, v.y);
+    v.owner = team; this._vOwn = null; v.lean = team; v.spyFlip = -1; if (team === PLAYER) this.sfx('fanfare', v.x, v.y);
     const taken = this.claimTown(v, team, prev);
     let spoils = null;
     if (how === 'pillage') { v.pop = Math.max(2, v.pop * (1 - SACK.killed)); spoils = this.plunder(v, team); }   // the sack costs lives
@@ -3455,7 +3495,7 @@ export class Game {
     p.alive = false;
     for (const u of this.units) if (u.team === team) u.hp = 0;
     for (const b of this.buildings) if (b.team === team) b.hp = 0;
-    for (const v of this.villages) if (v.owner === team) { v.owner = -1; v.loyalty = 25; v.lean = -1; }
+    for (const v of this.villages) if (v.owner === team) { v.owner = -1; this._vOwn = null; v.loyalty = 25; v.lean = -1; }
     this.log(PLAYER, team === PLAYER ? 'Your house has fallen.' : `${p.name} has fallen.`, team === PLAYER ? 'bad' : 'good');
     this.cleanup();
   }
