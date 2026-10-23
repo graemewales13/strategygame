@@ -98,6 +98,7 @@ export class Game {
     this.relSince = Array.from({ length: n }, () => Array(n).fill(0));
     this.seen = Array.from({ length: n }, () => new Uint8Array(this.W * this.H));
     this.vis = Array.from({ length: n }, () => new Uint8Array(this.W * this.H));
+    this.mem = Array.from({ length: n }, () => ({}));   // what each house last saw of others' buildings under fog, by id (T44; drawn, never read by the rules)
     this.walk = new Uint8Array(this.W * this.H);
     this.block = new Uint8Array(this.W * this.H);
 
@@ -348,6 +349,30 @@ export class Game {
     if (!this.fogOn) return true;
     const tx = Math.floor(x), ty = Math.floor(y);
     return tx >= 0 && ty >= 0 && tx < this.W && ty < this.H && this.seen[team][ty * this.W + tx] === 1;
+  }
+  // is any square of this footprint in `team`'s sight now? (a building is seen when any of it is, as in AoE)
+  seesFoot(team, f) {
+    if (!this.fogOn) return true;
+    const vis = this.vis[team], W = this.W;
+    for (let y = Math.max(0, f.ty); y < Math.min(this.H, f.ty + f.size); y++) for (let x = Math.max(0, f.tx); x < Math.min(W, f.tx + f.size); x++) if (vis[y * W + x] === 1) return true;
+    return false;
+  }
+  // Fog memory (T44): what `team` last saw of every other house's buildings. A building raised in fog stays unknown until seen; one razed
+  // or taken there is remembered as it was until its ground is seen again. Only the drawing, the minimap and the panels read it.
+  remember(team) {
+    const m = this.mem[team]; if (!m) return;
+    for (const b of this.buildings) if (b.team !== team && b.hp > 0 && this.seesFoot(team, b)) {
+      const o = m[b.id] ||= { id: b.id };
+      o.kind = b.kind; o.team = b.team; o.tx = b.tx; o.ty = b.ty; o.size = b.size; o.x = b.x; o.y = b.y; o.ore = b.ore; o.hp = b.hp; o.maxHp = b.maxHp; o.built = b.built; o.at = this.time;
+    }
+    for (const k in m) { const o = m[k], b = this.byId.get(o.id); if ((!b || b.type !== 'building' || b.hp <= 0 || b.team === team) && this.seesFoot(team, o)) delete m[k]; }   // seen gone (or now ours)
+  }
+  // the buildings `team` knows of on the ground: its own as they are, others' as last seen (fog off: all as they are)
+  knownBuildings(team) {
+    if (!this.fogOn) return this.buildings;
+    const out = this.buildings.filter((b) => b.team === team), m = this.mem[team] || {};
+    for (const k in m) out.push(m[k]);
+    return out;
   }
 
   unitAt(x, y, r = 0.7, team = null) {
@@ -3136,7 +3161,7 @@ export class Game {
       if (t.kind === 'king') this.kingFalls(t, byTeam, by);
       if (by) this.award(by, t.type === 'building' ? XP.killBuilding : XP.kill * (1 + XP.killRankMul * (t.rank || 0))); this.sfx(t.type === 'building' ? 'crumble' : 'death', t.x, t.y);
       if (this.sfxOn && this.fx.length < 30) this.fx.push({ x: t.x, y: t.y, kind: t.type === 'building' ? 'collapse' : 'poof', size: t.size || 1, born: this.time });
-      if (this.sfxOn && t.type === 'building' && t.built >= 1 && t.team >= 0) this.fx.push({ x: t.x, y: t.y, tx: t.tx, ty: t.ty, size: t.size, kind: 'ruin', ruin: t.kind, team: t.team, born: this.time });   // drawn only where the people have ruin art
+      if (this.sfxOn && t.type === 'building' && t.built >= 1 && t.team >= 0) this.fx.push({ x: t.x, y: t.y, tx: t.tx, ty: t.ty, size: t.size, kind: 'ruin', ruin: t.kind, team: t.team, born: this.time, pv: t.team === PLAYER || this.seesFoot(PLAYER, t) });   // drawn only where the people have ruin art
       if (t.type === 'building') {
         if (t.team === PLAYER) this.log(PLAYER, `Your ${BUILDINGS[t.kind].label} is destroyed!`, 'bad');
         else if (byTeam === PLAYER) this.log(PLAYER, `${HOUSES[t.team].short} ${BUILDINGS[t.kind].label} destroyed.`, 'good');
@@ -3415,7 +3440,7 @@ export class Game {
   // ------------------------------------------------------------------ fog of war
   setFog(on) {
     this.titleView = false; this.fogOn = on;
-    if (on) this.seen.forEach((a) => a.fill(0));
+    if (on) { this.seen.forEach((a) => a.fill(0)); this.mem.forEach((m) => { for (const k in m) delete m[k]; }); }
     this.updateVisibility(true);
   }
 
@@ -3448,6 +3473,7 @@ export class Game {
       for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, v.home === t ? 13 : 8);
       for (const p of this.players) { const k = p.alive && p.team !== t && !this.seatOf(p.team) ? this.kingOf(p.team) : null; if (k && !k.inside) mark(k.x, k.y, KING.fugitiveSight); }   // a king without a seat is hunted: all can see him
     }
+    if (this.fogOn) this.remember(PLAYER);   // (only the player's eyes are drawn; the network branch remembers for every seat)
     // meeting: a house is "known" once any of its people or buildings has been in sight (mutual: they have seen you too)
     for (let a = 0; a < this.houses; a++) for (let b = 0; b < this.houses; b++) {
       if (a === b || this.known[a][b]) continue;
@@ -3533,7 +3559,7 @@ export class Game {
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
-      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle),
+      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem,
       timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {} }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
   }
@@ -3560,6 +3586,8 @@ export class Game {
     this.recomputeWalk();
     if (d.vis && d.timers) { this.vis = d.vis.map(unrle); Object.assign(this, deref(d.timers)); }   // fog and timers exactly as saved
     else { this.visT = 0; this.updateVisibility(true); }
+    if (d.mem) this.mem = this.mem.map((m, i) => d.mem[i] || {});
+    else if (this.fogOn) for (const b of this.buildings) if (b.team !== PLAYER && this.wasSeen(PLAYER, b.x, b.y)) this.mem[PLAYER][b.id] = { id: b.id, kind: b.kind, team: b.team, tx: b.tx, ty: b.ty, size: b.size, x: b.x, y: b.y, ore: b.ore, hp: b.hp, maxHp: b.maxHp, built: b.built, at: this.time };   // an older save: what was on seen ground counts as seen
     return this;
   }
 

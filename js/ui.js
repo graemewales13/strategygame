@@ -837,10 +837,13 @@ export class UI {
         html = `<div class="seltitle">${us.length} units</div><div class="selsub">Click a type to narrow the selection, or a name to pick one out. Ctrl+1..9 stores a group.</div><div class="chips">${Object.entries(by).map(([k, n]) => `<span class="chip x" data-act="kind" data-kind="${k}">${GLYPH[k]?.length === 1 ? GLYPH[k] : ''} ${UNITS[k].label} × ${n}</span>`).join('')}</div>${this.rollChips(us, 16)}`;
       }
     } else if (s.type === 'building') {
-      const b = g.byId.get(s.id); if (!b) { this.clearSel(); return; }
+      const live = g.byId.get(s.id); if (!live) { this.clearSel(); return; }
+      const memo = live.team !== PLAYER && g.fogOn && !g.seesFoot(PLAYER, live) ? g.mem[PLAYER]?.[live.id] : null;   // out of sight: what was last seen, never the live state (T44)
+      const b = memo ? { ...live, ...memo, queue: [], garrison: [] } : live;
       const st = BUILDINGS[b.kind], mine = b.team === PLAYER;
       html = `${portrait(b.kind, HOUSES[b.team].accent, b.team)}<div class="seltitle">${st.label}${b.kind === 'mine' && b.ore ? ` · <span style="color:${GOOD_COLOR[b.ore]}">${GOOD_LABEL[b.ore]}</span>` : ''} <small style="color:${HOUSES[b.team].accent};font-size:12px">${esc(HOUSES[b.team].short)}</small></div><div class="selsub">${esc(st.info)}</div>${b.town != null && g.byId.get(b.town) ? `<div class="hint">Part of the town of <b>${esc(g.byId.get(b.town).name)}</b>: it changes hands with the village.</div>` : ''}
         <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(b.hp / b.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(b.hp)}/${b.maxHp}</span></div>`;
+      if (memo) html += `<div class="selsub">Out of sight: as your folk last saw it ${g.time - memo.at < 60 ? 'moments' : Math.round((g.time - memo.at) / 60) + ' min'} ago. Send a scout to see it now.</div>`;
       if (b.built < 1) html += `<div class="stat"><label>Building</label><div class="meter"><i class="prog" style="width:${b.built * 100}%"></i></div><span class="v">${Math.floor(b.built * 100)}%</span></div><div class="selsub">Right-click with serfs to help.</div>`;
       if (mine && b.built >= 1 && st.pop) html += `<div class="stat"><label>Population</label><span>+${st.pop}</span></div>`;
       if (mine && b.queue.length) {

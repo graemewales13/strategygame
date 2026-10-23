@@ -123,14 +123,17 @@ export class Renderer {
       items.push({ o: n, k: 0, z: n.x + n.y + 1 });
     }
     for (const v of g.villages) if (isSeen(v.x, v.y) && v.tx + v.size >= x0 && v.tx <= x1 && v.ty + v.size >= y0 && v.ty <= y1) items.push({ o: v, k: 1, z: v.tx + v.ty + v.size * 2 - 1 });
-    for (const b of g.buildings) if ((b.team === PLAYER || isSeen(b.x, b.y)) && b.tx + b.size >= x0 && b.tx <= x1 && b.ty + b.size >= y0 && b.ty <= y1) items.push({ o: b, k: 2, z: b.tx + b.ty + b.size * 2 - 1 });
+    const inView = (b) => b.tx + b.size >= x0 && b.tx <= x1 && b.ty + b.size >= y0 && b.ty <= y1;
+    const liveB = new Set();   // others' buildings in sight now are drawn as they are; the rest as last seen (T44)
+    for (const b of g.buildings) if ((b.team === PLAYER || g.seesFoot(PLAYER, b)) && inView(b)) { items.push({ o: b, k: 2, z: b.tx + b.ty + b.size * 2 - 1 }); liveB.add(b.id); }
+    if (g.fogOn) for (const k in g.mem[PLAYER]) { const m = g.mem[PLAYER][k]; if (!liveB.has(m.id) && inView(m)) items.push({ o: m, k: 7, z: m.tx + m.ty + m.size * 2 - 1 }); }
     for (const u of g.units) {
       if (u.hp <= 0 || u.hidden || u.inside || !(u.team === PLAYER || isVis(u.x, u.y))) continue;
       if (u.x < x0 || u.x > x1 || u.y < y0 || u.y > y1) continue;
       items.push({ o: u, k: 3, z: u.x + u.y + 0.2 });
     }
     for (const w of g.wanderers || []) if (isVis(w.x, w.y) && w.x > x0 && w.x < x1 && w.y > y0 && w.y < y1) items.push({ o: w, k: 5, z: w.x + w.y + 0.2 });
-    for (const f of g.fx || []) if (f.kind === 'ruin' && g.time - f.born < RUIN_LIFE && isSeen(f.x, f.y) && f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) items.push({ o: f, k: 6, z: f.tx + f.ty + f.size * 2 - 1.5 });
+    for (const f of g.fx || []) if (f.kind === 'ruin' && g.time - f.born < RUIN_LIFE && (isVis(f.x, f.y) || (f.pv && isSeen(f.x, f.y))) && f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) items.push({ o: f, k: 6, z: f.tx + f.ty + f.size * 2 - 1.5 });
     this.orderAround(items);
     items.sort((a, b) => a.z - b.z);
     for (const it of items) {
@@ -141,6 +144,7 @@ export class Renderer {
       else if (it.k === 3) this.unit(ctx, e, ui, t, z);
       else if (it.k === 5) this.wanderer(ctx, e, t, z);
       else if (it.k === 6) this.ruin(ctx, e, g, z);
+      else if (it.k === 7) this.remembered(ctx, e, ui, t, z);
       else this.prop(ctx, e, z);
     }
     for (const u of g.units) u.hidden = false; // re-set each tick by infiltrators
@@ -557,6 +561,11 @@ export class Renderer {
     ctx.fillStyle = '#f0e2b0'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x - pw / 2 + s * 1.15, y + ph / 2 + 1); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
   }
   // ---------------------------------------------------------------- buildings
+  // a rival's building out of sight, drawn as it was last seen, greyed (T44); no queue, garrison, smoke or rally is known
+  remembered(ctx, m, ui, t, z) {
+    const b = { ...m, memo: true, queue: [], garrison: [], flash: 0, rally: null };
+    ctx.save(); ctx.filter = 'grayscale(0.55) brightness(0.8)'; this.building(ctx, b, true, ui, t, z); ctx.restore();
+  }
   building(ctx, b, dim, ui, t, z) {
     const f = HOUSES[b.team], prog = b.built, [name, mul] = BSPR[b.kind] || ['cottage', 1];
     const own = b.kind === 'village' ? null : b.kind === 'mine' ? paintedMine(f.faction, b.ore || 'stone') : factionSprite(f.faction, b.kind);   // the people's own painted building
@@ -581,7 +590,8 @@ export class Renderer {
       ctx.drawImage(c, bx - w / 2, dy, w, h);
     }
     ctx.restore();
-    this.hit(b, 'building', bx - w * 0.45, dy + h * 0.1, bx + w * 0.45, by);
+    const live = b.memo ? this.game.byId.get(b.id) : b;   // (a remembered building answers clicks for the real one while it stands, T44)
+    if (live && live.type === 'building' && live.hp > 0) this.hit(live, 'building', bx - w * 0.45, dy + h * 0.1, bx + w * 0.45, by);
     if (prog >= 1 && !dim && gfx.q >= 1) {
       this.damageFx(ctx, b, bx, dy, w, h, t, z);
       if (FLAGGED.has(b.kind) && b.hp > 0) { const px = bx + w * 0.08, py = dy + h * 0.02; ctx.strokeStyle = '#2a1c0e'; ctx.lineWidth = Math.max(1.5, 1.8 * z); ctx.beginPath(); ctx.moveTo(px, py + 20 * z); ctx.lineTo(px, py - 4 * z); ctx.stroke(); this.pennant(ctx, px, py - 3 * z, z, t, f.primary, f.accent, b.id); }
@@ -615,7 +625,7 @@ export class Renderer {
     if (b.kind === 'mine' && b.ore && z >= 0.55) this.oreLabel(ctx, bx, by + 3 * z, b.ore, z);   // what it digs, in the mineral's colour
     if (b.hp < b.maxHp && prog >= 1) this.bar(ctx, bx - w * 0.3, dy - 6, w * 0.6, 4, b.hp / b.maxHp, this.hpColor(b.hp / b.maxHp));
     if (b.queue.length && b.team === PLAYER) this.bar(ctx, bx - w * 0.3, by + 4 * z, w * 0.6, 3, b.queue[0].t / UNITS[b.queue[0].kind].time, '#7ac1ff');
-    if (ui?.isSelected(b)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, b.tx - 0.1, b.ty - 0.1, b.size + 0.2, b.size + 0.2); ctx.stroke(); ctx.setLineDash([]); }
+    if (ui?.isSelected(live || b)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, b.tx - 0.1, b.ty - 0.1, b.size + 0.2, b.size + 0.2); ctx.stroke(); ctx.setLineDash([]); }
     if (ui?.isSelected(b) && b.rally) { const [sx, sy] = this.toScreen(b.x, b.y), [rx, ry] = this.toScreen(b.rally.x, b.rally.y); ctx.strokeStyle = f.accent; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(rx, ry); ctx.stroke(); ctx.fillStyle = f.accent; ctx.fillRect(rx - 1, ry - 14, 2, 14); ctx.fillRect(rx + 1, ry - 14, 9, 5); }
   }
 
@@ -956,8 +966,7 @@ export class Minimap {
       ctx.fillStyle = v.owner >= 0 ? HOUSES[v.owner].accent : '#cdbb8a'; ctx.fillRect(v.tx * sx, v.ty * sy, Math.max(4, v.size * sx), Math.max(4, v.size * sy));
       ctx.strokeStyle = '#000'; ctx.strokeRect(v.tx * sx + 0.5, v.ty * sy + 0.5, Math.max(4, v.size * sx), Math.max(4, v.size * sy));
     }
-    for (const b of g.buildings) {
-      if (b.team !== PLAYER && g.fogOn && !seen[Math.floor(b.y) * g.W + Math.floor(b.x)]) continue;
+    for (const b of g.knownBuildings(PLAYER)) {   // others' as last seen (T44)
       ctx.fillStyle = HOUSES[b.team].accent; ctx.fillRect(b.tx * sx, b.ty * sy, Math.max(3, b.size * sx), Math.max(3, b.size * sy));
     }
     const blink = (g.time * 4) % 1 < 0.5;
@@ -1006,9 +1015,8 @@ export function drawVale(canvas, game, { fog = false, poly = null, labels = fals
     ctx.strokeStyle = '#f0e2b6'; ctx.lineWidth = 1.5; ctx.strokeRect(cx - s / 2, cy - s / 2, s, s);
     if (labels) { ctx.font = '11px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(v.name, cx + 1, cy + s + 11); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, cx, cy + s + 10); }
   }
-  for (const b of game.buildings) {
+  for (const b of fog ? game.knownBuildings(PLAYER) : game.buildings) {   // others' keeps as last seen (T44)
     if (b.kind !== 'keep') continue;
-    if (fog && game.fogOn && b.team !== PLAYER && !seen[Math.floor(b.y) * W + Math.floor(b.x)]) continue;
     drawDisc(ctx, b.x * sx, b.y * sy, Math.max(9, sx * 3), b.team);
   }
   for (const v of game.villages) if (v.home != null && v.owner === v.home && (!fog || !game.fogOn || v.owner === PLAYER || seen[Math.floor(v.y) * W + Math.floor(v.x)])) drawDisc(ctx, v.x * sx, v.y * sy, Math.max(9, sx * 3), v.owner);

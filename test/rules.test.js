@@ -1463,6 +1463,38 @@ test('keep arrows (T43): a garrisoned keep shoots one arrow per few folk inside 
   assert.match(BUILDINGS.keep.info, /arrows/);
 });
 
+test('fog memory (T44): a rival building raised in fog stays unseen, one seen is remembered as it was, one razed in fog is kept until its ground is seen; saved', () => {
+  const g = mk(); meet(g); g.titleView = false; g.setFog(true);
+  // an unwatched square: no house sees it
+  let spot = null;
+  for (let y = 20; y < g.H - 20 && !spot; y += 7) for (let x = 20; x < g.W - 20 && !spot; x += 7) {
+    if (g.vis.some((v) => v[y * g.W + x])) continue;
+    if (g.buildings.some((b) => Math.abs(b.x - x) < 14 && Math.abs(b.y - y) < 14) || g.villages.some((v) => Math.abs(v.x - x) < 14 && Math.abs(v.y - y) < 14)) continue;
+    spot = [x, y];
+  }
+  assert.ok(spot, 'an unwatched square');
+  const [sx, sy] = spot, known = () => g.knownBuildings(PLAYER).find((o) => o.id === tower.id);
+  const look = () => { const u = g.addUnit('scout', PLAYER, sx + 1.5, sy + 1.5); g.updateVisibility(true); u.hp = 0; g.cleanup(); g.updateVisibility(true); };
+  look();   // the ground is explored, then left
+  assert.equal(g.wasSeen(PLAYER, sx, sy), true); assert.equal(g.canSee(PLAYER, sx, sy), false);
+  const tower = g.addBuilding('tower', 1, sx, sy, true); g.updateVisibility(true);
+  assert.equal(known(), undefined, 'raised in explored but unwatched ground: not known');
+  look();
+  const m = known(); assert.ok(m, 'seen once: remembered'); assert.equal(m.kind, 'tower'); assert.equal(m.team, 1);
+  tower.hp = tower.maxHp / 2; g.updateVisibility(true);
+  assert.equal(known().hp, m.hp, 'out of sight: the damage is not known');
+  tower.hp = 0; g.cleanup(); g.updateVisibility(true);
+  assert.ok(known(), 'razed out of sight: still remembered');
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.ok(h.knownBuildings(PLAYER).some((o) => o.id === tower.id), 'the memory is saved');
+  look();
+  assert.equal(known(), undefined, 'seen gone: forgotten');
+  // the player's own buildings are always known; fog off shows everything
+  const own = g.addBuilding('tower', PLAYER, sx + 6, sy, true); g.updateVisibility(true);
+  assert.ok(g.knownBuildings(PLAYER).includes(own), 'our own: as it is');
+  g.setFog(false); assert.equal(g.knownBuildings(PLAYER), g.buildings);
+});
+
 test('a town changing hands takes its buildings empty: no training, kit or drills in hand carry over to the new lord (T-086)', () => {
   const g = mk(); meet(g);
   const v = g.villages.find((x) => x.owner < 0);
