@@ -419,3 +419,27 @@ Causes and fixes:
   - rejoining, and a late player
   - the end at the cap with points and a signed report, an abandoned match, and a report retried
 - The WebSocket code moved from `relay.js` to `server/ws.js` (shared). It now also limits the size of a message sent in fragments.
+
+## T-091 - The api (network branch, 2026-10-23; ONLINE.md step 3)
+- **What it is.** `server/api.js` serves the game's own files (only `index.html`, `style.css`, `js/`, `assets/` and `data/`) and the JSON api. Settings come from the environment (DEPLOY.md lists them).
+- **Accounts** (`server/auth.js`, `server/names.js`):
+  - **Email codes:** 6 digits, 10 minutes, one use, 5 tries, 3 codes per address every 15 minutes, 10 per IP an hour, stored as a hash.
+  - **Google, Discord and GitHub:** OAuth with PKCE and a signed state cookie. An account is joined only on an address the provider has verified.
+  - **Sessions:** a 30-day `HttpOnly`, `SameSite=Lax` cookie, `Secure` over HTTPS, stored as a hash.
+  - **Usernames:** checked against a short list of slurs and staff names, with disguises undone and innocent places allowed (Scunthorpe, Cockburn ...). A Report button feeds `name_reports`.
+  - **Deleting an account** removes the address, sign-ins and sessions; the player's matches stay in the league as "Fallen house #n".
+- **The hourly matches** (`server/service.js`):
+  - Sign-up opens 30 minutes before; seats are first come, first served.
+  - On the hour the match is launched (`server/launch.js`: in-process locally, a Kubernetes Job and Service in the cluster).
+  - A match nobody signed up for is marked empty. One the api missed by more than 5 minutes is marked missed. One that never reports is marked failed.
+  - A seated player gets a signed ticket from `/api/play`.
+  - Results arrive signed at `/internal/results` and are recorded once (a retry changes nothing; a forged one is refused).
+  - The league is by month (UTC) or all time; `/league` is a plain page; a Discord webhook is optional.
+- **Safety:**
+  - Changes need the `X-Auld` header and our own origin (no cross-site requests).
+  - A content security policy and the usual security headers.
+  - Request bodies are capped at 16 KB.
+  - Rate limits on codes, tries, names, sign-up and reports.
+  - The test sign-in (`AUTH_DEV=1`) refuses to start in production, as do missing secrets.
+- **Database:** one SQLite file through Node's built-in `node:sqlite` (no native packages; run with `--disable-warning=ExperimentalWarning`). Migrations are numbered in `server/db.js`.
+- **Tests:** `test/api.test.js` (13). It runs a whole hour against a fake OAuth provider, with two players signing in, signing up, playing through the api's WebSocket pass-through, and the result reaching the league.

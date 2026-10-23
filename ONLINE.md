@@ -283,7 +283,7 @@ Proposed list (easy to change):
 | 0 | Merge `grok` into `network`. **Done** (6fd411e). The treaty envoy is now the same on every copy (it was single-player-only, a desync). | network |
 | 1 | **Performance pass** for 8 houses (section 2), with a CI budget test. **Done** 2026-10-23 (052b42a, d718554) | grok, then merged |
 | 2 | Match container: tickets, 8 seats, referee, repair on desync, preset messages, result. **Done** 2026-10-23: `server/match.js`, `server/ticket.js`, `server/ws.js`, `js/online.js`; `test/match.test.js` | network |
-| 3 | api: database, sign-in (email code, Google, Discord, GitHub), usernames, sessions, scheduler, launcher, results, points, league | network |
+| 3 | api: database, sign-in (email code, Google, Discord, GitHub), usernames, sessions, scheduler, launcher, results, points, league. **Done** 2026-10-23: `server/api.js`, `auth.js`, `db.js`, `service.js`, `launch.js`, `mail.js`, `names.js`; `test/api.test.js` | network |
 | 4 | Online menu in the game: sign in, username, next match and countdown, join, league table, messages panel, results screen | network |
 | 5 | Image, Kubernetes manifests, Caddy, Litestream | network |
 | 6 | Terraform (replaces the current single-server compose setup) | network |
