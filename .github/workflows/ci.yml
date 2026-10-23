@@ -45,3 +45,31 @@ jobs:
           ! grep -q '"desync":true' mp.txt
       - name: Two browsers play an hourly match through the api and the match server
         run: node tools/online-smoke.cjs
+  deploy-checks:   # the deployment files, without touching AWS: manifests against Kubernetes' schemas, shell scripts, Terraform, the image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Render the manifests for both environments and check them against Kubernetes' schemas
+        run: |
+          mkdir -p out
+          node deploy/k8s/render.mjs app --env production --image ghcr.io/example/auld-world:ci --version ci --host game.example.com --bucket example-bucket --mail ses --mail-from "Auld World <play@example.com>" > out/production.yaml
+          node deploy/k8s/render.mjs app --env staging --image ghcr.io/example/auld-world:ci --version ci --host staging.game.example.com --bucket example-bucket > out/staging.yaml
+          node deploy/k8s/render.mjs edge --prod-site game.example.com --staging-site staging.game.example.com --acme-email ops@example.com > out/edge.yaml
+          docker run --rm -v "$PWD/out:/m" ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary -kubernetes-version 1.33.0 /m/production.yaml /m/staging.yaml /m/edge.yaml
+      - name: Shell scripts
+        run: docker run --rm -v "$PWD/deploy/host:/s" koalaman/shellcheck:v0.10.0 /s/deploy.sh /s/ssm-run.sh
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.12.2 }
+      - name: Terraform format and validate (no AWS account needed)
+        run: |
+          terraform -chdir=deploy/terraform fmt -recursive -check
+          terraform -chdir=deploy/terraform init -backend=false -input=false
+          terraform -chdir=deploy/terraform validate
+          terraform -chdir=deploy/terraform/bootstrap init -backend=false -input=false
+          terraform -chdir=deploy/terraform/bootstrap validate
+      - name: Build the image and scan it for known vulnerabilities (fails on critical ones that have a fix)
+        run: |
+          docker build --build-arg VERSION=ci -t auld-world:ci .
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.65.0 image --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress auld-world:ci

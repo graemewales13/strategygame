@@ -1,50 +1,26 @@
 #!/bin/bash
-# First boot of the Auld World server: Docker, the game from git, and Caddy in front (deploy/docker-compose.yml).
-set -euxo pipefail
-exec > >(tee /var/log/auld-world-setup.log) 2>&1
-
-dnf install -y docker git
-systemctl enable --now docker
-mkdir -p /usr/local/lib/docker/cli-plugins
-curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
-chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-
-# the site Caddy serves: a domain (HTTPS) or :80 (plain HTTP on the IP)
-echo 'DOMAIN=${caddy_site}' > /etc/auld-world.env
-
-git clone --branch '${branch}' --depth 1 '${repo_url}' /opt/auld-world
-
-# auld-update: pull the latest of the branch and rebuild (ends live matches; players are told the server is restarting)
-cat > /usr/local/bin/auld-update <<'EOF'
-#!/bin/bash
+# First boot of the Auld World server (Amazon Linux 2023). Everything after this comes from deploys (deploy/host/deploy.sh, run by CI).
+# The log of this script: /var/log/auld-setup.log
 set -euo pipefail
-cd /opt/auld-world
-git fetch --depth 1 origin
-git reset --hard FETCH_HEAD
-cd deploy
-set -a; . /etc/auld-world.env; set +a
-docker compose up -d --build
-docker image prune -f
-EOF
-chmod +x /usr/local/bin/auld-update
+exec > /var/log/auld-setup.log 2>&1
+echo "[setup] $(date -u) starting"
 
-# start now, and again after every reboot
-cat > /etc/systemd/system/auld-world.service <<'EOF'
-[Unit]
-Description=Auld World game and relay (Docker Compose)
-After=docker.service network-online.target
-Requires=docker.service
+# swap: room to breathe when two matches overlap on a small server
+if [ ! -f /swapfile ] && [ "${swap_gb}" -gt 0 ]; then
+  fallocate -l "${swap_gb}G" /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile none swap defaults 0 0' >> /etc/fstab
+  echo 'vm.swappiness=10' > /etc/sysctl.d/90-auld.conf && sysctl --system >/dev/null
+fi
 
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-EnvironmentFile=/etc/auld-world.env
-WorkingDirectory=/opt/auld-world/deploy
-ExecStart=/usr/bin/docker compose up -d --build
-ExecStop=/usr/bin/docker compose down
+# what deploys need to know, and the deploy script itself
+mkdir -p /etc/auld /opt/auld /var/lib/auld/caddy
+echo "${bucket}" > /etc/auld/bucket
+echo "${region}" > /etc/auld/region
+echo "${deploy_sh_b64}" | base64 -d > /opt/auld/deploy.sh
+chmod 755 /opt/auld/deploy.sh
 
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl enable --now auld-world.service
+# k3s, pinned; without the parts we do not use (Traefik: Caddy is the front door; servicelb: Caddy holds the ports; metrics-server: memory)
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION='${k3s_version}' INSTALL_K3S_EXEC='server --disable traefik --disable servicelb --disable metrics-server --write-kubeconfig-mode 600' sh -
+for i in $(seq 1 60); do /usr/local/bin/kubectl get nodes 2>/dev/null | grep -q ' Ready' && break; sleep 5; done
+/usr/local/bin/kubectl get nodes
+echo "[setup] $(date -u) done: waiting for the first deploy"

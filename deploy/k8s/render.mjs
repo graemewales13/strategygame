@@ -30,7 +30,7 @@ export function renderApp(o) {
       ? ['          - type: file', '            path: /data/backup']
       : ['          - type: s3', `            bucket: ${o.bucket}`, `            path: db/${env}/auld.db`, `            region: ${o.region || 'eu-west-2'}`, '            retention: 168h']).join('\n'),
     REGION: o.region || 'eu-west-2', MAIL: o.mail || 'console', MAIL_FROM: o.mailFrom || '',
-    AUTH_DEV: prod ? '0' : '1', EVERY_MIN: String(o.everyMin || (prod ? 60 : 15)), MATCH_CAP_S: String(o.capS || (prod ? 7200 : 900)),
+    AUTH_DEV: prod ? '0' : '1', EVERY_MIN: String(o.everyMin || (prod ? 60 : 5)), MATCH_CAP_S: String(o.capS || (prod ? 7200 : 300)),   // (staging: a match every 5 minutes, 5 minutes long, to test quickly)
   });
 }
 export function renderEdge(o) {

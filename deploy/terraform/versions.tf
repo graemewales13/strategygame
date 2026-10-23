@@ -1,17 +1,23 @@
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.10" # (S3 state locking without DynamoDB: use_lockfile)
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
-  # State is kept locally in terraform.tfstate by default. To share it or keep it safe, use an S3 backend, for example:
-  # backend "s3" {
-  #   bucket = "my-terraform-state"
-  #   key    = "auld-world/terraform.tfstate"
-  #   region = "eu-west-2"
-  # }
+  # The state lives in the S3 bucket made once by bootstrap/ (DEPLOY.md, step 1). The bucket's name is given at init:
+  #   terraform init -backend-config="bucket=<state bucket>"
+  backend "s3" {
+    key          = "auld-world/terraform.tfstate"
+    region       = "eu-west-2"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

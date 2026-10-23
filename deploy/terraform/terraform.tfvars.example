@@ -1,18 +1,12 @@
-# Copy to terraform.tfvars and fill in. (terraform.tfvars is ignored by git.)
+# Copy to terraform.tfvars (ignored by git) and fill in. DEPLOY.md, "One-time setup", step 4.
+alert_email = "you@example.com" # budget alerts and Let's Encrypt notices
 
-region        = "eu-west-2" # London
-instance_type = "t3.small"  # or "t4g.small" (Graviton, cheaper)
+# Once you have a domain (DEPLOY.md, "Adding a domain"):
+# domain          = "play.example.com"
+# route53_zone_id = "Z0123456789ABCDEFGHIJ"
 
-# With a domain, players get HTTPS. Leave empty to test on plain HTTP at the server's IP.
-domain = "game.example.com"
-
-# If the domain is in Route 53, give its hosted zone ID and Terraform creates the DNS record. Otherwise leave empty and add the
-# A record yourself, pointing at the public_ip output.
-route53_zone_id = ""
-
-# Deploy from this branch (online play and the deploy kit live on network).
-branch = "network"
-
-# Optional: SSH from your own IP only. Leave empty and use the `shell` output (Session Manager) instead.
-ssh_cidr     = ""
-ssh_key_name = ""
+# Rarely changed:
+# region        = "eu-west-2"
+# instance_type = "t4g.small"
+# cpu_credits   = "standard"   # "unlimited" keeps full speed when busy, and AWS charges for it
+# budget_usd    = 25

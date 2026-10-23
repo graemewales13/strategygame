@@ -1,0 +1,60 @@
+# Promote a release to production (by hand: Actions, Deploy to production, Run workflow, the version). It deploys exactly the manifests the
+# release rendered and staging already ran (s3://<bucket>/releases/<version>/production.yaml, pinned to the image's digest), checks the
+# site answers with the new version, and if not, puts the previous production release back. Give the "production" environment required
+# reviewers in GitHub (Settings, Environments) and every run waits for your approval.
+name: Deploy to production
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release to deploy, e.g. 1.0.57 (see Releases)"
+        required: true
+        type: string
+concurrency:
+  group: production
+  cancel-in-progress: false
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.AULD_PROD_HOST }}
+    env:
+      VERSION: ${{ inputs.version }}
+      BUCKET: ${{ vars.AULD_BUCKET }}
+      SERVER: ${{ vars.AULD_INSTANCE_ID }}
+    steps:
+      - name: Check the version
+        run: echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "a version looks like 1.0.57"; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: The release's manifests exist (made by the Release workflow)
+        run: aws s3 ls "s3://$BUCKET/releases/$VERSION/production.yaml"
+      - name: Remember what production runs now
+        id: before
+        run: echo "previous=$(aws s3 cp "s3://$BUCKET/releases/production-current" - 2>/dev/null | tr -d ' \r\n' || true)" >> "$GITHUB_OUTPUT"
+      - name: Deploy
+        run: sh deploy/host/ssm-run.sh "$SERVER" /opt/auld/deploy.sh production "$VERSION"
+      - name: Check the site answers with the new version
+        run: |
+          for _ in $(seq 1 24); do
+            got=$(curl -fsS -m 10 "https://${{ vars.AULD_PROD_HOST }}/healthz" || true)
+            [ "$got" = "ok $VERSION" ] && { echo "production answers: $got"; exit 0; }
+            sleep 5
+          done
+          echo "production answered: '$got'"; exit 1
+      - name: Record it as production's release
+        run: echo "$VERSION" | aws s3 cp - "s3://$BUCKET/releases/production-current"
+      - name: It failed - put the previous release back
+        if: failure() && steps.before.outputs.previous != '' && steps.before.outputs.previous != inputs.version
+        run: |
+          echo "rolling back to ${{ steps.before.outputs.previous }}"
+          sh deploy/host/ssm-run.sh "$SERVER" /opt/auld/deploy.sh production "${{ steps.before.outputs.previous }}"

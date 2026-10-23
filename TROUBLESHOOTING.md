@@ -486,3 +486,40 @@ Causes and fixes:
 - **`tools/cluster-check.mjs <url>`** plays a whole match against a running deployment without browsers: two test players, a ticket each, the WebSocket through the front door, turns, a Herald message, the result and the league. CI runs it on staging after each deploy. On a busy PC two game-rendering browsers on top of k3s were too much (load average 20), so the browser test (`online-smoke`) runs in CI against the plain api.
 - **Also fixed:** the api test used a fixed date (14:00 today). Once the real clock passed that ticket's expiry it failed: a time bomb. It now works round the next real hour.
 - **Removed:** `deploy/docker-compose.yml` and `deploy/Caddyfile` (the single-server setup this replaces).
+
+## T-094 - Terraform and the CI/CD pipeline (network branch, 2026-10-23; ONLINE.md steps 6 and 7)
+- **Terraform** (`deploy/terraform/`, AWS provider 6, state in S3 with S3's own locking):
+  - **`bootstrap/`** makes the state bucket, once.
+  - **The server:** a t4g.small (Amazon Linux 2023 arm64), with:
+    - an encrypted 20 GB gp3 disk
+    - IMDSv2 only, with a hop limit of 2 (pods use the server's role)
+    - CPU credits `standard` (no surprise charges)
+    - a fixed Elastic IP, and a security group open on 80 and 443 only (no SSH: Session Manager instead)
+  - **First boot:** swap, then `/opt/auld/deploy.sh`, then k3s v1.33.4 without Traefik, servicelb or metrics-server.
+  - **The bucket:** private, versioned, encrypted, TLS only. Old versions expire after 30 days, releases after 180.
+  - **The secrets:** generated session and match secrets in SSM Parameter Store.
+  - **The server's role:** its bucket prefixes, `/auld/*` parameters, sending from the SES identity.
+  - **GitHub OIDC:** a deploy role trusted only for this repository's `staging` and `production` environments, allowed to upload releases and run `AWS-RunShellScript` on this server.
+  - **With a domain:** Route 53 A records and an SES identity with DKIM.
+  - **A monthly budget** (80% actual, 100% forecast, emailed).
+  - **Checked:** `fmt` clean and `validate` passed in Docker (no AWS account needed). The same checks run in CI.
+- **The pipeline** (`.github/workflows/`, checked with actionlint, whose shellcheck warning was fixed):
+  - **`ci.yml`:**
+    - tests: game, servers, AWS signing, deploy files
+    - the browser smokes (single player, relay, the hourly match)
+    - new `deploy-checks`: manifests rendered for both environments and checked against Kubernetes 1.33's schemas (kubeconform: 23 resources valid); shellcheck on the server scripts; Terraform fmt and validate; the image built and scanned by Trivy, failing on fixable critical vulnerabilities
+  - **`release.yml`**, after CI passes on `network`:
+    1. version `<VERSION>.<run>`
+    2. image for arm64 and amd64 on ghcr.io, with SBOM and provenance; the pushed image scanned
+    3. tag and GitHub Release
+    4. the release's manifests (staging, production, front door, pinned to the image's digest) rendered and kept in S3 as its artifact
+    5. front door and staging deployed through Systems Manager (`deploy/host/ssm-run.sh`)
+    6. a whole match played on staging (`tools/cluster-check.mjs`)
+    - The deploy is skipped until the AWS variables exist.
+  - **`deploy-production.yml`**, by hand with the version:
+    - waits for the `production` environment's reviewers
+    - deploys exactly the release's rendered manifests
+    - checks `/healthz` answers with the version, and records it
+    - on failure, puts back the previous release
+- **Staging** now runs a match every 5 minutes, 5 minutes long, so CI's match on staging takes about 10 minutes.
+- **DEPLOY.md** is rewritten as the runbook: one-time setup, a domain, OAuth apps, day to day, rolling back, logs, backups, secrets, local runs.

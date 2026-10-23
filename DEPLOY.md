@@ -1,152 +1,158 @@
-# Deploying Auld World to AWS
+# Deploying Auld World online
 
-The game and its online relay are one small Node program (`relay.js`, no dependencies). It serves the game's files and runs online matches over a WebSocket at `/ws`. Players open `https://<your domain>/?mp=<room>&name=<name>`.
+How the hourly online game is hosted, set up and run. The design and its reasons are in [ONLINE.md](ONLINE.md). Everything here lives on the `network` branch.
 
-## Three things that decide the AWS setup
+## What runs where
 
-1. **One server, not a fleet.** Rooms and matches live in the relay's memory. Run exactly one copy. Two copies behind a load balancer would split a room between them.
-2. **A restart ends the matches in progress.** Players are told the server is restarting. Deploy updates at quiet times.
-3. **HTTPS for anything public.** A page served over `https` must use secure WebSockets (`wss://`), which the game does by itself. You need a domain name and a certificate.
-   - The relay sends a keep-alive ping every 25 s, so AWS load balancers and proxies don't drop quiet lobbies. It also drops connections that have been silent for 70 s.
-
-The relay is light: it only passes orders between players. Every player's browser runs the game itself. A small instance with 2 vCPU and 2 GB is plenty for many matches at once.
-
-## Recommended: Terraform (`deploy/terraform/`)
-
-Terraform builds the whole server in one command, and removes it all again with another.
-- **What it builds:**
-  - one EC2 instance (Amazon Linux 2023) running the game and relay in Docker, with Caddy in front for HTTPS
-  - a fixed Elastic IP address
-  - a security group with 80 and 443 open (SSH stays closed unless you ask)
-  - an instance role so you can open a shell through AWS Session Manager instead of SSH
-  - optionally, the DNS record in Route 53
-- **What happens on first boot:** the server installs Docker, clones the `network` branch, and starts automatically. It starts again after any reboot.
-
-**You need:**
-- **Terraform** 1.5 or later (`winget install Hashicorp.Terraform` on Windows).
-- **The AWS CLI**, logged in to your account (`aws configure`, or `aws sso login`).
-- **Optionally, the Session Manager plugin**, for the shell command.
-- **Optionally, a domain:** a domain in Route 53 lets Terraform create the DNS record; any other domain works if you add the record yourself.
-
-**Steps:**
-```bash
-cd deploy/terraform
-copy terraform.tfvars.example terraform.tfvars     # (cp on Mac/Linux) then edit it: region, domain, Route 53 zone ID
-terraform init
-terraform plan          # shows what will be created; nothing is built yet
-terraform apply         # builds it (type yes)
-```
-Terraform then prints:
-
-| Output | What it is |
-|---|---|
-| `url` | where to play (add `?mp=<room>&name=<you>` for online) |
-| `public_ip` | the fixed address: point your domain's A record here if you did not give a Route 53 zone |
-| `health_check` | open it after a few minutes; it should say `ok rooms=0 connections=0` |
-| `shell` | opens a shell on the server through Session Manager |
-| `update` | deploys the latest commit of the `network` branch (this ends live matches) |
-
-**Settings** (`terraform.tfvars`):
-
-| Setting | Default | Notes |
+| Piece | Where | What it does |
 |---|---|---|
-| `region` | `eu-west-2` (London) | |
-| `instance_type` | `t3.small` | `t4g.small` is Graviton and cheaper; the right image is chosen automatically |
-| `domain` | empty | Leave empty to test on plain HTTP at the IP. Set it for HTTPS: Caddy fetches the certificate once the domain points at the server |
-| `route53_zone_id` | empty | If set, Terraform creates the domain's A record |
-| `branch` | `network` | |
-| `ssh_cidr`, `ssh_key_name` | empty | SSH stays closed; use the `shell` output instead. To open SSH, give your own IP as `x.x.x.x/32` and an existing key pair |
+| **Server** | One AWS t4g.small (2 vCPU, 2 GB), Amazon Linux 2023, **k3s** (Kubernetes) | Runs everything below |
+| **Front door** | Caddy, namespace `edge` | HTTPS for `<domain>` and `staging.<domain>` (free certificates from Let's Encrypt). Sends `/m/<id>/ws` to that match, everything else to the api |
+| **api** | One pod per environment, namespaces `auld` and `auld-staging` | The game's files, sign-in, the timetable, tickets, results, league |
+| **Database** | SQLite on the server's disk | Litestream copies every change to S3 within seconds; a new server restores it before the api starts |
+| **Matches** | One Kubernetes Job per match, `match-<id>` | Started by the api on the hour; ends and is removed by itself |
+| **Images** | `ghcr.io/graemewales13/auld-world:<version>` | Built for arm64 and amd64 by GitHub Actions |
+| **Secrets** | AWS SSM Parameter Store, `/auld/<env>/...` | Read by the server at each deploy. Never in git |
+| **Deploys** | GitHub Actions to AWS (OIDC: no stored keys) to Systems Manager to `/opt/auld/deploy.sh` on the server | No SSH, no open Kubernetes port |
 
-**Day to day:**
-- **Updating:** after pushing to `network`, run the `update` command Terraform printed. Changing `branch`, `repo_url` or `domain` and running `terraform apply` builds a fresh server instead (also ending live matches). The address stays the same, because it is an Elastic IP.
-- **Logs:** open the `shell`, then `cd /opt/auld-world/deploy && sudo docker compose logs -f relay`. First-boot output is in `/var/log/auld-world-setup.log`.
-- **Removing everything:** `terraform destroy`.
-- **State:** Terraform keeps track of what it built in `terraform.tfstate`, in that folder. It is ignored by git: keep it safe, or switch to the S3 backend sketched in `versions.tf`.
+Cost: about $20 a month (about £15). The breakdown is in ONLINE.md section 8. Terraform also makes a monthly **budget alarm** that emails you at 80% of $25 spent, and when the month's forecast passes $25.
 
-## By hand: one EC2 (or Lightsail) instance with Docker and Caddy
+## One-time setup
 
-The same setup Terraform builds, done step by step.
+### 1. Tools on your PC
 
-The simplest setup that works well. Caddy gets and renews a free HTTPS certificate automatically and proxies WebSockets with no extra setup.
+| Tool | How to get it |
+|---|---|
+| An AWS account, and a user who may create resources | You sign in with this user in step 2 |
+| The AWS CLI v2 | `winget install Amazon.AWSCLI` |
+| Terraform 1.10 or later | `winget install Hashicorp.Terraform` |
+| *Optional:* the Session Manager plugin, for a shell on the server | `winget install Amazon.SessionManagerPlugin` |
 
-1. **Launch the instance.**
-   - Image: Amazon Linux 2023. Size: `t3.small` or `t4g.small`.
-   - Security group: inbound 80 and 443 from anywhere, and 22 from your own IP only.
-   - Allocate an **Elastic IP** and attach it, so the address never changes.
-   - Lightsail works the same way: open ports 80 and 443 in its networking tab.
-2. **Point your domain at it.** In Route 53, or wherever your domain lives, add an `A` record such as `game.example.com` pointing to the Elastic IP. Wait until `ping game.example.com` shows that IP.
-3. **Install Docker and fetch the game** (on the instance, over SSH):
-   ```bash
-   sudo dnf install -y docker git
-   sudo systemctl enable --now docker
-   sudo usermod -aG docker ec2-user && newgrp docker
-   sudo mkdir -p /usr/local/lib/docker/cli-plugins
-   sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m) -o /usr/local/lib/docker/cli-plugins/docker-compose
-   sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-   git clone -b network https://github.com/graemewales13/strategygame.git && cd strategygame/deploy
-   ```
-4. **Start it:**
-   ```bash
-   DOMAIN=game.example.com docker compose up -d --build
-   ```
-   Caddy fetches the certificate on first start (port 80 must be reachable for that). Check it with:
-   ```bash
-   curl https://game.example.com/healthz     # should print: ok rooms=0 connections=0
-   ```
-5. **Play:** everyone opens `https://game.example.com/?mp=myroom&name=YourName`. Single player works at `https://game.example.com/`.
+### 2. Sign in to AWS
 
-**Updating** (ends live matches):
-```bash
-cd ~/strategygame && git pull && cd deploy && DOMAIN=game.example.com docker compose up -d --build
+```powershell
+aws configure          # or: aws configure sso
+aws sts get-caller-identity   # shows the account: check it is the right one
 ```
 
-**Logs:** `docker compose logs -f relay`. Joins, starts, players who drop and any desyncs appear here.
+### 3. The bucket for Terraform's own state (once)
 
-## Alternative: ECS Fargate with an Application Load Balancer
+```powershell
+cd deploy\terraform\bootstrap
+terraform init
+terraform apply        # type yes; note the output state_bucket
+```
+Keep `deploy\terraform\bootstrap\terraform.tfstate`. Git ignores it.
 
-Use this if you prefer managed containers.
+### 4. The server and everything around it
 
-- Build and push the image to ECR from the repo root:
-  ```bash
-  docker build -t auld-world .
-  ```
-  Then tag the image and push it to your ECR repository.
-- **Service:**
-  - **Desired count 1**, never more (see "one server" above).
-  - Deployment settings: minimum healthy 0%, maximum 100%, so a deploy never runs two copies at once.
-  - Container port 8080. The `PORT` environment variable is already 8080.
-- **Target group:**
-  - Protocol HTTP, port 8080.
-  - Health check path `/healthz`.
-  - Stickiness is not needed with one task.
-- **Load balancer:**
-  - An HTTPS listener on 443 with an ACM certificate for your domain, forwarding to the target group.
-  - An HTTP 80 listener that redirects to 443.
-  - Raise the **idle timeout** to 300 s (the relay pings every 25 s anyway).
-  - ALB supports WebSockets with no extra setup.
-- **DNS:** a Route 53 alias record from your domain to the load balancer.
+Create `deploy\terraform\terraform.tfvars`. It is ignored by git.
+```hcl
+alert_email = "you@example.com"   # budget alerts, Let's Encrypt notices
+# domain          = "play.example.com"   # later: see "Adding a domain"
+# route53_zone_id = "Z0123..."
+```
+Then:
+```powershell
+cd deploy\terraform
+terraform init -backend-config="bucket=<state_bucket from step 3>"
+terraform plan         # read it: nothing is made yet
+terraform apply        # type yes; takes about 3 minutes
+terraform output github_variables
+```
+The server installs k3s by itself on first boot, which takes about 3 more minutes. Its log is `/var/log/auld-setup.log`.
 
-## Not suitable as it stands
+The exact provider versions (AWS 6.70.0, random 3.9.1) are pinned in `.terraform.lock.hcl`, which is committed, with checksums for Windows, Mac and Linux.
 
-- **App Runner:** at the time of writing it does not support WebSocket connections. Check the current AWS documentation before relying on it.
-- **Lambda with API Gateway WebSockets:** the relay keeps rooms and a turn clock in memory and runs timers. It would need rewriting around a database and scheduled functions.
-- **More than one relay behind a load balancer:** see "one server" above. Scaling out needs a shared room store first (roadmap T15).
+### 5. GitHub
 
-## Optional
+1. **Repository variables:** Settings, Secrets and variables, Actions, **Variables**. Add each entry of `github_variables` with the same name and value: `AWS_REGION`, `AWS_DEPLOY_ROLE`, `AULD_BUCKET`, `AULD_INSTANCE_ID`, `AULD_PROD_HOST`, `AULD_STAGE_HOST`, `AULD_MAIL_FROM` (empty until you have a domain) and `AULD_ACME_EMAIL`.
+2. **Environments:** Settings, Environments.
+   - `staging`, with no protection.
+   - `production`, with **Required reviewers: you**. Every production deploy then waits for your approval.
+3. **The first release:** push to `network`, or run Actions, Release, Run workflow. CI then:
+   - tests everything
+   - builds the image and publishes release `v1.0.<n>`
+   - deploys the front door and staging
+   - plays a whole match on staging
+4. **Make the image public, once:** github.com/graemewales13, Packages, **auld-world**, Package settings, Change visibility, **Public**. The repository is public, so this exposes nothing new.
+   - If you would rather keep the image private, store a GitHub token that can read packages as `/auld/ghcr-pull-token` (as in "Secrets" below). The server then pulls with it.
+5. **Open staging:** `https://staging.<address>.sslip.io`, or `staging.<domain>` once you have one. Staging has the **test sign-in** (type any name) and a match every 5 minutes, each 5 minutes long.
 
-- **Static files on S3 and CloudFront:** the relay already serves the game's files, so this only matters at large scale. If you do it, add `&relay=wss://<relay host>/ws` to the online links, or set the default in `js/main.js`.
-- **Monitoring:** point a CloudWatch alarm or Route 53 health check at `/healthz`.
-- **Limits** (in `relay.js`):
-  - 500 rooms
-  - 8 people per room (5 seats and 3 watchers)
-  - 1 MB per message
-  - 40 orders per player per turn
+### 6. Production
 
-  There are no accounts yet: anyone with the address can make a room. Put AWS WAF in front if abuse ever becomes a problem.
+Actions, **Deploy to production**, Run workflow, the version (for example `1.0.3`), then approve. It deploys that release, checks the site answers with that version, and records it as production's release. If the check fails, it puts the previous release back.
 
-## Check before going public
+## Adding a domain (and with it, email codes and Google sign-in)
 
-- [ ] `https://<domain>/healthz` says `ok`.
-- [ ] Two browsers on different networks (for example a phone on mobile data) can join one room, the host can start, and orders show on both screens. The status line in the bottom right should never say "out of step".
-- [ ] Reloading one player rejoins the same seat.
-- [ ] After an update, players get the "server is restarting" message, not a silent drop.
+1. **Buy a domain.** Route 53, Registered domains, is simplest: the zone is made for you.
+2. **Tell Terraform.** Set `domain` (and `route53_zone_id` if the zone is in Route 53) in `terraform.tfvars`, then run `terraform apply`. It makes:
+   - the A records for the domain and `staging.<domain>`
+   - the SES email identity and its DKIM records
+
+   If your DNS is elsewhere, add the records yourself: `terraform output public_ip` and `terraform output email_dns_records`.
+3. **Update GitHub.** Set the repository variables `AULD_PROD_HOST`, `AULD_STAGE_HOST` and `AULD_MAIL_FROM` from `terraform output github_variables`.
+4. **Let SES send to anyone.** SES starts in a sandbox that only sends to verified addresses. In the SES console, open Account dashboard, **Request production access**: say it sends one-time sign-in codes to players who ask for them. AWS usually answers within a day.
+5. **Release again**, then deploy to production. Caddy fetches the new certificates by itself.
+
+## Sign-in with Google, Discord and GitHub
+
+Each needs an "OAuth app" made on its own site, and two values stored in SSM.
+
+| Provider | Where to make the app | Callback URL to give it |
+|---|---|---|
+| Google | console.cloud.google.com, APIs & Services, Credentials, OAuth client ID (Web). Needs the domain | `https://<domain>/api/auth/google/callback` |
+| Discord | discord.com/developers/applications, OAuth2 | `https://<domain>/api/auth/discord/callback` |
+| GitHub | github.com/settings/developers, OAuth Apps | `https://<domain>/api/auth/github/callback` |
+
+Staging needs its own apps, or an extra callback URL on staging's host.
+
+Store the values. Repeat for each provider and environment:
+```powershell
+aws ssm put-parameter --name /auld/production/google-client-id     --type SecureString --value "<client id>"
+aws ssm put-parameter --name /auld/production/google-client-secret --type SecureString --value "<client secret>"
+# discord-client-id, discord-client-secret, github-client-id, github-client-secret
+# and optionally discord-webhook-url (each match's result posted to a Discord channel)
+```
+Then deploy again (Deploy to production, same version). The button appears on the online screen once both values are there.
+
+## Day to day
+
+| Task | How |
+|---|---|
+| **Release** | Merge or push to `network`. CI tests, then Release builds, publishes and deploys to staging, and plays a match there |
+| **Production** | Actions, Deploy to production, the version, approve. It waits out minutes :58 to :01 of each hour, while the match is launched |
+| **Roll back** | Deploy to production with the earlier version. Every release's manifests stay in S3 for 180 days |
+| **Look at the server** | `terraform output shell` gives the command. Then, on the server: `sudo kubectl -n auld get pods`, `sudo kubectl -n auld logs deploy/api -c api`, `sudo kubectl -n auld get jobs` (the matches) |
+| **A match's log** | `sudo kubectl -n auld logs job/match-<id>`. Jobs are removed 10 minutes after they end |
+| **Backups** | Continuous: Litestream, to `s3://<bucket>/db/<env>/`, with 7 days of history. A new server restores by itself. To practise a restore, replace the server (`terraform apply -replace=aws_instance.server`), release, and check the league is still there |
+| **Change a secret** | `aws ssm put-parameter --name ... --overwrite`, then deploy again. Changing `match-secret` ends any match in progress for its players, so do it between matches |
+| **Costs** | AWS Billing. The budget alarm emails you |
+| **Remove everything** | `terraform destroy` in `deploy\terraform`. The data bucket must be emptied first. The state bucket stays (`prevent_destroy`) |
+
+## Running it on your own PC
+
+Node 22 or later (`winget install OpenJS.NodeJS.LTS`), on the `network` branch:
+```powershell
+$env:AUTH_DEV = '1'; $env:EVERY_MIN = '5'; node server/api.js
+```
+Open http://localhost:8080. For a second player, use another browser or a private window. Everything is kept in memory, and a match runs every 5 minutes.
+
+With Docker instead:
+```powershell
+docker build -t auld-world .
+docker run -p 8080:8080 -e AUTH_DEV=1 -e NODE_ENV=staging -e EVERY_MIN=5 auld-world
+```
+
+## When something is wrong
+
+| Symptom | Look at |
+|---|---|
+| The site does not answer | `sudo kubectl -n edge logs deploy/caddy`. A certificate cannot be issued until the domain points at the server |
+| "Something went wrong" in the online screen | `sudo kubectl -n auld logs deploy/api -c api` |
+| No match at the hour | The api log, lines starting `[schedule]`. Jobs: `sudo kubectl -n auld get jobs` |
+| Players cannot reach a match | The match's log; `sudo kubectl -n auld get svc`. Caddy sends `/m/<id>/ws` to `match-<id>` |
+| The league did not update | The match log ends with "result reported" or a retry. The api log has `[results]` |
+| A deploy failed | The workflow's log shows the server's own output (deploy.sh) |
+
+TROUBLESHOOTING.md T-090 to T-093 tell how each part was built and tested.

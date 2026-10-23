@@ -1,0 +1,103 @@
+# A release (ONLINE.md section 7): after CI passes on the network branch, build the image for arm64 and amd64, publish it with its SBOM and
+# provenance, tag the release, and deploy it to staging, where a whole match is then played (tools/cluster-check.mjs).
+# Production is a separate, manual step: .github/workflows/deploy-production.yml.
+# The deploy needs the repository variables Terraform printed (github_variables) and the GitHub environment "staging". Until they exist,
+# the staging job is skipped and the release stops at the image.
+name: Release
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [network]
+  workflow_dispatch: {}
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions:
+  contents: write      # the tag and the GitHub Release
+  packages: write      # the image on ghcr.io
+  id-token: write      # signing in to AWS (OIDC) and the provenance attestation
+  attestations: write
+jobs:
+  image:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      image: ${{ steps.v.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Version
+        id: v
+        run: |
+          echo "version=$(tr -d ' \r\n' < VERSION).${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/auld-world" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push (arm64 for the AWS t4g server, amd64 for anything else)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          tags: |
+            ${{ steps.v.outputs.image }}:${{ steps.v.outputs.version }}
+            ${{ steps.v.outputs.image }}:sha-${{ github.event.workflow_run.head_sha || github.sha }}
+          provenance: mode=max
+          sbom: true
+      - name: Scan the published image (fails on critical vulnerabilities that have a fix)
+        run: docker run --rm aquasec/trivy:0.65.0 image --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress "${{ steps.v.outputs.image }}@${{ steps.build.outputs.digest }}"
+      - name: Tag and publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.v.outputs.version }}" --target "${{ github.event.workflow_run.head_sha || github.sha }}" --generate-notes \
+            --notes "Image: \`${{ steps.v.outputs.image }}@${{ steps.build.outputs.digest }}\`. Deploy to production: Actions, Deploy to production, version ${{ steps.v.outputs.version }}."
+
+  staging:
+    needs: image
+    if: vars.AWS_DEPLOY_ROLE != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://${{ vars.AULD_STAGE_HOST }}
+    env:
+      VERSION: ${{ needs.image.outputs.version }}
+      IMAGE: ${{ needs.image.outputs.image }}@${{ needs.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.image.outputs.version }}
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Render this release's manifests (staging, production, front door) and upload them as its artifact
+        shell: bash
+        env:
+          AULD_MAIL_FROM: ${{ vars.AULD_MAIL_FROM }}
+        run: |
+          mkdir -p out
+          MAIL=(); if [ -n "$AULD_MAIL_FROM" ]; then MAIL=(--mail ses --mail-from "$AULD_MAIL_FROM"); fi   # (real email once there is a domain)
+          node deploy/k8s/render.mjs app --env staging --image "$IMAGE" --version "$VERSION" --host "${{ vars.AULD_STAGE_HOST }}" --bucket "${{ vars.AULD_BUCKET }}" --region "${{ vars.AWS_REGION }}" > out/staging.yaml
+          node deploy/k8s/render.mjs app --env production --image "$IMAGE" --version "$VERSION" --host "${{ vars.AULD_PROD_HOST }}" --bucket "${{ vars.AULD_BUCKET }}" --region "${{ vars.AWS_REGION }}" "${MAIL[@]}" > out/production.yaml
+          node deploy/k8s/render.mjs edge --prod-site "${{ vars.AULD_PROD_HOST }}" --staging-site "${{ vars.AULD_STAGE_HOST }}" --acme-email "${{ vars.AULD_ACME_EMAIL }}" > out/edge.yaml
+          aws s3 cp --only-show-errors out/ "s3://${{ vars.AULD_BUCKET }}/releases/$VERSION/" --recursive
+      - name: Deploy the front door and staging
+        run: |
+          sh deploy/host/ssm-run.sh "${{ vars.AULD_INSTANCE_ID }}" /opt/auld/deploy.sh edge "$VERSION"
+          sh deploy/host/ssm-run.sh "${{ vars.AULD_INSTANCE_ID }}" /opt/auld/deploy.sh staging "$VERSION"
+      - name: Play a whole match on staging
+        run: node tools/cluster-check.mjs "https://${{ vars.AULD_STAGE_HOST }}" --expect-version "$VERSION"

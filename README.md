@@ -162,35 +162,38 @@ assets/           screenshots, art sheets, early concept boards
 legacy/python/    the first pygame prototype, kept for reference (not the playable build)
 ```
 
-## Online multiplayer (experimental groundwork)
+## Online play
 
-Two to five people can play one match over the network. Empty seats are played by the AI.
+**Hourly matches** (the main way to play online; design in [ONLINE.md](ONLINE.md), hosting in [DEPLOY.md](DEPLOY.md)):
+- **Sign in:** the **Play online** plaque on the main menu opens the online screen. Sign in with an emailed code, or Google, Discord or GitHub, and choose a username.
+- **Join:** a match starts **every hour, on the hour**. Join it from 30 minutes before. Up to eight players take the first free seats; the AI plays every empty seat, even if you are the only player.
+- **Starting:** keep the page open, and on the hour you are taken into the match. A player who drops is held by the AI and rejoins by reloading.
+- **Talking:** players talk only through the **Herald**, a fixed list of messages ("Join me in defeating {house}", "Will you make peace?" ...). There is no free chat, so nothing needs moderating. Any player can be muted.
+- **The end:** conquest wins outright. At two hours the standings decide: the living by the Council's rank, then the fallen, the last to fall placed highest.
+- **Points:** 100, 70, 50, 35, 25, 15, 10, 5 by place, +15 for each other player you finish above, +50 for a conquest.
+- **The league:** this month and all time, on the online screen and at `/league`.
 
-1. On one machine, run `node relay.js` (port 8080; `node relay.js 9000` for another). It serves the game, like `serve.js`, and relays online matches at `/ws`. No installs are needed.
-2. Everyone opens `http://<that machine>:8080/?mp=<room>&name=<your name>` with the same room name. On another network, the relay needs a public address or a tunnel. Add `&relay=wss://...` to use a relay elsewhere.
-3. The first to arrive hosts. The host picks houses (3 to 5) and difficulty in the lobby panel and presses **Start the match**. Each person plays their own house; empty seats are AI.
+How it works:
+- **Lockstep:** every browser runs the same deterministic simulation, and only orders cross the network (10 turns a second).
+- **One container per match:** each match runs as its own container (`server/match.js`). Only players with a ticket from the api get in, each to their own seat.
+- **The referee:** the server plays its own copy of the match. A browser that drifts out of step is sent the referee's state, and so is one that rejoins. The referee's placings and points are the result; a browser cannot claim a win.
+- **The api** (`server/api.js`) handles sign-in, the timetable, tickets, results and the league, with the database in SQLite. It runs on one small AWS server with k3s (DEPLOY.md).
 
-**How it works: lockstep, the way most RTS games do it.**
-- Every browser runs the same deterministic simulation; only orders cross the network.
-- The relay keeps a turn clock (10 turns a second). It stamps each order with the sender's seat, so nobody can order another player's people, and sends every turn to everyone.
-- Each browser applies a turn's orders, then steps the game two fixed ticks.
-- Every second, each browser sends a fingerprint of its state. If they ever differ, everyone is told the match has fallen out of step.
-- A player who drops reloads the page and rejoins the same seat; the match replays up to the present.
-- A house whose last king dies is out but can watch. The match ends when one house is left, or when every human's line is gone.
-- A player away more than 30 seconds has their house held by the AI until they rejoin. The switch travels in the turn stream, so every copy changes together.
-- If the host leaves the lobby before starting, the next player hosts. Seats of players who left the lobby go to the AI.
-- Pause, speed, saving and changing fog of war are off online, and each says why.
+**Run it on your own PC:** `node server/api.js` with `AUTH_DEV=1` (a test sign-in) and `EVERY_MIN=5` (a match every 5 minutes). Open http://localhost:8080. DEPLOY.md has the details.
 
-**Not yet** (roadmap T15):
-- Pause and speed are off online.
-- The lobby is a URL plus a small panel, not a menu screen.
-- Rejoining replays the whole match, which is slow in a long game.
-- No chat or host migration.
-- Nothing is matched over the internet: you run or share the relay.
+**Open rooms** (the earlier groundwork, still there for private games with friends):
+1. Run `node relay.js` (port 8080).
+2. Everyone opens `http://<that machine>:8080/?mp=<room>&name=<your name>` with the same room name.
+3. The first to arrive picks the houses and difficulty and starts. Empty seats are AI.
 
-**Hosting it** (for example on AWS): see `DEPLOY.md`. A `Dockerfile`, `deploy/` (Docker Compose with Caddy for HTTPS) and Terraform for AWS (`deploy/terraform/`) are ready. The relay reads its port from `PORT`, answers `/healthz`, pings to keep connections alive, and shuts down cleanly.
+Protocol and message shapes: `js/net.js`.
 
-Protocol and message shapes: `js/net.js`. Server: `relay.js`. Tests: `node test/net.test.js` (two clients over real WebSockets: identical state, order stamping, rejoin, desync) and `node tools/mp-smoke.cjs` (two browsers, with the relay on 8124).
+Tests:
+- `node test/net.test.js`: the relay
+- `node test/match.test.js`: the match server
+- `node test/api.test.js`: the api
+- `tools/online-smoke.cjs`: two browsers through an hourly match
+- `tools/cluster-check.mjs <url>`: a match against a running deployment
 
 ## Not in this slice
 

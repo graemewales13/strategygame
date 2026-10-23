@@ -1,59 +1,84 @@
+variable "alert_email" {
+  description = "Your email address: budget alerts go here, and Let's Encrypt writes here if a certificate ever needs attention."
+  type        = string
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alert_email))
+    error_message = "alert_email must be an email address."
+  }
+}
+
 variable "region" {
-  description = "AWS region to run the game server in."
+  description = "AWS region for everything."
   type        = string
   default     = "eu-west-2" # London
 }
 
 variable "name" {
-  description = "Name used for the instance, security group and other resources."
+  description = "Prefix for the names of what is made here."
   type        = string
   default     = "auld-world"
 }
 
 variable "instance_type" {
-  description = "EC2 size. The relay only passes orders between players, so a small instance serves many matches. Graviton types (t4g.*) are picked up automatically."
+  description = "The server. t4g.small (2 vCPU, 2 GB, Graviton) runs k3s, the api, the front door and a couple of matches at a time (ONLINE.md section 8)."
   type        = string
-  default     = "t3.small"
+  default     = "t4g.small"
+}
+
+variable "cpu_credits" {
+  description = "standard: when the server's CPU allowance is used up it slows to its baseline and costs nothing extra (the safe choice for a fixed budget). unlimited: it keeps full speed and AWS charges for the extra, about $0.04 per vCPU-hour."
+  type        = string
+  default     = "standard"
+  validation {
+    condition     = contains(["standard", "unlimited"], var.cpu_credits)
+    error_message = "cpu_credits must be standard or unlimited."
+  }
+}
+
+variable "root_volume_gb" {
+  description = "The server's disk (gp3, encrypted): the system, k3s, the images, the database."
+  type        = number
+  default     = 20
+}
+
+variable "swap_gb" {
+  description = "Swap file on the server: room to breathe when two matches overlap on 2 GB of memory."
+  type        = number
+  default     = 2
+}
+
+variable "k3s_version" {
+  description = "The k3s (Kubernetes) release installed on first boot. Pinned: an upgrade is a deliberate change."
+  type        = string
+  default     = "v1.33.4+k3s1"
 }
 
 variable "domain" {
-  description = "Domain players use, e.g. game.example.com. With a domain, Caddy serves HTTPS (wss) with a free certificate. Leave empty to serve plain HTTP on the instance's IP (fine for testing, not for the public)."
+  description = "The game's domain, e.g. play.example.com (staging is staging.<domain>). Leave empty until you have one: the server is then reached at <its address>.sslip.io, still with HTTPS, but email codes and Google sign-in wait for a domain."
   type        = string
   default     = ""
 }
 
 variable "route53_zone_id" {
-  description = "Optional Route 53 hosted zone ID for the domain. If set, Terraform creates the A record pointing at the server. Leave empty to create the DNS record yourself."
+  description = "Route 53 hosted zone of the domain, if it is in Route 53: Terraform then makes the DNS records for the game and for email (SES). Empty: you add the records yourself (the outputs list them)."
   type        = string
   default     = ""
 }
 
-variable "repo_url" {
-  description = "Git repository to deploy from."
+variable "mail_from" {
+  description = "The local part of the sign-in emails' sender, e.g. play gives play@<domain>."
   type        = string
-  default     = "https://github.com/graemewales13/strategygame.git"
+  default     = "play"
 }
 
-variable "branch" {
-  description = "Branch to deploy. Online play and the deploy kit live on the network branch."
+variable "github_repo" {
+  description = "owner/name of the GitHub repository whose Actions may deploy (through OIDC: no stored AWS keys)."
   type        = string
-  default     = "network"
+  default     = "graemewales13/strategygame"
 }
 
-variable "ssh_cidr" {
-  description = "Optional CIDR allowed to SSH in (e.g. \"203.0.113.7/32\" for your own IP). Leave empty to keep port 22 closed and use AWS Systems Manager Session Manager instead."
-  type        = string
-  default     = ""
-}
-
-variable "ssh_key_name" {
-  description = "Optional existing EC2 key pair name, only needed if you open SSH with ssh_cidr."
-  type        = string
-  default     = ""
-}
-
-variable "root_volume_gb" {
-  description = "Size of the instance's disk in GB."
+variable "budget_usd" {
+  description = "Monthly budget in US dollars: an email at 80% of it spent, and when the month's forecast passes it. 25 USD is about 20 GBP."
   type        = number
-  default     = 16
+  default     = 25
 }
