@@ -42,12 +42,14 @@ function readStance(g, a, b) {
   const prox = clamp01((STANCE.far - d) / (STANCE.far - STANCE.near));
   // threat
   let enc = 0, encV = null;
-  for (const v of g.villagesOf(a)) { const pl = g.pullsFor(v)[b] || 0; if (pl > 0) { enc += pl; if (!encV || pl > encV.pl) encV = { v, pl }; } }
+  for (const v of g.villagesOf(a)) { const pl = (v._pulls || g.pullsFor(v))[b] || 0; /* (Speed, T18: the village's own latest reckoning, at most 0.72 s old) */ if (pl > 0) { enc += pl; if (!encV || pl > encV.pl) encV = { v, pl }; } }
   enc = clamp01(enc / 0.6);
   let foePow = 0, foeN = 0;
   const mine = [...g.villagesOf(a), ...g.buildings.filter((x) => x.team === a && x.hp > 0)];
+  const close = new Set();   // (Speed, T18: only units near one of our places can count; the grid finds them, the order below is unchanged)
+  for (const m of mine) for (const u of g.unitsNear(m.x, m.y, STANCE.guardR)) if (u.team === b) close.add(u);
   for (const u of g.units) {
-    if (u.team !== b || u.hp <= 0 || u.inside || !(g.powerOf(u) > 0)) continue;
+    if (u.team !== b || u.hp <= 0 || u.inside || !close.has(u) || !(g.powerOf(u) > 0)) continue;
     if (mine.some((m) => Math.hypot(m.x - u.x, m.y - u.y) < STANCE.guardR)) { foePow += g.powerOf(u); foeN++; }
   }
   const army = clamp01(foePow / Math.max(2, g.powerOfTeam(a) * 0.6));

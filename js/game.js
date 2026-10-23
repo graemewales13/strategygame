@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -27,6 +27,12 @@ const SOLDIER = new Set(['footman', 'bowman', 'knight', 'king']);
 const RENDER_ONLY = new Set(['_lt', '_lx', '_ly', '_dx', '_dy', '_sg', '_fx']);   // per-frame fields render.js keeps on units (not saved)
 const ENTITY = new Set(['unit', 'building', 'village']);
 const mix32 = (a) => { let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };   // mulberry32 output step
+
+const NONE = Object.freeze([]);
+const UCELL = 8;
+const VILLAGE_STEP = 0.2;   // (seconds between working out each village: see updateVillages)
+const INF_REACH = Math.max(...Object.values(INFLUENCE).map((i) => i.r)) + Math.max(...Object.values(BUILDINGS).map((b) => b.size || 0));   // (how far from a village a building can lean on it: see pullsFor)
+const FIXED_REACH = Math.max(VILLAGE_SIZE, ...Object.values(BUILDINGS).map((b) => b.size || 0)) + BUILD_GAP + 3;   // (canPlace's search window, beyond its own size)   // (tiles to a side of a cell of the unit grid: see unitsNear)   // (an empty list shared by every lookup that finds nothing)
 
 export class Game {
   constructor(opts = {}) {
@@ -63,7 +69,7 @@ export class Game {
     this.nextId = 1;
     this.time = 0;
     this.outcome = null;
-    this.units = [];
+    this.units = []; this._ug = null;
     this.buildings = [];
     this.villages = [];
     this.wanderers = [];
@@ -109,7 +115,7 @@ export class Game {
       // no hall: a house begins in its home village of thirty folk, with three serfs already at work
       const names = FOUNDED[HOUSES[team].faction] || FOUNDED.british;
       const v = this.addVillage({ kind: 'hamlet', name: names[0], tx: sx, ty: sy });
-      v.owner = team; v.lean = team; v.home = team; v.founded = true; v.loyalty = FOUND.loyalty + 10;
+      v.owner = team; this._vOwn = null; v.lean = team; v.home = team; v.founded = true; v.loyalty = FOUND.loyalty + 10;
       v.pop = HOME_POP; v.popMax = FOUND.max; v.stores = { food: 140, wood: 10, gold: 10 };
       v.protection = v.maxProtection = 320; v.hp = v.maxHp = 320;
       this.addUnit('serf', team, sx + 1.2, sy + 3.6);
@@ -157,6 +163,7 @@ export class Game {
     if (SIEGE.has(kind) && this.hasTech(team, 'mechanics')) { u.maxHp = Math.round(u.maxHp * 1.3); u.hp = u.maxHp; } // Mechanics
     u.born = this.time || 0; u.kills = 0;   // service record: when they joined and how many foes they have felled
     this.units.push(u);
+    if (this._ug) { const k = this.ugKey(u.x, u.y); this._ug.cells[k].push(u); this._ug.at.set(u, k); }   // (see unitsNear)
     this.byId.set(u.id, u);
     return u;
   }
@@ -186,6 +193,30 @@ export class Game {
       const r = x >= 0 && y >= 0 && x < W && y < H ? this.resAt?.[y * W + x] : -1; if (r >= 0 && this.resources[r]) this.resources[r].covered = true;   // (no mine can stand inside a village either)
     }
     for (let i = 0; i < W * H; i++) walk[i] = terrain[i] !== T_WATER && terrain[i] !== T_ROCK && !block[i] ? 1 : 0;
+    this._comp = null;   // (the ground changed: which places connect is worked out again when next asked)
+  }
+  // Speed (T18): every walkable tile labelled with its connected region (4-neighbour, the same reach A* has, since a diagonal step
+  // needs both side tiles open). Two tiles in different regions have no path, which findPath now knows at once instead of searching
+  // the whole region first (a chase after something across water searched it eight times a second).
+  walkComp() {
+    if (this._comp) return this._comp;
+    const { W, H, walk } = this, n = W * H;
+    const comp = this._compBuf && this._compBuf.length === n ? this._compBuf : (this._compBuf = new Int32Array(n));
+    const q = this._compQ && this._compQ.length === n ? this._compQ : (this._compQ = new Int32Array(n));
+    comp.fill(0);
+    let id = 0;
+    for (let s = 0; s < n; s++) {
+      if (!walk[s] || comp[s]) continue;
+      id++; let head = 0, tail = 0; q[tail++] = s; comp[s] = id;
+      while (head < tail) {
+        const c = q[head++], x = c % W, y = (c / W) | 0;
+        if (x > 0 && walk[c - 1] && !comp[c - 1]) { comp[c - 1] = id; q[tail++] = c - 1; }
+        if (x < W - 1 && walk[c + 1] && !comp[c + 1]) { comp[c + 1] = id; q[tail++] = c + 1; }
+        if (y > 0 && walk[c - W] && !comp[c - W]) { comp[c - W] = id; q[tail++] = c - W; }
+        if (y < H - 1 && walk[c + W] && !comp[c + W]) { comp[c + W] = id; q[tail++] = c + W; }
+      }
+    }
+    return (this._comp = comp);
   }
 
   // ------------------------------------------------------------------ queries
@@ -193,16 +224,90 @@ export class Game {
   isEnemy(a, b) { return a !== b && b >= 0 && this.rel[a][b] === 'war'; }
   // a spy in `team`'s colours passes for one of theirs: their soldiers and towers let him be
   passesFor(u, team) { return u.kind === 'spy' && u.disguise === team; }
-  hasBuilding(team, kind) { return this.buildings.some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
+  // Speed (T18): buildings by house, and by house and kind, each list in the order of this.buildings. Buildings only join by push and
+  // leave when cleanup() replaces the list, and change hands only in claimTown(), so the index is current while the list is the same
+  // array at the same length (claimTown drops it). Whether one is finished and standing is still read from the building itself.
+  bIdx() {
+    const c = this._bIdx, B = this.buildings;
+    if (c && c.arr === B && c.len === B.length) return c;
+    const team = new Map(), kind = new Map();
+    for (const b of B) {
+      let l = team.get(b.team); if (!l) team.set(b.team, (l = [])); l.push(b);
+      const k = b.team + '|' + b.kind; let m = kind.get(k); if (!m) kind.set(k, (m = [])); m.push(b);
+    }
+    return (this._bIdx = { arr: B, len: B.length, team, kind });
+  }
+  // Speed (T18): a grid of the units by 8x8-tile cell, so 'who is near here' looks at a few cells instead of every unit.
+  // A unit is filed by where it stands; every place that moves one (follow, separate, rescueStranded, enter, eject, the shove off a
+  // new building) calls ugMove, and a new unit is filed by addUnit. cleanup() and a load drop the grid; it is rebuilt when next asked.
+  // unitsNear returns the units in the cells that touch the square round a point, in the order of this.units (ids rise with it, and
+  // units are only appended or filtered out), so a search over them finds exactly what a search over every unit found.
+  ugInit() {
+    const cols = Math.ceil(this.W / UCELL), rows = Math.ceil(this.H / UCELL);
+    const g = (this._ug = { cols, rows, cells: Array.from({ length: cols * rows }, () => []), at: new Map() });
+    for (const u of this.units) { const k = this.ugKey(u.x, u.y); g.cells[k].push(u); g.at.set(u, k); }
+    return g;
+  }
+  ugKey(x, y) {
+    const g = this._ug, cx = Math.min(g.cols - 1, Math.max(0, Math.floor(x / UCELL))), cy = Math.min(g.rows - 1, Math.max(0, Math.floor(y / UCELL)));
+    return (cy * g.cols + cx) | 0;   // (a position that is not a number files in cell 0, where its distance never wins a search)
+  }
+  ugMove(u) {
+    const g = this._ug; if (!g) return;
+    const k = this.ugKey(u.x, u.y), was = g.at.get(u);
+    if (was === k) return;
+    if (was !== undefined) { const c = g.cells[was], i = c.indexOf(u); if (i >= 0) { c[i] = c[c.length - 1]; c.pop(); } }
+    g.cells[k].push(u); g.at.set(u, k);
+  }
+  unitsNear(x, y, r) {
+    const g = this._ug || this.ugInit();
+    if (this._ugCheck) this.ugVerify();
+    const x0 = Math.max(0, Math.floor((x - r) / UCELL)), x1 = Math.min(g.cols - 1, Math.floor((x + r) / UCELL));
+    const y0 = Math.max(0, Math.floor((y - r) / UCELL)), y1 = Math.min(g.rows - 1, Math.floor((y + r) / UCELL));
+    if (!(x1 >= x0 && y1 >= y0) || (x1 - x0 + 1) * (y1 - y0 + 1) * 2 > g.cols * g.rows) return this.units;   // (half the board or more, or no number: just everyone)
+    const out = [];
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const c = g.cells[cy * g.cols + cx]; for (let i = 0; i < c.length; i++) out.push(c[i]); }
+    return out.length > 1 ? out.sort((a, b) => a.id - b.id) : out;
+  }
+  // (tests: every unit is filed where it stands, and the grid holds exactly the units)
+  ugVerify() {
+    const g = this._ug; if (!g) return;
+    let n = 0; for (const c of g.cells) n += c.length;
+    if (n !== this.units.length) throw new Error(`unit grid holds ${n}, there are ${this.units.length}`);
+    for (const u of this.units) if (g.at.get(u) !== this.ugKey(u.x, u.y) || !g.cells[g.at.get(u)].includes(u)) throw new Error(`unit grid: ${u.kind} ${u.id} is filed in the wrong cell`);
+    for (let i = 1; i < this.units.length; i++) if (this.units[i].id <= this.units[i - 1].id) throw new Error('units are not in id order');
+  }
+  // Speed (T18): buildings and villages filed by the 8x8 cell of their corner tile (they never move), for the yes-or-no 'is anything too
+  // close to this footprint?' checks in canPlace. Refiled when a list is replaced or grows. Returns every one whose corner is within
+  // `reach` tiles of (tx, ty) on both axes, and perhaps a few more; the caller's own test decides.
+  fixedNear(list, tx, ty, reach) {
+    const key = list === this.villages ? '_vGrid' : '_bGrid', c = this[key];
+    let g = c && c.arr === list && c.len === list.length ? c : null;
+    if (!g) {
+      const cols = Math.ceil(this.W / UCELL) + 1, cells = new Map();
+      for (const e of list) { const k = Math.floor(e.ty / UCELL) * cols + Math.floor(e.tx / UCELL); let l = cells.get(k); if (!l) cells.set(k, (l = [])); l.push(e); }
+      g = this[key] = { arr: list, len: list.length, cols, cells };
+    }
+    const rows = Math.ceil(this.H / UCELL) + 1, out = [];
+    const x0 = Math.max(0, Math.floor((tx - reach) / UCELL)), x1 = Math.min(g.cols - 1, Math.floor((tx + reach) / UCELL));
+    const y0 = Math.max(0, Math.floor((ty - reach) / UCELL)), y1 = Math.min(rows - 1, Math.floor((ty + reach) / UCELL));   // (each cell once: no corner lies outside the board)
+    for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const l = g.cells.get(cy * g.cols + cx); if (l) for (const e of l) out.push(e); }
+    return out;
+  }
+  // the same in the list's own order (ids rise along both lists), for sums that must come out as before to the last bit
+  fixedNearSorted(list, x, y, reach) { return this.fixedNear(list, x, y, reach).sort((a, b) => a.id - b.id); }
+  teamB(team) { return this.bIdx().team.get(team) || NONE; }
+  kindB(team, kind) { return this.bIdx().kind.get(team + '|' + kind) || NONE; }
+  hasBuilding(team, kind) { return this.kindB(team, kind).some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
   popUsed(team) {
     let n = 0;
     for (const u of this.units) if (u.team === team && u.hp > 0 && u.kind !== 'king' && !UNITS[u.kind]?.nopop) n++;   // (pack animals are not people)
-    for (const b of this.buildings) if (b.team === team) n += b.queue.filter((q) => !UNITS[q.kind]?.nopop).length;
+    for (const b of this.teamB(team)) if (b.team === team) n += b.queue.filter((q) => !UNITS[q.kind]?.nopop).length;
     return n;
   }
   popCap(team) {
     let n = 0;
-    for (const b of this.buildings) if (b.team === team && b.built >= 1 && b.hp > 0) n += BUILDINGS[b.kind].pop;
+    for (const b of this.teamB(team)) if (b.team === team && b.built >= 1 && b.hp > 0) n += BUILDINGS[b.kind].pop;
     for (const v of this.villages) if (v.owner === team) n += Math.floor(Math.max(v.pop, v.home >= 0 ? HOME_POP : 0.3 * (v.popMax || 50)) * POP_HOUSING);   // folk of held villages are housed there
     return n;
   }
@@ -224,10 +329,20 @@ export class Game {
   // the seat of a house: its home village while it holds it, else a keep, else any village it holds
   seatOf(team) {
     return this.villages.find((v) => v.home === team && v.owner === team)
-      || this.buildings.find((b) => b.team === team && b.kind === 'keep' && b.hp > 0)
+      || this.kindB(team, 'keep').find((b) => b.team === team && b.kind === 'keep' && b.hp > 0)
       || this.villages.find((v) => v.owner === team);
   }
-  villagesOf(team) { return this.villages.filter((v) => v.owner === team); }
+  villagesOf(team) { return this.vOwn(team).slice(); }
+  // Speed (T18): the villages each house holds, in the order of this.villages. Every line that sets a village's owner drops it
+  // (this._vOwn = null; test/perf.test.js checks there is one beside each), and it is rebuilt when next asked.
+  vOwn(team) {
+    let c = this._vOwn;
+    if (!c || c.arr !== this.villages || c.len !== this.villages.length) {
+      c = this._vOwn = { arr: this.villages, len: this.villages.length, m: new Map() };
+      for (const v of this.villages) { let l = c.m.get(v.owner); if (!l) c.m.set(v.owner, (l = [])); l.push(v); }
+    }
+    return c.m.get(team) || NONE;
+  }
   // every soldier a house has, in the field or inside its buildings (what the panels count; militaryOf is those free to march)
   soldiersOf(team) { return this.units.filter((u) => u.team === team && u.hp > 0 && u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && u.kind !== 'king'); }
   // soldiers standing about with no order (no march, fight, queued leg or drill): what the idle-army key picks (T31)
@@ -282,7 +397,7 @@ export class Game {
   }
   // is this ground ruled by the house? (near one of its finished buildings or a village it holds)
   ruled(team, x, y) {
-    for (const b of this.buildings) {
+    for (const b of this.teamB(team)) {
       if (b.team !== team || b.hp <= 0 || b.built < 1) continue;
       if (Math.hypot(b.x - x, b.y - y) <= (RULE[b.kind] ?? RULE.default)) return true;
     }
@@ -293,21 +408,22 @@ export class Game {
     let best = null, bd = maxDist * maxDist;
     for (const n of this.resources) {
       if (n.amount <= 0 || n.covered || NODE_RES[n.kind] !== res) continue;
-      if (team !== null && !this.ruled(team, n.x + 0.5, n.y + 0.5)) continue;
       const d = (n.x + 0.5 - x) ** 2 + (n.y + 0.5 - y) ** 2;
-      if (d < bd) { best = n; bd = d; }
+      if (d >= bd) continue;   // (the distance first: ruled() walks every building, so it is asked only of a node that would win)
+      if (team !== null && !this.ruled(team, n.x + 0.5, n.y + 0.5)) continue;
+      best = n; bd = d;
     }
     return best;
   }
   nearestDrop(u, res) {
     let best = null, bd = 1e9;
-    for (const b of this.buildings) {
+    for (const b of this.teamB(u.team)) {
       if (b.team !== u.team || b.hp <= 0 || b.built < 1) continue;
       if (!DROP_OFF[b.kind] || !DROP_OFF[b.kind].includes(res)) continue;
       const d = distTo(u.x, u.y, b);
       if (d < bd) { best = b; bd = d; }
     }
-    if (res === 'food' || res === 'wood' || res === 'gold') for (const v of this.villages) {   // a village you hold takes goods too
+    if (res === 'food' || res === 'wood' || res === 'gold') for (const v of this.vOwn(u.team)) {   // a village you hold takes goods too
       if (v.owner !== u.team) continue;
       const d = distTo(u.x, u.y, v);
       if (d < bd) { best = v; bd = d; }
@@ -316,7 +432,7 @@ export class Game {
   }
   closestEnemy(from, range, team) {
     let best = null, bd = range;
-    for (const u of this.units) {
+    for (const u of this.unitsNear(from.x, from.y, range)) {
       if (u.hp <= 0 || u.inside || u.hidden || !this.isEnemy(team, u.team) || this.passesFor(u, team)) continue;
       const d = Math.hypot(u.x - from.x, u.y - from.y);
       if (d < bd) { best = u; bd = d; }
@@ -353,22 +469,27 @@ export class Game {
     if (!walk[sy * W + sx]) { const n = this.nearestWalkable(sx, sy, 6); if (!n) return null; [sx, sy] = n; }
     if (!walk[gy * W + gx]) { const n = this.nearestWalkable(gx, gy, 8, sx, sy); if (!n) return null; [gx, gy] = n; }
     if (sx === gx && sy === gy) return [];
+    { const comp = this.walkComp(); if (comp[sy * W + sx] !== comp[gy * W + gx]) return null; }   // no way through: A* would only prove it the long way
+    const work = (this.work ||= { paths: 0, nodes: 0, pulls: 0 }); work.paths++;   // (counted for the speed budget in test/perf.test.js; never saved)
     const run = ++this._run;
     const g = this._g, came = this._came, stamp = this._stamp, closed = this._closed;
     const terrain = this.terrain;
     const start = sy * W + sx, goal = gy * W + gx;
     const hx = (x, y) => { const dx = Math.abs(x - gx), dy = Math.abs(y - gy); return (dx + dy - 0.586 * Math.min(dx, dy)) * 0.85; };
-    // binary heap of [f, node]
-    const hf = [], hn = [];
+    // binary heap of [f, node], in typed arrays kept between searches (Speed, T18: the same pushes and pops in the same order as the
+    // plain arrays it replaces, so the same paths; it only grows when a search needs more room)
+    let hf = this._hf, hn = this._hn, size = 0;
+    if (!hf) { hf = this._hf = new Float64Array(4096); hn = this._hn = new Int32Array(4096); }
     const push = (f, n) => {
-      let i = hf.length; hf.push(f); hn.push(n);
+      if (size === hf.length) { const f2 = new Float64Array(size * 2), n2 = new Int32Array(size * 2); f2.set(hf); n2.set(hn); hf = this._hf = f2; hn = this._hn = n2; }
+      let i = size++;
       while (i > 0) { const p = (i - 1) >> 1; if (hf[p] <= f) break; hf[i] = hf[p]; hn[i] = hn[p]; i = p; }
       hf[i] = f; hn[i] = n;
     };
     const pop = () => {
-      const top = hn[0], lf = hf.pop(), ln = hn.pop();
-      if (hf.length) {
-        let i = 0; const n = hf.length;
+      const top = hn[0]; size--; const lf = hf[size], ln = hn[size];
+      if (size) {
+        let i = 0; const n = size;
         for (;;) {
           let c = i * 2 + 1; if (c >= n) break;
           if (c + 1 < n && hf[c + 1] < hf[c]) c++;
@@ -382,7 +503,7 @@ export class Game {
     g[start] = 0; stamp[start] = run; came[start] = -1;
     push(hx(sx, sy), start);
     const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
-    while (hf.length) {
+    while (size) {
       const cur = pop();
       if (closed[cur] === run) continue;
       if (cur === goal) {
@@ -391,7 +512,7 @@ export class Game {
         out.reverse(); out.shift();
         return out;
       }
-      closed[cur] = run;
+      closed[cur] = run; work.nodes++;
       const cx = cur % W, cy = (cur / W) | 0;
       for (let k = 0; k < 8; k++) {
         const nx = cx + DX[k], ny = cy + DY[k];
@@ -414,7 +535,7 @@ export class Game {
     const p = this.findPath(Math.floor(u.x), Math.floor(u.y), Math.floor(x), Math.floor(y));
     u.path = p ? (p.length ? p : [[x, y]]) : [];   // same tile: still walk to the exact point (edge-hugging units never arrive otherwise)
     u.pathGoal = [x, y];
-    u.repathT = 0.9;
+    u.repathT = 0.9 + Math.min(1.6, Math.max(0, (u.path.length - 12) * 0.04));   // Speed (T18): a long way to go is planned again less often (2.5 s at most)
     return !!p;
   }
   // head toward the footprint of a building/village: goal is the free tile beside it, on the unit's side
@@ -432,7 +553,11 @@ export class Game {
     }
     if (!cands.length) { const n = this.nearestWalkable(cx, cy, R, ux, uy); cands.push(n ? [n[0], n[1], 0] : null); if (!n) { u.path = []; return false; } }
     cands.sort((a, b) => a[2] - b[2]);
-    for (let i = 0; i < Math.min(8, cands.length); i++) if (this.setPath(u, cands[i][0] + 0.5, cands[i][1] + 0.5)) { if (u.kind === 'camel') u._front = { id: t.id, x: cands[i][0] + 0.5, y: cands[i][1] + 0.5 }; return true; }
+    for (let i = 0; i < Math.min(8, cands.length); i++) if (this.setPath(u, cands[i][0] + 0.5, cands[i][1] + 0.5)) {
+      if (u.kind === 'camel') u._front = { id: t.id, x: cands[i][0] + 0.5, y: cands[i][1] + 0.5 };
+      u.repathT = 0.9 + Math.min(3.1, Math.max(0, (u.path.length - 12) * 0.06));   // a building or village does not move: a long way to it is planned again every 4 s at most
+      return true;
+    }
     u.path = []; return false;
   }
 
@@ -449,6 +574,7 @@ export class Game {
       if (d <= step) { u.x = px; u.y = py; u.path.shift(); step -= d; if (d > 0.001) u.face = dx >= 0 ? 1 : -1; }
       else { u.x += (dx / d) * step; u.y += (dy / d) * step; u.face = dx >= 0 ? 1 : -1; step = 0; }
     }
+    this.ugMove(u);
     return true;
   }
 
@@ -630,7 +756,7 @@ export class Game {
   tickInside(u, dt) {
     const t = this.byId.get(u.inside);
     if (!t || (t.type === 'building' && t.hp <= 0) || (t.type === 'village' && t.owner !== u.team)) { this.eject(u, t); return; }
-    u.x = t.x; u.y = t.y;
+    u.x = t.x; u.y = t.y; this.ugMove(u);
     if (u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + 2 * dt);
   }
   eject(u, t) {
@@ -642,14 +768,14 @@ export class Game {
       for (let y = t.ty - 1; y <= t.ty + t.size; y++) for (let x = t.tx - 1; x <= t.tx + t.size; x++) {
         if (x >= t.tx && x < t.tx + t.size && y >= t.ty && y < t.ty + t.size) continue;
         if (x < 0 || y < 0 || x >= this.W || y >= this.H || this.walk[y * this.W + x] !== 1) continue;
-        let crowd = 0; for (const o of this.units) if (o !== u && o.hp > 0 && !o.inside && Math.abs(o.x - x - 0.5) < 1 && Math.abs(o.y - y - 0.5) < 1) crowd++;
+        let crowd = 0; for (const o of this.unitsNear(x + 0.5, y + 0.5, 1)) if (o !== u && o.hp > 0 && !o.inside && Math.abs(o.x - x - 0.5) < 1 && Math.abs(o.y - y - 0.5) < 1) crowd++;
         ring.push({ x, y, score: crowd * 3 - (x >= t.tx + t.size || y >= t.ty + t.size ? 1 : 0) + this.roll() * 0.5 });
       }
       ring.sort((a, b) => a.score - b.score);
-      if (ring.length) { u.x = ring[0].x + 0.5 + (this.roll() - 0.5) * 0.5; u.y = ring[0].y + 0.5 + (this.roll() - 0.5) * 0.5; return; }
+      if (ring.length) { u.x = ring[0].x + 0.5 + (this.roll() - 0.5) * 0.5; u.y = ring[0].y + 0.5 + (this.roll() - 0.5) * 0.5; this.ugMove(u); return; }
     }
     const n = this.nearestWalkable(Math.floor(ref.x), Math.floor((ref.ty ?? ref.y) + (ref.size || 0) + 0.5), 8);
-    if (n) { u.x = n[0] + 0.5 + (this.roll() - 0.5) * 0.5; u.y = n[1] + 0.5 + (this.roll() - 0.5) * 0.5; }
+    if (n) { u.x = n[0] + 0.5 + (this.roll() - 0.5) * 0.5; u.y = n[1] + 0.5 + (this.roll() - 0.5) * 0.5; this.ugMove(u); }
   }
   leave(team, id) {
     const t = this.byId.get(id);
@@ -662,7 +788,7 @@ export class Game {
 
   // ---- the town bell (T38): the first ring shelters the house's workers, the second sends them back to what they were doing -------------
   shelters(team) {
-    return [...this.buildings.filter((b) => b.team === team && b.built >= 1 && b.hp > 0 && GARRISON[b.kind]), ...this.villages.filter((v) => v.owner === team)];
+    return [...this.teamB(team).filter((b) => b.team === team && b.built >= 1 && b.hp > 0 && GARRISON[b.kind]), ...this.villages.filter((v) => v.owner === team)];
   }
   ringBell(team) {
     const p = this.players[team]; if (!p || !this.alive(team)) return false;
@@ -715,7 +841,7 @@ export class Game {
   }
   learnRate(team) {
     let r = 0;
-    for (const b of this.buildings) if (b.team === team && b.kind === 'academy' && b.built >= 1 && b.hp > 0) r += LEARNING.academy + LEARNING.scholar * (b.scholars || 0);
+    for (const b of this.kindB(team, 'academy')) if (b.team === team && b.kind === 'academy' && b.built >= 1 && b.hp > 0) r += LEARNING.academy + LEARNING.scholar * (b.scholars || 0);
     for (const v of this.villages) if (v.owner === team && v.kind === 'abbey') r += LEARNING.abbey;
     return r;
   }
@@ -998,7 +1124,7 @@ export class Game {
     b.hp = 0; b.founded = true;
     const ore = this.depositsNear(b.x, b.y, FOUND.campR), camp = ore.length > 0;   // raised beside ore: a mining camp, its folk dig from the first day
     const v = this.addVillage({ kind: camp ? 'mine' : 'hamlet', name, tx: b.tx, ty: b.ty });
-    v.owner = team; v.lean = team; v.loyalty = FOUND.loyalty; v.founded = true;
+    v.owner = team; this._vOwn = null; v.lean = team; v.loyalty = FOUND.loyalty; v.founded = true;
     v.pop = camp ? FOUND.campPop : FOUND.pop; v.popMax = FOUND.max; v.stores = { food: 70, wood: 10, gold: 10 };
     v.protection = v.maxProtection = 260; v.hp = v.maxHp = 260;
     if (team === PLAYER) this.log(PLAYER, camp ? `${name} is founded as a mining camp beside ${[...new Set(ore.map((n) => GOOD_LABEL[n.kind].toLowerCase()))].join(', ')}: raise a mine on the deposit and its folk will dig.` : `${name} is founded. Its folk will grow to ${FOUND.max}: draft them as serfs, miners or soldiers.`, 'good');
@@ -1138,7 +1264,7 @@ export class Game {
   cmdRetreat(units) {
     const us = units.filter((u) => this.fighter(u) || u.kind === 'king' || u.kind === 'scout'); if (!us.length) return false;
     const team = us[0].team, cx = us.reduce((a, u) => a + u.x, 0) / us.length, cy = us.reduce((a, u) => a + u.y, 0) / us.length;
-    const keep = this.buildings.filter((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0).sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0];
+    const keep = this.kindB(team, 'keep').filter((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0).sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0];
     const to = keep || this.seatOf(team); if (!to) return false;
     const inFight = us.filter((u) => this.time - (u.engagedT ?? -99) < RETREAT.engaged || this.locked(u));
     const pace = this.paceOf(us), slot = this.formSlots(us, to.x + 1, to.y + (to.size || 2) / 2 + 2, false);
@@ -1481,7 +1607,7 @@ export class Game {
   haulOf(b) {
     if (b._haulT === undefined || this.time - b._haulT > 5) {
       let d = 1e9;
-      for (const o of this.buildings) if (o.team === b.team && o.hp > 0 && o.built >= 1 && STORES.includes(o.kind)) d = Math.min(d, Math.hypot(o.x - b.x, o.y - b.y));
+      for (const o of this.teamB(b.team)) if (o.team === b.team && o.hp > 0 && o.built >= 1 && STORES.includes(o.kind)) d = Math.min(d, Math.hypot(o.x - b.x, o.y - b.y));
       for (const v of this.villages) if (v.owner === b.team) d = Math.min(d, Math.hypot(v.x - b.x, v.y - b.y));
       const dist = this.districtAt(b.team, b.x, b.y);
       b._haul = (d <= HAUL.free ? 1 : Math.max(HAUL.min, 1 - (1 - HAUL.min) * (d - HAUL.free) / (HAUL.far - HAUL.free))) * (dist ? 1 + 0.08 * dist.score : 1);   // short haul to a market, and a community round it, speed the ore home
@@ -1536,15 +1662,15 @@ export class Game {
       }
     }
     if (kind === 'mine' || kind === 'village') {   // a mine and a village never stand flush against each other (the village's art spreads past its footprint)
-      for (const v of this.villages) if (Math.max(tx - (v.tx + v.size), v.tx - (tx + s.size), ty - (v.ty + v.size), v.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to a village: leave a gap' };
-      if (kind === 'village') for (const o of this.buildings) if (o.hp > 0 && o.kind === 'mine' && Math.max(tx - (o.tx + o.size), o.tx - (tx + s.size), ty - (o.ty + o.size), o.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to a mine: leave a gap' };
+      for (const v of this.fixedNear(this.villages, tx, ty, FIXED_REACH + s.size)) if (Math.max(tx - (v.tx + v.size), v.tx - (tx + s.size), ty - (v.ty + v.size), v.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to a village: leave a gap' };
+      if (kind === 'village') for (const o of this.fixedNear(this.buildings, tx, ty, FIXED_REACH + s.size)) if (o.hp > 0 && o.kind === 'mine' && Math.max(tx - (o.tx + o.size), o.tx - (tx + s.size), ty - (o.ty + o.size), o.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to a mine: leave a gap' };
     }
     if (kind !== 'mine') {   // leave a lane between buildings: tall sprites would otherwise pile onto one another
-      for (const o of this.buildings) {
+      for (const o of this.fixedNear(this.buildings, tx, ty, FIXED_REACH + s.size)) {
         if (o.hp <= 0 || o.kind === 'mine' || Math.abs(o.tx - tx) > Math.max(s.size, o.size) + 2 || Math.abs(o.ty - ty) > Math.max(s.size, o.size) + 2) continue;   // (the larger footprint decides how far to look)
         if (Math.max(tx - (o.tx + o.size), o.tx - (tx + s.size), ty - (o.ty + o.size), o.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to another building: leave a gap' };
       }
-      for (const v of this.villages) {   // a village's art spreads past its footprint: keep the same lane from it
+      for (const v of this.fixedNear(this.villages, tx, ty, FIXED_REACH + s.size)) {   // a village's art spreads past its footprint: keep the same lane from it
         if (Math.abs(v.tx - tx) > Math.max(s.size, v.size) + 2 || Math.abs(v.ty - ty) > Math.max(s.size, v.size) + 2) continue;
         if (Math.max(tx - (v.tx + v.size), v.tx - (tx + s.size), ty - (v.ty + v.size), v.ty - (ty + s.size)) < BUILD_GAP) return { ok: false, reason: 'Too close to a village: leave a gap' };
       }
@@ -1640,7 +1766,7 @@ export class Game {
     for (const u of this.units) {
       if (u.x >= tx && u.x < tx + s.size && u.y >= ty && u.y < ty + s.size) {
         const n = this.nearestWalkable(Math.floor(u.x), Math.floor(u.y), 8);
-        if (n) { u.x = n[0] + 0.5; u.y = n[1] + 0.5; }
+        if (n) { u.x = n[0] + 0.5; u.y = n[1] + 0.5; this.ugMove(u); }
       }
       if (u.path.length && u.path.some(([px, py]) => px >= tx && px < tx + s.size && py >= ty && py < ty + s.size) && u.pathGoal) {
         this.setPath(u, u.pathGoal[0], u.pathGoal[1]);
@@ -1688,7 +1814,7 @@ export class Game {
   // A market is stocked automatically from the house stockpile when a supplier stands within MARKET_RADIUS: a mine for its
   // ore, a foundry for steel and fine ware, a farm for grain, a mill for timber, or a warehouse for anything.
   // Camels load from a shelf, walk to another market or village, swap goods there at a fee, and walk home to unload.
-  marketsOf(team) { return this.buildings.filter((b) => b.team === team && b.kind === 'market' && b.built >= 1 && b.hp > 0); }
+  marketsOf(team) { return this.kindB(team, 'market').filter((b) => b.team === team && b.kind === 'market' && b.built >= 1 && b.hp > 0); }
   nearestMarket(team, x, y, maxD = 1e9) {
     let best = null, bd = maxD;
     for (const m of this.marketsOf(team)) { const d = distTo(x, y, m); if (d < bd) { best = m; bd = d; } }
@@ -1705,7 +1831,7 @@ export class Game {
     if (m._d && this.time - m._dT < 2) return m._d;
     const r = DISTRICT.r, links = {}, names = {};
     for (const k in LINKS) { links[k] = 0; names[k] = []; }
-    for (const o of this.buildings) {
+    for (const o of this.teamB(m.team)) {
       if (o.team !== m.team || o.built < 1 || o.hp <= 0 || o === m || Math.hypot(o.x - m.x, o.y - m.y) > r) continue;
       const k = this.linkOfBuilding(o.kind); if (k) { links[k]++; if (!names[k].includes(BUILDINGS[o.kind].label)) names[k].push(BUILDINGS[o.kind].label); }
     }
@@ -1739,14 +1865,14 @@ export class Game {
   // the market's coin: cottages and villages of ours within reach are its customers
   consumerIncome(b) {
     let n = 0;
-    for (const o of this.buildings) if (o.team === b.team && o.kind === 'cottage' && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - b.x, o.y - b.y) <= MARKET_RADIUS) n++;
-    for (const v of this.villages) if (v.owner === b.team && Math.hypot(v.x - b.x, v.y - b.y) <= MARKET_RADIUS) n += 2;
+    for (const o of this.kindB(b.team, 'cottage')) if (o.team === b.team && o.kind === 'cottage' && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - b.x, o.y - b.y) <= MARKET_RADIUS) n++;
+    for (const v of this.vOwn(b.team)) if (v.owner === b.team && Math.hypot(v.x - b.x, v.y - b.y) <= MARKET_RADIUS) n += 2;
     return (CONSUMERS.base + CONSUMERS.each * Math.min(CONSUMERS.max, n)) * this.district(b).mult;   // a rounded community earns more than the same buildings scattered
   }
-  near(b, kinds, r = MARKET_RADIUS) { return this.buildings.some((o) => o.team === b.team && o.built >= 1 && o.hp > 0 && kinds.includes(o.kind) && Math.hypot(o.x - b.x, o.y - b.y) <= r); }
+  near(b, kinds, r = MARKET_RADIUS) { return kinds.some((k) => this.kindB(b.team, k).some((o) => o.team === b.team && o.built >= 1 && o.hp > 0 && kinds.includes(o.kind) && Math.hypot(o.x - b.x, o.y - b.y) <= r)); }   // (a yes or no: the order looked in does not matter)
   supplied(b, k) {
     if (this.near(b, ['warehouse'])) return true;
-    if (MINEABLE.includes(k) && this.buildings.some((o) => o.team === b.team && o.kind === 'mine' && o.built >= 1 && o.hp > 0 && o.ore === k && Math.hypot(o.x - b.x, o.y - b.y) <= MARKET_RADIUS)) return true;
+    if (MINEABLE.includes(k) && this.kindB(b.team, 'mine').some((o) => o.team === b.team && o.kind === 'mine' && o.built >= 1 && o.hp > 0 && o.ore === k && Math.hypot(o.x - b.x, o.y - b.y) <= MARKET_RADIUS)) return true;
     if (PROCESSED.includes(k)) return this.near(b, ['foundry']);
     if (k === 'food') return this.near(b, ['farm']);
     if (k === 'wood') return this.near(b, ['mill']);
@@ -1765,7 +1891,7 @@ export class Game {
     if (coin > 0) this.earn(b.team, 'market', coin);
   }
   // warehouses within reach of a market: they take what the shelf cannot hold and hand it back as the shelf empties
-  depotsOf(m) { return this.buildings.filter((o) => o.team === m.team && o.kind === 'warehouse' && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - m.x, o.y - m.y) <= MARKET_RADIUS); }
+  depotsOf(m) { return this.kindB(m.team, 'warehouse').filter((o) => o.team === m.team && o.kind === 'warehouse' && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - m.x, o.y - m.y) <= MARKET_RADIUS); }
   // put `n` of a good into the warehouse nearest the market with room; returns what could not be stored
   depotStore(m, k, n) {
     for (const w of this.depotsOf(m)) {
@@ -2409,9 +2535,10 @@ export class Game {
     if (team === PLAYER && amt >= 3 && (src === 'trade' || src === 'sales' || src === 'loot')) { const m = this.seatOf(PLAYER); if (m) this.sfx('coin', m.x, m.y); }
   }
   // the army's pay: due every second, taken from the purse; an empty purse breeds trouble
-  payWages(p, dt) {
+  payWages(p, dt, paid = null) {
     let rate = 0, n = 0, list = [];
-    for (const u of this.units) if (u.team === p.team && u.hp > 0 && WAGE[u.kind]) { n++; list.push(u); }
+    if (paid) { list = paid; n = list.length; }   // (Speed, T18: updateEconomy lists every house's paid men in one pass, in the units' order)
+    else for (const u of this.units) if (u.team === p.team && u.hp > 0 && WAGE[u.kind]) { n++; list.push(u); }
     if (n > WAGE_FREE) { list.sort((a, b) => WAGE[b.kind] - WAGE[a.kind]); for (let i = WAGE_FREE; i < n; i++) rate += WAGE[list[i].kind]; }
     p.wageRate = rate;
     p.wageDebt += rate * dt;
@@ -2446,9 +2573,11 @@ export class Game {
   }
 
   updateEconomy(dt) {
+    const paid = new Map();
+    for (const u of this.units) if (u.hp > 0 && WAGE[u.kind]) { let l = paid.get(u.team); if (!l) paid.set(u.team, (l = [])); l.push(u); }
     for (const p of this.players) {
       if (!p.alive) continue;
-      this.payWages(p, dt);
+      this.payWages(p, dt, paid.get(p.team) || []);
       p.rateT = (p.rateT || 0) + dt;
       if (p.rateT >= 1) {   // smoothed income by source, per second
         for (const k of INCOME_SOURCES) { p.inc[k] = (p.inc[k] || 0) * 0.92 + ((p.acc[k] || 0) / p.rateT) * 0.08; p.acc[k] = 0; }
@@ -2468,7 +2597,7 @@ export class Game {
       if (v.owner < 0) { v.joyT = 0; continue; }
       if (!(v.joyT > 0)) {
         const p = this.players[v.owner];
-        if (p.ware >= 1 && this.buildings.some((b) => b.team === v.owner && b.built >= 1 && b.hp > 0 && (b.kind === 'market' || b.kind === 'tavern' || b.kind === 'temple') && Math.hypot(b.x - v.x, b.y - v.y) <= 20)) {
+        if (p.ware >= 1 && this.teamB(v.owner).some((b) => b.team === v.owner && b.built >= 1 && b.hp > 0 && (b.kind === 'market' || b.kind === 'tavern' || b.kind === 'temple') && Math.hypot(b.x - v.x, b.y - v.y) <= 20)) {
           p.ware -= 1; v.joyT = WARE_JOY.secs;
           if (v.owner === PLAYER) this.log(PLAYER, `${v.name} rejoices over fine ware.`, 'good');
         }
@@ -2507,14 +2636,14 @@ export class Game {
         case 'farm': p.food += 0.8 * dt * (FARM_SOIL[this.terrain[Math.floor(b.y) * this.W + Math.floor(b.x)]] || 0.9) * (this.nearBuilding(b, 'mill', 8) ? 1.25 : 1) * (this.hasTech(p.team, 'husbandry') ? 1.15 : 1); break;
         case 'foundry': this.smelt(b, p, dt); break;
         case 'mine': this.tickMine(b, dt); break;
-        case 'keep': this.tickKeep(b, dt); break;
+        case 'keep': this.tickKeep(b, dt); this.keepFire(b, dt); break;
         case 'tavern': if (!b.roster) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; } else if ((b.rosterT -= dt) <= 0) { b.roster = this.newRoster(); b.rosterT = TAVERN_REFRESH; }
           this.earn(b.team, 'tavern', 0.35 * dt); break;
         case 'market': this.earn(b.team, 'market', this.consumerIncome(b) * dt); this.supplyMarket(b, p, dt); this.consumeShelf(b, dt); if (b.glut) for (const k in b.glut) b.glut[k] = Math.max(0, b.glut[k] - SELL.decay * dt); break;
         case 'temple': if (this.hasBuilding(b.team, 'academy')) this.earn(b.team, 'temple', 0.3 * dt); break;
         case 'academy': {
           let n = 0;
-          for (const u of this.units) if (u.team === b.team && u.kind === 'scholar' && u.hp > 0 && Math.hypot(u.x - b.x, u.y - b.y) < 8) n++;
+          for (const u of this.unitsNear(b.x, b.y, 8)) if (u.team === b.team && u.kind === 'scholar' && u.hp > 0 && Math.hypot(u.x - b.x, u.y - b.y) < 8) n++;
           b.scholars = Math.min(4, n);
           break;
         }
@@ -2540,7 +2669,7 @@ export class Game {
     }
   }
   nearBuilding(b, kind, r) {
-    return this.buildings.some((o) => o.team === b.team && o.kind === kind && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - b.x, o.y - b.y) <= r);
+    return this.kindB(b.team, kind).some((o) => o.team === b.team && o.kind === kind && o.built >= 1 && o.hp > 0 && Math.hypot(o.x - b.x, o.y - b.y) <= r);
   }
 
   towerFire(b, dt) {
@@ -2548,7 +2677,7 @@ export class Game {
     if (b.cooldown > 0) return;
     const s = BUILDINGS.tower;
     let best = null, bd = s.range + (this.hasTech(b.team, 'engineering') ? 2 : 0);
-    for (const u of this.units) {
+    for (const u of this.unitsNear(b.x, b.y, bd)) {
       if (u.hp <= 0 || u.inside || u.hidden || !this.isEnemy(b.team, u.team) || this.passesFor(u, b.team)) continue;
       const d = Math.hypot(u.x - b.x, u.y - b.y);
       if (d < bd) { best = u; bd = d; }
@@ -2558,23 +2687,45 @@ export class Game {
     this.projectiles.push({ x: b.x, y: b.y - 0.5, targetId: best.id, dmg: s.dmg, team: b.team }); this.sfx('arrow', b.x, b.y);
   }
 
+  // a garrisoned keep shoots back (T43): one arrow per KEEP_ARROWS.per folk inside, each at the next nearest foe in range
+  keepArrows(b) { return b.built >= 1 && b.hp > 0 ? Math.min(KEEP_ARROWS.cap, Math.floor((b.garrison?.length || 0) / KEEP_ARROWS.per)) : 0; }
+  keepRange(b) { return KEEP_ARROWS.range + (this.hasTech(b.team, 'engineering') ? 2 : 0); }
+  keepFire(b, dt) {
+    b.arrowT = (b.arrowT || 0) - dt;
+    if (b.arrowT > 0) return;
+    const n = this.keepArrows(b);
+    if (!n) { b.arrowT = 0; return; }
+    const r = this.keepRange(b), foes = [];
+    for (const u of this.units) {
+      if (u.hp <= 0 || u.inside || u.hidden || !this.isEnemy(b.team, u.team) || this.passesFor(u, b.team)) continue;
+      const d = Math.hypot(u.x - b.x, u.y - b.y);
+      if (d < r) foes.push({ u, d });
+    }
+    if (!foes.length) return;
+    foes.sort((a, c) => a.d - c.d || a.u.id - c.u.id);
+    b.arrowT = KEEP_ARROWS.cd;
+    for (let i = 0; i < n; i++) this.projectiles.push({ x: b.x, y: b.y - 1, targetId: foes[i % foes.length].u.id, dmg: KEEP_ARROWS.dmg, team: b.team });
+    this.sfx('arrow', b.x, b.y);
+  }
+
   // idle soldiers of the lord standing around a village (an occupation force)
   watchersOf(v) {
     let n = 0;
-    for (const u of this.units) if (u.team === v.owner && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - v.x, u.y - v.y) <= 7) n += this.guardWeight(u);
+    for (const u of this.unitsNear(v.x, v.y, 7)) if (u.team === v.owner && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - v.x, u.y - v.y) <= 7) n += this.guardWeight(u);
     return n;
   }
   // soldiers keeping a castle: those garrisoned inside plus idle ones standing watch nearby
   guardOf(b) {
     let n = 0;
     for (const id of b.garrison || []) { const u = this.byId.get(id); if (u && u.hp > 0 && SOLDIER.has(u.kind)) n += this.guardWeight(u); }
-    for (const u of this.units) if (u.team === b.team && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - b.x, u.y - b.y) <= GUARD.watch + b.size / 2) n += this.guardWeight(u);
+    for (const u of this.unitsNear(b.x, b.y, GUARD.watch + b.size / 2)) if (u.team === b.team && u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.task.type === 'idle' && Math.hypot(u.x - b.x, u.y - b.y) <= GUARD.watch + b.size / 2) n += this.guardWeight(u);
     return n;
   }
   // influence of each house on a village: sum over its seats, falling off linearly with distance
   pullsFor(v) {
+    (this.work ||= { paths: 0, nodes: 0, pulls: 0 }).pulls++;
     const pulls = new Array(this.houses).fill(0);
-    for (const b of this.buildings) {
+    for (const b of this.fixedNearSorted(this.buildings, v.x, v.y, INF_REACH)) {   // (Speed, T18: those that can reach it, in the same order)
       const inf = INFLUENCE[b.kind];
       if (!inf || b.hp <= 0 || b.built < 1) continue;
       const d = Math.hypot(v.x - b.x, v.y - b.y);
@@ -2584,8 +2735,8 @@ export class Game {
       if (b.kind === 'academy') p *= 1 + 0.3 * (b.scholars || 0);
       pulls[b.team] += p;
     }
-    for (const b of this.buildings) if (b._crew && b.kind === 'mine') for (const c of b._crew.list) if (c.v === v) pulls[b.team] += c.n * MINE_JOBS.pull;   // jobs at the mine win the village's goodwill
-    for (const o of this.villages) {   // villages you hold lean on the ones around them, steadier with soldiers inside
+    for (let t = 0; t < this.houses; t++) for (const b of this.kindB(t, 'mine')) if (b._crew && b.kind === 'mine') for (const c of b._crew.list) if (c.v === v) pulls[b.team] += c.n * MINE_JOBS.pull;   // jobs at the mine win the village's goodwill
+    for (const o of this.fixedNearSorted(this.villages, v.x, v.y, INFLUENCE_HOME.r + VILLAGE_SIZE)) {   // villages you hold lean on the ones around them, steadier with soldiers inside
       if (o === v || o.owner < 0) continue;
       const d = Math.hypot(v.x - o.x, v.y - o.y), inf = INFLUENCE_HOME;
       if (d >= inf.r) continue;
@@ -2603,9 +2754,24 @@ export class Game {
     return pulls;
   }
 
+  // Speed (T18, part 2): each village is worked out every VILLAGE_STEP seconds (four ticks) with all the time it has gathered
+  // since, so rates and totals are as before and a village notices a change at most 0.15 s later. Each keeps its own countdown
+  // (saved with it), started a quarter-step apart by its id so a quarter of them are worked out each tick, whatever the tick's
+  // length. Its flash (drawing only) still fades every tick.
   updateVillages(dt) {
     for (const v of this.villages) {
       v.flash = Math.max(0, v.flash - dt);
+      v._vdt = (v._vdt || 0) + dt;
+      if (v._vw === undefined) v._vw = (v.id % 4) * (VILLAGE_STEP / 4);
+      v._vw -= dt;
+      if (v._vw > 1e-9) continue;
+      v._vw = Math.max(0, v._vw + VILLAGE_STEP);
+      const vdt = v._vdt; v._vdt = 0;
+      this.updateVillage(v, vdt);
+    }
+  }
+  updateVillage(v, dt) {
+    {
       { // villages restock slowly: mining camps dig more ore than they started with
         const base = VILLAGE_KINDS[v.kind].stores;
         // the village purse refills from its folk's trade: bigger villages pay out more coin
@@ -2652,7 +2818,7 @@ export class Game {
         if (v.loyalty <= 8) {
           const lost = v.owner;
           this.ejectAll(v);
-          v.owner = -1; v.lean = best; v.loyalty = 18; v.spyFlip = -1;
+          v.owner = -1; this._vOwn = null; v.lean = best; v.loyalty = 18; v.spyFlip = -1;
           this.log(lost, `${v.name} slips from its lord.`, 'warn');
         } else {
           const spec = VILLAGE_KINDS[v.kind].tribute, rate = (0.4 + (0.8 * v.loyalty) / 100) * (0.5 + 0.7 * (v.pop / v.popMax)), p = this.players[v.owner];
@@ -2678,7 +2844,7 @@ export class Game {
     for (const b of this.buildings) {
       if (b.hp <= 0 || b.kind === 'village' || b.team === team || b.team !== prev || prev < 0) continue;
       if (this.townOf(b) !== v) continue;
-      this.ejectAll(b); b.queue = []; b.rally = null; b.team = team; b.town = v.id; b.flash = 1; n++;
+      this.ejectAll(b); b.queue = []; b.craft = []; b.drills = b.drills && []; b.levy = null; b.rally = null; b.team = team; b.town = v.id; b.flash = 1; n++; this._bIdx = null;   // (the index of buildings by house: see bIdx)
       for (const u of this.units) if (u.team !== team && u.task?.buildingId === b.id) { u.task = { type: 'idle' }; u.path = []; }
     }
     if (n) { this.recomputeWalk?.(); this.updateVisibility?.(true); }
@@ -2689,7 +2855,7 @@ export class Game {
     if (v.owner === team) return;
     const prev = v.owner;
     this.ejectAll(v);
-    v.owner = team; v.lean = team; v.spyFlip = -1; if (team === PLAYER) this.sfx('fanfare', v.x, v.y);
+    v.owner = team; this._vOwn = null; v.lean = team; v.spyFlip = -1; if (team === PLAYER) this.sfx('fanfare', v.x, v.y);
     const taken = this.claimTown(v, team, prev);
     let spoils = null;
     if (how === 'pillage') { v.pop = Math.max(2, v.pop * (1 - SACK.killed)); spoils = this.plunder(v, team); }   // the sack costs lives
@@ -2749,6 +2915,7 @@ export class Game {
       const free = (x, y) => { const a = Math.floor(x), b = Math.floor(y); return a >= 0 && b >= 0 && a < W && b < this.H && this.walk[b * W + a] === 1; };
       if (free(nx, ny) || !free(u.x, u.y)) { u.x = nx; u.y = ny; }   // (a unit already on bad ground may step anywhere to get out)
       else if (free(nx, u.y)) u.x = nx; else if (free(u.x, ny)) u.y = ny;   // pressed against water, rock or a wall: slide along italls
+      this.ugMove(u);
     }
   }
 
@@ -2759,7 +2926,7 @@ export class Game {
       const tx = Math.floor(u.x), ty = Math.floor(u.y);
       if (this.walk[ty * this.W + tx] === 1) continue;
       const n = this.nearestWalkable(tx, ty, 6, u.x, u.y); if (!n) continue;
-      u.x = n[0] + 0.5; u.y = n[1] + 0.5;
+      u.x = n[0] + 0.5; u.y = n[1] + 0.5; this.ugMove(u);
     }
   }
   updateUnits(dt) {
@@ -2894,7 +3061,7 @@ export class Game {
   // (not into the arms of raiders: the first holding with no hostile soldier within KING.safeR, else the seat as before. In play an heir
   // crowned at a seat under attack died at once, and the next one too: three kings lost in five minutes, playtest 2026-10-14)
   thronePlace(team) {
-    const held = [this.seatOf(team), ...this.villagesOf(team), ...this.buildings.filter((b) => b.team === team && b.hp > 0 && b.built >= 1)].filter(Boolean);
+    const held = [this.seatOf(team), ...this.villagesOf(team), ...this.teamB(team).filter((b) => b.team === team && b.hp > 0 && b.built >= 1)].filter(Boolean);
     const raided = (s) => this.units.some((u) => u.hp > 0 && !u.inside && u.kind !== 'serf' && u.kind !== 'camel' && this.isEnemy(team, u.team) && Math.hypot(u.x - s.x, u.y - s.y) < KING.safeR);
     const s = held.find((h) => !raided(h)) || held[0];
     if (s) return { x: s.x + 0.4, y: (s.ty != null ? s.ty + (s.size || 3) : s.y) + 0.8 };
@@ -3147,9 +3314,9 @@ export class Game {
         if (q && q.hp > 0 && q.built < 1 && q.team === u.team) { u.task = { type: 'build', targetId: q.id }; this.setPathToEntity(u, q); return; }
       }
       // look for another unfinished building of ours close by before going idle
-      const next = b ? null : this.buildings.find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
+      const next = b ? null : this.teamB(u.team).find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
       let nxt = next;
-      if (!nxt && b && b.built >= 1 && b.team === u.team) nxt = this.buildings.find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
+      if (!nxt && b && b.built >= 1 && b.team === u.team) nxt = this.teamB(u.team).find((o) => o.team === u.team && o.built < 1 && o.hp > 0 && Math.hypot(o.x - u.x, o.y - u.y) < 6);
       if (nxt) { u.task = { type: 'build', targetId: nxt.id }; this.setPathToEntity(u, nxt); return; }
       if (u.afterBuild?.mineId != null) {
         const m = this.byId.get(u.afterBuild.mineId); u.afterBuild = null;
@@ -3264,22 +3431,32 @@ export class Game {
     this.updateVisibility(true);
   }
 
+  // half-widths of a sight circle of radius r, row by row (cached): the largest w with w^2 + dy^2 <= r^2, in whole numbers
+  visSpans(r) {
+    const c = (this._spans ||= new Map()); let s = c.get(r); if (s) return s;
+    s = new Int32Array(2 * r + 1);
+    for (let dy = -r; dy <= r; dy++) { const n = r * r - dy * dy; let w = Math.floor(Math.sqrt(n)); while (w * w > n) w--; while ((w + 1) * (w + 1) <= n) w++; s[dy + r] = w; }
+    c.set(r, s); return s;
+  }
   updateVisibility(force = false) {
     const { W, H } = this;
     for (let t = 0; t < this.houses; t++) {
       const vis = this.vis[t], seen = this.seen[t];
       if (!this.fogOn) { vis.fill(1); seen.fill(1); continue; }
       vis.fill(0);
+      const done = new Set();
       const mark = (x, y, r0) => {
-        const r = Math.round(r0 * VISION_MUL), cx = Math.floor(x), cy = Math.floor(y), r2 = r * r;   // sight reaches VISION_MUL times further: eight times the ground is revealed
+        const r = Math.round(r0 * VISION_MUL), cx = Math.floor(x), cy = Math.floor(y);   // sight reaches VISION_MUL times further: eight times the ground is revealed
+        const key = (cy * W + cx) * 256 + Math.min(255, r); if (r < 256 && done.has(key)) return; if (r < 256) done.add(key);   // (two of a house on one tile with one sight see the same)
+        const span = this.visSpans(r);   // the circle's half-width on each row: every tile with (i-cx)^2 + (j-cy)^2 <= r^2, as before
         for (let j = Math.max(0, cy - r); j <= Math.min(H - 1, cy + r); j++) {
-          for (let i = Math.max(0, cx - r); i <= Math.min(W - 1, cx + r); i++) {
-            if ((i - cx) ** 2 + (j - cy) ** 2 <= r2) { vis[j * W + i] = 1; seen[j * W + i] = 1; }
-          }
+          const w = span[j - cy + r], a = Math.max(0, cx - w), b = Math.min(W - 1, cx + w);
+          if (a > b) continue;
+          vis.fill(1, j * W + a, j * W + b + 1); seen.fill(1, j * W + a, j * W + b + 1);
         }
       };
       for (const u of this.units) if (u.team === t && u.hp > 0) mark(u.x, u.y, UNITS[u.kind].sight * (u.far === 'parthian' ? PERK.sight : 1));
-      for (const b of this.buildings) if (b.team === t && b.hp > 0) mark(b.x, b.y, BUILDINGS[b.kind].sight);
+      for (const b of this.teamB(t)) if (b.team === t && b.hp > 0) mark(b.x, b.y, BUILDINGS[b.kind].sight);
       for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, v.home === t ? 13 : 8);
       for (const p of this.players) { const k = p.alive && p.team !== t && !this.seatOf(p.team) ? this.kingOf(p.team) : null; if (k && !k.inside) mark(k.x, k.y, KING.fugitiveSight); }   // a king without a seat is hunted: all can see him
     }
@@ -3289,7 +3466,7 @@ export class Game {
       if (!this.fogOn) { this.meet(a, b); continue; }
       const va = this.vis[a];
       const hit = this.units.some((u) => u.team === b && u.hp > 0 && va[Math.floor(u.y) * W + Math.floor(u.x)] === 1)
-        || this.buildings.some((o) => o.team === b && o.hp > 0 && va[Math.floor(o.y) * W + Math.floor(o.x)] === 1);
+        || this.teamB(b).some((o) => o.team === b && o.hp > 0 && va[Math.floor(o.y) * W + Math.floor(o.x)] === 1);
       if (hit) {
         this.meet(a, b);
         if (a === PLAYER || b === PLAYER) this.log(PLAYER, `You have met ${this.players[a === PLAYER ? b : a].name}. Treaties are now possible.`, 'good');
@@ -3306,7 +3483,7 @@ export class Game {
         if (u.inside != null) { const t = this.byId.get(u.inside); if (t?.garrison) t.garrison = t.garrison.filter((id) => id !== u.id); if (t?.engines) t.engines = t.engines.filter((id) => id !== u.id); }
         this.byId.delete(u.id);
       }
-      this.units = this.units.filter((u) => u.hp > 0);
+      this.units = this.units.filter((u) => u.hp > 0); this._ug = null;   // (the grid is filed afresh when next asked)
     }
     if (this.buildings.some((b) => b.hp <= 0)) {
       for (const b of this.buildings) if (b.hp <= 0) { this.ejectAll(b); this.byId.delete(b.id); }
@@ -3330,7 +3507,7 @@ export class Game {
     p.alive = false;
     for (const u of this.units) if (u.team === team) u.hp = 0;
     for (const b of this.buildings) if (b.team === team) b.hp = 0;
-    for (const v of this.villages) if (v.owner === team) { v.owner = -1; v.loyalty = 25; v.lean = -1; }
+    for (const v of this.villages) if (v.owner === team) { v.owner = -1; this._vOwn = null; v.loyalty = 25; v.lean = -1; }
     this.log(PLAYER, team === PLAYER ? 'Your house has fallen.' : `${p.name} has fallen.`, team === PLAYER ? 'bad' : 'good');
     this.cleanup();
   }
@@ -3381,7 +3558,7 @@ export class Game {
     if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
     this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder, humans: d.humans || [0] });
     this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this.asks = d.asks || []; this._stance = {};
-    this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
+    this._ug = null; this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;
     this.alertT = d.alertT; this.winHold = d.winHold; this.richHold = d.richHold; this.named = d.named.map((x) => new Set(x));
     if (d.rndA != null) { this.rndA = d.rndA >>> 0; this.rollA = d.rollA >>> 0; }   // older saves: reseed from the clock

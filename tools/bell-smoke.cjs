@@ -1,5 +1,5 @@
 // Town bell click-through (T38): serve the repo on :8123, then `node tools/bell-smoke.cjs [shot.png]`. Raises a keep by the home village with
-// two serfs at work, presses the keep's Bell button (serfs go inside), then the B key (the all-clear), then the minimap row's Bell; no errors.
+// two serfs at work, presses the keep's Bell button (serfs go inside), then the B key (the all-clear), then the minimap row's Bell; no errors. Also reads the keep's Arrows row (T43).
 const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1366, height: 768 } });
@@ -16,7 +16,12 @@ const { chromium } = require('playwright');
   console.log('keep card has Bell', await btn.count() > 0);
   await btn.click(); await p.waitForTimeout(3000);
   console.log('after Bell', JSON.stringify(await state()));
+  // keep arrows (T43): the keep's panel shows its volley once folk are inside
+  console.log('keep panel arrows', JSON.stringify(await p.evaluate(() => { const row = [...document.querySelectorAll('.stat')].find((e) => /Arrows/.test(e.textContent)); const g = window.__seven.game, k = g.byId.get(window.__seven.ui.sel.id); return { row: row ? row.textContent.replace(/\s+/g, ' ').trim() : null, inKeep: k.garrison.length, arrows: g.keepArrows(k) }; })));
   if (process.argv[2]) await p.screenshot({ path: process.argv[2] });
+  await p.evaluate(() => { const { game: g, ui } = window.__seven, k = g.byId.get(ui.sel.id); for (let i = 0; i < 4; i++) { const u = g.addUnit('serf', 0, k.x, k.y); u.inside = k.id; k.garrison.push(u.id); } ui.sigSel = ''; });
+  await p.waitForTimeout(700);
+  console.log('keep panel arrows, 4 more inside', JSON.stringify(await p.evaluate(() => { const row = [...document.querySelectorAll('.stat')].find((e) => /Arrows/.test(e.textContent)); return row ? row.textContent.replace(/\s+/g, ' ').trim() : null; })));
   await p.keyboard.press('b'); await p.waitForTimeout(400);
   console.log('after B', JSON.stringify(await state()));
   await p.click('#btnBell'); await p.waitForTimeout(400);

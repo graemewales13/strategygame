@@ -9,7 +9,7 @@ import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -1432,6 +1432,54 @@ test('town bell (T38): one ring shelters the serfs in the nearest keep or villag
   townBell(a, 1, p1, s1, a.time); assert.ok(p1.bell != null, 'not yet: the quiet has only begun');
   townBell(a, 1, p1, s1, a.time + BELL.quiet + 1); assert.equal(p1.bell, null, 'all clear');
   assert.equal(defaultKeys().bell, 'b');
+});
+
+test('keep arrows (T43): a garrisoned keep shoots one arrow per few folk inside at the nearest foes in range; an empty keep is silent; capped; saved', () => {
+  const g = mk(); meet(g); g.setRelation(PLAYER, 1, 'war');
+  const seat = g.seatOf(PLAYER);
+  const keep = g.addBuilding('keep', PLAYER, Math.round(seat.x + 9), Math.round(seat.y - 3), true); g.recomputeWalk();
+  const volley = () => { g.projectiles = []; keep.arrowT = 0; g.keepFire(keep, 0.1); return g.projectiles.filter((p) => p.dmg === KEEP_ARROWS.dmg && Math.abs(p.x - keep.x) < 0.01).length; };
+  const foe = g.addUnit('footman', 1, keep.x + 4, keep.y + 1), far = g.addUnit('footman', 1, keep.x + KEEP_ARROWS.range + 6, keep.y);
+  keep.garrison = [];
+  assert.equal(g.keepArrows(keep), 0); assert.equal(volley(), 0, 'an empty keep is silent');
+  const folk = [];
+  const shelter = (k) => { for (let i = 0; i < k; i++) { const u = g.addUnit('serf', PLAYER, keep.x, keep.y); u.inside = keep.id; keep.garrison.push(u.id); folk.push(u); } };
+  shelter(1); assert.equal(volley(), 0, 'one serf is not enough');
+  shelter(3); assert.equal(g.keepArrows(keep), 2); assert.equal(volley(), 2, 'four inside: two arrows');
+  assert.ok(g.projectiles.every((p) => p.targetId === foe.id), 'at the foe in range, not the one beyond it');
+  shelter(10); assert.equal(g.keepArrows(keep), KEEP_ARROWS.cap, 'capped');
+  // the arrows land: the foe loses health
+  const hp0 = foe.hp; volley(); for (let i = 0; i < 20; i++) g.updateProjectiles(0.1);
+  assert.ok(foe.hp < hp0, 'the foe is hit');
+  // cooldown: no second volley at once
+  g.projectiles = []; keep.arrowT = 0; g.keepFire(keep, 0.1); const n1 = g.projectiles.length; g.keepFire(keep, 0.1); assert.equal(g.projectiles.length, n1, 'one volley per cooldown');
+  // nobody in range: nothing fired
+  foe.x = keep.x + KEEP_ARROWS.range + 6; assert.equal(volley(), 0);
+  // a friend is never shot; the cooldown is saved
+  foe.x = keep.x + 4; g.setRelation(PLAYER, 1, 'peace'); assert.equal(volley(), 0, 'not at peace');
+  g.setRelation(PLAYER, 1, 'war'); keep.arrowT = 1.3;
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(h.byId.get(keep.id).arrowT, 1.3);
+  assert.match(BUILDINGS.keep.info, /arrows/);
+});
+
+test('a town changing hands takes its buildings empty: no training, kit or drills in hand carry over to the new lord (T-086)', () => {
+  const g = mk(); meet(g);
+  const v = g.villages.find((x) => x.owner < 0);
+  v.owner = 1;
+  const arm = g.addBuilding('armoury', 1, v.tx + VILLAGE_SIZE + 2, v.ty, true);
+  assert.equal(g.townOf(arm), v, 'the armoury stands in the town');
+  arm.craft = [{ item: Object.keys(GEAR)[0], t: 0 }]; arm.queue = [{ kind: 'footman', t: 0 }];
+  const kp = g.addBuilding('keep', 1, v.tx - 6, v.ty, true);
+  const inTown = g.townOf(kp) === v;
+  kp.drills = [{ uid: 99999, kind: 'footman', t: 0 }]; kp.levy = v.id;
+  v.owner = PLAYER; g.claimTown(v, PLAYER, 1);
+  assert.equal(arm.team, PLAYER);
+  assert.deepEqual(arm.craft, [], 'the old lord\'s kit is not finished for the new one');
+  assert.deepEqual(arm.queue, []);
+  if (inTown) { assert.deepEqual(kp.drills, []); assert.equal(kp.levy, null); }
+  for (let t = 0; t < 80; t++) g.tick(0.5);
+  assert.ok(!Object.values(g.players[PLAYER].gear || {}).some((n) => n > 0), 'no kit lands in the new lord\'s stores');
 });
 
 test('patrol (T39): soldiers walk to a post and back for ever, Shift adds posts, a foe met is fought and the round goes on; saved; any other order ends it; the AI walks its home guard', () => {

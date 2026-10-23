@@ -261,7 +261,7 @@ function think(game, team, p) {
     const v = nearestFromFrontier(game, team, seat, (x) => x.owner !== team && (x.owner < 0 || game.rel[team][x.owner] === 'war') && x.maxProtection * 2.2 < strength + (army.some((u) => SIEGE.has(u.kind)) ? 400 : 0), 18);   // (from our frontier, not only home: a growing house keeps growing)
     if (v) { const go = readyArmy.filter((u) => u.kind !== 'spy'); game.setStance(go, 'aggressive'); game.setFormation(go, 'line'); game.cmdAttack(go, v); p.planVillage = v.id; }
   }
-  { const hurt = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp * 0.75 && (b.hitT ?? 0) <= 0 && !game.units.some((o) => o.hp > 0 && game.isEnemy(team, o.team) && Math.hypot(o.x - b.x, o.y - b.y) < 12));   // mend what is damaged, once the foe has gone
+  { const hurt = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp * 0.75 && (b.hitT ?? 0) <= 0 && !game.unitsNear(b.x, b.y, 12).some((o) => o.hp > 0 && game.isEnemy(team, o.team) && Math.hypot(o.x - b.x, o.y - b.y) < 12));   // mend what is damaged, once the foe has gone
     if (hurt && !game.units.some((u) => u.team === team && u.task.type === 'repair')) game.repairWith(team, hurt, 2); }
   townBell(game, team, p, seat, t);
   courtVillages(game, team, p, seat, army, need, t);
@@ -347,7 +347,7 @@ export function regroup(game, team, p, seat, army, t) {
   const foe = (o) => o !== team && o >= 0 && game.rel[team][o] === 'war';
   const pow = (u) => game.powerOf(u) * (u.hp / Math.max(1, u.maxHp));
   let ours = 0, theirs = 0;
-  for (const u of game.units) {
+  for (const u of game.unitsNear(cx, cy, 11)) {   // (Speed, T18: the grid's nearby units, in the same order)
     if (u.hp <= 0 || u.inside || Math.hypot(u.x - cx, u.y - cy) > 11) continue;
     if (u.team === team) ours += pow(u); else if (foe(u.team)) theirs += pow(u);
   }

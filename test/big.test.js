@@ -23,6 +23,18 @@ test('speed: 5 simulated minutes of 4 AI houses stays under 2.5 s of wall clock 
   const per = (Date.now() - t) / 5000;
   assert.ok(per < 2.5, per.toFixed(2) + ' s per simulated minute');
 });
+// Eight houses must stay playable in a browser (ROADMAP T18; online matches have eight seats). Work counted, not timed, so the check
+// is the same on any machine: the squares the path search opens, the searches, and village influence reckonings over 6 minutes of
+// 8 AI houses. Measured 2026-10-23: 2.89M squares (the old search: 7.68M), 26.4k searches, 131k reckonings. A rule change may move
+// these a little; one that moves them past the budget has made the game slower and should be looked at (then re-measure here).
+test('speed budget: 6 minutes of 8 AI houses search no more ground than budgeted (counted, so the same on any machine)', () => {
+  const g = new Game({ seed: 4242, houses: 8, ai: true }); g.reset({ seed: 4242, houses: 8 }); g.sfxOn = false;
+  for (let i = 0; i < 1200 * 6; i++) g.tick(0.05);
+  const w = g.work;
+  assert.ok(w.nodes < 4.0e6, `path search opened ${w.nodes} squares (budget 4.0M)`);
+  assert.ok(w.paths < 37000, `${w.paths} path searches (budget 37k)`);
+  assert.ok(w.pulls < 185000, `${w.pulls} influence reckonings (budget 185k)`);
+});
 test('save/load at full size round-trips', () => {
   const g = new Game({ seed: 5, houses: 4 }); for (let i = 0; i < 1200; i++) g.tick(0.1);
   const json = JSON.stringify(g.serialize()); assert.ok(json.length < 4e6, 'save size ' + json.length);

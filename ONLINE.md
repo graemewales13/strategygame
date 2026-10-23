@@ -41,6 +41,18 @@ The profile puts the time in:
 
 Until that is done, online matches cannot safely run 8 houses.
 
+**Update 2026-10-23: done** (on `grok`, merged here; TROUBLESHOOTING T-088 and T-089). Measured on the development PC, a 4-core Intel N95, which is roughly half the speed of a typical laptop core:
+- **Minute 30:** 50 s of computing per simulated minute before, about 25 s now.
+- **Longest ticks:** 0.6 s before, about 0.2 s now.
+- **On a typical laptop:** a long 8-house match should need roughly a fifth to a quarter of one core.
+
+How it was done:
+- **Part 1 changed nothing in play.** A whole-state fingerprint is unchanged.
+- **Part 2 updates a few things less often.** Over 12 seeds, play ended within chance of before.
+- **Kept from creeping back:** CI counts the work done in a fixed 8-house match and fails past a budget.
+
+Still open: a Web Worker to keep drawing smooth during a slow tick. Part 2 also means the server's referee costs about half what it did.
+
 ## 3. How a match runs
 
 ```
@@ -269,7 +281,7 @@ Proposed list (easy to change):
 | Step | What | Branch |
 |---|---|---|
 | 0 | Merge `grok` into `network`. **Done** (6fd411e). The treaty envoy is now the same on every copy (it was single-player-only, a desync). | network |
-| 1 | **Performance pass** for 8 houses (section 2), with a CI budget test | grok, then merged |
+| 1 | **Performance pass** for 8 houses (section 2), with a CI budget test. **Done** 2026-10-23 (052b42a, d718554) | grok, then merged |
 | 2 | Match container: tickets, 8 seats, referee, repair on desync, preset messages, result | network |
 | 3 | api: database, sign-in (email code, Google, Discord, GitHub), usernames, sessions, scheduler, launcher, results, points, league | network |
 | 4 | Online menu in the game: sign in, username, next match and countdown, join, league table, messages panel, results screen | network |
