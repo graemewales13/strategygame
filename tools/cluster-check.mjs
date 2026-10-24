@@ -1,12 +1,14 @@
 // A whole hourly match against a running deployment, without browsers (the check CI runs on staging after each deploy).
-//   node tools/cluster-check.mjs <base url> [--expect-version 1.2.3]
+//   node tools/cluster-check.mjs <base url> [--expect-version 1.2.3] [--origin <the site's own origin, if reached by another address>]
 // Needs the test sign-in (staging) and short matches (staging: a match every few minutes, a short cap). Two test players sign in, sign up for
 // the same match, get tickets when it starts (the api launched it: a Kubernetes Job), connect through the front door (Caddy to the
 // match's Service), see turns arrive, pass a Herald message, and see the result; then the result is in the league (the match reached the
 // api past the network policy). Exits 0 when all of that happened.
 import { LockstepClient } from '../js/net.js';
 
-const base = (process.argv[2] || '').replace(/\/$/, ''), want = process.argv.includes('--expect-version') ? process.argv[process.argv.indexOf('--expect-version') + 1] : null;
+const arg = (n) => (process.argv.includes(n) ? process.argv[process.argv.indexOf(n) + 1] : null);
+const base = (process.argv[2] || '').replace(/\/$/, ''), want = arg('--expect-version');
+const origin = arg('--origin') || (/^https?:\/\//.test(base) ? new URL(base).origin : '');   // (the api takes changes only from its own origin)
 if (!/^https?:\/\//.test(base)) { console.error('usage: node tools/cluster-check.mjs <base url> [--expect-version v]'); process.exit(2); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const step = (m) => console.log(`[check] ${m}`);
@@ -15,7 +17,7 @@ const fail = (m) => { console.error(`[check] FAILED: ${m}`); process.exit(1); };
 function player() {
   let cookie = '';
   const call = async (path, { method = 'GET', body } = {}) => {
-    const r = await fetch(base + path, { method, headers: { 'X-Auld': '1', Origin: new URL(base).origin, Cookie: cookie, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) });
+    const r = await fetch(base + path, { method, headers: { 'X-Auld': '1', Origin: origin, Cookie: cookie, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) });
     const sc = r.headers.getSetCookie().find((c) => c.startsWith('aw_sid=')); if (sc) cookie = sc.split(';')[0];
     let j = null; try { j = await r.json(); } catch {}
     return { status: r.status, body: j };
@@ -45,8 +47,8 @@ step(`both signed up for the match at ${new Date(sched.next.startsAt).toISOStrin
 
 const tickets = [];
 for (const p of ps) {
-  const t0 = Date.now(); let t = null;
-  while (!t) { const r = await p.call('/api/play'); if (r.status === 200) t = r.body; else if (Date.now() - t0 > sched.next.startsAt - Date.now() + 120000) fail('no ticket: the match was not launched'); else await sleep(2000); }
+  let t = null;
+  while (!t) { const r = await p.call('/api/play'); if (r.status === 200) t = r.body; else if (Date.now() > sched.next.startsAt + 150000) fail('no ticket: the match was not launched within 2.5 minutes of its start'); else await sleep(2000); }
   tickets.push(t);
 }
 step(`the match ${tickets[0].match} is on; tickets for seats ${tickets.map((t) => t.seat).join(' and ')}`);

@@ -136,6 +136,25 @@ Then deploy the same release again with a new tag name: `git tag production-1.0.
 
 ## Running it on your own PC
 
+### The whole set-up, as on AWS (Docker Desktop only)
+
+`deploy/local/local.ps1` builds the image and runs it in a k3s cluster inside Docker. It uses the same manifests and the same Caddy front door as AWS, a match per Kubernetes Job, and Litestream (to a folder instead of S3). Staging settings: the test sign-in is on.
+```powershell
+.\deploy\local\local.ps1 up       # about 10 minutes the first time; then open http://localhost:8480
+.\deploy\local\local.ps1 check    # plays a whole match automatically (about 10 minutes): two test players, turns, a message, the result, the league
+.\deploy\local\local.ps1 status   # the api, Caddy, the matches
+.\deploy\local\local.ps1 logs     # the api's log
+.\deploy\local\local.ps1 down     # remove it
+```
+Options for `up`: `-Port 8480`, `-EveryMin 5` (a match every 5 minutes), `-CapS 300` (5-minute matches). If PowerShell refuses to run scripts: `powershell -ExecutionPolicy Bypass -File .\deploy\local\local.ps1 up`.
+To play it yourself:
+1. Press **Play online**, use the test sign-in (any name), then **Join**.
+2. For a second player, use another browser or a private window.
+3. On the next 5-minute mark the match pulls you in.
+
+### Just the game server
+
+
 Node 22 or later (`winget install OpenJS.NodeJS.LTS`), on the `network` branch:
 ```powershell
 $env:AUTH_DEV = '1'; $env:EVERY_MIN = '5'; node server/api.js

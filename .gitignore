@@ -20,3 +20,5 @@ deploy/terraform/.terraform/
 deploy/terraform/*.tfstate*
 deploy/terraform/terraform.tfvars
 deploy/terraform/.terraform.lock.hcl.bak
+# the local cluster script's rendered manifests (deploy/local/local.ps1)
+deploy/local/.out/

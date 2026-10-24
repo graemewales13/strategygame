@@ -543,3 +543,13 @@ Causes and fixes:
   - **CI** no longer runs separately on plain pushes to `network`, so the tests do not run twice. Pull requests and other branches are unchanged.
   - **Production** is promoted by pushing a tag `production-<version>` (anything after the version is ignored, so the same release can be deployed again). A tag push runs the workflow file in the tagged commit, whatever the default branch.
   - The button form still works once the file is also on the default branch.
+
+## T-098 - The whole set-up on your own PC (network branch, 2026-10-24)
+- **`deploy/local/local.ps1`** runs everything as on AWS, inside Docker Desktop: the image, a k3s cluster, the same manifests and Caddy front door, a match per Job, and Litestream to a folder. It is a Windows PowerShell 5.1 script and needs no Node (renders and checks run in `node:22.20.0-alpine3.22`).
+  - The image goes into k3s through a file, because PowerShell 5 pipes damage binary data.
+  - The manifests are written by the container, because PowerShell 5's `>` writes UTF-16.
+  - Errors use `Continue`, with every step's exit code checked: under `Stop`, docker's progress on stderr would stop the script.
+  - **`check`** runs `tools/cluster-check.mjs` from inside the cluster's network, with `--origin http://localhost:<port>` (new: the address it reaches is not the site's own origin).
+- **Found when it first ran:** `cluster-check.mjs` gave up waiting for a ticket halfway through the wait for the match. Its deadline compared the time elapsed with the time left. It now waits until 2.5 minutes after the match's start.
+- **Tried here:** `up` from nothing to ready, then `check` PASSED. The match was a Job, both players connected through Caddy, a Herald message crossed, it ended at the 5-minute cap, and the result was in the league.
+
