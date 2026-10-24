@@ -8,7 +8,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 **The character list is done.** Delivered 2026-10-19: the ram in two parts (13), thirteen order icons (14), walk cycles for every walking role (15), the watchman mark (16), the disguise mark (17), ore deposits per mineral (18), the siege line (13b), the women among the serfs, and the Scottish recruit without a kilt. Egyptian knights and kings stay chariots, so they have no walk cycle. An armed soldier still strides in code, from the still figure of his kit.
 
-**Open (2026-10-21): priority 21, the patrol order icon** (one 128x128 order icon for the new Patrol button; it shows ⟲ until then). **Open (2026-10-20): priority 20, the town bell icon** (one 128x128 order icon for the new Bell button; the button shows 🔔 until then). **Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
+**Open (2026-10-24): priority 22, the explore order icon** (one 128x128 order icon for the new Explore button on a scout's card; it shows 🧭 until then). **Open (2026-10-21): priority 21, the patrol order icon** (one 128x128 order icon for the new Patrol button; it shows ⟲ until then). **Open (2026-10-20): priority 20, the town bell icon** (one 128x128 order icon for the new Bell button; the button shows 🔔 until then). **Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
@@ -29,6 +29,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 15 | **Walk cycles for the armed soldiers**: four stride frames for each kit figure | all 8 | `units/<kit key>_walk1.png` ... `_walk4.png` for `footman_spear`, `footman_sword`, `footman_heavy`, `bowman_longbow`, `bowman_crossbow`, `knight_lance` | 192 (168: no Egyptian chariot) | priority 19 — **open**, requested 2026-10-19 |
 | 16 | **Town bell order icon** for the new Bell button (T38) | shared | `assets/shared/ui/orders/bell.png` | 1 | priority 20 — **open**, requested 2026-10-20 |
 | 17 | **Patrol order icon** for the new Patrol button (T39) | shared | `assets/shared/ui/orders/patrol.png` | 1 | priority 21 — **open**, requested 2026-10-21 |
+| 18 | **Explore order icon** for the new Explore button on a scout's card (T45) | shared | `assets/shared/ui/orders/explore.png` | 1 | priority 22 — **open**, requested 2026-10-24 |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
 
@@ -58,6 +59,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 13b | **Onager, trebuchet, and the siege research icons** | **Delivered and wired** 2026-10-19. `SIEGE_ART` is true; `TECH_UNPAINTED` is empty |
 | 19 | **Walk cycles for the armed soldiers** (six kit figures, 8 peoples) | **Requested** 2026-10-19. Until delivered the game strides the kit's still figure in code (render.js `gaitOf`); not probed until listed in `js/art.js` |
 | 21 | **Patrol order icon** (1, shared) | **Requested** 2026-10-21 (T39). The Patrol button on a soldier's card shows the ⟲ glyph until delivered; not probed until `'patrol'` is added to `UI_KEYS.orders` in `js/art.js`. The patrol round on the field is drawn in code (an amber dashed loop through the posts), no painting needed |
+| 22 | **Explore order icon** (1, shared) | **Requested** 2026-10-24 (T45). The Explore button on a scout's card shows the 🧭 glyph until delivered; not probed until `'explore'` is added to `UI_KEYS.orders` in `js/art.js`. The scout's next goal on the field is drawn in code (a pale blue dashed line) |
 | 20 | **Town bell order icon** (1, shared) | **Requested** 2026-10-20 (T38). The Bell button on the keep's card shows the 🔔 glyph until delivered; not probed until `'bell'` is added to `UI_KEYS.orders` in `js/art.js`. The minimap row's Bell button is text, like Home, Idle and Army |
 | — | Siege engines on the command card and unit panel (T-073, 2026-10-19) | **No painting needed.** The Workshop's Ram, Onager and Trebuchet buttons, the unit panel and the control-group chips show the painted engines (`assets/shared/units/ram.png`, `onager.png`, `trebuchet.png`) in place of a card |
 | — | Art lint (T30, 2026-10-19): `tools/art-lint.py` in CI | **No painting needed.** Every drop is now checked for RGBA, clear corners, the key colour and size against its kind |
@@ -625,3 +627,17 @@ ORDER ICON, a short loop of trodden earth path curling back on itself, two worn 
 ```
 
 Deliver: `assets/shared/ui/orders/patrol.png`. Wiring (Claude, on delivery): key it (`tools/chromakey.py`, `tools/defringe.py`), run `tools/art-lint.py`, and add `'patrol'` to `UI_KEYS.orders` in `js/art.js`; the button already asks for `uiArt('orders', 'patrol')`.
+
+## Priority 22: the explore order icon (1, new 2026-10-24)
+
+Explore (T45, as AoE IV's auto-scout) sends a scout riding off on his own to the nearest ground the house has not seen, then the next, keeping clear of foes, until nothing is left. It is a button on a scout's command card (key **O** by default). The button wants an icon in the same set as the order icons of priority 14, the bell of priority 20 and the patrol of priority 21: same **Goods icon** template, 128x128 px, readable at 32 px on a dark wood button, neutral colours (no faction colour: every house's scouts explore alike), no text or letters, subject weighted to the lower left with the top-right eighth clear for the Grid key label.
+
+| Key | Order | Subject to paint |
+|---|---|---|
+| `explore` | Order: ride out and map unseen ground on your own | a rolled-out parchment map with its edge still blank, a brass hand compass resting on it; or a horseman's spyglass lying across a half-drawn map |
+
+```text
+ORDER ICON, a curling sheet of old parchment map with hills and a river inked on one half and the other half still blank, a small brass hand compass resting on the blank half, painted in the same hand-painted medieval style as the kit and research icons: parchment, brown ink, brass and leather, warm low sun from the upper left, soft shadow. Neutral colours only, no faction colour, no text or letters or legible writing on the map, no arrows drawn as UI symbols, subject weighted to the lower left, top-right eighth of the square left clear. Flat #FF00FF background, 4 px margin, 128x128 (shown at 24-32 px).
+```
+
+Deliver: `assets/shared/ui/orders/explore.png`. Wiring (Claude, on delivery): key it (`tools/chromakey.py`, `tools/defringe.py`), run `tools/art-lint.py`, and add `'explore'` to `UI_KEYS.orders` in `js/art.js`; the button already asks for `uiArt('orders', 'explore')`.

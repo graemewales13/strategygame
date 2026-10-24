@@ -436,6 +436,12 @@ export const WAYPOINTS = 12;
 // Patrol (T39): the AI's home guard walks a round between its seat and its nearest held village at peace: `pair` soldiers at most, sent only
 // while `spare` stand idle at the seat, checked every `every` seconds; the village within `reach` tiles, else `out` tiles toward the middle.
 export const PATROL = { pair: 2, spare: 4, every: 20, reach: 26, out: 10 };
+// Explore (T45, AoE IV's auto-scout): a scout sent exploring rides to the nearest unseen ground he can reach, again and again. Unseen ground is
+// sampled every `step` tiles; it is checked again every `look` seconds (on to the next place once his goal is seen, or a foe is near);
+// he keeps `foe` tiles from any foe at war he can see or remembers, never rides for a place within `apart` tiles of another explorer's
+// goal, and picks among the `pick` nearest places with the seeded roll. The AI keeps one scout exploring, trained from its keep once
+// `after` seconds in (again `every` seconds after it is lost) while it has the food.
+export const EXPLORE = { step: 6, look: 1, foe: 9, apart: 12, pick: 3, after: 150, every: 240, food: 160 };
 // Formations (T02): where each member of a group sent together stands at the end of its march, and which way it faces. Mass: a tight knot
 // (the old way, and the default). Line: ranks across the line of march, fighters in front, bowmen behind. Box: a square with the fighters
 // on the outside and bowmen and the weak inside. Loose: spread wide, so fewer stand in one blow's way. `gap` and `loose` are tiles apart.

@@ -12,9 +12,12 @@ const { chromium } = require('playwright');
   const setup = await p.evaluate(() => {
     const { game: g, ui, renderer } = window.__seven; ui.speed = 0; g.paused = true;
     const s = g.seatOf(0); let spot = null;
-    for (let d = 26; d < 90 && !spot; d += 3) for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1]]) {
-      const x = Math.round(s.x + dx * d), y = Math.round(s.y + dy * d);
-      if (x < 10 || y < 10 || x > g.W - 14 || y > g.H - 14 || g.vis.some((v) => v[y * g.W + x])) continue;
+    // the whole keep-and-tower patch (with a margin) out of everyone's sight, not just its corner: the tower used to land in view (flaky)
+    const unseen = (x, y) => { for (let j = y - 3; j < y + 8; j++) for (let i = x - 3; i < x + 12; i++) if (g.vis.some((v) => v[j * g.W + i])) return false; return true; };
+    const cands = []; for (let y = 10; y < g.H - 14; y += 4) for (let x = 10; x < g.W - 14; x += 4) cands.push([x, y, Math.hypot(x - s.x, y - s.y)]);
+    cands.sort((a, b) => a[2] - b[2]);   // (the nearest such patch to the seat, anywhere on the board)
+    for (const [x, y] of cands) {
+      if (!unseen(x, y)) continue;
       if (g.buildings.some((o) => Math.abs(o.x - x) < 12 && Math.abs(o.y - y) < 12) || g.villages.some((v) => Math.abs(v.x - x) < 12 && Math.abs(v.y - y) < 12)) continue;
       let open = true; for (let j = y; j < y + 4; j++) for (let i = x; i < x + 9; i++) if (!g.walk[j * g.W + i]) open = false;
       if (open) { spot = [x, y]; break; }

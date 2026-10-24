@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -1514,6 +1514,57 @@ test('a town changing hands takes its buildings empty: no training, kit or drill
   assert.ok(!Object.values(g.players[PLAYER].gear || {}).some((n) => n > 0), 'no kit lands in the new lord\'s stores');
 });
 
+test('explore (T45): a scout rides from unseen ground to unseen ground on his own, keeps clear of known foes and of other explorers, stops and says so when nothing is left; seeded and saved; the AI keeps one exploring', () => {
+  const g = mk(); meet(g); g.titleView = false; g.setFog(true); g.updateVisibility(true);
+  const h = g.seatOf(PLAYER), seenN = () => g.seen[PLAYER].reduce((n, v) => n + v, 0);
+  const sc = g.addUnit('scout', PLAYER, h.x + 2, h.y + 5), ft = g.addUnit('footman', PLAYER, h.x - 2, h.y + 5);
+  g.updateVisibility(true);
+  assert.equal(g.applyIntent({ type: 'explore', team: PLAYER, ids: [ft.id] }), false, 'only scouts explore');
+  assert.equal(ft.task.type, 'idle');
+  assert.ok(g.applyIntent({ type: 'explore', team: PLAYER, ids: [sc.id, ft.id] }));
+  assert.equal(sc.task.type, 'explore'); assert.equal(ft.task.type, 'idle', 'the footman is left as he was');
+  assert.equal(g.wasSeen(PLAYER, sc.task.x, sc.task.y), false, 'his goal is ground not yet seen'); assert.ok(sc.path.length);
+  const n0 = seenN(), goals = new Set();
+  for (let i = 0; i < 400; i++) { g.tick(0.1); goals.add(sc.task.x + ',' + sc.task.y); }
+  assert.equal(sc.task.type, 'explore', 'still exploring'); assert.ok(goals.size >= 2, 'on to a new goal once one is seen');
+  assert.ok(seenN() > n0 + 500, 'he maps new ground');
+  // seeded: the same match and order give the same ride
+  const a = mk(), b = mk();
+  for (const x of [a, b]) { meet(x); x.titleView = false; x.setFog(true); const s = x.addUnit('scout', PLAYER, h.x + 2, h.y + 5); x.updateVisibility(true); x.cmdExplore([s]); run(x, 20); }
+  const sa = a.units.find((u) => u.kind === 'scout'), sb = b.units.find((u) => u.kind === 'scout');
+  assert.deepEqual([sa.x, sa.y, sa.task.x, sa.task.y], [sb.x, sb.y, sb.task.x, sb.task.y]);
+  // saved
+  const r = new Game({ seed: 8, houses: 3, ai: false }); r.restore(JSON.parse(JSON.stringify(g.serialize())));
+  const rs = r.byId.get(sc.id); assert.equal(rs.task.type, 'explore'); r.tick(0.1); assert.equal(rs.task.type, 'explore', 'and rides on after a load');
+  // a second explorer never rides for the first one's goal
+  const sc2 = g.addUnit('scout', PLAYER, sc.x, sc.y); g.updateVisibility(true); g.cmdExplore([sc2]);
+  assert.ok(Math.hypot(sc2.task.x - sc.task.x, sc2.task.y - sc.task.y) >= EXPLORE.apart, 'two explorers split up');
+  // keeps clear of a foe at war he can see
+  g.rel[0][1] = g.rel[1][0] = 'war';
+  const foe = g.addUnit('footman', 1, sc.task.x, sc.task.y); foe.x = sc.x + 3; foe.y = sc.y; g.updateVisibility(true);
+  g.exploreNext(sc);
+  assert.ok(Math.hypot(sc.task.x - foe.x, sc.task.y - foe.y) >= EXPLORE.foe, 'his goal keeps clear of the foe');
+  foe.hp = 0; g.cleanup();
+  // any other order ends it
+  g.cmdMove([sc2], h.x, h.y + 6); assert.equal(sc2.task.type, 'move');
+  // nothing left: he stops, says so, and waits on the Idle button
+  g.seen[PLAYER].fill(1);
+  g.tick(0.1); g.tick(1.1);
+  assert.equal(sc.task.type, 'idle', 'nothing left to see: he stands');
+  assert.ok(g.events.some((e) => e.team === PLAYER && /has explored all the ground/.test(e.text)), 'and says so');
+  assert.equal(g.cmdExplore([sc]), false, 'and a new order is refused');
+  // fog off: nothing to explore
+  const f = mk(); f.setFog(false); const s3 = f.addUnit('scout', PLAYER, h.x, h.y + 5); assert.equal(f.cmdExplore([s3]), false);
+  // the AI trains a scout from its keep and keeps it exploring
+  const ai = mk(); meet(ai); ai.titleView = false; ai.setFog(true); ai.updateVisibility(true);
+  const s1 = ai.seatOf(1); const keep = s1.kind === 'keep' ? s1 : ai.addBuilding('keep', 1, Math.floor(s1.x) + 8, Math.floor(s1.y) - 2, true);
+  ai.players[1].food = 999; ai.players[1].wood = 999; const p1 = ai.players[1];
+  exploreAbroad(ai, 1, p1, EXPLORE.after - 1); assert.ok(!keep.queue.some((q) => q.kind === 'scout'), 'not before EXPLORE.after');
+  exploreAbroad(ai, 1, p1, EXPLORE.after); assert.ok(keep.queue.some((q) => q.kind === 'scout'), 'one scout trained');
+  exploreAbroad(ai, 1, p1, EXPLORE.after + 1); assert.equal(keep.queue.filter((q) => q.kind === 'scout').length, 1, 'only one');
+  const as = ai.addUnit('scout', 1, keep.x, keep.y + 4); keep.queue = []; ai.updateVisibility(true);
+  exploreAbroad(ai, 1, p1, EXPLORE.after + 2); assert.equal(as.task.type, 'explore', 'an idle scout of theirs is sent exploring');
+});
 test('patrol (T39): soldiers walk to a post and back for ever, Shift adds posts, a foe met is fought and the round goes on; saved; any other order ends it; the AI walks its home guard', () => {
   const g = mk(), seat = g.seatOf(PLAYER);
   g.units = g.units.filter((u) => u.team !== 1 && u.team !== 2 || u.kind !== 'footman'); g.byId = new Map([...g.units, ...g.buildings, ...g.villages].map((x) => [x.id, x]));

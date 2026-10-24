@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -266,6 +266,7 @@ function think(game, team, p) {
   townBell(game, team, p, seat, t);
   courtVillages(game, team, p, seat, army, need, t);
   scoutAbroad(game, team, p, seat, army, t);
+  exploreAbroad(game, team, p, t);
 
   // 6. war is chosen, not scheduled: a house fights the one it is at war with, or the one its stance says it means war on (threat, temptation,
   // grudge, less ties: see stance() in diplomacy.js). The difficulty's warAfter (x0.6) is only the earliest a house will start a war of its own.
@@ -446,6 +447,16 @@ export function scoutAbroad(game, team, p, seat, army, t) {
   const next = left.sort((a, b) => Math.hypot(F[a][0] * W - sc.x, F[a][1] * H - sc.y) - Math.hypot(F[b][0] * W - sc.x, F[b][1] * H - sc.y))[0];
   if (next == null) return;
   p.scoutAt = next; game.setStance([sc], 'passive'); game.cmdMove([sc], Math.round(F[next][0] * W), Math.round(F[next][1] * H));
+}
+// Explore (T45): the house keeps one scout mapping the valley with the same Explore order the player has (he finds rivals to meet and the
+// lie of the land). A scout standing idle is sent out again; one is trained from a keep when there is none, at most every EXPLORE.every s.
+export function exploreAbroad(game, team, p, t) {
+  if (!game.fogOn || t < EXPLORE.after) return;
+  const scouts = game.units.filter((u) => u.team === team && u.kind === 'scout' && u.hp > 0);
+  for (const u of scouts) if (u.task.type === 'idle' && !u.inside && t >= (u._exT ?? 0)) { if (!game.cmdExplore([u])) u._exT = t + EXPLORE.every; }   // (nothing left to see: asked again later)
+  if (scouts.length || queued(game, team, 'scout') || t < (p.exploreT || 0) || p.food < EXPLORE.food || game.popUsed(team) >= game.popCap(team)) return;
+  const keep = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && UNITS.scout.from.includes(b.kind) && b.queue.length < 2);
+  if (keep && game.train(team, keep.id, 'scout')) p.exploreT = t + EXPLORE.every;
 }
 const HIRE_WORTH = { veteran: 2, keen: 1.6, brawny: 1.5, fleet: 1, green: 0.6 };
 // nearest unmined deposit inside our territory (or beside a village of ours), preferring ores we do not already dig

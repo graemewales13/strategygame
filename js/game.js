@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -608,6 +608,7 @@ export class Game {
       case 'move': return this.cmdMove(out(), it.x, it.y, !!it.queue);
       case 'amove': return this.cmdAttackMove(out(), it.x, it.y, !!it.queue);
       case 'patrol': return this.cmdPatrol(out(), it.x, it.y, !!it.queue);
+      case 'explore': return this.cmdExplore(out());
       case 'charge': return this.cmdCharge(out());
       case 'retreat': return this.cmdRetreat(out());
       case 'stance': return this.setStance(mine(), it.stance);
@@ -1440,6 +1441,65 @@ export class Game {
       if (this.setPath(u, px, py)) return true;
     }
     return false;
+  }
+  // ---- explore (T45): a scout maps the valley on his own -------------------------------------------------------------------
+  // He rides to the nearest unseen ground he can reach, then the next, keeping clear of foes, until nothing is left or he is given
+  // another order. Only scouts explore (AoE IV). False if none of these could set out.
+  cmdExplore(units) {
+    let any = false;
+    for (const u of this.freeOf(units.filter((x) => x.kind === 'scout' && !x.inside))) {
+      u.task = { type: 'explore', x: u.x, y: u.y, lookT: 0 }; u.path = []; u.sally = null;
+      if (this.exploreNext(u)) any = true;
+      else { u.task = { type: 'idle' }; if (u.team === PLAYER) this.log(PLAYER, `${u.name ? 'Scout ' + shortName(u.name) : 'Your scout'} finds no unseen ground he can reach.`, 'info'); }
+    }
+    return any;
+  }
+  // where foes of `team` are known to stand: its war rivals' folk and buildings in sight now, and buildings remembered from before (T44)
+  foesKnown(team) {
+    const out = [];
+    for (const u of this.units) if (u.hp > 0 && !u.inside && this.isEnemy(team, u.team) && this.canSee(team, u.x, u.y)) out.push(u.x, u.y);
+    if (!this.fogOn) { for (const b of this.buildings) if (b.hp > 0 && this.isEnemy(team, b.team)) out.push(b.x, b.y); return out; }
+    for (const b of this.buildings) if (b.hp > 0 && this.isEnemy(team, b.team) && this.seesFoot(team, b)) out.push(b.x, b.y);
+    const m = this.mem[team] || {};
+    for (const k in m) if (this.isEnemy(team, m[k].team) && !this.seesFoot(team, m[k])) out.push(m[k].x, m[k].y);
+    return out;
+  }
+  // choose the explorer's next goal: the unseen sample places he can reach, away from foes and other explorers' goals, nearest first
+  exploreNext(u) {
+    if (!this.fogOn) return false;
+    const { W, H, walk } = this, seen = this.seen[u.team], S = EXPLORE.step, comp = this.walkComp();
+    const here = comp[Math.floor(u.y) * W + Math.floor(u.x)];
+    const foes = this.foesKnown(u.team), others = this.units.filter((o) => o !== u && o.team === u.team && o.hp > 0 && o.task.type === 'explore');
+    const cands = [];
+    for (let y = S >> 1; y < H; y += S) for (let x = S >> 1; x < W; x += S) {
+      const i = y * W + x;
+      if (seen[i] || !walk[i] || (here && comp[i] !== here)) continue;
+      let bad = false;
+      for (let k = 0; k < foes.length && !bad; k += 2) if (Math.hypot(foes[k] - x, foes[k + 1] - y) < EXPLORE.foe) bad = true;
+      for (const o of others) if (!bad && Math.hypot(o.task.x - x, o.task.y - y) < EXPLORE.apart) bad = true;
+      if (!bad) cands.push([x + 0.5, y + 0.5, Math.hypot(x + 0.5 - u.x, y + 0.5 - u.y)]);
+    }
+    cands.sort((a, b) => a[2] - b[2]);
+    while (cands.length) {
+      const k = Math.floor(this.roll() * Math.min(EXPLORE.pick, cands.length)), [x, y] = cands.splice(k, 1)[0];
+      if (this.setPath(u, x, y)) { u.task.x = x; u.task.y = y; u.task.lookT = EXPLORE.look; return true; }
+    }
+    return false;
+  }
+  doExplore(u, dt) {
+    u.task.lookT = (u.task.lookT ?? 0) - dt;
+    let again = !u.path.length;
+    if (!again && u.task.lookT <= 0) {
+      u.task.lookT = EXPLORE.look;
+      if (this.wasSeen(u.team, u.task.x, u.task.y)) again = true;   // seen on the way: on to the next unseen place
+      else { const f = this.foesKnown(u.team); for (let k = 0; k < f.length; k += 2) if (Math.hypot(f[k] - u.task.x, f[k + 1] - u.task.y) < EXPLORE.foe || Math.hypot(f[k] - u.x, f[k + 1] - u.y) < EXPLORE.foe * 0.6) { again = true; break; } }
+    }
+    if (again && !this.exploreNext(u)) {
+      u.task = { type: 'idle' }; u.path = [];
+      if (u.team === PLAYER) this.log(PLAYER, `${u.name ? 'Scout ' + shortName(u.name) : 'Your scout'} has explored all the ground he can safely reach.`, 'info');
+      return;
+    }
+    this.follow(u, dt);
   }
   // who may pick fights of their own (stances and attack-move apply to them)
   fighter(u) { return u.kind !== 'serf' && u.kind !== 'scholar' && u.kind !== 'spy' && u.kind !== 'camel' && this.powerOf(u) > 0; }
@@ -2955,6 +3015,7 @@ export class Game {
         case 'move': if (!u.task.retreat && u.engagedT != null && this.locked(u)) { this.freeOf([u]); break; } if (!this.follow(u, dt) && !this.nextLeg(u)) u.task = { type: 'idle', face: u.task.face }; break;   // (a retreat does not turn back when struck: it takes the blows)
         case 'attack': this.doAttack(u, s, dt); break;
         case 'amove': this.doAttackMove(u, dt); break;
+        case 'explore': this.doExplore(u, dt); break;
         case 'gather': this.doGather(u, dt); break;
         case 'mine': u.task = { type: 'idle' }; u.path = []; break;   // old saves: serfs no longer dig, the villagers do
         case 'return': this.doReturn(u, dt); break;

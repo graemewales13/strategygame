@@ -60,7 +60,7 @@ export class UI {
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = ''; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock)
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = ''; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -332,6 +332,7 @@ export class UI {
       case 'retreat': if (this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' }); break;
       case 'amove': if (fighters()) this.setAmove(!this.amove); break;
       case 'patrol': if (fighters()) this.setPatrol(!this.patrolArm); break;
+      case 'explore': if (this.selUnits().some((u) => u.team === PLAYER && u.kind === 'scout')) this.onCmd({ act: 'explore' }); break;
       case 'stop': if (this.selUnits().some((u) => u.team === PLAYER)) this.onCmd({ act: 'stop' }); break;
       case 'faster': this.speed = Math.min(4, this.speed * 2); $('btnSpeed').textContent = this.speed + 'x'; break;
       case 'slower': this.speed = Math.max(1, this.speed / 2); $('btnSpeed').textContent = this.speed + 'x'; break;
@@ -343,7 +344,7 @@ export class UI {
     const kn = (id) => keyName(this.kmap[id]);
     this.renderKeys(); this.sigCmd = ''; this.sigSel = '';
     if ($('btnHome')) $('btnHome').title = `Jump to your home village (${kn('hall')})`;
-    if ($('btnIdle')) $('btnIdle').title = `Select next idle serf (${kn('idleSerf')})`;
+    if ($('btnIdle')) $('btnIdle').title = `Select next idle serf or scout (${kn('idleSerf')})`;
     if ($('btnArmy')) $('btnArmy').title = `Select all soldiers (${kn('army')}); Shift-click or ${kn('idleArmy')}: only the idle ones`;
     if ($('btnCouncil')) $('btnCouncil').title = `The Council of Houses: stats, treaties, letters (${kn('council')})`;
     if ($('btnMap')) $('btnMap').title = `Campaign map (${kn('campaign')} / Tab)`;
@@ -398,8 +399,9 @@ export class UI {
     const a = al[this.alertI]; this.r.centerOn(a.x, a.y); this.pings.push({ x: a.x, y: a.y, age: 0, color: '#ff4a3a' });
   }
   selectIdleSerf() {
-    const idle = this.game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0 && !u.inside && u.task.type === 'idle');
-    if (!idle.length) return this.toast('No idle serfs.', 'info');
+    // idle serfs, then idle scouts (T45: a scout who has explored all he can reach waits here for new orders)
+    const idle = ['serf', 'scout'].flatMap((k) => this.game.units.filter((u) => u.team === PLAYER && u.kind === k && u.hp > 0 && !u.inside && u.task.type === 'idle'));
+    if (!idle.length) return this.toast('No idle serfs or scouts.', 'info');
     this.idleI = ((this.idleI ?? -1) + 1) % idle.length;
     const u = idle[this.idleI]; this.setUnits([u]); this.r.centerOn(u.x, u.y);
   }
@@ -441,6 +443,7 @@ export class UI {
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
       case 'amove': this.setAmove(!this.amove); break;
       case 'patrol': this.setPatrol(!this.patrolArm); break;
+      case 'explore': this.host.send({ type: 'explore', ids: this.selUnits().filter((u) => u.team === PLAYER && u.kind === 'scout').map((u) => u.id) }); break;
       case 'disguise': this.host.send({ type: 'disguise', ids: this.selUnits().filter((u) => u.team === PLAYER && u.kind === 'spy').map((u) => u.id), as: +d.as }); break;
       case 'charge': this.host.send({ type: 'charge', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id) }); break;
       case 'retreat': this.host.send({ type: 'retreat', ids: this.selUnits().filter((u) => u.team === PLAYER).map((u) => u.id) }); break;
@@ -795,6 +798,7 @@ export class UI {
     switch (t.type) {
       case 'move': return 'Marching';
       case 'amove': return t.patrol ? 'Patrolling' : 'Attack-moving';
+      case 'explore': return 'Exploring';
       case 'attack': if (t.then?.patrol) return t.auto ? 'Fighting on patrol' : 'Attacking'; return t.auto ? 'Fighting' : 'Attacking';
       case 'gather': { const n = this.game.resources[t.nodeId]; return n ? `Gathering ${RES_LABEL[NODE_RES[n.kind]].toLowerCase()}` : 'Gathering'; }
       case 'mine': return 'Digging ore';
@@ -1212,7 +1216,7 @@ export class UI {
       if (us.some((u) => u.kind === 'serf')) html += this.serfPanel(us.filter((u) => u.kind === 'serf'));
       if (us.some((u) => u.kind === 'serf')) html += `<div class="hint">Right-click a site to build; <b>Shift</b>+right-click (or Shift+place) <b>queues</b> more. Right-click a keep or your village to go inside.</div>`;
       const kn = (id) => (this.gridKeys ? '' : keyName(this.kmap[id]));   // (the key each order is bound to now, T03; with Grid keys on, the key in the corner says it)
-      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { img: uiArt('orders', 'stop'), glyph: '■', name: 'Stop', sub: kn('stop'), tip: `<b>Stop</b> ${this.gridKeys ? '' : `(${kn('stop')})`}<br>Halt and hold position.`, cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { img: uiArt('orders', 'amove'), glyph: '⚔', name: 'Attack-move', sub: kn('amove'), cls: this.amove ? 'on' : '', tip: `<b>Attack-move</b> (${this.gridKeys ? '' : `${kn('amove')}, or `}Ctrl+right-click)`+'<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('patrol', { img: uiArt('orders', 'patrol'), glyph: '⟲', name: 'Patrol', sub: kn('patrol'), cls: this.patrolArm ? 'on' : '', tip: `<b>Patrol</b> ${this.gridKeys ? '' : `(${kn('patrol')})`}`+'<br>Click the ground: they walk there and back for ever, fighting every foe they meet and walking on. Hold <b>Shift</b> to add more posts to the round. Any other order ends it.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { img: uiArt('orders', 'charge'), glyph: '⚑', name: 'Attack', sub: kn('charge'), cls: '', tip: `<b>Attack</b> ${this.gridKeys ? '' : `(${kn('charge')})`}`+'<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { img: uiArt('orders', 'retreat'), glyph: '↩', name: 'Retreat', sub: kn('retreat'), cls: '', tip: `<b>Retreat</b> ${this.gridKeys ? '' : `(${kn('retreat')})`}`+'<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
+      html += `<div class="cgrid c4" style="margin-top:6px">${this.btn('stop', { img: uiArt('orders', 'stop'), glyph: '■', name: 'Stop', sub: kn('stop'), tip: `<b>Stop</b> ${this.gridKeys ? '' : `(${kn('stop')})`}<br>Halt and hold position.`, cls: '' })}${us.some((u) => g.fighter(u)) ? this.btn('amove', { img: uiArt('orders', 'amove'), glyph: '⚔', name: 'Attack-move', sub: kn('amove'), cls: this.amove ? 'on' : '', tip: `<b>Attack-move</b> (${this.gridKeys ? '' : `${kn('amove')}, or `}Ctrl+right-click)`+'<br>Click the ground: they march there and fight every foe they meet on the way. Hold <b>Shift</b> to add more legs.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('patrol', { img: uiArt('orders', 'patrol'), glyph: '⟲', name: 'Patrol', sub: kn('patrol'), cls: this.patrolArm ? 'on' : '', tip: `<b>Patrol</b> ${this.gridKeys ? '' : `(${kn('patrol')})`}`+'<br>Click the ground: they walk there and back for ever, fighting every foe they meet and walking on. Hold <b>Shift</b> to add more posts to the round. Any other order ends it.' }) : ''}${us.some((u) => u.kind === 'scout') ? this.btn('explore', { img: uiArt('orders', 'explore'), glyph: '🧭', name: 'Explore', sub: kn('explore'), cls: us.filter((u) => u.kind === 'scout').every((u) => u.task.type === 'explore') ? 'on' : '', tip: `<b>Explore</b> ${this.gridKeys ? '' : `(${kn('explore')})`}`+'<br>Scouts ride off on their own to the nearest ground you have not seen, then the next, keeping clear of foes, until nothing is left. Any other order ends it.' }) : ''}${us.some((u) => g.fighter(u)) ? this.btn('charge', { img: uiArt('orders', 'charge'), glyph: '⚑', name: 'Attack', sub: kn('charge'), cls: '', tip: `<b>Attack</b> ${this.gridKeys ? '' : `(${kn('charge')})`}`+'<br>Fall on the nearest foe in sight: soldiers first, then their buildings, then a village of a house you are at war with.' }) : ''}${us.some((u) => g.fighter(u) || u.kind === 'king') ? this.btn('retreat', { img: uiArt('orders', 'retreat'), glyph: '↩', name: 'Retreat', sub: kn('retreat'), cls: '', tip: `<b>Retreat</b> ${this.gridKeys ? '' : `(${kn('retreat')})`}`+'<br>Off the field to your nearest keep, even out of a fight. <span class=\'need\'>If three or more of them (or your king) were fighting, it is a rout: every village of yours loses a fifth of its loyalty, slow to come back for three minutes, and the other houses smell weakness.</span>' }) : ''}${this.captainBtn(us)}</div>`;
       if (us.some((u) => g.fighter(u))) html += `<div class="hint"><b>Shift</b>+right-click adds waypoints to a march; a group keeps to its slowest member's pace.</div>`;
       if (us.some((u) => g.fighter(u) || u.kind === 'king')) html += this.stanceGrid(us);
       const marchers = us.filter((u) => u.kind !== 'camel');
