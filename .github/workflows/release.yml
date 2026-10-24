@@ -65,7 +65,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "v${{ steps.v.outputs.version }}" --target "${{ github.sha }}" --generate-notes \
-            --notes "Image: \`${{ steps.v.outputs.image }}@${{ steps.build.outputs.digest }}\`. Deploy to production: Actions, Deploy to production, version ${{ steps.v.outputs.version }}."
+            --notes "Image: \`${{ steps.v.outputs.image }}@${{ steps.build.outputs.digest }}\`. To production: \`git fetch --tags; git tag production-${{ steps.v.outputs.version }} v${{ steps.v.outputs.version }}; git push origin production-${{ steps.v.outputs.version }}\` (DEPLOY.md)."
 
   staging:
     needs: image

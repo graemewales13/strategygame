@@ -75,8 +75,7 @@ The exact provider versions (AWS 6.70.0, random 3.9.1) are pinned in `.terraform
    - builds the image and publishes release `v1.0.<n>`
    - deploys the front door and staging
    - plays a whole match on staging
-4. **Make the image public, once:** github.com/graemewales13, Packages, **auld-world**, Package settings, Change visibility, **Public**. The repository is public, so this exposes nothing new.
-   - If you would rather keep the image private, store a GitHub token that can read packages as `/auld/ghcr-pull-token` (as in "Secrets" below). The server then pulls with it.
+4. **The image is public already:** packages from a public repository are public (checked on v1.0.1: it pulls without signing in). If you ever make the repository private, store a GitHub token that can read packages as `/auld/ghcr-pull-token` (as in "Secrets" below); the server then pulls with it.
 5. **Open staging:** `https://staging.<address>.sslip.io`, or `staging.<domain>` once you have one. Staging has the **test sign-in** (type any name) and a match every 5 minutes, each 5 minutes long.
 
 ### 6. Production
