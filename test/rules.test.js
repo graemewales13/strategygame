@@ -1495,6 +1495,37 @@ test('fog memory (T44): a rival building raised in fog stays unseen, one seen is
   g.setFog(false); assert.equal(g.knownBuildings(PLAYER), g.buildings);
 });
 
+test('villages remembered (T46): a village out of sight keeps the lord, folk and loyalty last seen; ours and fog off are live; saved', () => {
+  const g = mk(); meet(g); g.titleView = false; g.setFog(true);
+  const v = g.villages.find((x) => x.owner < 0 && !g.seesFoot(PLAYER, x) && !g.buildings.some((b) => b.team === PLAYER && Math.hypot(b.x - x.x, b.y - x.y) < 30));
+  assert.ok(v, 'an unwatched independent village');
+  const look = () => { const u = g.addUnit('scout', PLAYER, v.x + 1.5, v.y + 1.5); g.updateVisibility(true); u.hp = 0; g.cleanup(); g.updateVisibility(true); };
+  look();
+  assert.equal(g.seesFoot(PLAYER, v), false); assert.ok(g.villageMemo(PLAYER, v), 'seen once, then left: remembered');
+  assert.equal(g.knownOwner(PLAYER, v), -1);
+  const pop0 = g.villageMemo(PLAYER, v).pop;
+  v.owner = 1; g._vOwn = null; v.loyalty = 7; v.pop += 5; g.updateVisibility(true);
+  assert.equal(g.knownOwner(PLAYER, v), -1, 'taken out of sight: still shown as last seen');
+  assert.equal(g.villageMemo(PLAYER, v).pop, pop0, 'the folk as last counted');
+  assert.notEqual(g.villageMemo(PLAYER, v).loyalty, 7);
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(h.knownOwner(PLAYER, h.byId.get(v.id)), -1, 'the memory is saved');
+  const u = g.addUnit('scout', PLAYER, v.x + 1.5, v.y + 1.5); g.updateVisibility(true);
+  assert.equal(g.villageMemo(PLAYER, v), null, 'in sight: live'); u.hp = 0; g.cleanup(); g.updateVisibility(true);
+  assert.equal(g.knownOwner(PLAYER, v), 1, 'seen again, then left: the new lord'); assert.equal(g.vmem[PLAYER][v.id].loyalty, 7);
+  // news of it changing hands reaches us (a toast names the new lord): the lord is known, the rest stays as last seen (T-093)
+  const loy = g.vmem[PLAYER][v.id].loyalty;
+  g.submit(v, 2, 'castle'); g.updateVisibility(true);
+  if (!g.seesFoot(PLAYER, v)) { assert.equal(g.knownOwner(PLAYER, v), 2, 'heard of: the new lord'); assert.equal(g.villageMemo(PLAYER, v).loyalty, loy, 'its loyalty as last seen'); }
+  // ours is always live, and one we lose out of sight is known lost (we hear of it)
+  v.owner = PLAYER; g._vOwn = null; g.updateVisibility(true);
+  assert.equal(g.villageMemo(PLAYER, v), null, 'ours: as it is');
+  v.owner = 2; g._vOwn = null; g.updateVisibility(true);
+  if (!g.seesFoot(PLAYER, v)) assert.equal(g.knownOwner(PLAYER, v), 2, 'lost: known lost');
+  g.setFog(false); assert.equal(g.villageMemo(PLAYER, v), null, 'fog off: live');
+  g.setFog(true); assert.deepEqual(g.vmem[PLAYER][v.id], undefined, 'fog back on: forgotten with the explored ground');
+});
+
 test('a town changing hands takes its buildings empty: no training, kit or drills in hand carry over to the new lord (T-086)', () => {
   const g = mk(); meet(g);
   const v = g.villages.find((x) => x.owner < 0);

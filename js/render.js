@@ -457,7 +457,9 @@ export class Renderer {
   }
 
   // ---------------------------------------------------------------- villages
-  village(ctx, v, dim, ui, t, z) {
+  village(ctx, v0, dim, ui, t, z) {
+    const memo = this.game.villageMemo(PLAYER, v0);   // out of sight: drawn as last seen, lord, folk and bars (T46)
+    const v = memo ? Object.assign(Object.create(v0), memo, { militia: 0, flash: 0, garrison: null }) : v0;
     const f = v.owner >= 0 ? HOUSES[v.owner] : null, team = v.owner;
     const cx = v.tx + v.size / 2, cy = v.ty + v.size / 2;
     // footing: a tinted diamond and trodden earth
@@ -506,12 +508,12 @@ export class Renderer {
     }
     if (v.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.6, v.flash); this.diamond(ctx, v.tx, v.ty, v.size, v.size); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
     ctx.globalAlpha = 1;
-    this.hit(v, 'village', left, top, right, bottom);
+    this.hit(v0, 'village', left, top, right, bottom);
     const m = this.toScreen(cx, cy), W = v.size * HW * z * 1.4;
     this.bar(ctx, m[0] - W / 2, top - 14, W, 4, v.protection / v.maxProtection, '#c0473b');
     this.bar(ctx, m[0] - W / 2, top - 9, W, 4, v.loyalty / 100, '#5a9ad8');
     if (v.garrison?.length && v.owner === PLAYER) this.badge(ctx, m[0] + W / 2 + 12, top - 6, v.garrison.length, HOUSES[PLAYER], z);
-    if (ui?.isSelected(v)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, v.tx - 0.2, v.ty - 0.2, v.size + 0.4, v.size + 0.4); ctx.stroke(); ctx.setLineDash([]); }
+    if (ui?.isSelected(v0)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, v.tx - 0.2, v.ty - 0.2, v.size + 0.4, v.size + 0.4); ctx.stroke(); ctx.setLineDash([]); }
     if (z > 0.7) { ctx.font = `${Math.round(11 * z + 2)}px Georgia, serif`; ctx.textAlign = 'center'; const [lx, ly] = this.toScreen(v.tx + v.size, v.ty + v.size); ctx.fillStyle = '#000'; ctx.fillText(v.name, lx + 1, ly + 15); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, lx, ly + 14); ctx.font = `${Math.round(9 * z + 2)}px Georgia, serif`; ctx.fillStyle = v.hunger ? '#e0866a' : '#cdbb8a'; ctx.fillText(`${Math.floor(v.pop)} folk`, lx, ly + 14 + 12 * z); }
   }
 
@@ -964,7 +966,8 @@ export class Minimap {
     const vis = g.vis[PLAYER], seen = g.seen[PLAYER];
     for (const v of g.villages) {
       if (g.fogOn && !seen[Math.floor(v.y) * g.W + Math.floor(v.x)]) continue;
-      ctx.fillStyle = v.owner >= 0 ? HOUSES[v.owner].accent : '#cdbb8a'; ctx.fillRect(v.tx * sx, v.ty * sy, Math.max(4, v.size * sx), Math.max(4, v.size * sy));
+      const vo = g.knownOwner(PLAYER, v);   // as last seen (T46)
+      ctx.fillStyle = vo >= 0 ? HOUSES[vo].accent : '#cdbb8a'; ctx.fillRect(v.tx * sx, v.ty * sy, Math.max(4, v.size * sx), Math.max(4, v.size * sy));
       ctx.strokeStyle = '#000'; ctx.strokeRect(v.tx * sx + 0.5, v.ty * sy + 0.5, Math.max(4, v.size * sx), Math.max(4, v.size * sy));
     }
     for (const b of g.knownBuildings(PLAYER)) {   // others' as last seen (T44)
@@ -1012,7 +1015,8 @@ export function drawVale(canvas, game, { fog = false, poly = null, labels = fals
   for (const v of game.villages) {
     if (fog && game.fogOn && !seen[Math.floor(v.y) * W + Math.floor(v.x)]) continue;
     const cx = (v.x) * sx, cy = (v.y) * sy, s = Math.max(9, sx * 3);
-    ctx.fillStyle = v.owner >= 0 ? HOUSES[v.owner].primary : '#b9a672'; ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
+    const vo = fog ? game.knownOwner(PLAYER, v) : v.owner;   // as last seen (T46)
+    ctx.fillStyle = vo >= 0 ? HOUSES[vo].primary : '#b9a672'; ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
     ctx.strokeStyle = '#f0e2b6'; ctx.lineWidth = 1.5; ctx.strokeRect(cx - s / 2, cy - s / 2, s, s);
     if (labels) { ctx.font = '11px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#000'; ctx.fillText(v.name, cx + 1, cy + s + 11); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, cx, cy + s + 10); }
   }
@@ -1020,7 +1024,7 @@ export function drawVale(canvas, game, { fog = false, poly = null, labels = fals
     if (b.kind !== 'keep') continue;
     drawDisc(ctx, b.x * sx, b.y * sy, Math.max(9, sx * 3), b.team);
   }
-  for (const v of game.villages) if (v.home != null && v.owner === v.home && (!fog || !game.fogOn || v.owner === PLAYER || seen[Math.floor(v.y) * W + Math.floor(v.x)])) drawDisc(ctx, v.x * sx, v.y * sy, Math.max(9, sx * 3), v.owner);
+  for (const v of game.villages) { const vo = fog ? game.knownOwner(PLAYER, v) : v.owner; if (v.home != null && vo === v.home && (!fog || !game.fogOn || vo === PLAYER || seen[Math.floor(v.y) * W + Math.floor(v.x)])) drawDisc(ctx, v.x * sx, v.y * sy, Math.max(9, sx * 3), vo); }
   if (!fog) game.map.starts.slice(0, game.houses).forEach(([x, y], i) => drawDisc(ctx, (x + 1.5) * sx, (y + 1.5) * sy, Math.max(9, sx * 3), i));
   if (poly) {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); poly.forEach(([x, y], i) => (i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy))); ctx.closePath(); ctx.stroke();

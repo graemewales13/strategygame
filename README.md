@@ -195,7 +195,7 @@ The point of the game is to expand and rule, so **nothing stops you building as 
 | Rule | What it does |
 |------|--------------|
 | **Build anywhere scouted** | Only water, blocked ground, deposits (other than mines) and unexplored fog stop a site. Scouts and keeps reveal the valley |
-| **Fog remembers** | Ground you explored but no longer watch shows rival buildings as your folk last saw them, greyed: a keep raised there since stays hidden, one razed there stands in your memory until you look again. Click a remembered building to see how it was and when |
+| **Fog remembers** | Ground you explored but no longer watch shows rival buildings as your folk last saw them, greyed: a keep raised there since stays hidden, one razed there stands in your memory until you look again. Click a remembered building to see how it was and when. Villages the same: out of sight one keeps the lord, folk and loyalty last seen (news of it changing hands still names the new lord) |
 | **Influence** | Villages lean toward whoever has castles, temples and taverns near them. A village you hold, a keep, tower or barracks pulls at 35% unguarded and at full strength with 4 soldiers garrisoned or standing watch. Soldiers billeted in a village you hold steady it |
 | **Haul** | Ore dug far from any of your stores (a village you hold, keep, warehouse, market) loses yield on the road: full within 14 tiles, 45% at 60+. A warehouse or market beside a remote mine restores it |
 | **Workforce** | Builders and gatherers are serfs (mines are dug by nearby villagers), housed by cottages and held villages; remote sites need serfs to walk there and back |

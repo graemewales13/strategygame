@@ -155,7 +155,8 @@ export class UI {
       const v = g.villages.find((v) => x >= v.tx - 1 && x < v.tx + v.size + 1 && y >= v.ty - 1 && y < v.ty + v.size + 1 && g.wasSeen(PLAYER, v.x, v.y));
       if (!v) { tip.classList.add('hidden'); return; }
       const b = cc.getBoundingClientRect(), pb = cc.parentElement.getBoundingClientRect();
-      tip.innerHTML = `<b>${esc(v.name)}</b> · ${VILLAGE_KINDS[v.kind].label}<br>${v.owner >= 0 ? esc(HOUSES[v.owner].name) : 'Independent'} · loyalty ${v.loyalty | 0} · protection ${v.protection | 0}`;
+      const o = g.villageMemo(PLAYER, v) || v;   // out of sight: as last seen (T46)
+      tip.innerHTML = `<b>${esc(v.name)}</b> · ${VILLAGE_KINDS[v.kind].label}<br>${o.owner >= 0 ? esc(HOUSES[o.owner].name) : 'Independent'} · loyalty ${o.loyalty | 0} · protection ${o.protection | 0}${o !== v ? ' · last seen' : ''}`;
       tip.style.left = Math.min(e.clientX - pb.left + 14, pb.width - 260) + 'px'; tip.style.top = e.clientY - pb.top + 14 + 'px'; tip.classList.remove('hidden');
     });
   }
@@ -876,7 +877,9 @@ export class UI {
       if (mine && b.kind === 'academy') { const r = p.research ? TECH[p.research] : null; html += `<div class="stat"><label>Learning</label><span>${Math.floor(p.learning || 0)} banked · +${(p.learnRate || 0).toFixed(2)} a second from your academies</span></div><div class="stat"><label>Research</label>${r ? `<div class="meter"><i class="prog" style="width:${Math.min(100, ((p.learning || 0) / r.cost.learning) * 100)}%"></i></div><span class="v">${esc(r.label)}</span>` : `<span>${Object.keys(p.tech || {}).length}/${TECH_KEYS.length} known · choose the next below</span>`}</div>`; }
       if (mine && b.kind === 'academy') html += `<div class="stat"><label>Scholars</label><span>${b.scholars || 0}/4 near: +${(b.scholars || 0) * 30}% influence</span></div>`;
     } else if (s.type === 'village') {
-      const v = g.byId.get(s.id); if (!v) { this.clearSel(); return; }
+      const live = g.byId.get(s.id); if (!live) { this.clearSel(); return; }
+      const memo = g.villageMemo(PLAYER, live);   // out of sight: as last seen, never the live state (T46)
+      const v = memo ? { ...live, ...memo, stores: { ...live.stores, food: memo.food }, garrison: [] } : live;
       const k = VILLAGE_KINDS[v.kind], lord = v.owner >= 0 ? HOUSES[v.owner].name : 'Independent';
       const tr = k.tribute;
       html = `<div class="seltitle">${esc(v.name)} <small style="color:#cdbb8a;font-size:12px">${v.founded ? (v.kind === 'mine' ? 'Mining camp' : 'Village') : k.label}</small></div><div class="selsub">${v.founded ? (v.kind === 'mine' ? 'Founded by your house beside ore. Its folk work the mines within 16 tiles at camp rates, pay tax and can be drafted.' : 'Founded by your house. Its folk till, pay tax and can be drafted.') : esc(k.blurb)}${v.owner === PLAYER ? ` Tax <b>+${(v.pop * TAX * (v.loyalty / 100)).toFixed(2)}</b> coin/s.` : ''}</div>
@@ -885,7 +888,7 @@ export class UI {
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
         <div class="stat"><label>Population</label><div class="meter"><i class="loy" style="width:${(v.pop / v.popMax) * 100}%"></i></div><span class="v">${Math.floor(v.pop)}/${v.popMax}</span></div>
         <div class="stat"><label>Folk</label><span>${v.folk.join(', ')} · ${v.hunger ? '<b style="color:#e0866a">starving: the store is out of grain</b>' : v.pop >= v.popMax ? 'at full strength' : 'growing (fed from the village store)'} · grain ${Math.floor(v.stores.food || 0)}</span></div>${v.owner === PLAYER ? `<div class="stat"><label>Housing</label><span>houses ${Math.floor(v.pop * POP_HOUSING)} of your population cap; tribute ${Math.round((0.5 + 0.7 * (v.pop / v.popMax)) * 100)}% of base</span></div>` : ''}
-        <div class="stat"><label>Influence</label><span>${this.pullText(v)}</span></div>${v.owner === PLAYER ? this.watchRow(v) : ''}${v.owner === PLAYER && v.garrison?.length ? `<div class="stat"><label>Garrison</label><span>${v.garrison.length}/${VILLAGE_GARRISON} inside</span></div>${this.rollChips(v.garrison.map((id) => g.byId.get(id)).filter(Boolean), 8)}` : ''}${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
+        <div class="stat"><label>Influence</label><span>${memo ? 'not known out of sight' : this.pullText(v)}</span></div>${memo ? `<div class="selsub">Out of sight: as your folk last saw it ${g.time - memo.at < 60 ? 'moments' : Math.round((g.time - memo.at) / 60) + ' min'} ago. Send a scout to see it now.</div>` : ''}${v.owner === PLAYER ? this.watchRow(v) : ''}${v.owner === PLAYER && v.garrison?.length ? `<div class="stat"><label>Garrison</label><span>${v.garrison.length}/${VILLAGE_GARRISON} inside</span></div>${this.rollChips(v.garrison.map((id) => g.byId.get(id)).filter(Boolean), 8)}` : ''}${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
     } else if (s.type === 'node') {
       const n = g.resources[s.id]; if (!n) { this.clearSel(); return; }
       const res = NODE_RES[n.kind];

@@ -99,6 +99,7 @@ export class Game {
     this.seen = Array.from({ length: n }, () => new Uint8Array(this.W * this.H));
     this.vis = Array.from({ length: n }, () => new Uint8Array(this.W * this.H));
     this.mem = Array.from({ length: n }, () => ({}));   // what each house last saw of others' buildings under fog, by id (T44; drawn, never read by the rules)
+    this.vmem = Array.from({ length: n }, () => ({}));   // and of every village (owner, folk, loyalty...), by id (T46; the same)
     this.walk = new Uint8Array(this.W * this.H);
     this.block = new Uint8Array(this.W * this.H);
 
@@ -367,6 +368,28 @@ export class Game {
     }
     for (const k in m) { const o = m[k], b = this.byId.get(o.id); if ((!b || b.type !== 'building' || b.hp <= 0 || b.team === team) && this.seesFoot(team, o)) delete m[k]; }   // seen gone (or now ours)
   }
+  // Villages remembered (T46): a village in sight, or held by `team`, is noted as it is; out of sight it keeps its last-seen lord, folk and
+  // loyalty, so a village changing hands far from any eye is not shown live. One the house itself loses is noted once more (it hears of it).
+  rememberVillages(team) {
+    const m = this.vmem[team]; if (!m) return;
+    for (const v of this.villages) {
+      const o = m[v.id];
+      if (v.owner !== team && !(o && o.owner === team) && !this.seesFoot(team, v)) continue;
+      m[v.id] = this.villageNote(v, o);
+    }
+  }
+  villageNote(v, o = {}) {
+    return Object.assign(o, { id: v.id, owner: v.owner, pop: v.pop, popMax: v.popMax, loyalty: v.loyalty, protection: v.protection, maxProtection: v.maxProtection, hunger: !!v.hunger, food: v.stores?.food || 0, joyT: v.joyT > 0 ? 1 : 0, at: this.time });
+  }
+  // news reaches the player: a village it has seen changing hands is known to have, though its folk and loyalty stay as last seen
+  heardOf(v) { const o = this.fogOn && this.vmem[PLAYER]?.[v.id]; if (o) o.owner = v.owner; }
+  // what `team` knows of a village now: null when it sees it as it is (fog off, its own, or in sight), else the note it last made
+  villageMemo(team, v) {
+    if (!this.fogOn || v.owner === team || this.seesFoot(team, v)) return null;
+    return this.vmem[team]?.[v.id] || null;
+  }
+  // the lord `team` believes a village has (as last seen under fog)
+  knownOwner(team, v) { const o = this.villageMemo(team, v); return o ? o.owner : v.owner; }
   // the buildings `team` knows of on the ground: its own as they are, others' as last seen (fog off: all as they are)
   knownBuildings(team) {
     if (!this.fogOn) return this.buildings;
@@ -2938,6 +2961,7 @@ export class Game {
     if (prev >= 0 && prev !== team) this.opinionShift(prev, team, how === 'pillage' ? -20 : -10, how === 'pillage' ? `sacked ${v.name}` : `swayed ${v.name} away`);
     const who = HOUSES[team].short;
     const text = { pillage: `${v.name} falls to ${who} after the sack.`, castle: `${v.name} bows to ${who}'s influence.`, spy: `${v.name} is turned by ${who}'s spy.` }[how] || `${v.name} submits to ${who}.`;
+    this.heardOf(v);   // (the news below names the new lord, so the map must not still show the old one: T-093)
     this.log(team === PLAYER || prev === PLAYER ? PLAYER : -1, text + (taken ? ` ${taken} building${taken > 1 ? 's' : ''} in the town change hands.` : '') + (spoils ? ' ' + spoils.text : ''), team === PLAYER ? 'good' : 'warn');
   }
 
@@ -3501,7 +3525,7 @@ export class Game {
   // ------------------------------------------------------------------ fog of war
   setFog(on) {
     this.titleView = false; this.fogOn = on;
-    if (on) { this.seen.forEach((a) => a.fill(0)); this.mem.forEach((m) => { for (const k in m) delete m[k]; }); }
+    if (on) { this.seen.forEach((a) => a.fill(0)); this.mem.forEach((m) => { for (const k in m) delete m[k]; }); this.vmem.forEach((m) => { for (const k in m) delete m[k]; }); }
     this.updateVisibility(true);
   }
 
@@ -3534,7 +3558,7 @@ export class Game {
       for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, v.home === t ? 13 : 8);
       for (const p of this.players) { const k = p.alive && p.team !== t && !this.seatOf(p.team) ? this.kingOf(p.team) : null; if (k && !k.inside) mark(k.x, k.y, KING.fugitiveSight); }   // a king without a seat is hunted: all can see him
     }
-    if (this.fogOn) this.remember(PLAYER);   // (only the player's eyes are drawn; the network branch remembers for every seat)
+    if (this.fogOn) { this.remember(PLAYER); this.rememberVillages(PLAYER); }   // (only the player's eyes are drawn; the network branch remembers for every seat)
     // meeting: a house is "known" once any of its people or buildings has been in sight (mutual: they have seen you too)
     for (let a = 0; a < this.houses; a++) for (let b = 0; b < this.houses; b++) {
       if (a === b || this.known[a][b]) continue;
@@ -3582,7 +3606,7 @@ export class Game {
     p.alive = false;
     for (const u of this.units) if (u.team === team) u.hp = 0;
     for (const b of this.buildings) if (b.team === team) b.hp = 0;
-    for (const v of this.villages) if (v.owner === team) { v.owner = -1; this._vOwn = null; v.loyalty = 25; v.lean = -1; }
+    for (const v of this.villages) if (v.owner === team) { v.owner = -1; this._vOwn = null; v.loyalty = 25; v.lean = -1; this.heardOf(v); }
     this.log(PLAYER, team === PLAYER ? 'Your house has fallen.' : `${p.name} has fallen.`, team === PLAYER ? 'bad' : 'good');
     this.cleanup();
   }
@@ -3620,7 +3644,7 @@ export class Game {
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
-      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem,
+      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem,
       timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {} }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
   }
@@ -3649,6 +3673,8 @@ export class Game {
     else { this.visT = 0; this.updateVisibility(true); }
     if (d.mem) this.mem = this.mem.map((m, i) => d.mem[i] || {});
     else if (this.fogOn) for (const b of this.buildings) if (b.team !== PLAYER && this.wasSeen(PLAYER, b.x, b.y)) this.mem[PLAYER][b.id] = { id: b.id, kind: b.kind, team: b.team, tx: b.tx, ty: b.ty, size: b.size, x: b.x, y: b.y, ore: b.ore, hp: b.hp, maxHp: b.maxHp, built: b.built, at: this.time };   // an older save: what was on seen ground counts as seen
+    if (d.vmem) this.vmem = this.vmem.map((m, i) => d.vmem[i] || {});
+    else if (this.fogOn) for (const v of this.villages) if (this.wasSeen(PLAYER, v.x, v.y)) this.vmem[PLAYER][v.id] = this.villageNote(v);   // an older save: as it is
     return this;
   }
 
