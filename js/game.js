@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -665,7 +665,8 @@ export class Game {
       case 'mine': return this.cmdMine(mine(), this.byId.get(it.buildingId));
       case 'unmine': return this.unassignMine(team, it.buildingId);
       case 'respond': return this.respondOffer(team, it.from, !!it.accept, it.id ?? null);
-      case 'train': return this.train(team, it.buildingId, it.kind);
+      case 'train': return it.n > 1 ? this.trainMany(team, it.buildingId, it.kind, it.n) : this.train(team, it.buildingId, it.kind);
+      case 'repeat': return this.setRepeat(team, it.buildingId, it.kind ?? null);
       case 'cancel': return this.cancelTrain(team, it.buildingId, it.index);
       case 'rally': return this.setRally(team, it.buildingId, it.x, it.y, it.nodeId);
       case 'load': return this.load(team, it.unitId, it.good, it.amount);
@@ -1878,25 +1879,59 @@ export class Game {
     return b;
   }
 
-  train(team, buildingId, kind) {
-    const b = this.byId.get(buildingId);
+  // why a building cannot take one more of a kind now (null: it can); quiet, for Shift-trains-five and repeat training (T47)
+  trainBlock(team, b, kind) {
     const s = UNITS[kind];
-    const say = (m) => { if (team === PLAYER) this.log(team, m, 'warn'); return null; };
-    if (!b || b.type !== 'building' || b.team !== team || b.built < 1 || b.hp <= 0 || !s) return null;
-    if (!s.from.includes(b.kind)) return say(`A ${BUILDINGS[b.kind].label} cannot train that.`);
-    if (s.tech && !this.hasTech(team, s.tech)) return say(`Research ${TECH[s.tech].label} at an academy first.`);
-    if (!this.canAfford(team, s.cost)) return say(this.shortfall(team, s.cost));
-    if (!s.nopop && this.popUsed(team) + 1 > this.popCap(team)) return say('Population capped: raise cottages.');   // (pack animals are not people)
-    if (b.queue.length >= 5) return say('Training queue is full.');
-    this.pay(team, s.cost);
+    if (!b || b.type !== 'building' || b.team !== team || b.built < 1 || b.hp <= 0 || !s) return 'gone';
+    if (!s.from.includes(b.kind)) return `A ${BUILDINGS[b.kind].label} cannot train that.`;
+    if (s.tech && !this.hasTech(team, s.tech)) return `Research ${TECH[s.tech].label} at an academy first.`;
+    if (!this.canAfford(team, s.cost)) return this.shortfall(team, s.cost);
+    if (!s.nopop && this.popUsed(team) + 1 > this.popCap(team)) return 'Population capped: raise cottages.';   // (pack animals are not people)
+    if (b.queue.length >= TRAIN.queue) return 'Training queue is full.';
+    return null;
+  }
+  train(team, buildingId, kind) {
+    const b = this.byId.get(buildingId), why = this.trainBlock(team, b, kind);
+    if (why === 'gone') return null;
+    if (why) { if (team === PLAYER) this.log(team, why, 'warn'); return null; }
+    this.pay(team, UNITS[kind].cost);
     b.queue.push({ kind, t: 0 });
     return true;
+  }
+  // Shift-click: up to n at once, as far as coin, room and the queue allow, with one message if fewer fit (T47)
+  trainMany(team, buildingId, kind, n = 1) {
+    n = Math.max(1, Math.min(TRAIN.queue, n | 0));
+    if (n === 1) return this.train(team, buildingId, kind) ? 1 : 0;
+    const b = this.byId.get(buildingId);
+    let k = 0, why = null;
+    while (k < n && !(why = this.trainBlock(team, b, kind))) { this.pay(team, UNITS[kind].cost); b.queue.push({ kind, t: 0 }); k++; }
+    if (team === PLAYER && why && why !== 'gone') this.log(team, k ? `${k} of ${n} ${UNITS[kind].label.replace(/man$/, 'men').replace(/([^n])$/, '$1s')} queued: ${why}` : why, k ? 'info' : 'warn');
+    return k;
+  }
+  // repeat training: the building keeps one of this kind queued while the house can pay and has room (kind null: off) (T47)
+  setRepeat(team, buildingId, kind) {
+    const b = this.byId.get(buildingId);
+    if (!b || b.type !== 'building' || b.team !== team || b.hp <= 0) return false;
+    if (kind == null) { b.repeat = null; b.repeatWhy = null; return true; }
+    const s = UNITS[kind];
+    if (!s || !s.from.includes(b.kind)) return false;
+    b.repeat = kind; b.repeatWhy = null;
+    return true;
+  }
+  tickRepeat(b) {
+    if (!b.repeat || b.queue.length || b.built < 1) return;
+    const why = this.trainBlock(b.team, b, b.repeat);
+    b.repeatWhy = why;
+    if (why) return;
+    this.pay(b.team, UNITS[b.repeat].cost);
+    b.queue.push({ kind: b.repeat, t: 0 });
   }
   cancelTrain(team, buildingId, index) {
     const b = this.byId.get(buildingId);
     if (!b || b.team !== team || !b.queue[index]) return false;
     const [q] = b.queue.splice(index, 1);
     this.pay(team, UNITS[q.kind].cost, -1);
+    if (b.repeat && b.repeat === q.kind) { b.repeat = null; b.repeatWhy = null; if (team === PLAYER) this.log(team, 'Repeat training off.', 'info'); }   // (else it would queue him again at once: T47)
     return true;
   }
   setRally(team, buildingId, x, y, nodeId) {
@@ -2747,6 +2782,7 @@ export class Game {
         case 'armoury': this.tickArmoury(b, dt); break;
         default: break;
       }
+      if (b.repeat) this.tickRepeat(b);
       if (b.queue.length) {
         const q = b.queue[0];
         q.t += dt * (this.time - (b._spyT ?? -9) < 1 ? SPY_COVER.slow : 1);   // (a rival's spy inside slows the work)
@@ -2940,7 +2976,7 @@ export class Game {
     for (const b of this.buildings) {
       if (b.hp <= 0 || b.kind === 'village' || b.team === team || b.team !== prev || prev < 0) continue;
       if (this.townOf(b) !== v) continue;
-      this.ejectAll(b); b.queue = []; b.craft = []; b.drills = b.drills && []; b.levy = null; b.rally = null; b.team = team; b.town = v.id; b.flash = 1; n++; this._bIdx = null;   // (the index of buildings by house: see bIdx)
+      this.ejectAll(b); b.queue = []; b.craft = []; b.drills = b.drills && []; b.levy = null; b.rally = null; b.repeat = null; b.repeatWhy = null; b.team = team; b.town = v.id; b.flash = 1; n++; this._bIdx = null;   // (the index of buildings by house: see bIdx)
       for (const u of this.units) if (u.team !== team && u.task?.buildingId === b.id) { u.task = { type: 'idle' }; u.path = []; }
     }
     if (n) { this.recomputeWalk?.(); this.updateVisibility?.(true); }

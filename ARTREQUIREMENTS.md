@@ -8,7 +8,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 **The character list is done.** Delivered 2026-10-19: the ram in two parts (13), thirteen order icons (14), walk cycles for every walking role (15), the watchman mark (16), the disguise mark (17), ore deposits per mineral (18), the siege line (13b), the women among the serfs, and the Scottish recruit without a kilt. Egyptian knights and kings stay chariots, so they have no walk cycle. An armed soldier still strides in code, from the still figure of his kit.
 
-**Open (2026-10-24): priority 22, the explore order icon** (one 128x128 order icon for the new Explore button on a scout's card; it shows 🧭 until then). **Open (2026-10-21): priority 21, the patrol order icon** (one 128x128 order icon for the new Patrol button; it shows ⟲ until then). **Open (2026-10-20): priority 20, the town bell icon** (one 128x128 order icon for the new Bell button; the button shows 🔔 until then). **Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
+**Open (2026-10-26): priority 23, the repeat-training icon** (one 128x128 order icon for the new Repeat button on every training building's card; it shows 🔁 until then). **Open (2026-10-24): priority 22, the explore order icon** (one 128x128 order icon for the new Explore button on a scout's card; it shows 🧭 until then). **Open (2026-10-21): priority 21, the patrol order icon** (one 128x128 order icon for the new Patrol button; it shows ⟲ until then). **Open (2026-10-20): priority 20, the town bell icon** (one 128x128 order icon for the new Bell button; the button shows 🔔 until then). **Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
@@ -30,6 +30,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 16 | **Town bell order icon** for the new Bell button (T38) | shared | `assets/shared/ui/orders/bell.png` | 1 | priority 20 — **open**, requested 2026-10-20 |
 | 17 | **Patrol order icon** for the new Patrol button (T39) | shared | `assets/shared/ui/orders/patrol.png` | 1 | priority 21 — **open**, requested 2026-10-21 |
 | 18 | **Explore order icon** for the new Explore button on a scout's card (T45) | shared | `assets/shared/ui/orders/explore.png` | 1 | priority 22 — **open**, requested 2026-10-24 |
+| 19 | **Repeat-training icon** for the new Repeat button on a training building's card (T47) | shared | `assets/shared/ui/orders/repeat.png` | 1 | priority 23 — **open**, requested 2026-10-26 |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
 
@@ -60,6 +61,7 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | 19 | **Walk cycles for the armed soldiers** (six kit figures, 8 peoples) | **Requested** 2026-10-19. Until delivered the game strides the kit's still figure in code (render.js `gaitOf`); not probed until listed in `js/art.js` |
 | 21 | **Patrol order icon** (1, shared) | **Requested** 2026-10-21 (T39). The Patrol button on a soldier's card shows the ⟲ glyph until delivered; not probed until `'patrol'` is added to `UI_KEYS.orders` in `js/art.js`. The patrol round on the field is drawn in code (an amber dashed loop through the posts), no painting needed |
 | 22 | **Explore order icon** (1, shared) | **Requested** 2026-10-24 (T45). The Explore button on a scout's card shows the 🧭 glyph until delivered; not probed until `'explore'` is added to `UI_KEYS.orders` in `js/art.js`. The scout's next goal on the field is drawn in code (a pale blue dashed line) |
+| 23 | **Repeat-training icon** (1, shared) | **Requested** 2026-10-26 (T47). The Repeat button on every training building's card shows the 🔁 glyph until delivered; not probed until `'repeat'` is added to `UI_KEYS.orders` in `js/art.js`. Shift-click training five needs no painting (the queue slots are drawn as before) |
 | 20 | **Town bell order icon** (1, shared) | **Requested** 2026-10-20 (T38). The Bell button on the keep's card shows the 🔔 glyph until delivered; not probed until `'bell'` is added to `UI_KEYS.orders` in `js/art.js`. The minimap row's Bell button is text, like Home, Idle and Army |
 | — | Siege engines on the command card and unit panel (T-073, 2026-10-19) | **No painting needed.** The Workshop's Ram, Onager and Trebuchet buttons, the unit panel and the control-group chips show the painted engines (`assets/shared/units/ram.png`, `onager.png`, `trebuchet.png`) in place of a card |
 | — | Art lint (T30, 2026-10-19): `tools/art-lint.py` in CI | **No painting needed.** Every drop is now checked for RGBA, clear corners, the key colour and size against its kind |
@@ -642,3 +644,17 @@ ORDER ICON, a curling sheet of old parchment map with hills and a river inked on
 ```
 
 Deliver: `assets/shared/ui/orders/explore.png`. Wiring (Claude, on delivery): key it (`tools/chromakey.py`, `tools/defringe.py`), run `tools/art-lint.py`, and add `'explore'` to `UI_KEYS.orders` in `js/art.js`; the button already asks for `uiArt('orders', 'explore')`.
+
+## Priority 23: the repeat-training icon (1, new 2026-10-26)
+
+Repeat training (T47, as in AoE IV) keeps one soldier of a kind queued at a barracks, stable, archery range, keep, workshop or market, one after another, while the house can pay and has room. It is a toggle button after the unit buttons on every training building's card (it lights up and reads "Repeating" while on). The button wants an icon in the same set as the order icons of priority 14 and the bell, patrol and explore icons of priorities 20-22: same **Goods icon** template, 128x128 px, readable at 32 px on a dark wood button, neutral colours (no faction colour: every house's buildings repeat alike), no text or letters, subject weighted to the lower left with the top-right eighth clear for the Grid key label.
+
+| Key | Order | Subject to paint |
+|---|---|---|
+| `repeat` | Order: keep training this kind, one after another | a row of three identical iron-shod spears leaning in a wooden rack, the last one just being set in place; or a sand hourglass beside a short stack of identical round shields |
+
+```text
+ORDER ICON, a small wooden weapon rack holding three identical ash-wood spears with iron heads standing side by side, a fourth identical spear leaning against the rack's end as if just added, painted in the same hand-painted medieval style as the kit and research icons: ash wood, iron, leather binding, warm low sun from the upper left, soft shadow. Neutral colours only, no faction colour, no text or letters or numbers, no arrows or circular UI symbols, subject weighted to the lower left, top-right eighth of the square left clear. Flat #FF00FF background, 4 px margin, 128x128 (shown at 24-32 px).
+```
+
+Deliver: `assets/shared/ui/orders/repeat.png`. Wiring (Claude, on delivery): key it (`tools/chromakey.py`, `tools/defringe.py`), run `tools/art-lint.py`, and add `'repeat'` to `UI_KEYS.orders` in `js/art.js`; the button already asks for `uiArt('orders', 'repeat')`.

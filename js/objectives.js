@@ -23,7 +23,7 @@ export const OBJECTIVES = [
   { id: 'keep', title: 'Raise a keep and barracks', hint: 'The keep sways nearby villages and drills soldiers. The barracks trains them.',
     done: (g) => mine(g, 'keep') && mine(g, 'barracks') },
   // (the army comes straight after the barracks: in play the first rival demand came at 7 minutes and its army at 12, while this step was ninth)
-  { id: 'army', title: 'Raise an army', hint: 'Train eight soldiers at the barracks. From about minute 7 rival houses demand tribute from the weak and march on those who refuse. Keep your king safe: when his line ends, your house falls. The Council ({key:council}) shows how each house reads you.',
+  { id: 'army', title: 'Raise an army', hint: 'Train eight soldiers at the barracks (Shift-click a soldier queues five; Repeat keeps them coming). From about minute 7 rival houses demand tribute from the weak and march on those who refuse. Keep your king safe: when his line ends, your house falls. The Council ({key:council}) shows how each house reads you.',
     done: (g) => soldiers(g) >= 8 },
   { id: 'camel', title: 'Send a camel trading', hint: 'Train a camel at the market, select it, then press All my markets or Trade partners (or click markets on the map). It loops for ever, hauling goods.',
     done: (g) => g.units.some((u) => u.team === PLAYER && u.kind === 'camel' && u.route && u.route.stops.length) || g.players[PLAYER].trips > 0 },

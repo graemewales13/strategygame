@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -131,8 +131,8 @@ export class UI {
     $('eStay').onclick = () => $('end').classList.add('hidden');
 
     const cmd = $('cmdPanel');
-    cmd.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd(b.dataset); });
-    $('selPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd(b.dataset); });
+    cmd.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset, shift: e.shiftKey }); });   // (Shift on a unit button trains five: T47)
+    $('selPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset, shift: e.shiftKey }); });
     $('houses').addEventListener('click', (e) => { const b = e.target.closest('[data-house]'); if (b) this.toggleDiplo(+b.dataset.house); });
     $('council').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
     $('btnCouncil').onclick = () => this.toggleCouncil();
@@ -439,7 +439,13 @@ export class UI {
         const [wx, wy] = this.r.toWorld(this.mouse.x, this.mouse.y); this.hoverTX = Math.round(wx - s.size / 2); this.hoverTY = Math.round(wy - s.size / 2);
         break;
       }
-      case 'train': { const b = this.selEntity(); if (b) this.host.send({ type: 'train', buildingId: b.id, kind: d.kind }); break; }
+      case 'train': { const b = this.selEntity(); if (b) this.host.send(d.shift ? { type: 'train', buildingId: b.id, kind: d.kind, n: TRAIN.shift } : { type: 'train', buildingId: b.id, kind: d.kind }); break; }
+      case 'repeat': {   // T47: on, it repeats the last soldier queued (else the first it can train); off again on a second press
+        const b = this.selEntity(); if (!b) break;
+        const kind = b.repeat ? null : b.queue.at(-1)?.kind || d.kind;
+        if (this.host.send({ type: 'repeat', buildingId: b.id, kind })) this.toast(kind ? `Repeat: ${UNITS[kind].label} after ${UNITS[kind].label}, while you can pay and have room.` : 'Repeat training off.', 'info');
+        break;
+      }
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
       case 'amove': this.setAmove(!this.amove); break;
@@ -851,8 +857,9 @@ export class UI {
       if (memo) html += `<div class="selsub">Out of sight: as your folk last saw it ${g.time - memo.at < 60 ? 'moments' : Math.round((g.time - memo.at) / 60) + ' min'} ago. Send a scout to see it now.</div>`;
       if (b.built < 1) html += `<div class="stat"><label>Building</label><div class="meter"><i class="prog" style="width:${b.built * 100}%"></i></div><span class="v">${Math.floor(b.built * 100)}%</span></div><div class="selsub">Right-click with serfs to help.</div>`;
       if (mine && b.built >= 1 && st.pop) html += `<div class="stat"><label>Population</label><span>+${st.pop}</span></div>`;
+      if (mine && b.repeat) html += `<div class="stat"><label>Repeat</label><span>${UNITS[b.repeat].label}${b.repeatWhy ? ` · <b style="color:#ff9a7a">waiting: ${esc(b.repeatWhy)}</b>` : ''}</span></div>`;
       if (mine && b.queue.length) {
-        html += `<div class="qrow">${b.queue.map((q, i) => `<div class="qslot" data-act="cancel" data-i="${i}" data-tip="${encodeURIComponent(`<b>${UNITS[q.kind].label}</b><br>Click to cancel (refund).`)}">${GLYPH[q.kind].length === 1 ? GLYPH[q.kind] : 'R'}${i === 0 ? `<i style="width:${(q.t / UNITS[q.kind].time) * 100}%"></i>` : ''}</div>`).join('')}</div>`;
+        html += `<div class="qrow">${b.queue.map((q, i) => `<div class="qslot" data-act="cancel" data-i="${i}" data-tip="${encodeURIComponent(`<b>${UNITS[q.kind].label}</b><br>Click to cancel (refund).${b.repeat === q.kind ? ' Repeat training stops.' : ''}`)}">${[...GLYPH[q.kind]].length === 1 ? GLYPH[q.kind] : GLYPH[q.kind][0]}${i === 0 ? `<i style="width:${(q.t / UNITS[q.kind].time) * 100}%"></i>` : ''}</div>`).join('')}</div>`;
       }
       if (mine && b.built >= 1 && GARRISON[b.kind]) {
         const inn = b.garrison.map((id) => g.byId.get(id)).filter(Boolean);
@@ -944,8 +951,11 @@ export class UI {
       const afford = g.canAfford(PLAYER, s.cost), room = s.nopop || g.popUsed(PLAYER) < g.popCap(PLAYER);   // (a pack animal needs no room)
       const needs = s.tech && !g.hasTech(PLAYER, s.tech) ? TECH[s.tech].label : null;   // a siege engine waits on its research
       const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br>HP ${s.hp} · dmg ${s.dmg}${s.range > 1.6 ? ' (ranged)' : ''} · speed ${s.speed}<br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s${room ? '' : '<br><span class="need">Population capped: raise cottages.</span>'}`;
-      html += this.btn('train', { off: !afford || !room || !!needs, glyph: GLYPH[k], art: k, name: s.label, sub: needs ? 'Locked' : costShort(s.cost), data: { kind: k }, tip: needs ? tip + `<br><span class='need'>Research <b>${needs}</b> at an academy first.</span>` : tip });
+      html += this.btn('train', { off: !afford || !room || !!needs, glyph: GLYPH[k], art: k, name: s.label, sub: needs ? 'Locked' : costShort(s.cost), data: { kind: k }, tip: (needs ? tip + `<br><span class='need'>Research <b>${needs}</b> at an academy first.</span>` : tip) + `<br><span class='info'><b>Shift</b>+click queues ${TRAIN.shift}.</span>` });
     }
+    // repeat training (T47): keeps one of a kind queued
+    const first = kinds.find((k) => !UNITS[k].tech || g.hasTech(PLAYER, UNITS[k].tech)), rk = b.repeat || b.queue.at(-1)?.kind || first;
+    if (rk) html += this.btn('repeat', { img: uiArt('orders', 'repeat'), glyph: '🔁', name: b.repeat ? 'Repeating' : 'Repeat', sub: b.repeat ? UNITS[b.repeat].label : '', cls: b.repeat ? 'on' : '', data: { kind: first || '' }, tip: b.repeat ? `<b>Repeat training: ${UNITS[b.repeat].label}</b><br>Another is queued each time the last is done, while you can pay and have room. Click to stop.` : `<b>Repeat training</b><br>Keeps one ${UNITS[rk].label} queued here, one after another, while you can pay and have room (it waits, and says why, when you cannot). It repeats the last soldier in the queue. Click again to stop.` });
     return html + `</div>`;
   }
   // the science division: three tiers of research; each tech's button says what it needs or does

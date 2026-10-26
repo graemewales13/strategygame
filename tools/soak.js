@@ -34,7 +34,8 @@ for (const seed of seeds) {
       () => { const b = anyB(); return { type: 'context', ids: ids(), x: b.x, y: b.y, queue: Math.random() < 0.3 }; },
       () => { const v = anyV(); return { type: 'context', ids: ids(), x: v.x, y: v.y, want: pick(goods) }; },
       () => { const n = anyN(); return { type: 'context', ids: ids(), x: n.x + 0.5, y: n.y + 0.5 }; },
-      () => ({ type: 'train', buildingId: (bl.length ? pick(bl) : anyB()).id, kind: pick(['serf', 'footman', 'bowman', 'knight', 'scout', 'camel', 'scholar', 'spy', 'ram']) }),
+      () => ({ type: 'train', buildingId: (bl.length ? pick(bl) : anyB()).id, kind: pick(['serf', 'footman', 'bowman', 'knight', 'scout', 'camel', 'scholar', 'spy', 'ram']), n: Math.random() < 0.3 ? 5 : 1 }),
+      () => ({ type: 'repeat', buildingId: (bl.length ? pick(bl) : anyB()).id, kind: pick([null, 'serf', 'footman', 'bowman', 'knight', 'camel', 'nonsense']) }),   // T47
       () => { const s = g.seatOf(0) || { tx: g.W / 2, ty: g.H / 2 }, n = anyN();  /* a house can lose its seat and play on */ return { type: 'place', kind: pick(kinds), tx: Math.round(s.tx + (Math.random() - 0.5) * 24), ty: Math.round(s.ty + (Math.random() - 0.5) * 24), ids: ids(), nodeId: Math.random() < 0.4 ? n.id : null }; },
       () => ({ type: 'load', unitId: pick(mine.length ? mine : g.units).id, good: pick(goods), amount: Math.floor(Math.random() * 60) - 5 }),
       () => ({ type: 'unload', unitId: pick(mine.length ? mine : g.units).id }),

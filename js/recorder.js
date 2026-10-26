@@ -38,7 +38,8 @@ export class Recorder {
     const t = Math.round(g.time);
     switch (it.type) {
       case 'place': c.builds.push([t, it.kind]); break;
-      case 'train': case 'drill': if (it.kind) c.trains.push([t, it.kind]); break;
+      case 'train': case 'drill': if (it.kind) for (let i = 0; i < (typeof r === 'number' ? r : 1); i++) c.trains.push([t, it.kind]); break;   // (Shift-click: as many as were queued)
+      case 'repeat': if (it.kind) c.trains.push([t, it.kind]); break;   // (repeat training: counted once when turned on)
       case 'relation': if (it.state === 'war') c.wars.push(t); break;
       case 'attack': case 'pillage': case 'context': {   // a right-click on a foe is an attack: count who actually set off
         const n = (it.ids || []).filter((id) => g.byId.get(id)?.task?.type === 'attack').length;

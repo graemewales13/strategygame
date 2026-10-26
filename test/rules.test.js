@@ -9,7 +9,7 @@ import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -1644,6 +1644,46 @@ test('patrol (T39): soldiers walk to a post and back for ever, Shift adds posts,
   assert.equal(army.filter((u) => r.patrolOf(u)).length, PATROL.pair, 'a pair on patrol');
   p1.patrolT = 0; patrolBounds(r, 1, p1, s1, army, 200);
   assert.equal(army.filter((u) => r.patrolOf(u)).length, PATROL.pair, 'never more than the pair');
+});
+
+test('training (T47): Shift trains five as far as coin and room allow, with one message; Repeat keeps one queued, waits with a reason, is saved', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER], c = UNITS.footman.cost;
+  const b = g.addBuilding('barracks', PLAYER, h.tx + 9, h.ty - 9, true);
+  for (const k of Object.keys(p)) if (typeof p[k] === 'number' && k in c) p[k] = 0;
+  Object.assign(p, Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v * 3])));   // coin for three
+  const said = []; const log = g.log.bind(g); g.log = (team, m, k) => { said.push(m); return log(team, m, k); };
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'train', buildingId: b.id, kind: 'footman', n: TRAIN.shift }), 3, 'three of five fit the purse');
+  assert.equal(b.queue.length, 3);
+  assert.equal(said.length, 1, 'one message, not one per soldier'); assert.match(said[0], /3 of 5/);
+  for (const k in c) assert.equal(p[k], 0, 'paid for exactly three');
+  // a full queue stops at five
+  Object.assign(p, Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v * 9])));
+  assert.equal(g.trainMany(PLAYER, b.id, 'footman', 5), 2, 'only two more fit the queue');
+  assert.equal(b.queue.length, TRAIN.queue);
+  // repeat: one queued after another while the house can pay
+  b.queue.length = 0; for (const k in c) p[k] = c[k] * 2;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'repeat', buildingId: b.id, kind: 'footman' }), true);
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'repeat', buildingId: b.id, kind: 'serf' }), false, 'a barracks cannot repeat serfs');
+  run(g, 0.2); assert.equal(b.queue.length, 1, 'repeat queues one at once');
+  const was = g.units.filter((u) => u.from === b.id).length;
+  run(g, UNITS.footman.time * 2 + 2);
+  assert.equal(g.units.filter((u) => u.from === b.id).length - was, 2, 'two trained, one after the other');
+  assert.equal(b.queue.length, 0, 'and none queued once the coin ran out');
+  assert.ok(b.repeat === 'footman' && b.repeatWhy, 'still on, waiting with a reason: ' + b.repeatWhy);
+  // saved
+  const d = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(d.byId.get(b.id).repeat, 'footman', 'repeat survives a save');
+  // paying again resumes it
+  for (const k in c) p[k] = c[k]; run(g, 0.2); assert.equal(b.queue.length, 1, 'resumes when the house can pay');
+  // cancelling the repeated soldier turns it off (else it came straight back)
+  g.applyIntent({ team: PLAYER, type: 'cancel', buildingId: b.id, index: 0 });
+  assert.equal(b.repeat, null, 'cancel stops the repeat'); run(g, 0.2); assert.equal(b.queue.length, 0);
+  // off
+  g.setRepeat(PLAYER, b.id, 'footman');
+  g.applyIntent({ team: PLAYER, type: 'repeat', buildingId: b.id, kind: null });
+  assert.equal(b.repeat, null);
+  // the AI's own training is unchanged (it never sets repeat)
+  assert.ok(g.buildings.every((x) => x.team === PLAYER || !x.repeat));
 });
 
 console.log(`${passed} passed`);
