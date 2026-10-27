@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -66,7 +66,7 @@ export class UI {
   isSelected(e) {
     const s = this.sel;
     if (e.type === 'unit') return s.type === 'units' && s.ids.includes(e.id);
-    return (s.type === 'building' || s.type === 'village') && s.id === e.id;
+    return (s.type === 'building' || s.type === 'village') && (s.id === e.id || (s.type === 'building' && !!s.ids?.includes(e.id)));   // (a set of buildings: T49)
   }
   clearSel() { this.sel = { type: 'none', ids: [], id: null }; }
   // control groups (Ctrl+1-9 sets, 1-9 recalls, again centres); shown as a row over the minimap (T36)
@@ -77,10 +77,24 @@ export class UI {
     const sig = row.map((c) => `${c.k}${c.n}${c.kind}${c.fighting ? '!' : ''}`).join() + (this.sel.type === 'units' ? '|' + this.lastGroup : '');
     if (sig === this.sigGroups) return; this.sigGroups = sig;
     el.classList.toggle('hidden', !row.length);
-    el.innerHTML = row.map((c) => `<button class="grp${c.fighting ? ' fight' : ''}${this.lastGroup === c.k && this.sel.type === 'units' ? ' on' : ''}" data-grp="${c.k}" data-tip="${encodeURIComponent(`<b>Group ${c.k}</b>: ${c.n} ${c.n === 1 ? UNITS[c.kind].label : 'men, most of them ' + UNITS[c.kind].label.toLowerCase() + 's'}${c.fighting ? '. <b>In a fight now.</b>' : ''}<br>Click or press ${c.k} to select; double-click or press it again to go there. Ctrl+${c.k} stores the selection here.`)}"><b>${c.k}</b><span class="gi">${icon(c.kind, GLYPH[c.kind] || '')}</span><i>${c.n}</i></button>`).join('');
+    el.innerHTML = row.map((c) => `<button class="grp${c.fighting ? ' fight' : ''}${this.lastGroup === c.k && this.sel.type === 'units' ? ' on' : ''}" data-grp="${c.k}" data-tip="${encodeURIComponent(`<b>Group ${c.k}</b>: ${c.n} ${c.n === 1 ? UNITS[c.kind].label : 'men, most of them ' + unitPlural(c.kind).toLowerCase()}${c.fighting ? '. <b>In a fight now.</b>' : ''}<br>Click or press ${c.k} to select; double-click or press it again to go there. Ctrl+${c.k} stores the selection here.`)}"><b>${c.k}</b><span class="gi">${icon(c.kind, GLYPH[c.kind] || '')}</span><i>${c.n}</i></button>`).join('');
   }
   selUnits() { return this.sel.type === 'units' ? this.sel.ids.map((id) => this.game.byId.get(id)).filter((u) => u && u.hp > 0) : []; }
   selEntity() { return ['building', 'village'].includes(this.sel.type) ? this.game.byId.get(this.sel.id) : null; }
+  // several training buildings of one kind selected together (T49): the one shown first, then the others; one building alone is a set of one
+  selBuildings() {
+    const g = this.game, b = this.selEntity();
+    if (!b || b.type !== 'building') return [];
+    if (this.sel.type !== 'building' || !(this.sel.ids?.length > 1)) return [b];
+    return [b, ...this.sel.ids.filter((id) => id !== b.id).map((id) => g.byId.get(id)).filter((o) => o && o.hp > 0 && o.team === b.team && o.kind === b.kind)];
+  }
+  // double-click a building of ours: every one of its kind on screen (Ctrl: across the valley), the one clicked first (T49)
+  selectKindOf(b, all) {
+    const r = this.r;
+    const same = this.game.buildings.filter((o) => o.team === PLAYER && o.kind === b.kind && o.hp > 0 && o.built >= 1 && (all || r.onScreen(o.x, o.y)));
+    const ids = [b.id, ...same.filter((o) => o.id !== b.id).map((o) => o.id)].slice(0, TRAIN.set);
+    this.sel = { type: 'building', ids: ids.length > 1 ? ids : [], id: b.id };
+  }
   setUnits(units) {
     if (!units.length) return this.clearSel();
     this.sel = { type: 'units', ids: units.map((u) => u.id), id: null };
@@ -88,7 +102,12 @@ export class UI {
   pruneSel() {
     const g = this.game;
     if (this.sel.type === 'units') { const alive = this.sel.ids.filter((id) => { const u = g.byId.get(id); return u && u.hp > 0; }); if (alive.length !== this.sel.ids.length) this.sel.ids = alive; if (!alive.length) this.clearSel(); }
-    else if (this.sel.type === 'building' || this.sel.type === 'village') { const e = g.byId.get(this.sel.id); if (!e || e.hp <= 0 && e.type !== 'village') this.clearSel(); }
+    else if (this.sel.type === 'building' || this.sel.type === 'village') {
+      if (this.sel.ids?.length) { this.sel.ids = this.sel.ids.filter((id) => { const o = g.byId.get(id); return o && o.hp > 0 && o.team === PLAYER; }); if (this.sel.ids.length < 2) this.sel.ids = []; }   // (a set of buildings, T49)
+      const e = g.byId.get(this.sel.id);
+      if ((!e || e.hp <= 0 && e.type !== 'village') && this.sel.ids?.length) { this.sel.id = this.sel.ids[0]; return; }   // the first one fell: show the next
+      if (!e || e.hp <= 0 && e.type !== 'village') this.clearSel();
+    }
     else if (this.sel.type === 'node') { const n = g.resources[this.sel.id]; if (!n || n.amount <= 0) this.clearSel(); }
   }
 
@@ -237,7 +256,16 @@ export class UI {
         return;
       }
     }
-    if (h && h.type === 'building') { this.sel = { type: 'building', ids: [], id: h.o.id }; return; }
+    if (h && h.type === 'building') {
+      const b = h.o, now = performance.now();
+      if (b.team === PLAYER && b.built >= 1 && this.lastClick.id === b.id && now - this.lastClick.t < 350) this.selectKindOf(b, ctrl);   // double-click (T49)
+      else if (shift && b.team === PLAYER && this.sel.type === 'building' && this.selEntity()?.team === PLAYER && this.selEntity()?.kind === b.kind && b.id !== this.sel.id) {   // Shift: add or drop one of the same kind
+        const ids = this.selBuildings().map((o) => o.id), i = ids.indexOf(b.id); if (i >= 0) ids.splice(i, 1); else ids.push(b.id);
+        this.sel = { type: 'building', ids: ids.length > 1 ? ids.slice(0, TRAIN.set) : [], id: ids[0] };
+      } else this.sel = { type: 'building', ids: [], id: b.id };
+      this.lastClick = { t: now, id: b.id };
+      return;
+    }
     if (h && h.type === 'village') { this.sel = { type: 'village', ids: [], id: h.o.id }; return; }
     if (h && h.type === 'node') { this.sel = { type: 'node', ids: [], id: h.o.id }; return; }
     if (!shift) this.clearSel();
@@ -276,9 +304,10 @@ export class UI {
       return;
     }
     if (sb && sb.type === 'building' && sb.team === PLAYER && Object.values(UNITS).some((s) => s.from.includes(sb.kind))) {
-      this.host.send({ type: 'rally', buildingId: sb.id, x: wx, y: wy, nodeId: n ? n.id : null });
+      const set = this.selBuildings();
+      this.host.send(set.length > 1 ? { type: 'rally', buildingIds: set.map((o) => o.id), x: wx, y: wy, nodeId: n ? n.id : null } : { type: 'rally', buildingId: sb.id, x: wx, y: wy, nodeId: n ? n.id : null });
       this.pings.push({ x: wx, y: wy, age: 0, color: '#7ac1ff' });
-      this.toast(n ? 'Rally point set on the resource: new serfs will gather.' : 'Rally point set.', 'info');
+      this.toast(n ? 'Rally point set on the resource: new serfs will gather.' : set.length > 1 ? `Rally point set for all ${set.length}.` : 'Rally point set.', 'info');
     }
   }
   tryPlace(keep) {
@@ -439,13 +468,21 @@ export class UI {
         const [wx, wy] = this.r.toWorld(this.mouse.x, this.mouse.y); this.hoverTX = Math.round(wx - s.size / 2); this.hoverTY = Math.round(wy - s.size / 2);
         break;
       }
-      case 'train': { const b = this.selEntity(); if (b) this.host.send(d.shift ? { type: 'train', buildingId: b.id, kind: d.kind, n: TRAIN.shift } : { type: 'train', buildingId: b.id, kind: d.kind }); break; }
-      case 'repeat': {   // T47: on, it repeats the last soldier queued (else the first it can train); off again on a second press
+      case 'train': {
         const b = this.selEntity(); if (!b) break;
-        const kind = b.repeat ? null : b.queue.at(-1)?.kind || d.kind;
-        if (this.host.send({ type: 'repeat', buildingId: b.id, kind })) this.toast(kind ? `Repeat: ${UNITS[kind].label} after ${UNITS[kind].label}, while you can pay and have room.` : 'Repeat training off.', 'info');
+        const set = this.selBuildings();   // several of a kind selected: each goes to the least busy (T49)
+        if (set.length > 1) this.host.send({ type: 'train', buildingIds: set.map((o) => o.id), kind: d.kind, n: d.shift ? TRAIN.shift : 1 });
+        else this.host.send(d.shift ? { type: 'train', buildingId: b.id, kind: d.kind, n: TRAIN.shift } : { type: 'train', buildingId: b.id, kind: d.kind });
         break;
       }
+      case 'repeat': {   // T47: on, it repeats the last soldier queued (else the first it can train); off again on a second press; for every building selected (T49)
+        const b = this.selEntity(); if (!b) break;
+        const set = this.selBuildings(), kind = b.repeat ? null : b.queue.at(-1)?.kind || d.kind;
+        const it = set.length > 1 ? { type: 'repeat', buildingIds: set.map((o) => o.id), kind } : { type: 'repeat', buildingId: b.id, kind };
+        if (this.host.send(it)) this.toast(kind ? `Repeat: ${UNITS[kind].label} after ${UNITS[kind].label}${set.length > 1 ? ` at all ${set.length}` : ''}, while you can pay and have room.` : 'Repeat training off.', 'info');
+        break;
+      }
+      case 'bpick': { if (this.sel.type === 'building' && this.sel.ids?.includes(+d.id)) { this.sel.id = +d.id; if (d.go) { const o = g.byId.get(+d.id); if (o) this.r.centerOn(o.x, o.y); } } break; }   // T49: show this one of the set
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
       case 'amove': this.setAmove(!this.amove); break;
@@ -854,6 +891,8 @@ export class UI {
       const st = BUILDINGS[b.kind], mine = b.team === PLAYER;
       html = `${portrait(b.kind, HOUSES[b.team].accent, b.team)}<div class="seltitle">${st.label}${b.kind === 'mine' && b.ore ? ` · <span style="color:${GOOD_COLOR[b.ore]}">${GOOD_LABEL[b.ore]}</span>` : ''} <small style="color:${HOUSES[b.team].accent};font-size:12px">${esc(HOUSES[b.team].short)}</small></div><div class="selsub">${esc(st.info)}</div>${b.town != null && g.byId.get(b.town) ? `<div class="hint">Part of the town of <b>${esc(g.byId.get(b.town).name)}</b>: it changes hands with the village.</div>` : ''}
         <div class="stat"><label>Health</label><div class="meter"><i class="hp" style="width:${(b.hp / b.maxHp) * 100}%"></i></div><span class="v">${Math.ceil(b.hp)}/${b.maxHp}</span></div>`;
+      const bset = mine && !memo ? this.selBuildings() : [];
+      if (bset.length > 1) html += `<div class="stat"><label>Selected</label><span>${bset.length} ${esc(plural(st.label).toLowerCase())}: each soldier goes to the least busy</span></div><div class="chips">${bset.map((o, i) => `<span class="chip x${o.id === b.id ? ' on' : ''}" data-act="bpick" data-id="${o.id}" data-go="1" data-tip="${encodeURIComponent(`<b>${esc(st.label)} ${i + 1}</b><br>${o.queue.length ? `${o.queue.length} in training: ${o.queue.map((q) => UNITS[q.kind].label).join(', ')}` : 'Idle'}${o.repeat ? `<br>Repeating ${UNITS[o.repeat].label}` : ''}<br>Click to show it and go there.`)}">${i + 1} · ${o.queue.length ? `${o.queue.length}/${TRAIN.queue}` : 'idle'}${o.repeat ? ' 🔁' : ''}</span>`).join('')}</div>`;   // (T49)
       if (memo) html += `<div class="selsub">Out of sight: as your folk last saw it ${g.time - memo.at < 60 ? 'moments' : Math.round((g.time - memo.at) / 60) + ' min'} ago. Send a scout to see it now.</div>`;
       if (b.built < 1) html += `<div class="stat"><label>Building</label><div class="meter"><i class="prog" style="width:${b.built * 100}%"></i></div><span class="v">${Math.floor(b.built * 100)}%</span></div><div class="selsub">Right-click with serfs to help.</div>`;
       if (mine && b.built >= 1 && st.pop) html += `<div class="stat"><label>Population</label><span>+${st.pop}</span></div>`;
@@ -951,7 +990,7 @@ export class UI {
       const afford = g.canAfford(PLAYER, s.cost), room = s.nopop || g.popUsed(PLAYER) < g.popCap(PLAYER);   // (a pack animal needs no room)
       const needs = s.tech && !g.hasTech(PLAYER, s.tech) ? TECH[s.tech].label : null;   // a siege engine waits on its research
       const tip = `<b>${s.label}</b><br><span class="info">${esc(s.info)}</span><br>HP ${s.hp} · dmg ${s.dmg}${s.range > 1.6 ? ' (ranged)' : ''} · speed ${s.speed}<br><span class="cost">${costText(s.cost, p)}</span> · ${s.time}s${room ? '' : '<br><span class="need">Population capped: raise cottages.</span>'}`;
-      html += this.btn('train', { off: !afford || !room || !!needs, glyph: GLYPH[k], art: k, name: s.label, sub: needs ? 'Locked' : costShort(s.cost), data: { kind: k }, tip: (needs ? tip + `<br><span class='need'>Research <b>${needs}</b> at an academy first.</span>` : tip) + `<br><span class='info'><b>Shift</b>+click queues ${TRAIN.shift}.</span>` });
+      html += this.btn('train', { off: !afford || !room || !!needs, glyph: GLYPH[k], art: k, name: s.label, sub: needs ? 'Locked' : costShort(s.cost), data: { kind: k }, tip: (needs ? tip + `<br><span class='need'>Research <b>${needs}</b> at an academy first.</span>` : tip) + `<br><span class='info'><b>Shift</b>+click queues ${TRAIN.shift}. Double-click a ${esc(BUILDINGS[b.kind].label.toLowerCase())} to train at every one on screen (Ctrl: the whole valley).</span>` });
     }
     // repeat training (T47): keeps one of a kind queued
     const first = kinds.find((k) => !UNITS[k].tech || g.hasTech(PLAYER, UNITS[k].tech)), rk = b.repeat || b.queue.at(-1)?.kind || first;

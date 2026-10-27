@@ -1,6 +1,7 @@
 // Train five and repeat training click-through (T47): serve the repo on :8123, then `node tools/train-smoke.cjs [shot.png]`. Raises a barracks by
 // the seat, Shift-clicks the Footman button (five queued, or as many as the purse allows), then presses Repeat (on, the panel's Repeat row shows)
-// and Repeat again (off); no errors, and the Repeat button fits a 1366x768 screen.
+// and Repeat again (off); no errors, and the Repeat button fits a 1366x768 screen. Then (T49) raises a second barracks, double-clicks
+// the first (both selected, the Selected row shows) and Shift-clicks Footman (five spread over the two).
 const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1366, height: 768 } });
@@ -25,5 +26,18 @@ const { chromium } = require('playwright');
   if (process.argv[2]) await p.screenshot({ path: process.argv[2] });
   await p.locator('button[data-act="repeat"]').first().click(); await p.waitForTimeout(400);
   console.log('after Repeat again', JSON.stringify(await q()));
+  // T49: a second barracks beside it; a double-click on the first selects both, a Shift-click on Footman spreads five over the two
+  const two = await p.evaluate(() => { const { game: g, ui, renderer } = window.__seven, k = g.byId.get(ui.sel.id);
+    k.queue.length = 0; const k2 = g.addBuilding('barracks', 0, k.tx + 5, k.ty, true); g.recomputeWalk(); ui.clearSel(); ui.sigCmd = ui.sigSel = ''; renderer.centerOn(k.x + 2, k.y);
+    const [sx, sy] = renderer.toScreen(k.x, k.y); const rc = document.getElementById('game').getBoundingClientRect(); return { k: k.id, k2: k2.id, sx: sx + rc.left, sy: sy + rc.top }; });
+  await p.waitForTimeout(400);
+  await p.mouse.dblclick(two.sx, two.sy); await p.waitForTimeout(500);
+  const picked = await p.evaluate(() => { const ui = window.__seven.ui; return { id: ui.sel.id, ids: ui.sel.ids, row: ([...document.querySelectorAll('.stat')].find((e) => /Selected/.test(e.textContent))?.textContent || '').replace(/\s+/g, ' ').trim() }; });
+  console.log('double-click selects both', JSON.stringify(picked), picked.ids.length === 2);
+  await p.locator('button[data-act="train"][data-kind="footman"]').first().click({ modifiers: ['Shift'] }); await p.waitForTimeout(400);
+  const spread = await p.evaluate((t) => { const g = window.__seven.game; return [g.byId.get(t.k).queue.length, g.byId.get(t.k2).queue.length]; }, two);
+  console.log('Shift-click spreads five', JSON.stringify(spread), spread[0] + spread[1] === 5 && Math.abs(spread[0] - spread[1]) <= 1);
+  if (picked.ids.length !== 2 || spread[0] + spread[1] !== 5) errs.push('T49 set training failed');
+  if (process.argv[3]) await p.screenshot({ path: process.argv[3] });
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length ? 1 : 0);
 })();

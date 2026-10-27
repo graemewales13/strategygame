@@ -9,7 +9,7 @@ import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
-import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN } from '../js/config.js';
+import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN, unitPlural, plural } from '../js/config.js';
 
 let _s = 777;
 Math.random = () => { _s = (_s + 0x6d2b79f5) >>> 0; let t = _s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -1684,6 +1684,42 @@ test('training (T47): Shift trains five as far as coin and room allow, with one 
   assert.equal(b.repeat, null);
   // the AI's own training is unchanged (it never sets repeat)
   assert.ok(g.buildings.every((x) => x.team === PLAYER || !x.repeat));
+});
+
+test('several buildings (T49): a set trains at the least busy, stops on coin with one message, repeat and rally for all; plurals read right (T-096)', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER], c = UNITS.footman.cost;
+  const bs = [0, 1, 2].map((i) => g.addBuilding('barracks', PLAYER, h.tx + 9 + i * 4, h.ty - 9, true));
+  const st = g.addBuilding('stable', PLAYER, h.tx + 9, h.ty - 14, true);
+  for (let i = 0; i < 6; i++) g.addBuilding('cottage', PLAYER, h.tx - 12 + i * 3, h.ty + 12, true);
+  Object.assign(p, Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v * 4])));
+  bs[0].queue.push({ kind: 'footman', t: 0 });   // the first is already busy
+  const ids = [...bs, st].map((b) => b.id);
+  const said = []; const log = g.log.bind(g); g.log = (team, m, k) => { said.push(m); return log(team, m, k); };
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'train', buildingIds: ids, kind: 'footman', n: 1 }), 1);
+  assert.deepEqual(bs.map((b) => b.queue.length), [1, 1, 0], 'one soldier: the first idle barracks, not the busy one');
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'train', buildingIds: ids, kind: 'footman', n: TRAIN.shift }), 3, 'three of five fit the purse');
+  assert.deepEqual(bs.map((b) => b.queue.length), [2, 2, 1], 'spread to the shortest queues');
+  assert.equal(st.queue.length, 0, 'a stable in the set takes no footmen');
+  assert.equal(said.length, 1, 'one message'); assert.match(said[0], /3 of 5 Footmen/);
+  // a tie goes to the one with less training left
+  bs[0].queue = [{ kind: 'footman', t: 0 }]; bs[1].queue = [{ kind: 'footman', t: UNITS.footman.time - 1 }]; bs[2].queue = [{ kind: 'footman', t: 0 }, { kind: 'footman', t: 0 }];
+  Object.assign(p, Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v])));
+  g.applyIntent({ team: PLAYER, type: 'train', buildingIds: bs.map((b) => b.id), kind: 'footman' });
+  assert.deepEqual(bs.map((b) => b.queue.length), [1, 2, 2], 'a tie: the one nearly done');
+  // a rival's building or a gone id in the list is ignored
+  const foe = g.addBuilding('barracks', 1, g.seatOf(1).tx + 9, g.seatOf(1).ty - 9, true);
+  assert.equal(g.trainSet(PLAYER, [foe.id, 99999], 'footman', 1), 0);
+  assert.equal(foe.queue.length, 0);
+  // repeat and rally for every building in the set
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'repeat', buildingIds: bs.map((b) => b.id), kind: 'footman' }), 3);
+  assert.ok(bs.every((b) => b.repeat === 'footman'));
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'repeat', buildingIds: bs.map((b) => b.id), kind: null }), 3);
+  assert.ok(bs.every((b) => !b.repeat));
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'rally', buildingIds: [...bs.map((b) => b.id), foe.id], x: h.x + 3, y: h.y + 3 }), 3, 'not the rival barracks');
+  assert.ok(bs.every((b) => b.rally && b.rally.x === h.x + 3) && !foe.rally);
+  // plurals (T-096: 'Spys', 'footmans')
+  assert.equal(unitPlural('spy'), 'Spies'); assert.equal(unitPlural('footman'), 'Footmen'); assert.equal(unitPlural('knight'), 'Knights');
+  assert.equal(plural('Barracks'), 'Barracks'); assert.equal(plural('Academy'), 'Academies');
 });
 
 console.log(`${passed} passed`);

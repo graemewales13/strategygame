@@ -433,8 +433,12 @@ export const STANCES = ['aggressive', 'defensive', 'hold', 'passive'];
 export const STANCE = { leash: 8, label: { aggressive: 'Aggressive', defensive: 'Defensive', hold: 'Hold ground', passive: 'No attack' } };
 // Shift-queued waypoints (T02): how many legs a march can hold after the one it is walking
 export const WAYPOINTS = 12;
-// Training (T47): a building's queue holds `queue`; Shift-click on a unit button asks for `shift` at once; Repeat keeps one queued
-export const TRAIN = { queue: 5, shift: 5 };
+// Training (T47): a building's queue holds `queue`; Shift-click on a unit button asks for `shift` at once; Repeat keeps one queued.
+// Several training buildings selected together (T49) train as one: at most `set` of them in one order.
+export const TRAIN = { queue: 5, shift: 5, set: 24 };
+// a unit kind's name for many of them, in words a player reads ('Footmen', 'Spies'; T-096: 'Spys' and 'footmans' were shown)
+export const plural = (l) => (/man$/.test(l) ? l.replace(/man$/, 'men') : /[^aeiou]y$/.test(l) ? l.replace(/y$/, 'ies') : /s$/.test(l) ? l : l + 's');
+export const unitPlural = (kind) => plural(UNITS[kind]?.label || kind);
 // Patrol (T39): the AI's home guard walks a round between its seat and its nearest held village at peace: `pair` soldiers at most, sent only
 // while `spare` stand idle at the seat, checked every `every` seconds; the village within `reach` tiles, else `out` tiles toward the middle.
 export const PATROL = { pair: 2, spare: 4, every: 20, reach: 26, out: 10 };
