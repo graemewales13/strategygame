@@ -9,6 +9,7 @@ import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
+import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN, unitPlural, plural } from '../js/config.js';
 
 let _s = 777;
@@ -1720,6 +1721,54 @@ test('several buildings (T49): a set trains at the least busy, stops on coin wit
   // plurals (T-096: 'Spys', 'footmans')
   assert.equal(unitPlural('spy'), 'Spies'); assert.equal(unitPlural('footman'), 'Footmen'); assert.equal(unitPlural('knight'), 'Knights');
   assert.equal(plural('Barracks'), 'Barracks'); assert.equal(plural('Academy'), 'Academies');
+});
+
+test('production overview (T40) and idle production (T50): rows, idle count, Repeat waiting is not idle, research progress, the keys', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  const base = idleProduction(g, PLAYER).map((r) => r.id);   // (the seat's keep, if it is one, stands idle at the start)
+  const [b1, b2] = [0, 1].map((i) => g.addBuilding('barracks', PLAYER, h.tx + 9 + i * 4, h.ty - 9, true));
+  const st = g.addBuilding('stable', PLAYER, h.tx + 9, h.ty - 14, true);
+  const site = g.addBuilding('archery', PLAYER, h.tx + 13, h.ty - 14, false);   // a site trains nothing yet: not idle
+  const tav = g.addBuilding('tavern', PLAYER, h.tx - 12, h.ty - 9, true);       // a quiet tavern is not production standing idle
+  const foe = g.addBuilding('barracks', 1, g.seatOf(1).tx + 9, g.seatOf(1).ty - 9, true);
+  const ids = (rs) => rs.map((r) => r.id);
+  assert.deepEqual(ids(idleProduction(g, PLAYER)).filter((id) => !base.includes(id)).sort((a, c) => a - c), [b1.id, b2.id, st.id].sort((a, c) => a - c), 'the two barracks and the stable stand idle');
+  assert.ok(!ids(productionRows(g, PLAYER)).some((id) => [site.id, tav.id, foe.id].includes(id)), 'no site, quiet tavern or rival building listed');
+  b1.queue.push({ kind: 'footman', t: UNITS.footman.time / 2 });
+  st.repeat = 'knight'; st.repeatWhy = 'Needs 40 more coin.';
+  tav.queue.push({ kind: 'spy', t: 0 });
+  const rows = productionRows(g, PLAYER), row = (b) => rows.find((r) => r.id === b.id);
+  assert.ok(!row(b1).idle && row(b1).queue.length === 1 && Math.abs(row(b1).queue[0].p - 0.5) < 1e-9, 'a busy barracks shows its soldier half done');
+  assert.ok(!row(st).idle && row(st).waiting === 'Needs 40 more coin.', 'Repeat waiting on coin is shown as waiting, not idle');
+  assert.ok(row(tav) && !row(tav).idle, 'a tavern training a spy is listed while busy');
+  assert.ok(row(b2).idle && rows.indexOf(row(b2)) < rows.indexOf(row(b1)), 'idle buildings come first');
+  assert.deepEqual(ids(idleProduction(g, PLAYER)).filter((id) => !base.includes(id)), [b2.id]);
+  assert.deepEqual(IDLE_KINDS, ['keep', 'barracks', 'archery', 'stable', 'workshop']);
+  // an armoury lists the kit in hand
+  const arm = g.addBuilding('armoury', PLAYER, h.tx - 12, h.ty - 14, true); arm.craft = [{ item: 'spear', t: GEAR.spear.time / 4 }];
+  const ar = productionRows(g, PLAYER).find((r) => r.id === arm.id);
+  assert.ok(ar && ar.queue[0].gear && ar.queue[0].label === 'Spears' && Math.abs(ar.queue[0].p - 0.25) < 1e-9 && !ar.idle);
+  // research: nothing, then a tech under way with its share and time left at the present rate
+  assert.equal(researchRow(g, PLAYER), null);
+  const key = Object.keys(TECH).find((k) => !TECH[k].needs.length);
+  p.research = key; p.learning = TECH[key].cost.learning / 4; p.learnRate = 2;
+  const rr = researchRow(g, PLAYER);
+  assert.equal(rr.key, key); assert.ok(Math.abs(rr.p - 0.25) < 1e-9); assert.equal(rr.left, Math.ceil(TECH[key].cost.learning * 0.75 / 2));
+  p.learnRate = 0; assert.equal(researchRow(g, PLAYER).left, null, 'no learning: no time given');
+  // the keys: both rebindable, on free defaults
+  const km = defaultKeys(); assert.equal(km.production, 'u'); assert.equal(km.idleProd, 'y');
+  assert.equal(actionOf(km, 'u'), 'production'); assert.equal(actionOf(km, 'y'), 'idleProd');
+  assert.equal(new Set(Object.values(km)).size, KEY_ACTIONS.length, 'no key does two things');
+  // the read never changes the match
+  const snap = JSON.stringify(g.buildings.map((b) => [b.id, b.queue, b.repeat]));
+  productionRows(g, PLAYER); idleProduction(g, PLAYER); researchRow(g, PLAYER);
+  assert.equal(JSON.stringify(g.buildings.map((b) => [b.id, b.queue, b.repeat])), snap);
+});
+
+test('README controls list every command of the key map with its default key (T-098)', () => {
+  const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8'), ctl = md.slice(md.indexOf('### Controls'), md.indexOf('\n## ', md.indexOf('### Controls')));
+  const missing = KEY_ACTIONS.filter((a) => !/^pan/.test(a.id) && !ctl.includes(`**${keyName(a.def)}**`)).map((a) => `${a.label} (${keyName(a.def)})`);
+  assert.deepEqual(missing, [], 'commands missing from the README controls table');
 });
 
 console.log(`${passed} passed`);

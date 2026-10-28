@@ -10,6 +10,7 @@ import {
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
+import { productionRows, idleProduction, researchRow } from './production.js';
 import { KEY_ACTIONS, loadKeys, saveKeys, rebind, actionOf, keyName, normKey, defaultKeys, GRID_KEYS, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
@@ -55,12 +56,12 @@ export class UI {
     const off = document.createElement('div'); off.id = 'offers'; $('field').appendChild(off);
     off.addEventListener('click', (e) => { const b = e.target.closest('button[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
     // panels are rebuilt several times a second; a rebuild between press and release would lose the click, so they hold still while a button is down
-    document.addEventListener('pointerdown', (e) => { if (e.button === 0 && e.target.closest?.('#offers, #cmdPanel, #selPanel, #council, #diplo, #houses, #topbar, #groupBar')) this.uiHold = true; }, true);
+    document.addEventListener('pointerdown', (e) => { if (e.button === 0 && e.target.closest?.('#offers, #cmdPanel, #selPanel, #council, #diplo, #houses, #topbar, #groupBar, #prodPanel')) this.uiHold = true; }, true);
     document.addEventListener('pointerup', () => { this.uiHold = false; }, true); window.addEventListener('blur', () => { this.uiHold = false; });
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = ''; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = ''; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -143,6 +144,8 @@ export class UI {
     $('btnIdle').onclick = () => this.selectIdleSerf();
     $('btnArmy').onclick = (e) => (e.shiftKey ? this.selectIdleArmy() : this.selectArmy());
     if ($('btnBell')) $('btnBell').onclick = () => this.ringBell();
+    if ($('btnProd')) $('btnProd').onclick = (e) => (e.shiftKey ? this.selectIdleProd() : this.toggleProd());   // (T40, T50)
+    $('prodPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
     $('groupBar').addEventListener('click', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, false); });
     $('groupBar').addEventListener('dblclick', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, true); });
     $('btnSpeed').onclick = () => { this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1; $('btnSpeed').textContent = this.speed + 'x'; };
@@ -357,6 +360,8 @@ export class UI {
       case 'idleSerf': this.selectIdleSerf(); break;
       case 'army': this.selectArmy(); break;
       case 'idleArmy': this.selectIdleArmy(); break;
+      case 'idleProd': this.selectIdleProd(); break;
+      case 'production': this.toggleProd(); break;
       case 'bell': this.ringBell(); break;
       case 'charge': if (fighters()) this.onCmd({ act: 'charge' }); break;
       case 'retreat': if (this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' }); break;
@@ -379,6 +384,7 @@ export class UI {
     if ($('btnCouncil')) $('btnCouncil').title = `The Council of Houses: stats, treaties, letters (${kn('council')})`;
     if ($('btnMap')) $('btnMap').title = `Campaign map (${kn('campaign')} / Tab)`;
     if ($('btnSpeed')) $('btnSpeed').title = `Game speed (${kn('slower')} slower, ${kn('faster')} faster)`;
+    if ($('btnProd')) $('btnProd').title = `Production overview (${kn('production')}): every queue, the research and idle training buildings; Shift-click or ${kn('idleProd')}: the next idle one`;
     if ($('btnBell')) $('btnBell').title = `Town bell (${kn('bell')}): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work`;
     this.sigCmd = ''; if ($('kGrid')) $('kGrid').checked = this.gridKeys;
     if ($('mKeysHint')) $('mKeysHint').textContent = `Right-click to move, gather, sack, infiltrate. Drag to select. ${this.gridKeys ? 'The arrows pan (Grid keys are on: the command card answers to Q W E R / A S D F / Z X C V).' : `${['panUp', 'panLeft', 'panDown', 'panRight'].map(kn).join('')} or the arrows pan.`} ${kn('campaign')} opens the campaign map. ${kn('alert')} jumps to where you are under attack. Esc returns here.`;
@@ -404,6 +410,7 @@ export class UI {
     this.toast(`${label(id)}: ${keyName(this.kmap[id])}${r.swapped ? ` (${label(r.swapped)} moves to ${keyName(this.kmap[r.swapped])})` : ''}.`, 'info');
   }
   onEsc() {
+    if (this.prodOpen) return this.toggleProd(false);
     if (this.councilOpen) { this.councilOpen = false; $('council').classList.add('hidden'); return; }
     if (this.placing) { this.placing = null; $('game').classList.remove('placing'); return; }
     if (this.campaignOpen) return this.closeCampaign();
@@ -441,6 +448,37 @@ export class UI {
     if (!idle.length) return this.toast('No idle soldiers.', 'info');
     this.setUnits(idle);
     this.idleArmyI = ((this.idleArmyI ?? -1) + 1) % idle.length; const u = idle[this.idleArmyI]; this.r.centerOn(u.x, u.y);
+  }
+  // Y (or Shift-click Prod): the next training building of ours standing idle, selected and centred (T50)
+  selectIdleProd() {
+    const idle = idleProduction(this.game, PLAYER);
+    if (!idle.length) return this.toast('No training building stands idle.', 'info');
+    this.idleProdI = ((this.idleProdI ?? -1) + 1) % idle.length;
+    this.showBuilding(idle[this.idleProdI].id);
+  }
+  showBuilding(id) { const b = this.game.byId.get(id); if (!b || b.hp <= 0) return; this.sel = { type: 'building', ids: [], id: b.id }; this.r.centerOn(b.x, b.y); }
+  // U (or the Prod button): every queue, Repeat and the research in one panel, idle training buildings first (T40, as in AoE IV)
+  toggleProd(open = !this.prodOpen) { this.prodOpen = open; this.sigProd = ''; $('prodPanel').classList.toggle('hidden', !open); this.renderProd(); }
+  prodHtml() {
+    const g = this.game, rows = productionRows(g, PLAYER), res = researchRow(g, PLAYER), idle = rows.filter((r) => r.idle).length;
+    const bar = (p) => `<span class="pbar"><span style="width:${Math.round(p * 100)}%"></span></span>`;
+    let html = `<div class="phead"><b>Production</b><span>${idle ? `<b class="pidle">${idle} idle</b> · ${keyName(this.kmap.idleProd)} goes to the next` : 'nothing idle'}</span><button class="dx" data-act="prodclose" title="Close (Esc)">×</button></div>`;
+    const acad = g.hasBuilding(PLAYER, 'academy');
+    html += `<div class="prow" ${acad ? `data-act="prodres"` : ''} data-tip="${encodeURIComponent('<b>Research</b><br>What your academies study; learning comes from academies, scholars and abbeys. Click to show an academy.')}"><span class="pname">${uiImg('tech', res?.key || '', '✎')} Research</span>${res ? `<span class="pq">${esc(res.label)} ${bar(res.p)} ${Math.round(res.p * 100)}%${res.left != null ? ` · ~${res.left}s` : ' · <b class="pidle">no learning</b>'}</span>` : `<span class="pq">${acad ? '<b class="pidle">nothing under way</b>: choose at an academy' : 'no academy yet'}</span>`}</div>`;
+    if (!rows.length) html += '<div class="hint">No training buildings yet. Raise a barracks, archery range or stable; the keep trains serfs and scouts.</div>';
+    for (const r of rows) {
+      const q = r.queue.map((x, i) => `<span class="pslot" title="${esc(x.label)}">${x.gear ? uiImg('gear', x.kind, '⚒') : icon(x.kind, GLYPH[x.kind] || x.label[0])}${i === 0 ? bar(x.p) : ''}</span>`).join('');
+      const state = r.idle ? '<b class="pidle">idle</b>' : r.waiting ? `<b class="pwait">🔁 waiting: ${esc(r.waiting)}</b>` : r.repeat ? `🔁 ${esc(UNITS[r.repeat].label)}` : '';
+      html += `<div class="prow${r.idle ? ' idle' : ''}${this.sel.type === 'building' && this.sel.id === r.id ? ' on' : ''}" data-act="prodgo" data-id="${r.id}" data-tip="${encodeURIComponent(`<b>${esc(r.label)}</b><br>${r.queue.length ? r.queue.map((x) => esc(x.label)).join(', ') : 'Nothing in hand.'}${r.repeat ? `<br>Repeating ${esc(UNITS[r.repeat].label)}` : ''}<br>Click to select it and go there.`)}"><span class="pname">${esc(r.label)}</span><span class="pq">${q}${state ? ` ${state}` : ''}</span></div>`;
+    }
+    return html;
+  }
+  renderProd() {
+    const n = idleProduction(this.game, PLAYER).length, badge = $('prodIdle');
+    if (badge) { const t = n ? String(n) : ''; if (badge.textContent !== t) { badge.textContent = t; badge.classList.toggle('hidden', !n); } }
+    if (!this.prodOpen) return;
+    const html = this.prodHtml();
+    if (html !== this.sigProd) { this.sigProd = html; const el = $('prodPanel'), top = el.scrollTop; el.innerHTML = html; el.scrollTop = top; }
   }
   // a village of ours: the spies we posted there as watchmen, and whether someone has lately been turning its folk (T-058: both were unseen)
   watchRow(v) {
@@ -482,6 +520,9 @@ export class UI {
         if (this.host.send(it)) this.toast(kind ? `Repeat: ${UNITS[kind].label} after ${UNITS[kind].label}${set.length > 1 ? ` at all ${set.length}` : ''}, while you can pay and have room.` : 'Repeat training off.', 'info');
         break;
       }
+      case 'prodgo': this.showBuilding(+d.id); break;   // (T40)
+      case 'prodres': { const a = g.kindB(PLAYER, 'academy').find((b) => b.built >= 1 && b.hp > 0); if (a) this.showBuilding(a.id); break; }
+      case 'prodclose': this.toggleProd(false); break;
       case 'bpick': { if (this.sel.type === 'building' && this.sel.ids?.includes(+d.id)) { this.sel.id = +d.id; if (d.go) { const o = g.byId.get(+d.id); if (o) this.r.centerOn(o.x, o.y); } } break; }   // T49: show this one of the set
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
@@ -750,7 +791,7 @@ export class UI {
     g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     // (not while a button is held down: a panel rebuilt under the pointer loses the click)
-    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); if (this.diploOpen != null) this.renderDiplo(); }
+    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
