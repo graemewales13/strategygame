@@ -10,6 +10,8 @@ import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/dip
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
+import { labour, stores, noteStock, netRates, coinBySource, jobOf, JOBS } from '../js/economy.js';
+import { MARKET_RADIUS, HAUL, SHELF_CAP, WAREHOUSE_CAP } from '../js/config.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN, unitPlural, plural } from '../js/config.js';
 
 let _s = 777;
@@ -1763,6 +1765,67 @@ test('production overview (T40) and idle production (T50): rows, idle count, Rep
   const snap = JSON.stringify(g.buildings.map((b) => [b.id, b.queue, b.repeat]));
   productionRows(g, PLAYER); idleProduction(g, PLAYER); researchRow(g, PLAYER);
   assert.equal(JSON.stringify(g.buildings.map((b) => [b.id, b.queue, b.repeat])), snap);
+});
+
+test('economy ledger (T51): serfs by work, mine crews, farms, stores, net rates a minute, the key', () => {
+  const g = mk(); const h = g.seatOf(PLAYER), p = g.players[PLAYER];
+  for (const u of g.units) if (u.team === PLAYER && u.kind === 'serf') u.hp = 0;   // start from no serfs
+  const serf = (dx) => g.addUnit('serf', PLAYER, h.x + dx, h.y + 6);
+  const node = (k) => g.resources.find((n) => n.kind === k && n.amount > 0);
+  const tree = node('tree'), [a, b, c, d, e, f] = [0, 1, 2, 3, 4, 5].map(serf);
+  a.task = { type: 'gather', nodeId: tree.id };
+  b.task = { type: 'return', resume: tree.id }; b.carry = { kind: 'wood', n: 3 };
+  c.task = { type: 'build', targetId: 0 };
+  d.task = { type: 'idle' };
+  e.task = { type: 'move' };
+  f.inside = 1; f.task = { type: 'idle' };
+  const rival = g.addUnit('serf', 1, h.x, h.y + 8); rival.task = { type: 'idle' };
+  const lab = labour(g, PLAYER), n = (j) => lab.jobs[j].length;
+  assert.equal(lab.serfs, 6, 'only our living serfs');
+  assert.deepEqual([n('wood'), n('build'), n('idle'), n('walking'), n('shelter')], [2, 1, 1, 1, 1], 'a walker home with timber still counts as timber');
+  assert.equal(JOBS.reduce((s, j) => s + n(j), 0), 6, 'every serf in exactly one row');
+  if (node('berry')) { a.task = { type: 'gather', nodeId: node('berry').id }; assert.equal(jobOf(g, a), 'food'); }
+  // mines: the crew the game counts, emptiest first; a farm
+  const ore = g.resources.find((r) => r.kind === 'iron' || r.kind === 'stone');
+  const m = g.addBuilding('mine', PLAYER, ore.x - 1, ore.y - 1, true); m.nodeIds = [ore.id]; m.ore = ore.kind; m._crew = { n: 3, list: [], power: 1, villages: 1 };
+  const m2 = g.addBuilding('mine', PLAYER, ore.x - 1, ore.y + 30, true); m2.nodeIds = [ore.id]; m2._crew = null;
+  const farm = g.addBuilding('farm', PLAYER, h.tx - 9, h.ty + 9, true);
+  const l2 = labour(g, PLAYER);
+  assert.deepEqual(l2.mines.map((x) => [x.id, x.n, x.mineral]), [[m2.id, 0, ore.kind], [m.id, 3, ore.kind]], 'a mine nobody digs first');
+  assert.ok(l2.farms.includes(farm.id));
+  // stores: markets then warehouses, goods most first, a rival's left out
+  const mk1 = g.addBuilding('market', PLAYER, h.tx + 7, h.ty + 7, true); mk1.stock = { food: 12.7, iron: 30, wood: 0 };
+  const wh = g.addBuilding('warehouse', PLAYER, h.tx + 7, h.ty + 12, true); wh.stock = { stone: 5 };
+  g.addBuilding('market', 1, g.seatOf(1).tx + 7, g.seatOf(1).ty + 7, true).stock = { food: 99 };
+  const st = stores(g, PLAYER).filter((x) => x.id === mk1.id || x.id === wh.id);
+  assert.deepEqual(st.map((x) => [x.kind, x.goods]), [['market', [['iron', 30], ['food', 12]]], ['warehouse', [['stone', 5]]]]);
+  assert.ok(stores(g, PLAYER).every((x) => g.byId.get(x.id).team === PLAYER));
+  // net rates: none before 20 s; then the change a minute; a new match starts the notes again
+  const hist = []; p.food = 100; p.gold = 50;
+  noteStock(hist, g, PLAYER); assert.equal(netRates(hist, g, PLAYER), null);
+  g.time += 3; noteStock(hist, g, PLAYER); assert.equal(hist.length, 1, 'notes no more often than every few seconds');
+  g.time += 27; p.food = 130; p.gold = 35; noteStock(hist, g, PLAYER);
+  const r = netRates(hist, g, PLAYER);
+  assert.ok(Math.abs(r.food - 60) < 1e-9 && Math.abs(r.gold + 30) < 1e-9, 'grain +60 and coin -30 a minute over 30 s');
+  for (let i = 0; i < 40; i++) { g.time += 5; noteStock(hist, g, PLAYER); }
+  assert.ok(g.time - hist[0].t <= 125, 'only the last two minutes are kept');
+  const g2 = mk({ seed: 9 }); noteStock(hist, g2, PLAYER); assert.equal(hist.length, 1, 'another match: notes start again');
+  p.inc = { tax: 0.5, trade: 0.001 }; assert.deepEqual(coinBySource(g, PLAYER), [['tax', 30]], 'coin a minute by source, trifles left out');
+  // the key: rebindable, free, in the README (the README test checks that)
+  const km = defaultKeys(); assert.equal(km.ledger, 'l'); assert.equal(actionOf(km, 'l'), 'ledger');
+  assert.equal(new Set(Object.values(km)).size, KEY_ACTIONS.length, 'no key does two things');
+  // reading changes nothing
+  const snap = JSON.stringify([g.units.map((u) => [u.id, u.task]), p.food, p.gold]);
+  labour(g, PLAYER); stores(g, PLAYER); netRates(hist, g, PLAYER);
+  assert.equal(JSON.stringify([g.units.map((u) => [u.id, u.task]), p.food, p.gold]), snap);
+});
+
+test('README economy numbers match the rules (T-100): consumers, haul, shelves and warehouses', () => {
+  const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8'), line = (k) => md.split('\n').find((l) => l.includes(k)) || '';
+  assert.ok(line('**Consumers**').includes(`within ${MARKET_RADIUS} tiles`), 'the Consumers row names the market radius');
+  assert.ok(line('**Haul**').includes(`full within ${HAUL.free} tiles, ${Math.round(HAUL.min * 100)}% at ${HAUL.far}+`), 'the Haul row matches HAUL');
+  const shelf = line('A market shelf holds');
+  assert.ok(shelf.includes(`holds ${SHELF_CAP} of each`) && shelf.includes(`(${SHELF_CAP + 40} with a warehouse`) && shelf.includes(`within ${MARKET_RADIUS} tiles`) && shelf.includes(`up to ${WAREHOUSE_CAP} of each`), 'the shelf note matches SHELF_CAP, MARKET_RADIUS and WAREHOUSE_CAP');
 });
 
 test('README controls list every command of the key map with its default key (T-098)', () => {

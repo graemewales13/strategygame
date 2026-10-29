@@ -27,6 +27,7 @@ export const KEY_ACTIONS = [
   { id: 'standings', label: 'Standings', def: 't', group: 'Panels' },
   { id: 'econ', label: 'Economy overlay', def: 'e', group: 'Panels' },
   { id: 'production', label: 'Production overview', def: 'u', group: 'Panels' },
+  { id: 'ledger', label: 'Economy ledger', def: 'l', group: 'Panels' },
   { id: 'pause', label: 'Pause', def: 'p', group: 'Game' },
   { id: 'faster', label: 'Faster', def: '=', group: 'Game' },
   { id: 'slower', label: 'Slower', def: '-', group: 'Game' },

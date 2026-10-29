@@ -11,6 +11,7 @@ import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
 import { productionRows, idleProduction, researchRow } from './production.js';
+import { labour, stores, noteStock, netRates, coinBySource, JOBS, JOB_LABEL } from './economy.js';
 import { KEY_ACTIONS, loadKeys, saveKeys, rebind, actionOf, keyName, normKey, defaultKeys, GRID_KEYS, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
@@ -35,7 +36,7 @@ const GLYPH = {
 const costText = (cost, p) => ALL_GOODS.filter((r) => cost[r]).map((r) => `<span class="${p && (p[r] || 0) < cost[r] ? 'need' : ''}">${cost[r]} ${GOOD_LABEL[r].toLowerCase()}</span>`).join(' · ') || 'free';
 const SHORT = { food: 'g', wood: 't', gold: 'c', stone: 's' };
 const costShort = (cost) => Object.entries(cost).filter(([, v]) => v).map(([k, v]) => `${v}${SHORT[k] || k[0]}`).join(' ');
-const dot = (g) => `<i class="gd" style="background:${GOOD_COLOR[g]}"></i>`;
+const dot = (g) => uiImg('goods', g, `<i class="gd" style="background:${GOOD_COLOR[g]}"></i>`, 'gdi');   // (a painted goods icon once delivered: ARTREQUIREMENTS priority 24)
 
 export class UI {
   constructor({ game, host, renderer, minimap, cfg }) {
@@ -61,7 +62,7 @@ export class UI {
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = ''; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -146,6 +147,8 @@ export class UI {
     if ($('btnBell')) $('btnBell').onclick = () => this.ringBell();
     if ($('btnProd')) $('btnProd').onclick = (e) => (e.shiftKey ? this.selectIdleProd() : this.toggleProd());   // (T40, T50)
     $('prodPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
+    if ($('btnLedger')) $('btnLedger').onclick = () => this.toggleLedger();   // (T51)
+    $('ledgerPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
     $('groupBar').addEventListener('click', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, false); });
     $('groupBar').addEventListener('dblclick', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, true); });
     $('btnSpeed').onclick = () => { this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1; $('btnSpeed').textContent = this.speed + 'x'; };
@@ -362,6 +365,7 @@ export class UI {
       case 'idleArmy': this.selectIdleArmy(); break;
       case 'idleProd': this.selectIdleProd(); break;
       case 'production': this.toggleProd(); break;
+      case 'ledger': this.toggleLedger(); break;
       case 'bell': this.ringBell(); break;
       case 'charge': if (fighters()) this.onCmd({ act: 'charge' }); break;
       case 'retreat': if (this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' }); break;
@@ -385,6 +389,7 @@ export class UI {
     if ($('btnMap')) $('btnMap').title = `Campaign map (${kn('campaign')} / Tab)`;
     if ($('btnSpeed')) $('btnSpeed').title = `Game speed (${kn('slower')} slower, ${kn('faster')} faster)`;
     if ($('btnProd')) $('btnProd').title = `Production overview (${kn('production')}): every queue, the research and idle training buildings; Shift-click or ${kn('idleProd')}: the next idle one`;
+    if ($('btnLedger')) $('btnLedger').title = `Economy ledger (${kn('ledger')}): who works at what, each mine's crew, how every good moves a minute, what each market and warehouse holds`;
     if ($('btnBell')) $('btnBell').title = `Town bell (${kn('bell')}): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work`;
     this.sigCmd = ''; if ($('kGrid')) $('kGrid').checked = this.gridKeys;
     if ($('mKeysHint')) $('mKeysHint').textContent = `Right-click to move, gather, sack, infiltrate. Drag to select. ${this.gridKeys ? 'The arrows pan (Grid keys are on: the command card answers to Q W E R / A S D F / Z X C V).' : `${['panUp', 'panLeft', 'panDown', 'panRight'].map(kn).join('')} or the arrows pan.`} ${kn('campaign')} opens the campaign map. ${kn('alert')} jumps to where you are under attack. Esc returns here.`;
@@ -411,6 +416,7 @@ export class UI {
   }
   onEsc() {
     if (this.prodOpen) return this.toggleProd(false);
+    if (this.ledgerOpen) return this.toggleLedger(false);
     if (this.councilOpen) { this.councilOpen = false; $('council').classList.add('hidden'); return; }
     if (this.placing) { this.placing = null; $('game').classList.remove('placing'); return; }
     if (this.campaignOpen) return this.closeCampaign();
@@ -458,7 +464,7 @@ export class UI {
   }
   showBuilding(id) { const b = this.game.byId.get(id); if (!b || b.hp <= 0) return; this.sel = { type: 'building', ids: [], id: b.id }; this.r.centerOn(b.x, b.y); }
   // U (or the Prod button): every queue, Repeat and the research in one panel, idle training buildings first (T40, as in AoE IV)
-  toggleProd(open = !this.prodOpen) { this.prodOpen = open; this.sigProd = ''; $('prodPanel').classList.toggle('hidden', !open); this.renderProd(); }
+  toggleProd(open = !this.prodOpen) { if (open && this.ledgerOpen) this.toggleLedger(false); this.prodOpen = open; this.sigProd = ''; $('prodPanel').classList.toggle('hidden', !open); this.renderProd(); }
   prodHtml() {
     const g = this.game, rows = productionRows(g, PLAYER), res = researchRow(g, PLAYER), idle = rows.filter((r) => r.idle).length;
     const bar = (p) => `<span class="pbar"><span style="width:${Math.round(p * 100)}%"></span></span>`;
@@ -479,6 +485,50 @@ export class UI {
     if (!this.prodOpen) return;
     const html = this.prodHtml();
     if (html !== this.sigProd) { this.sigProd = html; const el = $('prodPanel'), top = el.scrollTop; el.innerHTML = html; el.scrollTop = top; }
+  }
+  // L (or the Ledger button): the economy in one panel (T51, as AoE IV's economic panel): serfs by work, mine crews, goods a minute, stores
+  toggleLedger(open = !this.ledgerOpen) { if (open && this.prodOpen) this.toggleProd(false); this.ledgerOpen = open; this.sigLedger = ''; $('ledgerPanel').classList.toggle('hidden', !open); this.renderLedger(); }
+  ledgerHtml() {
+    const g = this.game, p = g.players[PLAYER], lab = labour(g, PLAYER), rates = netRates(this.econHist, g, PLAYER), coin = coinBySource(g, PLAYER);
+    const tip = (t) => `data-tip="${encodeURIComponent(t)}"`, num = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v) >= 10 ? Math.round(Math.abs(v)) : Math.abs(v).toFixed(1)}`;
+    const bar = (n, of) => `<span class="pbar"><span style="width:${of ? Math.round((n / of) * 100) : 0}%"></span></span>`;
+    const idle = lab.jobs.idle.length;
+    let html = `<div class="phead"><b>Ledger</b><span>${lab.serfs} ${lab.serfs === 1 ? 'serf' : 'serfs'}${idle ? ` · <b class="pidle">${idle} idle</b>` : ''}</span><button class="dx" data-act="ledclose" title="Close (Esc)">×</button></div>`;
+    html += '<div class="lsec">Serfs at work</div>';
+    if (!lab.serfs) html += '<div class="hint">No serfs. The keep trains them.</div>';
+    for (const j of JOBS) {
+      const n = lab.jobs[j].length; if (!n && j !== 'idle') continue;
+      html += `<div class="prow${j === 'idle' && n ? ' idle' : ''}" ${n ? `data-act="ledjob" data-job="${j}"` : ''} ${tip(`<b>${JOB_LABEL[j]}</b><br>${n ? `Click to select them; again for the next.` : 'None.'}`)}><span class="pname">${JOB_LABEL[j]}</span><span class="pq">${bar(n, lab.serfs)} <b>${n}</b></span></div>`;
+    }
+    if (lab.farms.length) html += `<div class="prow" data-act="ledfarm" ${tip('<b>Farms</b><br>Farms grow grain by themselves; a mill beside them helps. Click for the next farm.')}><span class="pname">${dot('food')} Farms</span><span class="pq">${lab.farms.length} growing grain</span></div>`;
+    if (lab.mines.length) {
+      html += `<div class="lsec">Mines <small>(dug by the folk of villages within ${MINE_JOBS.r} tiles)</small></div>`;
+      for (const m of lab.mines) {
+        const what = m.mineral ? GOOD_LABEL[m.mineral] : 'Mine', state = m.spent ? '<b class="pwait">worked out</b>' : m.n ? `${bar(m.n, m.max)} ${m.n}/${m.max} diggers` : '<b class="pidle">no diggers: no village in reach</b>';
+        html += `<div class="prow${!m.spent && !m.n ? ' idle' : ''}${this.sel.type === 'building' && this.sel.id === m.id ? ' on' : ''}" data-act="ledgo" data-id="${m.id}" ${tip(`<b>${esc(what)} mine</b><br>Click to select it and go there.`)}><span class="pname">${m.mineral ? dot(m.mineral) : ''} ${esc(what)}</span><span class="pq">${state}</span></div>`;
+      }
+    }
+    html += `<div class="lsec">Goods <small>${rates ? 'a minute, net, over the last two minutes' : '(rates after half a minute)'}</small></div>`;
+    for (const k of ALL_GOODS) {
+      const have = Math.floor(p[k] || 0), r = rates?.[k] || 0; if (!have && Math.abs(r) < 0.05 && k !== 'food' && k !== 'wood' && k !== 'gold') continue;
+      const coinTip = k === 'gold' && coin.length ? `<br>Earned a minute: ${coin.map(([s, v]) => `${s} ${Math.round(v)}`).join(', ')}` : '';
+      html += `<div class="prow lgood" ${tip(`<b>${GOOD_LABEL[k]}</b><br>${have} in store${rates ? `; ${num(r)} a minute after what was spent` : ''}.${coinTip}`)}><span class="pname">${dot(k)} ${GOOD_LABEL[k]}</span><span class="pq"><b>${have}</b>${rates ? ` <span class="${r > 0.05 ? 'lup' : r < -0.05 ? 'ldown' : 'lflat'}">${num(r)}/min</span>` : ''}</span></div>`;
+    }
+    const st = stores(g, PLAYER);
+    if (st.length) {
+      html += '<div class="lsec">Markets and warehouses</div>';
+      for (const s of st) {
+        const label = BUILDINGS[s.kind].label, goods = s.goods.slice(0, 4).map(([k, n]) => `${dot(k)}${n}`).join(' ') || '<i>empty</i>';
+        html += `<div class="prow${this.sel.type === 'building' && this.sel.id === s.id ? ' on' : ''}" data-act="ledgo" data-id="${s.id}" ${tip(`<b>${label}</b><br>${s.goods.length ? s.goods.map(([k, n]) => `${GOOD_LABEL[k]} ${n}`).join(', ') : 'Nothing on hand.'}<br>Click to select it and go there.`)}><span class="pname">${label}</span><span class="pq">${goods}</span></div>`;
+      }
+    }
+    return html;
+  }
+  renderLedger() {
+    noteStock(this.econHist ||= [], this.game, PLAYER);   // (noted while closed too, so the rates are ready when it opens)
+    if (!this.ledgerOpen) return;
+    const html = this.ledgerHtml();
+    if (html !== this.sigLedger) { this.sigLedger = html; const el = $('ledgerPanel'), top = el.scrollTop; el.innerHTML = html; el.scrollTop = top; }
   }
   // a village of ours: the spies we posted there as watchmen, and whether someone has lately been turning its folk (T-058: both were unseen)
   watchRow(v) {
@@ -523,6 +573,16 @@ export class UI {
       case 'prodgo': this.showBuilding(+d.id); break;   // (T40)
       case 'prodres': { const a = g.kindB(PLAYER, 'academy').find((b) => b.built >= 1 && b.hp > 0); if (a) this.showBuilding(a.id); break; }
       case 'prodclose': this.toggleProd(false); break;
+      case 'ledgo': this.showBuilding(+d.id); break;   // (T51)
+      case 'ledclose': this.toggleLedger(false); break;
+      case 'ledjob': {   // every serf at this work selected, the camera on the next of them at each click
+        const ids = labour(g, PLAYER).jobs[d.job] || [], us = ids.map((id) => g.byId.get(id)).filter((u) => u && u.hp > 0);
+        if (!us.length) break;
+        this.setUnits(us.filter((u) => !u.inside).length ? us.filter((u) => !u.inside) : us);
+        const L = (this.ledgerI ||= {}), i = L[d.job] = ((L[d.job] ?? -1) + 1) % us.length, u = us[i]; this.r.centerOn(u.x, u.y);
+        break;
+      }
+      case 'ledfarm': { const ids = labour(g, PLAYER).farms; if (!ids.length) break; const L = (this.ledgerI ||= {}), i = L.farm = ((L.farm ?? -1) + 1) % ids.length; this.showBuilding(ids[i]); break; }
       case 'bpick': { if (this.sel.type === 'building' && this.sel.ids?.includes(+d.id)) { this.sel.id = +d.id; if (d.go) { const o = g.byId.get(+d.id); if (o) this.r.centerOn(o.x, o.y); } } break; }   // T49: show this one of the set
       case 'cancel': { const b = this.selEntity(); if (b) this.host.send({ type: 'cancel', buildingId: b.id, index: +d.i }); break; }
       case 'stop': this.host.send({ type: 'stop', ids: this.selUnits().map((u) => u.id) }); break;
@@ -791,7 +851,7 @@ export class UI {
     g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     // (not while a button is held down: a panel rebuilt under the pointer loses the click)
-    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); if (this.diploOpen != null) this.renderDiplo(); }
+    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); this.renderLedger(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }

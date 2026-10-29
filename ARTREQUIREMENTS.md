@@ -8,7 +8,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 
 **The character list is done.** Delivered 2026-10-19: the ram in two parts (13), thirteen order icons (14), walk cycles for every walking role (15), the watchman mark (16), the disguise mark (17), ore deposits per mineral (18), the siege line (13b), the women among the serfs, and the Scottish recruit without a kilt. Egyptian knights and kings stay chariots, so they have no walk cycle. An armed soldier still strides in code, from the still figure of his kit.
 
-**Open (2026-10-26): priority 23, the repeat-training icon** (one 128x128 order icon for the new Repeat button on every training building's card; it shows 🔁 until then). **Open (2026-10-24): priority 22, the explore order icon** (one 128x128 order icon for the new Explore button on a scout's card; it shows 🧭 until then). **Open (2026-10-21): priority 21, the patrol order icon** (one 128x128 order icon for the new Patrol button; it shows ⟲ until then). **Open (2026-10-20): priority 20, the town bell icon** (one 128x128 order icon for the new Bell button; the button shows 🔔 until then). **Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
+**Open (2026-10-29): priority 24, ten goods icons** (128x128 each, one per good: grain, timber, coin, stone, copper, iron, coal, silver, steel, fine ware; for the new economy ledger, the stockpile bar and every market row; each shows a coloured square until then). **Open (2026-10-26): priority 23, the repeat-training icon** (one 128x128 order icon for the new Repeat button on every training building's card; it shows 🔁 until then). **Open (2026-10-24): priority 22, the explore order icon** (one 128x128 order icon for the new Explore button on a scout's card; it shows 🧭 until then). **Open (2026-10-21): priority 21, the patrol order icon** (one 128x128 order icon for the new Patrol button; it shows ⟲ until then). **Open (2026-10-20): priority 20, the town bell icon** (one 128x128 order icon for the new Bell button; the button shows 🔔 until then). **Open (2026-10-19): priority 19, walk cycles for the armed soldiers.** A soldier who carries Armoury kit (spear, sword, heavy armour, longbow, crossbow, lance) is drawn from his kit's still figure, so he is the one person in the valley who still strides in code. Four frames for each of the six kit figures, all eight peoples (192 files; 168 without the Egyptian chariot lance). See priority 19 below.
 
 | Order | New characters | Peoples | Files | Count | Brief |
 |---|---|---|---|---|---|
@@ -31,6 +31,7 @@ Written 2026-10-08 for the `grok` branch. Updated 2026-10-11: priorities 1 to 4 
 | 17 | **Patrol order icon** for the new Patrol button (T39) | shared | `assets/shared/ui/orders/patrol.png` | 1 | priority 21 — **open**, requested 2026-10-21 |
 | 18 | **Explore order icon** for the new Explore button on a scout's card (T45) | shared | `assets/shared/ui/orders/explore.png` | 1 | priority 22 — **open**, requested 2026-10-24 |
 | 19 | **Repeat-training icon** for the new Repeat button on a training building's card (T47) | shared | `assets/shared/ui/orders/repeat.png` | 1 | priority 23 — **open**, requested 2026-10-26 |
+| 20 | **Goods icons**: one per good, for the economy ledger (T51), the stockpile bar, market shelves and trade boards | shared | `assets/shared/ui/goods/<good>.png` for `food`, `wood`, `gold`, `stone`, `copper`, `iron`, `coal`, `silver`, `steel`, `ware` | 10 | priority 24 — **open**, requested 2026-10-29 |
 
 Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`, `romans`, `scottish`, `british`, `mongols`, `vikings`, `byzantines`, `persians`. Dress for every people and tier is in **How each people really looked** in the character guide.
 
@@ -69,6 +70,8 @@ Paths are under `assets/factions/<people>/`, with `<people>` one of `egyptians`,
 | — | Pack animals per people: donkey, Bactrian camel, camel (T-063, 2026-10-16) | **No painting needed.** `assets/shared/units/donkey.png`, `bactrian.png`, `dromedary.png` were already painted; the British and Scots now use the donkey |
 | — | Key rebinding (T03, 2026-10-16) | **No painting needed.** A text list in Options |
 | — | Control groups on the HUD (T36, 2026-10-18): a row of chips over the minimap | **No painting needed.** Each chip shows the existing unit card of the kind most in the group (the glyph where a kind has no card), with the number and count printed over it; the fight flash is drawn in CSS |
+| 24 | **Goods icons** (10, shared) | **Requested** 2026-10-29 (T51). Every good shows a coloured square (`.gd`, `GOOD_COLOR`) in the ledger, the stockpile bar, market shelves and trade boards; `dot()` in `js/ui.js` already asks for `uiArt('goods', key)` and draws the painting at 15 px when there is one. Not probed until a `goods: ALL_GOODS` group is added to `UI_KEYS` in `js/art.js` |
+| — | Economy ledger (T51, 2026-10-29): a Ledger button under the minimap and a panel of serfs by work, mine crews, goods a minute and stores | **No painting needed beyond priority 24.** Rows are text; the Ledger button is text like Home, Idle, Army, Bell and Prod (the six now sit in two rows of three); the up and down rates are coloured in CSS |
 | — | Production overview and idle production count (T40, T50, 2026-10-28): a Prod button under the minimap and a panel of every queue | **No painting needed.** The panel's rows are text with the existing unit cards and kit icons (`uiArt('gear', ...)`, `uiArt('tech', ...)`, glyphs where none is painted); the Prod button is text like Home, Idle, Army and Bell; its red idle count is drawn in CSS |
 | — | Several training buildings at once (T49, 2026-10-27): double-click a barracks selects every one on screen | **No painting needed.** Each building in the set wears the existing dashed selection outline; the panel's Selected row and its queue chips are text; the Repeat button keeps priority 23's icon request |
 | — | Villages remembered under fog (T46, 2026-10-25): lord, folk and loyalty as last seen | **No painting needed.** Each village's own painting with the remembered lord's footing and banners, dimmed as before; the panel note is text |
@@ -363,6 +366,7 @@ Do not: full Victorian kilts and tartan everywhere, Braveheart face paint, horne
 6. **Command-card icons need a clear corner** (2026-10-17). The instruction set's Goods icon template centres the subject with a 4 px margin; the game now prints a hotkey letter in the top-right corner of every command-card button when Grid keys are on. Paint button icons (orders, stances, formations, any future train or build button art) with the subject weighted to the lower left and the top-right eighth empty.
 7. **Every figure that walks needs its own stride** (2026-10-19). The instruction set asks for one still per unit. The game now plays four walk frames per figure, and any figure without them (today the six Armoury kit figures, priority 19) strides in code and looks like a cut-out beside the rest. Any future person or mount (a new unit, a unique unit per people, T10) is delivered as a still plus `_walk1`-`_walk4`.
 8. **Drops are linted** (2026-10-19). `tools/art-lint.py` (CI) fails a file that is not RGBA, has a corner a quarter opaque or more (cards and portraits excepted), shows the key colour or a magenta rim on its soft edges, or is over twice the size of its kind. Run it before committing art.
+9. **Inline icons must read at 15 px** (2026-10-29). The instruction set sizes icons for buttons (shown at 24-32 px). Goods icons (priority 24) sit inside text rows of the ledger and the stockpile bar at about 15 px: paint one bold object with a clear silhouette and no fine detail that matters, and check it shrunk to 15 px before delivery.
 
 ## Priority 8: three new peoples (Vikings, Byzantines, Persians)
 
@@ -660,3 +664,26 @@ ORDER ICON, a small wooden weapon rack holding three identical ash-wood spears w
 ```
 
 Deliver: `assets/shared/ui/orders/repeat.png`. Wiring (Claude, on delivery): key it (`tools/chromakey.py`, `tools/defringe.py`), run `tools/art-lint.py`, and add `'repeat'` to `UI_KEYS.orders` in `js/art.js`; the button already asks for `uiArt('orders', 'repeat')`.
+
+## Priority 24: goods icons (10, new 2026-10-29)
+
+The new economy ledger (T51, key **L**) lists every good the house holds with how it moved a minute, and what each market and warehouse holds; the stockpile bar at the top, every market's shelf and every trade board list the same goods. Today each good is a small coloured square (grain crimson, timber brown, coin gold, and so on), which a new player cannot read without hovering. One icon per good, in the same set as the kit and research icons of priority 2: the **Goods icon** template, 128x128 px, readable at **15 px** (they sit inline in text rows, so the silhouette must carry it), neutral colours (no faction colour: goods are the same for every house), no text or letters. These are not command-card buttons, so the subject is centred with a 4 px margin (no clear corner needed). Keep each one's main colour close to its square today (`GOOD_COLOR` in `js/config.js`), so the ledger reads the same before and after.
+
+| Key | Good | Subject to paint |
+|---|---|---|
+| `food` | Grain | a tied sheaf of golden wheat, or a small open sack of grain with a few ears on top |
+| `wood` | Timber | three split logs stacked, bark on, pale cut ends showing rings |
+| `gold` | Coin | a small heap of worn gold coins, one standing on its edge |
+| `stone` | Stone | two rough-dressed grey building blocks, one on the other |
+| `copper` | Copper | a lump of green-streaked copper ore beside one small reddish ingot |
+| `iron` | Iron | a lump of dark rust-brown iron ore beside a short iron bloom |
+| `coal` | Coal | a small black heap of coal with a dull sheen |
+| `silver` | Silver | a lump of pale silver ore with one bright cast bar |
+| `steel` | Steel | two blue-grey bars of forged steel, crossed, with a hammer's mark |
+| `ware` | Fine ware | a glazed jug and a small painted bowl, warm earthenware with a coloured band |
+
+```text
+GOODS ICON, {SUBJECT from the table}, painted in the same hand-painted medieval style as the kit and research icons: natural materials, worn and used, warm low sun from the upper left, soft shadow. Neutral colours only, no faction colour, no text or letters or numbers, no frame or border, a strong simple silhouette that still reads at 15 px. Flat #FF00FF background, centred, 4 px margin, 128x128.
+```
+
+Deliver: `assets/shared/ui/goods/<key>.png`. Wiring (Claude, on delivery): key them (`tools/chromakey.py`, `tools/defringe.py`), run `tools/art-lint.py`, and add `goods: ALL_GOODS` to `UI_KEYS` in `js/art.js` (import `ALL_GOODS` from config); `dot()` in `js/ui.js` already asks for `uiArt('goods', key)`, so the ledger, the stockpile bar, market shelves and trade boards all pick them up at once. Check the stockpile bar at 1366x768 in a screenshot afterwards.

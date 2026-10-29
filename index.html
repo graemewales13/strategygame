@@ -8,34 +8,35 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mvsoplc9">
+<link rel="stylesheet" href="style.css?v=mvu4ckph">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mvsoplc9",
-    "./js/art.js": "./js/art.js?v=mvsoplc9",
-    "./js/audio.js": "./js/audio.js?v=mvsoplc9",
-    "./js/config.js": "./js/config.js?v=mvsoplc9",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mvsoplc9",
-    "./js/entities.js": "./js/entities.js?v=mvsoplc9",
-    "./js/game.js": "./js/game.js?v=mvsoplc9",
-    "./js/gfx.js": "./js/gfx.js?v=mvsoplc9",
-    "./js/groups.js": "./js/groups.js?v=mvsoplc9",
-    "./js/keys.js": "./js/keys.js?v=mvsoplc9",
-    "./js/learn.js": "./js/learn.js?v=mvsoplc9",
-    "./js/main.js": "./js/main.js?v=mvsoplc9",
-    "./js/map.js": "./js/map.js?v=mvsoplc9",
-    "./js/names.js": "./js/names.js?v=mvsoplc9",
-    "./js/net.js": "./js/net.js?v=mvsoplc9",
-    "./js/objectives.js": "./js/objectives.js?v=mvsoplc9",
-    "./js/production.js": "./js/production.js?v=mvsoplc9",
-    "./js/recorder.js": "./js/recorder.js?v=mvsoplc9",
-    "./js/render.js": "./js/render.js?v=mvsoplc9",
-    "./js/save.js": "./js/save.js?v=mvsoplc9",
-    "./js/terrain.js": "./js/terrain.js?v=mvsoplc9",
-    "./js/trainui.js": "./js/trainui.js?v=mvsoplc9",
-    "./js/ui.js": "./js/ui.js?v=mvsoplc9"
+    "./js/ai.js": "./js/ai.js?v=mvu4ckph",
+    "./js/art.js": "./js/art.js?v=mvu4ckph",
+    "./js/audio.js": "./js/audio.js?v=mvu4ckph",
+    "./js/config.js": "./js/config.js?v=mvu4ckph",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mvu4ckph",
+    "./js/economy.js": "./js/economy.js?v=mvu4ckph",
+    "./js/entities.js": "./js/entities.js?v=mvu4ckph",
+    "./js/game.js": "./js/game.js?v=mvu4ckph",
+    "./js/gfx.js": "./js/gfx.js?v=mvu4ckph",
+    "./js/groups.js": "./js/groups.js?v=mvu4ckph",
+    "./js/keys.js": "./js/keys.js?v=mvu4ckph",
+    "./js/learn.js": "./js/learn.js?v=mvu4ckph",
+    "./js/main.js": "./js/main.js?v=mvu4ckph",
+    "./js/map.js": "./js/map.js?v=mvu4ckph",
+    "./js/names.js": "./js/names.js?v=mvu4ckph",
+    "./js/net.js": "./js/net.js?v=mvu4ckph",
+    "./js/objectives.js": "./js/objectives.js?v=mvu4ckph",
+    "./js/production.js": "./js/production.js?v=mvu4ckph",
+    "./js/recorder.js": "./js/recorder.js?v=mvu4ckph",
+    "./js/render.js": "./js/render.js?v=mvu4ckph",
+    "./js/save.js": "./js/save.js?v=mvu4ckph",
+    "./js/terrain.js": "./js/terrain.js?v=mvu4ckph",
+    "./js/trainui.js": "./js/trainui.js?v=mvu4ckph",
+    "./js/ui.js": "./js/ui.js?v=mvu4ckph"
   }
 }
 </script>
@@ -43,7 +44,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mvsoplc9';
+window.__BUILD = 'mvu4ckph';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -102,6 +103,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     <div id="diplo" class="hidden"></div>
     <div id="council" class="hidden"></div>
     <div id="prodPanel" class="hidden"></div>
+    <div id="ledgerPanel" class="hidden"></div>
     <div id="tip" class="hidden"></div>
     <div id="pausedBanner" class="hidden">Paused</div>
   </main>
@@ -110,7 +112,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     <div id="groupBar" class="hidden"></div>
     <section id="minimapWrap">
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div id="miniBtns"><button id="btnHome" title="Jump to your home village (H)">Home</button><button id="btnIdle" title="Select next idle serf or scout (.)">Idle</button><button id="btnArmy" title="Select all soldiers (,); Shift-click or I: idle soldiers">Army</button><button id="btnBell" title="Town bell (B): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work">Bell</button><button id="btnProd" title="Production overview (U): every queue, the research and idle training buildings; Shift-click or Y: the next idle one">Prod<i id="prodIdle" class="hidden"></i></button></div>
+      <div id="miniBtns"><button id="btnHome" title="Jump to your home village (H)">Home</button><button id="btnIdle" title="Select next idle serf or scout (.)">Idle</button><button id="btnArmy" title="Select all soldiers (,); Shift-click or I: idle soldiers">Army</button><button id="btnBell" title="Town bell (B): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work">Bell</button><button id="btnProd" title="Production overview (U): every queue, the research and idle training buildings; Shift-click or Y: the next idle one">Prod<i id="prodIdle" class="hidden"></i></button><button id="btnLedger" title="Economy ledger (L): who works at what, each mine's crew, how every good moves a minute, what each market and warehouse holds">Ledger</button></div>
     </section>
     <section id="selPanel"></section>
     <section id="cmdPanel"></section>
