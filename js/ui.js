@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -675,6 +675,7 @@ export class UI {
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'bell': this.ringBell(); break;
+      case 'feast': { const b = this.selEntity(); if (b) { const r = this.host.send({ type: 'feast', buildingId: b.id }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); this.sigCmd = ''; } break; }
       case 'gsel': this.gsel = +d.id; break;
       case 'research': this.host.send({ type: 'research', tech: d.tech }); break;
       case 'craft': { const b = this.selEntity(); if (b) this.host.send({ type: 'craft', buildingId: b.id, item: d.item }); break; }
@@ -1034,7 +1035,7 @@ export class UI {
         <div class="stat"><label>Loyalty</label><div class="meter"><i class="loy" style="width:${v.loyalty}%"></i></div><span class="v">${v.loyalty | 0}</span></div>
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
         <div class="stat"><label>Population</label><div class="meter"><i class="loy" style="width:${(v.pop / v.popMax) * 100}%"></i></div><span class="v">${Math.floor(v.pop)}/${v.popMax}</span></div>
-        <div class="stat"><label>Folk</label><span>${v.folk.join(', ')} · ${v.hunger ? '<b style="color:#e0866a">starving: the store is out of grain</b>' : v.pop >= v.popMax ? 'at full strength' : 'growing (fed from the village store)'} · grain ${Math.floor(v.stores.food || 0)}</span></div>${v.owner === PLAYER ? `<div class="stat"><label>Housing</label><span>houses ${Math.floor(v.pop * POP_HOUSING)} of your population cap; tribute ${Math.round((0.5 + 0.7 * (v.pop / v.popMax)) * 100)}% of base</span></div>` : ''}
+        <div class="stat"><label>Folk</label><span>${v.folk.join(', ')} · ${v.hunger ? '<b style="color:#e0866a">starving: the store is out of grain</b>' : v.pop >= v.popMax ? 'at full strength' : 'growing (fed from the village store)'} · grain ${Math.floor(v.stores.food || 0)}</span></div>${v.owner === PLAYER ? `<div class="stat"><label>Housing</label><span>houses ${Math.floor(v.pop * POP_HOUSING)} of your population cap; tribute ${this.tributeText(v)}</span></div>` : ''}
         <div class="stat"><label>Influence</label><span>${memo ? 'not known out of sight' : this.pullText(v)}</span></div>${memo ? `<div class="selsub">Out of sight: as your folk last saw it ${g.time - memo.at < 60 ? 'moments' : Math.round((g.time - memo.at) / 60) + ' min'} ago. Send a scout to see it now.</div>` : ''}${v.owner === PLAYER ? this.watchRow(v) : ''}${v.owner === PLAYER && v.garrison?.length ? `<div class="stat"><label>Garrison</label><span>${v.garrison.length}/${VILLAGE_GARRISON} inside</span></div>${this.rollChips(v.garrison.map((id) => g.byId.get(id)).filter(Boolean), 8)}` : ''}${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
     } else if (s.type === 'node') {
       const n = g.resources[s.id]; if (!n) { this.clearSel(); return; }
@@ -1180,6 +1181,16 @@ export class UI {
     const on = this.game.players[PLAYER].bell != null, k = this.gridKeys ? '' : keyName(this.kmap.bell);
     return this.btn('bell', { img: uiArt('orders', 'bell'), glyph: '🔔', name: on ? 'All clear' : 'Town bell', sub: k, cls: on ? 'on' : '', tip: on ? `<b>All clear</b> ${k ? `(${k})` : ''}<br>Everyone the bell sent inside comes out and goes back to the work they left.` : `<b>Town bell</b> ${k ? `(${k})` : ''}<br>Every serf and scholar within ${BELL.r} tiles of a keep, tower, barracks or village you hold runs inside the nearest one with room; a keep shoots one arrow for every ${KEEP_ARROWS.per} inside. Ring again for the all-clear.` });
   }
+  // a held village's tribute against its kind's base, with what makes it (T-102: the panel once gave the size share alone)
+  tributeText(v) {
+    const t = this.game.tributeShare(v), pc = (x) => Math.round(x * 100);
+    return `${pc(t.total)}% of base (loyalty ${pc(t.loy)}%, size ${pc(t.size)}%${t.glad > 1 ? `, rejoicing x1.3 for ${Math.ceil(v.joyT)} s` : ''}${t.dist > 1 ? `, district x${t.dist.toFixed(2)}` : ''})`;
+  }
+  // a feast (T33): surplus grain lifts the villages around this keep
+  feastBtn(b) {
+    const g = this.game, why = g.feastWhy(PLAYER, b), cost = g.feastCost(PLAYER, b), n = g.feastHeld(PLAYER, b).length, wait = g.feastReady(PLAYER);
+    return this.btn('feast', { off: !!why, img: uiArt('orders', 'feast'), glyph: '🍖', name: 'Feast', sub: wait > 0 ? `${Math.ceil(wait)}s` : `${cost} grain`, tip: `<b>Feast</b><br>Spend ${cost} grain (${FEAST.food}, and ${FEAST.perVillage} for each village fed): every village of yours within ${FEAST.r} tiles of this keep (${n} now) gains ${FEAST.loyalty} loyalty, rejoices for ${FEAST.secs} s (tribute x1.3, loyalty climbs) and gets ${FEAST.stock} grain in its store; free villages near that lean on no other lord warm to you. Once every ${FEAST.cool / 60} minutes.${why ? `<br><span class="need">${esc(why)}</span>` : ''}` });
+  }
   keepPanel(b) {
     const g = this.game, p = g.players[PLAYER];
     let html = `<div class="ctitle">Drill garrisoned recruits and serfs</div><div class="cgrid">`;
@@ -1189,6 +1200,7 @@ export class UI {
     }
     html += this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' });
     html += this.bellBtn();
+    html += this.feastBtn(b);
     return html + `</div><div class="hint">Right-click the keep with units to garrison them, or a village you hold to <b>levy villagers</b>.</div>`;
   }
   treatyRows() {

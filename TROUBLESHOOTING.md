@@ -451,3 +451,16 @@ Causes and fixes:
 - **Why net, not gross.** A per-good gross income would need a counter at every place the rules add a good (gathering, mines, farms, villages, camels, loot, sales); the net change is what a player plans with ("am I running out of timber?") and needs nothing from the rules. Gross coin is still shown by source.
 - **AI.** Nothing: the rivals read the state directly.
 - Tests: rules "economy ledger (T51)" (six serfs in six kinds of work, a timber carrier counted as timber, a rival's left out, every serf in one row; mines by crew, emptiest first; a farm; stores in order, a rival's market left out; rates none before 20 s, +60 grain and -30 coin a minute, two minutes kept, notes start again for another match; coin by source; the key; reading changes nothing). Browser: `tools/ledger-smoke.cjs` (no minimap button cut short, L opens with idle serfs, goods and the market, fits 1366x768, the Idle row selects idle serfs, the market row selects it, Prod and the ledger close each other, Esc closes without opening the menu).
+
+## T-102 - A held village's panel gave the wrong tribute share (fixed 2026-10-30)
+- **Gap.** The Housing row of a village you hold said "tribute N% of base" from its size alone (`0.5 + 0.7 x folk/max`). The rules also scale tribute by loyalty (`0.4 + 0.8 x loyalty/100`), by rejoicing over fine ware (x1.3) and by the district around it (x(1 + 0.12 x score)), so a village at 30 loyalty full of folk showed 120% while paying about 77%, and fine ware's lift was invisible.
+- **Fix.** One `Game.tributeShare(v)` serves both the rules (`updateVillage`, same arithmetic, so the simulation is unchanged) and the panel, which now reads e.g. "93% of base (loyalty 80%, size 116%, rejoicing x1.3 for 42 s)".
+- Test: rules "feast (T33)" checks the share multiplies out and counts rejoicing.
+
+## T-103 - Feasts: a use for surplus grain (added 2026-10-30, T33)
+- **Added.** A **Feast** button on a finished keep's card (`feast` intent; `Game.feast`, `feastWhy`, `feastCost`, `feastHeld`, `feastReady`; `FEAST` in config). Cost `FEAST.food` (300) + `perVillage` (40) for each held village within `r` (24) tiles. Each of them: +10 loyalty, `joyT` at least 90 s (the same rejoicing fine ware gives: tribute x1.3, loyalty +0.5 a second), +40 grain into the store (hunger lifted). Free villages in reach that lean on nobody, or on this house, lean on it and gain `sway` (6) loyalty. Once per `cool` (240 s) per house, saved with the player.
+- **Refusals say why**: not a finished keep of yours, the hall still recovering (seconds left), no village of yours in reach, not enough grain (how much). The button greys out with the reason in its tooltip and shows the seconds left.
+- **AI.** `holdFeast` (ai.js) looks every 20 s: with `aiSpare` (600) grain over the cost it feasts at the keep whose villages need it most (a starving one, or the lowest loyalty under 85). Same price and rule as the player.
+- **Not changed, on purpose:** the rout's three minutes of slow loyalty (DEMANDS) stand; a feast lifts loyalty but does not end the shame.
+- Tests: rules "feast (T33)" (cost, refusals with reasons and nothing spent, the lift, the free village, cooldown, save and load, loyalty climbing while rejoicing, the rival feasting only with grain to spare). The chaos soak now sends feast intents at random buildings.
+

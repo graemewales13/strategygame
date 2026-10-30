@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -652,6 +652,7 @@ export class Game {
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
       case 'bell': return this.ringBell(team);
+      case 'feast': return this.feast(team, it.buildingId);
       case 'hire': return this.hire(team, it.buildingId, it.index);
       case 'research': return this.startResearch(team, it.tech);
       case 'craft': return this.craft(team, it.buildingId, it.item);
@@ -871,6 +872,40 @@ export class Game {
       else if ((j.type === 'gather' || j.type === 'return') && node && node.amount > 0) { if (u.kind === 'serf') this.cmdGather([u], node); }
     }
     this.log(team === PLAYER ? PLAYER : -1, team === PLAYER ? `All clear: ${back} of your folk go back to work.` : `${p.name} sounds the all-clear.`, 'info');
+    return true;
+  }
+
+  // ---- feasts (T33): surplus grain spent at a keep lifts the villages around it ------------------------------------------------------
+  feastHeld(team, b) { return this.villages.filter((v) => v.owner === team && Math.hypot(v.x - b.x, v.y - b.y) <= FEAST.r); }
+  feastCost(team, b) { return FEAST.food + FEAST.perVillage * this.feastHeld(team, b).length; }
+  feastReady(team) { const p = this.players[team]; return Math.max(0, (p?.feastT ?? -1e9) + FEAST.cool - this.time); }   // seconds until the house may feast again
+  // why a feast cannot be held at this keep now (null when it can)
+  feastWhy(team, b) {
+    const p = this.players[team];
+    if (!p || !b || b.type !== 'building' || b.kind !== 'keep' || b.team !== team || b.hp <= 0 || b.built < 1) return 'A feast is held at a finished keep of yours.';
+    const wait = this.feastReady(team); if (wait > 0) return `The hall is still sweeping up after the last feast: ${Math.ceil(wait)} s.`;
+    if (!this.feastHeld(team, b).length) return `No village of yours within ${FEAST.r} tiles of this keep to feast.`;
+    const cost = this.feastCost(team, b); if (p.food < cost) return `A feast here needs ${cost} grain (you have ${Math.floor(p.food)}).`;
+    return null;
+  }
+  feast(team, buildingId) {
+    const b = this.byId.get(buildingId), why = this.feastWhy(team, b);
+    if (why) { if (team === PLAYER) this.deny(team, why); return false; }
+    const p = this.players[team], cost = this.feastCost(team, b), held = this.feastHeld(team, b);
+    p.food -= cost; p.feastT = this.time; p.feasts = (p.feasts || 0) + 1;
+    for (const v of held) {
+      v.loyalty = Math.min(100, v.loyalty + FEAST.loyalty);
+      v.joyT = Math.max(v.joyT || 0, FEAST.secs);
+      v.stores.food = Math.min(Math.max(v.stores.food || 0, 150), (v.stores.food || 0) + FEAST.stock); v.hunger = 0;
+    }
+    let warmed = 0;
+    for (const v of this.villages) {   // free folk nearby come for the bread too, unless they already lean on another lord
+      if (v.owner >= 0 || (v.lean >= 0 && v.lean !== team) || Math.hypot(v.x - b.x, v.y - b.y) > FEAST.r) continue;
+      v.lean = team; v.loyalty = Math.min(100, v.loyalty + FEAST.sway); warmed++;
+    }
+    const town = held.length === 1 ? held[0].name : `${held.length} villages`;
+    this.log(team === PLAYER ? PLAYER : -1, team === PLAYER ? `A feast at your keep: ${town} eat${held.length === 1 ? 's' : ''} and rejoice${held.length === 1 ? 's' : ''} for ${FEAST.secs} s (${cost} grain${warmed ? `; ${warmed} free village${warmed === 1 ? '' : 's'} warm${warmed === 1 ? 's' : ''} to you` : ''}).` : `${p.name} holds a feast for ${town}.`, team === PLAYER ? 'good' : 'info');
+    if (team === PLAYER) this.sfx('fanfare', b.x, b.y);
     return true;
   }
 
@@ -2976,12 +3011,18 @@ export class Game {
           v.owner = -1; this._vOwn = null; v.lean = best; v.loyalty = 18; v.spyFlip = -1;
           this.log(lost, `${v.name} slips from its lord.`, 'warn');
         } else {
-          const spec = VILLAGE_KINDS[v.kind].tribute, rate = (0.4 + (0.8 * v.loyalty) / 100) * (0.5 + 0.7 * (v.pop / v.popMax)), p = this.players[v.owner];
-          const joy = (v.joyT > 0 ? 1.3 : 1) * (vd ? 1 + 0.12 * vd.score : 1); p.food += spec.food * rate * joy * dt; p.wood += spec.wood * rate * joy * dt; this.earn(v.owner, 'tribute', spec.gold * rate * joy * dt); this.earn(v.owner, 'tax', v.pop * TAX * (v.loyalty / 100) * dt);
+          const spec = VILLAGE_KINDS[v.kind].tribute, ts = this.tributeShare(v, vd), rate = ts.rate, p = this.players[v.owner];
+          const joy = ts.joy; p.food += spec.food * rate * joy * dt; p.wood += spec.wood * rate * joy * dt; this.earn(v.owner, 'tribute', spec.gold * rate * joy * dt); this.earn(v.owner, 'tax', v.pop * TAX * (v.loyalty / 100) * dt);
           if (v.joyT > 0) v.loyalty = Math.min(100, v.loyalty + 0.5 * dt);
         }
       }
     }
+  }
+
+  // a held village's tribute against its kind's base: loyalty and size (`rate`), rejoicing and the district (`joy`); the panel shows the same numbers (T-102)
+  tributeShare(v, vd = v.owner >= 0 ? this.districtAt(v.owner, v.x, v.y) : null) {
+    const loy = 0.4 + (0.8 * v.loyalty) / 100, size = 0.5 + 0.7 * (v.pop / v.popMax), glad = v.joyT > 0 ? 1.3 : 1, dist = vd ? 1 + 0.12 * vd.score : 1;
+    return { loy, size, glad, dist, rate: loy * size, joy: glad * dist, total: loy * size * glad * dist };
   }
 
   // the village a building belongs to: the nearest one whose walls are within TOWN_RANGE tiles of it

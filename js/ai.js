@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -264,6 +264,7 @@ function think(game, team, p) {
   { const hurt = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp * 0.75 && (b.hitT ?? 0) <= 0 && !game.unitsNear(b.x, b.y, 12).some((o) => o.hp > 0 && game.isEnemy(team, o.team) && Math.hypot(o.x - b.x, o.y - b.y) < 12));   // mend what is damaged, once the foe has gone
     if (hurt && !game.units.some((u) => u.team === team && u.task.type === 'repair')) game.repairWith(team, hurt, 2); }
   townBell(game, team, p, seat, t);
+  holdFeast(game, team, p, t);
   courtVillages(game, team, p, seat, army, need, t);
   scoutAbroad(game, team, p, seat, army, t);
   exploreAbroad(game, team, p, t);
@@ -336,6 +337,22 @@ export function townBell(game, team, p, seat, t) {
   if (foes) { p.bellQuiet = null; return; }
   if (p.bellQuiet == null) p.bellQuiet = t;
   else if (t - p.bellQuiet >= BELL.quiet) game.allClear(team);
+}
+
+// A feast (T33), the player's button: with grain to spare over the cost (FEAST.aiSpare), a house feasts at the keep whose villages need it
+// most (a starving one, or the lowest loyalty under 85), the same rule and price as the player's.
+export function holdFeast(game, team, p, t) {
+  if (t < (p.feastLook || 0)) return;
+  p.feastLook = t + 20;
+  if (game.feastReady(team) > 0) return;
+  let best = null, need = 0;
+  for (const b of game.teamB(team)) {
+    if (b.team !== team || b.kind !== 'keep' || b.built < 1 || b.hp <= 0) continue;
+    const held = game.feastHeld(team, b); if (!held.length) continue;
+    const want = Math.max(...held.map((v) => (v.hunger ? 100 : 0) + Math.max(0, 85 - v.loyalty)));
+    if (want > need && p.food >= game.feastCost(team, b) + FEAST.aiSpare) { need = want; best = b; }
+  }
+  if (best) game.feast(team, best.id);
 }
 
 // A war band that is losing falls back to its seat to join the rest and heal, instead of dying to the last man: the foes' fighting power

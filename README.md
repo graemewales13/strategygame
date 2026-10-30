@@ -274,6 +274,7 @@ Set it in the Skirmish panel or with `?diff=easy|mid|hard`. `tools/play.js [min]
 - **Patrol** (Z): soldiers walk a round between posts and fight what they meet; rivals walk a pair of their home guard round at peace.
 - **Explore** (O): a scout maps unseen ground on his own, as AoE IV's auto-scout; each rival house keeps one exploring.
 - **Keep arrows**: a keep with folk inside shoots back, one arrow a volley for every two sheltering in it (the town bell fills it), up to four.
+- **Feasts**: the **Feast** button on a finished keep spends surplus grain (300, and 40 for each village fed): every village you hold within 24 tiles gains 10 loyalty, rejoices for 90 s (tribute x1.3, loyalty climbs) and gets 40 grain in its store, and free villages near it that lean on no other lord warm to you. Once every 4 minutes; rivals feast too when they have grain to spare. A held village's panel gives its tribute share with what makes it (loyalty, size, rejoicing, district).
 - **Board size**: Options, Board size: Small, Standard or Huge. Changing it reloads the page. A save only loads on the board size it was made at.
 
 See ROADMAP.md for what is still to do.

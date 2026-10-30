@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
@@ -11,7 +11,7 @@ import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
 import { labour, stores, noteStock, netRates, coinBySource, jobOf, JOBS } from '../js/economy.js';
-import { MARKET_RADIUS, HAUL, SHELF_CAP, WAREHOUSE_CAP } from '../js/config.js';
+import { MARKET_RADIUS, HAUL, SHELF_CAP, WAREHOUSE_CAP, FEAST } from '../js/config.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN, unitPlural, plural } from '../js/config.js';
 
 let _s = 777;
@@ -1835,3 +1835,48 @@ test('README controls list every command of the key map with its default key (T-
 });
 
 console.log(`${passed} passed`);
+
+test('feast (T33): grain at a keep lifts the villages near it, refused with a reason, once per cooldown, saved; rivals feast with grain to spare', () => {
+  const g = mk(), p = g.players[PLAYER], seat = g.seatOf(PLAYER);
+  const keep = g.addBuilding('keep', PLAYER, Math.round(seat.x + 7), Math.round(seat.y - 2), true); g.recomputeWalk();
+  const held = g.feastHeld(PLAYER, keep);
+  assert.ok(held.length >= 1, 'the home village is within reach');
+  const v = held[0]; v.loyalty = 50; v.joyT = 0; v.stores.food = 0; v.hunger = 1;
+  const free = g.villages.find((x) => x.owner < 0 && x.lean < 0);
+  if (free) { free.x = keep.x + 6; free.y = keep.y + 6; }
+  const cost = g.feastCost(PLAYER, keep);
+  assert.equal(cost, FEAST.food + FEAST.perVillage * held.length);
+  // too little grain: refused with the reason, nothing spent
+  p.food = cost - 1;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'feast', buildingId: keep.id }), false);
+  assert.match(g.diploNote, /needs \d+ grain/); assert.equal(p.food, cost - 1);
+  // a barracks is no hall
+  const bar = g.addBuilding('barracks', PLAYER, Math.round(seat.x - 9), Math.round(seat.y + 4), true);
+  assert.equal(g.feast(PLAYER, bar.id), false); assert.match(g.diploNote, /finished keep/);
+  p.food = cost + 500;
+  const loy0 = free?.loyalty;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'feast', buildingId: keep.id }), true);
+  assert.equal(p.food, 500, 'the cost is paid');
+  assert.equal(v.loyalty, 50 + FEAST.loyalty); assert.equal(v.joyT, FEAST.secs); assert.equal(v.stores.food, FEAST.stock); assert.equal(v.hunger, 0);
+  if (free) { assert.equal(free.lean, PLAYER); assert.equal(free.loyalty, Math.min(100, loy0 + FEAST.sway)); }
+  // the panel's tribute share counts the rejoicing (T-102)
+  const ts = g.tributeShare(v);
+  assert.equal(ts.glad, 1.3); assert.ok(Math.abs(ts.total - ts.loy * ts.size * ts.glad * ts.dist) < 1e-9);
+  // once per cooldown, and the wait is told
+  p.food = 5000;
+  assert.equal(g.feast(PLAYER, keep.id), false); assert.match(g.diploNote, /sweeping up/);
+  assert.ok(g.feastReady(PLAYER) > FEAST.cool - 1);
+  // saved: a load keeps the cooldown and the rejoicing
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(h.feastReady(PLAYER), g.feastReady(PLAYER)); assert.equal(h.byId.get(v.id).joyT, v.joyT);
+  run(g, 10);
+  assert.ok(v.loyalty > 50 + FEAST.loyalty, 'loyalty climbs while the village rejoices');
+  g.time += FEAST.cool; assert.equal(g.feastReady(PLAYER), 0);
+  // a rival feasts by the same rule when it has grain to spare and a village that needs it
+  const r = 1, rs = g.seatOf(r), rk = g.addBuilding('keep', r, Math.round(rs.x + 7), Math.round(rs.y - 2), true), rp = g.players[r];
+  const rv = g.feastHeld(r, rk)[0]; assert.ok(rv, 'the rival home village is in reach'); rv.loyalty = 40;
+  rp.food = g.feastCost(r, rk) + FEAST.aiSpare - 1; holdFeast(g, r, rp, g.time);
+  assert.equal(rp.feastT ?? null, null, 'not without grain to spare');
+  rp.food += 1; rp.feastLook = 0; holdFeast(g, r, rp, g.time);
+  assert.equal(rp.feastT, g.time); assert.equal(rv.loyalty, 40 + FEAST.loyalty);
+});

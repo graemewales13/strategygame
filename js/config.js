@@ -385,6 +385,11 @@ export const KEEP_ARROWS = { per: 2, cap: 4, range: 8, dmg: 6, cd: 2 };
 // The town bell (T38, as in AoE II): one ring sends every serf and scholar within `r` tiles of a keep, tower, barracks or held village with room
 // inside the nearest of them; a second ring sends them back to the work they left. Rivals ring it when `foes` or more enemy fighters come within
 // `raidR` of their seat and outnumber the guard there by `odds` (a fair fight keeps the serfs out mending), and sound the all-clear after `quiet` seconds with no foe in that ring.
+// A feast (T33, a use for the grain that piles up by mid-game; CK3's feasts, Manor Lords' festivals): spent at a built keep, it lifts
+// every village of the house within `r` tiles: +`loyalty` at once, `secs` of rejoicing (tribute x1.3, loyalty climbs, as fine ware gives),
+// `stock` grain into each village store (a starving village eats again); a free village nearby that leans on no one else, or on this house,
+// warms by `sway`. Costs `food` + `perVillage` for each held village fed; once per `cool` seconds a house. Rivals feast with `aiSpare` grain over the cost.
+export const FEAST = { food: 300, perVillage: 40, r: 24, loyalty: 10, secs: 90, stock: 40, sway: 6, cool: 240, aiSpare: 600 };
 export const BELL = { r: 18, kinds: ['serf', 'scholar'], raidR: 14, foes: 2, odds: 1.5, quiet: 15 };
 // who can raise buildings, and how fast compared with a serf (soldiers can build a castle beside a village they mean to sway)
 export const BUILDERS = { serf: 1, recruit: 0.5, footman: 0.6, bowman: 0.6, knight: 0.4, scout: 0.3 };
