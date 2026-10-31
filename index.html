@@ -8,35 +8,35 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mvvjn0uy">
+<link rel="stylesheet" href="style.css?v=mvwywhfj">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mvvjn0uy",
-    "./js/art.js": "./js/art.js?v=mvvjn0uy",
-    "./js/audio.js": "./js/audio.js?v=mvvjn0uy",
-    "./js/config.js": "./js/config.js?v=mvvjn0uy",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mvvjn0uy",
-    "./js/economy.js": "./js/economy.js?v=mvvjn0uy",
-    "./js/entities.js": "./js/entities.js?v=mvvjn0uy",
-    "./js/game.js": "./js/game.js?v=mvvjn0uy",
-    "./js/gfx.js": "./js/gfx.js?v=mvvjn0uy",
-    "./js/groups.js": "./js/groups.js?v=mvvjn0uy",
-    "./js/keys.js": "./js/keys.js?v=mvvjn0uy",
-    "./js/learn.js": "./js/learn.js?v=mvvjn0uy",
-    "./js/main.js": "./js/main.js?v=mvvjn0uy",
-    "./js/map.js": "./js/map.js?v=mvvjn0uy",
-    "./js/names.js": "./js/names.js?v=mvvjn0uy",
-    "./js/net.js": "./js/net.js?v=mvvjn0uy",
-    "./js/objectives.js": "./js/objectives.js?v=mvvjn0uy",
-    "./js/production.js": "./js/production.js?v=mvvjn0uy",
-    "./js/recorder.js": "./js/recorder.js?v=mvvjn0uy",
-    "./js/render.js": "./js/render.js?v=mvvjn0uy",
-    "./js/save.js": "./js/save.js?v=mvvjn0uy",
-    "./js/terrain.js": "./js/terrain.js?v=mvvjn0uy",
-    "./js/trainui.js": "./js/trainui.js?v=mvvjn0uy",
-    "./js/ui.js": "./js/ui.js?v=mvvjn0uy"
+    "./js/ai.js": "./js/ai.js?v=mvwywhfj",
+    "./js/art.js": "./js/art.js?v=mvwywhfj",
+    "./js/audio.js": "./js/audio.js?v=mvwywhfj",
+    "./js/config.js": "./js/config.js?v=mvwywhfj",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mvwywhfj",
+    "./js/economy.js": "./js/economy.js?v=mvwywhfj",
+    "./js/entities.js": "./js/entities.js?v=mvwywhfj",
+    "./js/game.js": "./js/game.js?v=mvwywhfj",
+    "./js/gfx.js": "./js/gfx.js?v=mvwywhfj",
+    "./js/groups.js": "./js/groups.js?v=mvwywhfj",
+    "./js/keys.js": "./js/keys.js?v=mvwywhfj",
+    "./js/learn.js": "./js/learn.js?v=mvwywhfj",
+    "./js/main.js": "./js/main.js?v=mvwywhfj",
+    "./js/map.js": "./js/map.js?v=mvwywhfj",
+    "./js/names.js": "./js/names.js?v=mvwywhfj",
+    "./js/net.js": "./js/net.js?v=mvwywhfj",
+    "./js/objectives.js": "./js/objectives.js?v=mvwywhfj",
+    "./js/production.js": "./js/production.js?v=mvwywhfj",
+    "./js/recorder.js": "./js/recorder.js?v=mvwywhfj",
+    "./js/render.js": "./js/render.js?v=mvwywhfj",
+    "./js/save.js": "./js/save.js?v=mvwywhfj",
+    "./js/terrain.js": "./js/terrain.js?v=mvwywhfj",
+    "./js/trainui.js": "./js/trainui.js?v=mvwywhfj",
+    "./js/ui.js": "./js/ui.js?v=mvwywhfj"
   }
 }
 </script>
@@ -44,7 +44,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mvvjn0uy';
+window.__BUILD = 'mvwywhfj';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -112,7 +112,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     <div id="groupBar" class="hidden"></div>
     <section id="minimapWrap">
       <canvas id="minimap" width="176" height="176"></canvas>
-      <div id="miniBtns"><button id="btnHome" title="Jump to your home village (H)">Home</button><button id="btnIdle" title="Select next idle serf or scout (.)">Idle</button><button id="btnArmy" title="Select all soldiers (,); Shift-click or I: idle soldiers">Army</button><button id="btnBell" title="Town bell (B): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work">Bell</button><button id="btnProd" title="Production overview (U): every queue, the research and idle training buildings; Shift-click or Y: the next idle one">Prod<i id="prodIdle" class="hidden"></i></button><button id="btnLedger" title="Economy ledger (L): who works at what, each mine's crew, how every good moves a minute, what each market and warehouse holds">Ledger</button></div>
+      <div id="miniBtns"><button id="btnHome" title="Jump to your home village (H)">Home</button><button id="btnIdle" title="Select next idle serf or scout (.)">Idle<i id="serfIdle" class="hidden"></i></button><button id="btnArmy" title="Select all soldiers (,); Shift-click or I: idle soldiers">Army</button><button id="btnBell" title="Town bell (B): your serfs run into the nearest keep, tower, barracks or village; ring again to send them back to work">Bell</button><button id="btnProd" title="Production overview (U): every queue, the research and idle training buildings; Shift-click or Y: the next idle one">Prod<i id="prodIdle" class="hidden"></i></button><button id="btnLedger" title="Economy ledger (L): who works at what, each mine's crew, how every good moves a minute, what each market and warehouse holds">Ledger</button></div>
     </section>
     <section id="selPanel"></section>
     <section id="cmdPanel"></section>
@@ -163,6 +163,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
           <label class="chk"><input type="checkbox" id="mSeedLock"> Keep seed on New Valley</label>
           <label class="chk"><input type="checkbox" id="sObj" checked> Show objectives</label>
           <label class="chk"><input type="checkbox" id="sDmg"> Damage numbers</label>
+          <label class="chk"><input type="checkbox" id="sIdle" checked> Chime when a serf goes idle</label>
         </div>
         <div class="optrow"><span class="seedlabel">Seed</span><input id="mSeed" type="text" inputmode="numeric" spellcheck="false"><button id="mSeedGo" class="small">Roll this seed</button></div>
         <div class="optrow sound"><span class="seedlabel">Sound</span>

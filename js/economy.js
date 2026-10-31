@@ -20,6 +20,20 @@ export function jobOf(game, u) {
   return 'walking';
 }
 
+// the serfs of the house standing idle (T52): the one rule behind the Idle button's count, its selection and the ledger's Idle row
+export function idleSerfs(game, team = PLAYER) {
+  return game.units.filter((u) => u.team === team && u.kind === 'serf' && u.hp > 0 && jobOf(game, u) === 'idle');
+}
+
+// which idle serfs should sound the chime now (T52): those not idle at the last look, minus any the player has selected; none at the first
+// look of a match (`prev` null: the starting serfs stand idle by design) and none within `every` seconds of the last chime. Returns
+// { ids: the ones that went idle, chime: whether to sound it }; the caller keeps `ids` of all idle serfs as the next `prev`.
+export function idleChime(prev, idleIds, { selected = [], time = 0, last = -Infinity, every = 20 } = {}) {
+  if (!prev) return { ids: [], chime: false };
+  const sel = new Set(selected), ids = idleIds.filter((id) => !prev.has(id) && !sel.has(id));
+  return { ids, chime: ids.length > 0 && time - last >= every };
+}
+
 // { serfs, jobs: { job: [ids] }, mines: [{ id, mineral, n, max, x, y }], farms: [ids] } for the house
 export function labour(game, team = PLAYER) {
   const jobs = Object.fromEntries(JOBS.map((j) => [j, []]));

@@ -441,6 +441,9 @@ export const WAYPOINTS = 12;
 // Training (T47): a building's queue holds `queue`; Shift-click on a unit button asks for `shift` at once; Repeat keeps one queued.
 // Several training buildings selected together (T49) train as one: at most `set` of them in one order.
 export const TRAIN = { queue: 5, shift: 5, set: 24 };
+// Idle serfs (T52): a red count on the Idle button; a soft chime when a serf runs out of work, at most once every `chimeEvery` seconds
+// of game time, never for serfs the player has selected (he is looking at them) nor at the first look of a match.
+export const IDLE_ALERT = { chimeEvery: 20 };
 // a unit kind's name for many of them, in words a player reads ('Footmen', 'Spies'; T-096: 'Spys' and 'footmans' were shown)
 export const plural = (l) => (/man$/.test(l) ? l.replace(/man$/, 'men') : /[^aeiou]y$/.test(l) ? l.replace(/y$/, 'ies') : /s$/.test(l) ? l : l + 's');
 export const unitPlural = (kind) => plural(UNITS[kind]?.label || kind);

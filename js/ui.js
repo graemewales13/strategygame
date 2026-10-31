@@ -6,12 +6,12 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
 import { productionRows, idleProduction, researchRow } from './production.js';
-import { labour, stores, noteStock, netRates, coinBySource, JOBS, JOB_LABEL } from './economy.js';
+import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, JOBS, JOB_LABEL } from './economy.js';
 import { KEY_ACTIONS, loadKeys, saveKeys, rebind, actionOf, keyName, normKey, defaultKeys, GRID_KEYS, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
@@ -62,7 +62,7 @@ export class UI {
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -443,7 +443,7 @@ export class UI {
   }
   selectIdleSerf() {
     // idle serfs, then idle scouts (T45: a scout who has explored all he can reach waits here for new orders)
-    const idle = ['serf', 'scout'].flatMap((k) => this.game.units.filter((u) => u.team === PLAYER && u.kind === k && u.hp > 0 && !u.inside && u.task.type === 'idle'));
+    const idle = [...idleSerfs(this.game, PLAYER), ...this.game.units.filter((u) => u.team === PLAYER && u.kind === 'scout' && u.hp > 0 && !u.inside && u.task.type === 'idle')];   // (the serfs by the same rule as the count on the button, T52)
     if (!idle.length) return this.toast('No idle serfs or scouts.', 'info');
     this.idleI = ((this.idleI ?? -1) + 1) % idle.length;
     const u = idle[this.idleI]; this.setUnits([u]); this.r.centerOn(u.x, u.y);
@@ -478,6 +478,18 @@ export class UI {
       html += `<div class="prow${r.idle ? ' idle' : ''}${this.sel.type === 'building' && this.sel.id === r.id ? ' on' : ''}" data-act="prodgo" data-id="${r.id}" data-tip="${encodeURIComponent(`<b>${esc(r.label)}</b><br>${r.queue.length ? r.queue.map((x) => esc(x.label)).join(', ') : 'Nothing in hand.'}${r.repeat ? `<br>Repeating ${esc(UNITS[r.repeat].label)}` : ''}<br>Click to select it and go there.`)}"><span class="pname">${esc(r.label)}</span><span class="pq">${q}${state ? ` ${state}` : ''}</span></div>`;
     }
     return html;
+  }
+  // the red count of idle serfs on the Idle button, and the chime when one runs out of work (T52, as AoE II and IV's idle-villager button)
+  renderIdle() {
+    const g = this.game, idle = idleSerfs(g, PLAYER), n = idle.length, badge = $('serfIdle');
+    if (badge) {
+      const t = n ? String(n) : ''; if (badge.textContent !== t) { badge.textContent = t; badge.classList.toggle('hidden', !n); }
+      const tip = `Select next idle serf or scout (${keyName(this.kmap.idleSerf)})${n ? `: ${n} idle ${n === 1 ? 'serf' : 'serfs'}` : ''}`; if ($('btnIdle').title !== tip) $('btnIdle').title = tip;
+    }
+    const ids = idle.map((u) => u.id), sel = this.sel.type === 'units' ? this.sel.ids : [];
+    const r = idleChime(this.idleSeen, ids, { selected: sel, time: g.time, last: this.idleChimeT, every: IDLE_ALERT.chimeEvery });
+    if (r.chime) { this.idleChimeT = g.time; if (this.idleSound) play('idle'); }
+    this.idleSeen = new Set(ids);
   }
   renderProd() {
     const n = idleProduction(this.game, PLAYER).length, badge = $('prodIdle');
@@ -852,7 +864,7 @@ export class UI {
     g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     // (not while a button is held down: a panel rebuilt under the pointer loses the click)
-    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); this.renderLedger(); if (this.diploOpen != null) this.renderDiplo(); }
+    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); this.renderIdle(); this.renderLedger(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
@@ -1514,6 +1526,8 @@ export class UI {
     try { this.objHidden = localStorage.getItem('auld-world.objectives') === 'off'; } catch { this.objHidden = false; }
     this.objCollapsed = false;
     // damage numbers over a fight: off unless chosen (remembered)
+    try { this.idleSound = localStorage.getItem('auld-world.idlechime') !== 'off'; } catch { this.idleSound = true; }   // (T52: on unless switched off)
+    if ($('sIdle')) { $('sIdle').checked = this.idleSound; $('sIdle').onchange = () => { this.idleSound = $('sIdle').checked; try { localStorage.setItem('auld-world.idlechime', this.idleSound ? 'on' : 'off'); } catch { /* private window */ } if (this.idleSound) { unlock(); play('idle'); } }; }
     try { this.dmgNums = localStorage.getItem('auld-world.dmgnums') === 'on'; } catch { this.dmgNums = false; }
     if ($('sDmg')) { $('sDmg').checked = this.dmgNums; $('sDmg').onchange = () => { this.dmgNums = $('sDmg').checked; try { localStorage.setItem('auld-world.dmgnums', this.dmgNums ? 'on' : 'off'); } catch { /* private window */ } }; }
     if ($('sObj')) { $('sObj').checked = !this.objHidden; $('sObj').onchange = () => { this.objHidden = !$('sObj').checked; this.objKey = ''; try { localStorage.setItem('auld-world.objectives', this.objHidden ? 'off' : 'on'); } catch { /* private window */ } }; }

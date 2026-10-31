@@ -51,6 +51,7 @@ const SFX = {
   alarm: () => { for (let i = 0; i < 3; i++) tone(i % 2 ? 520 : 390, 0.18, { type: 'square', peak: 0.1, delay: i * 0.2 }); },
   fanfare: () => { [392, 494, 587, 784].forEach((f, i) => tone(f, 0.45, { type: 'sawtooth', peak: 0.1, delay: i * 0.13 })); },
   click: () => tone(900, 0.04, { type: 'square', peak: 0.05 }),
+  idle: () => { tone(494, 0.16, { type: 'sine', peak: 0.12 }); tone(370, 0.28, { type: 'sine', peak: 0.1, delay: 0.14 }); },   // a serf has run out of work (T52): soft, falling
   letter: () => { tone(587, 0.25, { type: 'triangle', peak: 0.12 }); tone(784, 0.35, { type: 'triangle', peak: 0.1, delay: 0.16 }); },   // a rider with a letter
 };
 export function play(name, vol = 1) {

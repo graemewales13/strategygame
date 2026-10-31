@@ -67,7 +67,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 | Stop | **X** (or the Stop button): halt and hold position |
 | Change keys | Menu > **Keys** > *Change keys*: click a command, press its new key (a key already in use swaps over; Esc cancels); *Reset keys* restores these defaults. Kept in this browser. Fixed: Esc, F5/F9, Tab, 1-9, the arrows, Home |
 | Grid keys | Menu > **Keys** > *Grid keys* (off by default; Age of Empires IV layout): the command card answers to **Q W E R / A S D F / Z X C V** by place, and **Shift** with them for the next twelve; each button shows its key in its corner. A soldier's card has its orders on Q W E R (Stop, Attack-move, Attack, Retreat), stances on A S D F and formations on Z X C V; a serf's build menu keeps each building on its own key (Mine Q, Farm W, Market E, Keep R...); Patrol, Explore and Captain sit on the Shift page. The arrows pan; a grid key with no button in its place still does its usual command |
-| Idle serf or scout / all soldiers / idle soldiers | **.** / **,** / **I** (or Shift-click **Army**; each press centres on the next idle soldier) |
+| Idle serf or scout / all soldiers / idle soldiers | **.** / **,** / **I** (or Shift-click **Army**; each press centres on the next idle soldier). A red count on the **Idle** button shows how many serfs stand idle, and a soft chime sounds when one runs out of work (at most every 20 s; Menu > Options can switch it off) |
 | Your king | **K** selects your king and centres on him (or the keep or village he shelters in) |
 | Production overview | **U** or the **Prod** button under the minimap: one panel with every training queue (the soldier in hand with a progress bar), Repeat and what it waits for, the armoury's kit and your academies' research with the time left; your idle barracks, ranges, stables, workshops and keeps come first, marked red. A click on a row selects that building and goes there. The red number on **Prod** counts the idle ones; **Y** (or Shift-click **Prod**) selects the next idle one and centres on it. A building with Repeat on but waiting for coin or room is shown as waiting, not idle |
 | Economy ledger | **L** or the **Ledger** button under the minimap: how many serfs cut timber, pick berries, pan coin, build, shelter, walk or stand idle (a click selects them, again for the next), your farms, each mine with its crew of village diggers (a mine nobody digs is marked red), every good in store with how it has moved a minute over the last two minutes after what was spent (coin also by source in its tip), and what each market and warehouse holds (a click goes there) |
@@ -153,17 +153,32 @@ js/
   config.js       balance: costs, stats, village kinds, influence, constants
   map.js          seeded valley: river with fords, ponds, timber, berries, gold, villages
   entities.js     unit / building / village factories and geometry
+  names.js        names for the folk of each people (seeded)
   game.js         the host: ONE Game object ticks all state; intents in, state out
   ai.js           rival houses (mine and market first, then barracks, tavern, keep ...; each people's doctrine, war and peace by stance, science)
+  diplomacy.js    how the houses read each other: opinion, stance (threat, temptation, ties, weariness), letters
+  learn.js        turns the player's recorded matches into the playbook the rivals blend into their habits
+  recorder.js     records the player's orders and samples in the browser for learn.js
+  trainui.js      the menu's AI-training box: recording on or off, export, import, clear
+  objectives.js   the guided first match (each step done by what the player has)
+  production.js   the production overview and idle training buildings (read-only)
+  economy.js      the economy ledger, idle serfs and their chime (read-only)
+  groups.js       control groups and their row on the HUD
+  keys.js         the key map: every command's key, rebinding, grid keys
   net.js          intent/snapshot seam: LocalHost now, SocketClient stub for later
+  save.js         save slots in the browser
   render.js       isometric (2:1) canvas drawing only; reads state, never changes it
   terrain.js      painted terrain chunks (soft river banks, trails, fords) and the smoothed fog layer, drawn isometrically
+  gfx.js          graphics quality (Low, Medium, High)
   art.js          loads the painted sprites in assets/world/ and recolours banners and unit trim per house
+  audio.js        synthesised sound effects and music (no sound files)
   assets/ui/      portraits, building icons and menu backdrop cropped from the concept boards
   assets/world/   buildings, trees, units and the village cluster cut out of the concept boards
   ui.js           HUD, input, menu, campaign map; talks to the host via intents
   main.js         requestAnimationFrame loop
-test/sim.test.js  headless simulation tests
+test/rules.test.js fast rules tests        test/sim.test.js   headless simulation tests
+test/big.test.js  the full board          test/learn.test.js the learned playbook   test/perf.test.js  speed budget
+tools/            soak, arena and play runs, browser smoke tests (*-smoke.cjs, boot-test, ui-smoke), art keying and lint, stamp.js
 assets/           screenshots, art sheets, early concept boards
 legacy/python/    the first pygame prototype, kept for reference (not the playable build)
 ```

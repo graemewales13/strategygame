@@ -464,3 +464,15 @@ Causes and fixes:
 - **Not changed, on purpose:** the rout's three minutes of slow loyalty (DEMANDS) stand; a feast lifts loyalty but does not end the shame.
 - Tests: rules "feast (T33)" (cost, refusals with reasons and nothing spent, the lift, the free village, cooldown, save and load, loyalty climbing while rejoicing, the rival feasting only with grain to spare). The chaos soak now sends feast intents at random buildings.
 
+
+## T-104 - README's file layout named 11 of 24 modules (fixed 2026-10-31)
+- **Gap.** The README's Layout block, the map a newcomer reads before opening the code, listed the first modules only: diplomacy.js, learn.js, recorder.js, trainui.js, objectives.js, production.js, economy.js, groups.js, keys.js, save.js, gfx.js, audio.js and names.js were missing, and of the tests only `test/sim.test.js` was named (the fast rules test, the full board, the playbook and the speed budget were not), nor the `tools/` folder.
+- **Fix.** Every module with one line on what it does; every test file; a line for `tools/`.
+- Test: rules "README layout names every module in js/ and every test file (T-104)" fails when a new `js/*.js` or `test/*.test.js` is added without a Layout line.
+
+## T-105 - Idle serf count and chime (added 2026-10-31, T52)
+- **Added.** `idleSerfs(game, team)` in `js/economy.js`: the serfs of a house standing idle (alive, not sheltering, task idle), the same rule as the ledger's Idle row (`jobOf`), and now also behind the **Idle** button's selection. `idleChime(prev, ids, { selected, time, last, every })` decides the chime: the serfs idle now that were not at the last look, minus any the player has selected (he has just stopped them, or is looking at them); silent at the first look of a match (the starting serfs stand idle by design) and within `IDLE_ALERT.chimeEvery` (20 s of game time) of the last chime. Both pure and read-only.
+- **UI.** A red count on the **Idle** button (`#serfIdle`, the same badge as Prod's), hidden at none; the button's tooltip gives the number. A soft falling two-note chime (`idle` in `js/audio.js`, synthesised) when a serf runs out of work; Menu > Options **Chime when a serf goes idle** (on by default, kept in the browser). A new match or a load starts the watch afresh (`setGame`).
+- **Badge placement.** Both badges now sit inside their button's right edge (`right: 0`, was `-4px`): the overhang made the button wider than its box, which the ledger smoke counts as a button cut short.
+- **AI.** Nothing: the rivals put their idle serfs to work every 1.5 s already.
+- Tests: rules "idle serf count and chime (T52)" (only our living serfs standing idle: not one at work, sheltering, dead, a rival's or a scout; the same as the ledger; first look silent; one out of work chimes; not again within 20 s; again after; a selected one does not; still idle does not; reading changes nothing). `tools/ledger-smoke.cjs` now checks the count matches, is drawn, hides at none, a serf going idle chimes and shows 1, and the Options switch is there.

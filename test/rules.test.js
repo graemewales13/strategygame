@@ -10,7 +10,8 @@ import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/dip
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
-import { labour, stores, noteStock, netRates, coinBySource, jobOf, JOBS } from '../js/economy.js';
+import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, jobOf, JOBS } from '../js/economy.js';
+import { IDLE_ALERT } from '../js/config.js';
 import { MARKET_RADIUS, HAUL, SHELF_CAP, WAREHOUSE_CAP, FEAST } from '../js/config.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN, unitPlural, plural } from '../js/config.js';
 
@@ -1765,6 +1766,45 @@ test('production overview (T40) and idle production (T50): rows, idle count, Rep
   const snap = JSON.stringify(g.buildings.map((b) => [b.id, b.queue, b.repeat]));
   productionRows(g, PLAYER); idleProduction(g, PLAYER); researchRow(g, PLAYER);
   assert.equal(JSON.stringify(g.buildings.map((b) => [b.id, b.queue, b.repeat])), snap);
+});
+
+test('idle serf count and chime (T52): one rule with the ledger, first look silent, rate-limited, not for the selected', () => {
+  const g = mk(); const h = g.seatOf(PLAYER);
+  for (const u of g.units) if (u.team === PLAYER && u.kind === 'serf') u.hp = 0;
+  const serf = (dx) => g.addUnit('serf', PLAYER, h.x + dx, h.y + 6);
+  const [a, b, c, d] = [0, 1, 2, 3].map(serf);
+  const tree = g.resources.find((n) => n.kind === 'tree' && n.amount > 0);
+  a.task = { type: 'idle' }; b.task = { type: 'gather', nodeId: tree.id }; c.inside = 1; c.task = { type: 'idle' }; d.task = { type: 'idle' }; d.hp = 0;
+  g.addUnit('serf', 1, h.x, h.y + 8).task = { type: 'idle' };
+  g.addUnit('scout', PLAYER, h.x, h.y + 9).task = { type: 'idle' };
+  const ids = () => idleSerfs(g, PLAYER).map((u) => u.id);
+  assert.deepEqual(ids(), [a.id], 'only our living serfs standing idle: not one at work, sheltering, dead, a rival\'s or a scout');
+  assert.deepEqual(ids(), labour(g, PLAYER).jobs.idle, 'the same serfs as the ledger\'s Idle row');
+  // the chime
+  assert.deepEqual(idleChime(null, ids(), { time: 0 }), { ids: [], chime: false }, 'the first look of a match is silent');
+  let seen = new Set(ids());
+  b.task = { type: 'idle' };   // the tree is felled
+  let r = idleChime(seen, ids(), { time: 30, every: IDLE_ALERT.chimeEvery });
+  assert.deepEqual(r, { ids: [b.id], chime: true }, 'a serf out of work chimes');
+  seen = new Set(ids()); const e = serf(4); e.task = { type: 'idle' };
+  r = idleChime(seen, ids(), { time: 30 + IDLE_ALERT.chimeEvery - 1, last: 30, every: IDLE_ALERT.chimeEvery });
+  assert.equal(r.chime, false, 'not again within the rate limit'); assert.deepEqual(r.ids, [e.id]);
+  r = idleChime(seen, ids(), { time: 30 + IDLE_ALERT.chimeEvery, last: 30, every: IDLE_ALERT.chimeEvery });
+  assert.equal(r.chime, true, 'again once the limit has passed');
+  r = idleChime(seen, ids(), { selected: [e.id], time: 99, every: IDLE_ALERT.chimeEvery });
+  assert.equal(r.chime, false, 'a serf the player has selected (and stopped) does not chime');
+  r = idleChime(new Set(ids()), ids(), { time: 200 });
+  assert.equal(r.chime, false, 'serfs still idle do not chime again');
+  const snap = () => JSON.stringify(g.units), before = snap(); idleSerfs(g, PLAYER); idleChime(seen, ids(), { time: 300 });
+  assert.equal(snap(), before, 'reading changes nothing');
+});
+
+test('README layout names every module in js/ and every test file (T-104)', () => {
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const lay = readme.slice(readme.indexOf('## Layout'), readme.indexOf('## Multiplayer note'));
+  for (const f of readdirSync(new URL('../js/', import.meta.url)).filter((f) => f.endsWith('.js'))) assert.ok(new RegExp(`\\b${f.replace('.', '\\.')}\\b`).test(lay), `README Layout lists js/${f}`);
+  for (const f of readdirSync(new URL('../test/', import.meta.url)).filter((f) => f.endsWith('.test.js'))) assert.ok(lay.includes(`test/${f}`), `README Layout lists test/${f}`);
+  assert.ok(readme.includes(`at most every ${IDLE_ALERT.chimeEvery} s`), 'README gives the idle chime\'s rate limit from config (T52)');
 });
 
 test('economy ledger (T51): serfs by work, mine crews, farms, stores, net rates a minute, the key', () => {

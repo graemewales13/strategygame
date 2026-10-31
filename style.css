@@ -564,9 +564,9 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 #groupBar .grp.fight { animation: grpFight 0.8s steps(2) infinite; }
 @keyframes grpFight { 50% { background: linear-gradient(180deg, #a3271c, #4a0f0a); } }
 /* production overview (T40) and the idle production badge (T50) */
-#miniBtns #btnProd { position: relative; overflow: visible; }
-#prodIdle { position: absolute; top: -7px; right: -4px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: #b8321f; color: #fff; font: 700 10px/14px Georgia, serif; font-style: normal; border: 1px solid #f0c27a; box-sizing: border-box; }
-#prodIdle.hidden { display: none; }
+#miniBtns #btnProd, #miniBtns #btnIdle { position: relative; overflow: visible; }
+#prodIdle, #serfIdle { position: absolute; top: -7px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: #b8321f; color: #fff; font: 700 10px/14px Georgia, serif; font-style: normal; border: 1px solid #f0c27a; box-sizing: border-box; }
+#prodIdle.hidden, #serfIdle.hidden { display: none; }
 #prodPanel, #ledgerPanel { position: fixed; top: 54px; left: 14px; width: 360px; max-width: calc(100vw - 28px); max-height: calc(100vh - 54px - 240px); overflow: auto; z-index: 35; background: #18120a; border: 1px solid #b08f58; border-radius: 6px; box-shadow: 0 6px 24px #000a; padding: 8px 10px; color: #e8d9ae; font: 12px/1.35 Georgia, serif; }
 #prodPanel.hidden, #ledgerPanel.hidden { display: none; }
 #prodPanel .phead, #ledgerPanel .phead { display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid #5a4325; padding-bottom: 4px; margin-bottom: 4px; font-size: 14px; }
