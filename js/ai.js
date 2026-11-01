@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -265,6 +265,7 @@ function think(game, team, p) {
     if (hurt && !game.units.some((u) => u.team === team && u.task.type === 'repair')) game.repairWith(team, hurt, 2); }
   townBell(game, team, p, seat, t);
   holdFeast(game, team, p, t);
+  feedVillages(game, team, p, t);
   courtVillages(game, team, p, seat, army, need, t);
   scoutAbroad(game, team, p, seat, army, t);
   exploreAbroad(game, team, p, t);
@@ -353,6 +354,16 @@ export function holdFeast(game, team, p, t) {
     if (want > need && p.food >= game.feastCost(team, b) + FEAST.aiSpare) { need = want; best = b; }
   }
   if (best) game.feast(team, best.id);
+}
+
+// Feeding a village (T53), the player's Send grain: with grain to spare over a send (FEED.aiSpare), a house carts grain to its hungriest
+// village it can reach, one send a look, by the same rule as the player's.
+export function feedVillages(game, team, p, t) {
+  if (t < (p.feedLook || 0)) return;
+  p.feedLook = t + FEED.aiLook;
+  if (p.food < FEED.amount + FEED.aiSpare) return;
+  const v = game.hungryVillages(team).find((h) => !game.feedWhy(team, h));
+  if (v) game.feedVillage(team, v.id, FEED.amount);
 }
 
 // A war band that is losing falls back to its seat to join the rest and heal, instead of dying to the last man: the foes' fighting power

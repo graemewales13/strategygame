@@ -300,6 +300,7 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 .cbtn:active { transform: translateY(1px); }
 .cbtn.off { filter: grayscale(.7) brightness(.62); }
 .cbtn.on { border-color: #fff; box-shadow: 0 0 6px var(--brass-hi); }
+.cbtn.warnb { border-color: #e0866a; box-shadow: 0 0 6px rgba(224,134,106,.7); }
 .cbtn .g { font-size: 18px; font-weight: 700; color: var(--brass-hi); text-shadow: 0 1px 0 #000; height: 22px; display: grid; place-items: center; }
 .cbtn .n { font-weight: 700; font-size: 10px; }
 .cbtn .c { font-size: 9px; color: #d9c28a; }

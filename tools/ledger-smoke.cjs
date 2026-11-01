@@ -3,6 +3,8 @@
 // selected), clicks the market row (it is selected), opens Prod (the ledger closes), L again, Esc closes it without opening the menu; no
 // page errors and the panel and the Ledger button fit a 1366x768 screen. Also (T52): the red count on the Idle button matches the idle serfs,
 // hides when none stand idle, a serf going idle sounds the chime once (counted by stubbing it), and Options has the chime's switch.
+// And (T53): a starving village is listed under Hungry villages, a click selects it, its Send grain button fills its store. A second
+// screenshot path takes the field with the village card.
 const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1366, height: 768 } });
@@ -52,5 +54,19 @@ const { chromium } = require('playwright');
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
   want(await p.evaluate(() => document.getElementById('ledgerPanel').classList.contains('hidden')), 'Esc closes the ledger');
   want(await p.evaluate(() => document.getElementById('mainmenu').classList.contains('hidden')), 'that Esc did not open the menu');
+  // T53: a hungry village is listed; a click selects it; Send grain carts grain into its store
+  const hv = await p.evaluate(() => { const { game: g } = window.__seven; const v = g.seatOf(0); v.stores.food = 0; v.hunger = 1; g.players[0].food = 400; return v.id; });
+  await p.mouse.move(683, 300); await p.keyboard.press('l'); await p.waitForTimeout(1300);
+  want(await p.evaluate((id) => /Hungry villages/.test(document.getElementById('ledgerPanel').textContent) && !!document.querySelector(`#ledgerPanel .prow[data-act="ledvil"][data-id="${id}"]`), hv), 'the ledger lists the hungry village (T53)');
+  await p.locator(`#ledgerPanel .prow[data-act="ledvil"][data-id="${hv}"]`).click(); await p.waitForTimeout(500);
+  want(await p.evaluate((id) => window.__seven.ui.sel.type === 'village' && window.__seven.ui.sel.id === id, hv), 'a click on it selects the village');
+  const fb = p.locator('#cmdPanel .cbtn[data-act="feed"]');
+  want(await fb.count() === 1, 'the village card has Send grain');
+  if (await fb.count()) { await fb.click(); await p.waitForTimeout(400); }
+  const fed = await p.evaluate((id) => { const g = window.__seven.game, v = g.byId.get(id); return { food: v.stores.food, hunger: v.hunger, have: g.players[0].food }; }, hv);
+  console.log('fed', JSON.stringify(fed));
+  want(fed.food >= 59 && !fed.hunger && fed.have < 355, 'Send grain carts 60 grain into its store');
+  const cb = await p.locator('#cmdPanel').boundingBox(); want(!!cb && cb.y + cb.height <= 768, 'the village card fits 1366x768');
+  if (process.argv[3]) await p.screenshot({ path: process.argv[3] });
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length ? 1 : 0);
 })();

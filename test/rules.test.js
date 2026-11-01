@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
@@ -12,7 +12,7 @@ import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
 import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, jobOf, JOBS } from '../js/economy.js';
 import { IDLE_ALERT } from '../js/config.js';
-import { MARKET_RADIUS, HAUL, SHELF_CAP, WAREHOUSE_CAP, FEAST } from '../js/config.js';
+import { MARKET_RADIUS, HAUL, SHELF_CAP, WAREHOUSE_CAP, FEAST, FEED, POP_FOOD, SETTLE_FOOD } from '../js/config.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN, unitPlural, plural } from '../js/config.js';
 
 let _s = 777;
@@ -1876,6 +1876,54 @@ test('README controls list every command of the key map with its default key (T-
 
 console.log(`${passed} passed`);
 
+test('feed a village (T53): grain carted from the stockpile into a held village, refused with reasons, capped, listed as hungry; rivals feed theirs', () => {
+  const g = mk(), p = g.players[PLAYER], seat = g.seatOf(PLAYER);
+  const v = seat; v.stores.food = 0; v.hunger = 1; v.pop = 20;
+  assert.ok(g.villageHungry(v)); assert.equal(g.foodLeft(v), 0);
+  assert.ok(g.hungryVillages(PLAYER).some((h) => h.id === v.id), 'listed as hungry');
+  assert.equal(g.feedFrom(PLAYER, v)?.id, v.id, 'the seat carts to itself');
+  // no grain: refused with the reason, nothing changes
+  p.food = 0;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'feed', villageId: v.id, amount: FEED.amount }), false);
+  assert.match(g.diploNote, /no grain/); assert.equal(v.stores.food, 0);
+  p.food = 500;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'feed', villageId: v.id, amount: FEED.amount }), true);
+  assert.equal(p.food, 500 - FEED.amount); assert.equal(v.stores.food, FEED.amount); assert.equal(v.hunger, 0);
+  assert.ok(Math.abs(g.foodLeft(v) - FEED.amount / (20 * POP_FOOD)) < 1e-6);
+  // capped at the store's room, and a full store is refused
+  v.stores.food = FEED.cap - 15; const f0 = p.food;
+  assert.equal(g.feedVillage(PLAYER, v.id, FEED.amount), 15); assert.equal(p.food, f0 - 15); assert.equal(v.stores.food, FEED.cap);
+  assert.equal(g.feedVillage(PLAYER, v.id, FEED.amount), 0); assert.match(g.diploNote, /full/);
+  assert.ok(!g.hungryVillages(PLAYER).some((h) => h.id === v.id), 'a fed village is not hungry');
+  // a rival's village cannot be fed, nor a free one
+  const rv = g.seatOf(1); assert.equal(g.feedVillage(PLAYER, rv.id), 0); assert.match(g.diploNote, /village of yours/);
+  const free = g.villages.find((x) => x.owner < 0); assert.equal(g.feedVillage(PLAYER, free.id), 0);
+  // a held village far from any seat, keep, market or warehouse cannot be reached
+  free.owner = PLAYER; free.stores.food = 0; free.x = seat.x + FEED.r + 30; free.y = seat.y;
+  if (!g.feedFrom(PLAYER, free)) { assert.equal(g.feedVillage(PLAYER, free.id), 0); assert.match(g.diploNote, /within \d+ tiles/); }
+  free.owner = -1;
+  // saved: the store holds after a load
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(h.byId.get(v.id).stores.food, FEED.cap);
+  // a rival feeds its hungriest village by the same rule, only with grain to spare
+  const rp = g.players[1]; rv.stores.food = 0; rv.hunger = 1; rv.pop = 20;
+  rp.food = FEED.amount + FEED.aiSpare - 1; feedVillages(g, 1, rp, g.time);
+  assert.equal(rv.stores.food, 0, 'not without grain to spare');
+  rp.food += 1; rp.feedLook = 0; feedVillages(g, 1, rp, g.time);
+  assert.equal(rv.stores.food, FEED.amount); assert.equal(rp.food, FEED.aiSpare);
+  rv.stores.food = 0; feedVillages(g, 1, rp, g.time + 1);
+  assert.equal(rv.stores.food, 0, 'once a look');
+});
+test('README village text matches the rules (T-106): tribute shares, drafting serfs, sending grain', () => {
+  const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8'), line = md.split('\n').find((l) => l.startsWith('Every village has folk')) || '';
+  assert.ok(!/Call settler/.test(md), 'no button is called Call settler');
+  const g = mk(), v = g.seatOf(PLAYER); v.joyT = 0;
+  const at = (loyalty, pop) => { v.loyalty = loyalty; v.pop = pop; const t = g.tributeShare(v, null); return [Math.round(t.loy * 100), Math.round(t.size * 100)]; };
+  assert.deepEqual(at(0, 0), [40, 50]); assert.deepEqual(at(100, v.popMax), [120, 120]);
+  assert.ok(line.includes('40% at none to 120% at full') && line.includes('50% empty to 120% full'), 'README gives both tribute shares');
+  assert.ok(line.includes(`**Serf**, ${SETTLE_FOOD} grain`), 'README gives the serf draft price');
+  for (const n of [FEED.amount, FEED.cap, FEED.r]) assert.ok(line.includes(`${n}`), `README gives the grain send number ${n}`);
+});
 test('feast (T33): grain at a keep lifts the villages near it, refused with a reason, once per cooldown, saved; rivals feast with grain to spare', () => {
   const g = mk(), p = g.players[PLAYER], seat = g.seatOf(PLAYER);
   const keep = g.addBuilding('keep', PLAYER, Math.round(seat.x + 7), Math.round(seat.y - 2), true); g.recomputeWalk();

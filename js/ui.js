@@ -6,7 +6,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -37,6 +37,16 @@ const costText = (cost, p) => ALL_GOODS.filter((r) => cost[r]).map((r) => `<span
 const SHORT = { food: 'g', wood: 't', gold: 'c', stone: 's' };
 const costShort = (cost) => Object.entries(cost).filter(([, v]) => v).map(([k, v]) => `${v}${SHORT[k] || k[0]}`).join(' ');
 const dot = (g) => uiImg('goods', g, `<i class="gd" style="background:${GOOD_COLOR[g]}"></i>`, 'gdi');   // (a painted goods icon once delivered: ARTREQUIREMENTS priority 24)
+
+// Redraw a panel by rows: only the rows whose markup changed are swapped, so the row under the mouse stays the same element while
+// a live number elsewhere ticks (a click on a replaced row is lost, T-107); a panel whose rows came or went is redrawn whole.
+function patchRows(el, html) {
+  const top = el.scrollTop, t = document.createElement('div'); t.innerHTML = html;
+  const now = [...el.children], next = [...t.children];
+  if (now.length !== next.length) el.replaceChildren(...next);
+  else next.forEach((n, i) => { if (now[i].outerHTML !== n.outerHTML) now[i].replaceWith(n); });
+  el.scrollTop = top;
+}
 
 export class UI {
   constructor({ game, host, renderer, minimap, cfg }) {
@@ -148,7 +158,11 @@ export class UI {
     if ($('btnProd')) $('btnProd').onclick = (e) => (e.shiftKey ? this.selectIdleProd() : this.toggleProd());   // (T40, T50)
     $('prodPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
     if ($('btnLedger')) $('btnLedger').onclick = () => this.toggleLedger();   // (T51)
-    $('ledgerPanel').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) this.onCmd({ ...b.dataset }); });
+    { // a row pressed is remembered at the press: if the panel is redrawn before the button comes up, the click still reaches it (T-107)
+      const lp = $('ledgerPanel'); let down = null;
+      lp.addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-act]'); down = b ? { d: { ...b.dataset }, t: performance.now() } : null; });
+      lp.addEventListener('click', (e) => { const b = e.target.closest('[data-act]'), d = b ? { ...b.dataset } : down && performance.now() - down.t < 800 ? down.d : null; down = null; if (d) { this.onCmd(d); this.sigLedger = ''; } });
+    }
     $('groupBar').addEventListener('click', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, false); });
     $('groupBar').addEventListener('dblclick', (e) => { const b = e.target.closest('[data-grp]'); if (b) this.recallGroup(b.dataset.grp, true); });
     $('btnSpeed').onclick = () => { this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1; $('btnSpeed').textContent = this.speed + 'x'; };
@@ -520,6 +534,14 @@ export class UI {
         html += `<div class="prow${!m.spent && !m.n ? ' idle' : ''}${this.sel.type === 'building' && this.sel.id === m.id ? ' on' : ''}" data-act="ledgo" data-id="${m.id}" ${tip(`<b>${esc(what)} mine</b><br>Click to select it and go there.`)}><span class="pname">${m.mineral ? dot(m.mineral) : ''} ${esc(what)}</span><span class="pq">${state}</span></div>`;
       }
     }
+    const hungry = g.hungryVillages(PLAYER);
+    if (hungry.length) {
+      html += `<div class="lsec">Hungry villages <small>(select one and press Send grain)</small></div>`;
+      for (const v of hungry) {
+        const left = g.foodLeft(v), state = v.hunger ? '<b class="pidle">starving</b>' : `<b class="pwait">${left >= 120 ? Math.round(left / 60) + ' min' : Math.round(left) + ' s'} of grain</b>`;
+        html += `<div class="prow idle${this.sel.type === 'village' && this.sel.id === v.id ? ' on' : ''}" data-act="ledvil" data-id="${v.id}" ${tip(`<b>${esc(v.name)}</b><br>${Math.floor(v.stores.food || 0)} grain in store for ${Math.floor(v.pop)} folk.${v.hunger ? ' Out of grain: it shrinks until fed.' : ''}<br>Click to select it and go there.`)}><span class="pname">${dot('food')} ${esc(v.name)}</span><span class="pq">${state}</span></div>`;
+      }
+    }
     html += `<div class="lsec">Goods <small>${rates ? 'a minute, net, over the last two minutes' : '(rates after half a minute)'}</small></div>`;
     for (const k of ALL_GOODS) {
       const have = Math.floor(p[k] || 0), r = rates?.[k] || 0; if (!have && Math.abs(r) < 0.05 && k !== 'food' && k !== 'wood' && k !== 'gold') continue;
@@ -539,8 +561,10 @@ export class UI {
   renderLedger() {
     noteStock(this.econHist ||= [], this.game, PLAYER);   // (noted while closed too, so the rates are ready when it opens)
     if (!this.ledgerOpen) return;
+    const now = performance.now();
+    if (this.sigLedger && now - (this.ledgerT || 0) < 1000) return;   // live numbers redrawn once a second, not eight times: rows stay put under the mouse (T-107)
     const html = this.ledgerHtml();
-    if (html !== this.sigLedger) { this.sigLedger = html; const el = $('ledgerPanel'), top = el.scrollTop; el.innerHTML = html; el.scrollTop = top; }
+    if (html !== this.sigLedger) { this.sigLedger = html; this.ledgerT = now; patchRows($('ledgerPanel'), html); }
   }
   // a village of ours: the spies we posted there as watchmen, and whether someone has lately been turning its folk (T-058: both were unseen)
   watchRow(v) {
@@ -587,6 +611,7 @@ export class UI {
       case 'prodclose': this.toggleProd(false); break;
       case 'ledgo': this.showBuilding(+d.id); break;   // (T51)
       case 'ledclose': this.toggleLedger(false); break;
+      case 'ledvil': { const v = g.byId.get(+d.id); if (v) { this.sel = { type: 'village', ids: [], id: v.id }; this.r.centerOn(v.x, v.y); } break; }   // (T53)
       case 'ledjob': {   // every serf at this work selected, the camera on the next of them at each click
         const ids = labour(g, PLAYER).jobs[d.job] || [], us = ids.map((id) => g.byId.get(id)).filter((u) => u && u.hp > 0);
         if (!us.length) break;
@@ -688,6 +713,7 @@ export class UI {
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'bell': this.ringBell(); break;
       case 'feast': { const b = this.selEntity(); if (b) { const r = this.host.send({ type: 'feast', buildingId: b.id }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); this.sigCmd = ''; } break; }
+      case 'feed': { const v = this.selEntity(); if (v) { const r = this.host.send({ type: 'feed', villageId: v.id, amount: FEED.amount }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); this.sigCmd = ''; } break; }   // (T53)
       case 'gsel': this.gsel = +d.id; break;
       case 'research': this.host.send({ type: 'research', tech: d.tech }); break;
       case 'craft': { const b = this.selEntity(); if (b) this.host.send({ type: 'craft', buildingId: b.id, item: d.item }); break; }
@@ -1047,7 +1073,7 @@ export class UI {
         <div class="stat"><label>Loyalty</label><div class="meter"><i class="loy" style="width:${v.loyalty}%"></i></div><span class="v">${v.loyalty | 0}</span></div>
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
         <div class="stat"><label>Population</label><div class="meter"><i class="loy" style="width:${(v.pop / v.popMax) * 100}%"></i></div><span class="v">${Math.floor(v.pop)}/${v.popMax}</span></div>
-        <div class="stat"><label>Folk</label><span>${v.folk.join(', ')} · ${v.hunger ? '<b style="color:#e0866a">starving: the store is out of grain</b>' : v.pop >= v.popMax ? 'at full strength' : 'growing (fed from the village store)'} · grain ${Math.floor(v.stores.food || 0)}</span></div>${v.owner === PLAYER ? `<div class="stat"><label>Housing</label><span>houses ${Math.floor(v.pop * POP_HOUSING)} of your population cap; tribute ${this.tributeText(v)}</span></div>` : ''}
+        <div class="stat"><label>Folk</label><span>${v.folk.join(', ')} · ${v.hunger ? '<b style="color:#e0866a">starving: the store is out of grain</b>' : v.owner === PLAYER && !memo && g.villageHungry(v) ? `<b style="color:#e0b86a">short of grain: about ${Math.round(g.foodLeft(v))} s left</b>` : v.pop >= v.popMax ? 'at full strength' : 'growing (fed from the village store)'} · grain ${Math.floor(v.stores.food || 0)}</span></div>${v.owner === PLAYER ? `<div class="stat"><label>Housing</label><span>houses ${Math.floor(v.pop * POP_HOUSING)} of your population cap; tribute ${this.tributeText(v)}</span></div>` : ''}
         <div class="stat"><label>Influence</label><span>${memo ? 'not known out of sight' : this.pullText(v)}</span></div>${memo ? `<div class="selsub">Out of sight: as your folk last saw it ${g.time - memo.at < 60 ? 'moments' : Math.round((g.time - memo.at) / 60) + ' min'} ago. Send a scout to see it now.</div>` : ''}${v.owner === PLAYER ? this.watchRow(v) : ''}${v.owner === PLAYER && v.garrison?.length ? `<div class="stat"><label>Garrison</label><span>${v.garrison.length}/${VILLAGE_GARRISON} inside</span></div>${this.rollChips(v.garrison.map((id) => g.byId.get(id)).filter(Boolean), 8)}` : ''}${v.joyT > 0 ? `<div class="stat"><label>Mood</label><span style="color:#9fe08f">Content (fine ware): +30% tribute</span></div>` : v.owner === PLAYER ? `<div class="stat"><label>Mood</label><span>Fine ware from a foundry (copper + coal) near a market, tavern or temple would please them.</span></div>` : ''}`;
     } else if (s.type === 'node') {
       const n = g.resources[s.id]; if (!n) { this.clearSel(); return; }
@@ -1366,12 +1392,20 @@ export class UI {
       const free = Math.floor(v.pop) - DRAFT.minLeft, room = g.popCap(PLAYER) + 1 - g.popUsed(PLAYER), food = g.players[PLAYER].food;
       html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serf', sub: SETTLE_FOOD + 'g', data: { role: 'serf', n: 1 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft a serf</b><br>One villager becomes a serf of yours (${SETTLE_FOOD} grain). Serfs gather and build.` });
       html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serfs ×5', sub: SETTLE_FOOD * 5 + 'g', data: { role: 'serf', n: 5 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft serfs</b><br>Up to five villagers leave as serfs (${SETTLE_FOOD} grain each). They regrow while the village has grain.` });
+      html += this.feedBtn(v);
       { const wait = Math.max(0, Math.ceil((v.armAt ?? -1e9) + DRAFT.armEvery - g.time)); html += this.btn('draft', { glyph: '⚔', art: 'recruit', name: 'Arm villager', sub: wait ? `${wait}s` : `${DRAFT.soldierFood}g`, data: { role: 'soldier', n: 1 }, off: free < 1 || room < 1 || food < DRAFT.soldierFood || wait > 0, tip: `<b>Arm a villager</b><br>One villager takes up a spear: a recruit who fights at about a quarter of a footman's strength. A village can arm one every ${DRAFT.armEvery}s. For real soldiers train them at a barracks, or put recruits in a keep and drill them.<br><span class="cost">${DRAFT.soldierFood} grain</span>` }); }
     } else {
       html += this.btn('sendspy', { glyph: GLYPH.spy, art: 'spy', name: 'Send spy', off: !spies, sub: spies ? `${spies} ready` : 'need a spy', tip: `<b>Send a spy</b><br>Sways loyalty without a fight. Spies can be caught.${spies ? '' : `<br><span class="need">Hire a recruit at a tavern, select it, press Become spy (${SPY_FEE} coin).</span>`}` });
       html += this.btn('sendarmy', { glyph: '⚔', name: 'Send army', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Sack</b><br>Sends every soldier to attack. Protection must reach zero.' });
     }
     return html + `</div>`;
+  }
+
+  // Send grain (T53): carted from your stockpile into this village's store
+  feedBtn(v) {
+    const g = this.game, why = g.feedWhy(PLAYER, v), n = g.feedAmount(PLAYER, v), hungry = g.villageHungry(v);
+    const from = g.feedFrom(PLAYER, v), fd = from ? Math.round(Math.hypot(from.x - v.x, from.y - v.y)) : 0, fromTxt = !from ? '' : from.type === 'village' ? (from.id === v.id ? 'from your hall here' : `from your seat at ${esc(from.name)}, ${fd} tiles away`) : `from your ${BUILDINGS[from.kind].label.toLowerCase()} ${fd} tiles away`;
+    return this.btn('feed', { off: !!why, cls: hungry && !why ? 'warnb' : '', img: uiArt('orders', 'feed'), glyph: '🌾', name: 'Send grain', sub: why ? '' : `${n} grain`, tip: `<b>Send grain</b><br>Carts up to ${FEED.amount} grain ${fromTxt || 'from your seat or a keep, market or warehouse of yours'} into ${esc(v.name)}'s store (it holds up to ${FEED.cap}). A fed village grows; a dry one starves and shrinks. The panel gives the grain in store and how long it lasts.${why ? `<br><span class="need">${esc(why)}</span>` : ''}` });
   }
 
   // serfs: one set of job buttons for the whole group, and a row for each serf with its own

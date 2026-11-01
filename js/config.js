@@ -390,6 +390,11 @@ export const KEEP_ARROWS = { per: 2, cap: 4, range: 8, dmg: 6, cd: 2 };
 // `stock` grain into each village store (a starving village eats again); a free village nearby that leans on no one else, or on this house,
 // warms by `sway`. Costs `food` + `perVillage` for each held village fed; once per `cool` seconds a house. Rivals feast with `aiSpare` grain over the cost.
 export const FEAST = { food: 300, perVillage: 40, r: 24, loyalty: 10, secs: 90, stock: 40, sway: 6, cool: 240, aiSpare: 600 };
+// Feeding a village (T53, Manor Lords' supply to settlements): grain carted from the house's stockpile into a held village's store,
+// `amount` a send, up to `cap` in the store, from a finished keep, market or warehouse of the house within `r` tiles (the cart's road).
+// A village is hungry when its store holds less than `warn` seconds of eating (or is out). Rivals feed theirs with `aiSpare` grain over the send,
+// looking every `aiLook` seconds.
+export const FEED = { amount: 60, cap: 200, r: 36, warn: 60, aiSpare: 400, aiLook: 25 };
 export const BELL = { r: 18, kinds: ['serf', 'scholar'], raidR: 14, foes: 2, odds: 1.5, quiet: 15 };
 // who can raise buildings, and how fast compared with a serf (soldiers can build a castle beside a village they mean to sway)
 export const BUILDERS = { serf: 1, recruit: 0.5, footman: 0.6, bowman: 0.6, knight: 0.4, scout: 0.3 };

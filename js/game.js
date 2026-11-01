@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -653,6 +653,7 @@ export class Game {
       case 'leave': return this.leave(team, it.buildingId);
       case 'bell': return this.ringBell(team);
       case 'feast': return this.feast(team, it.buildingId);
+      case 'feed': return this.feedVillage(team, it.villageId, it.amount) > 0;
       case 'hire': return this.hire(team, it.buildingId, it.index);
       case 'research': return this.startResearch(team, it.tech);
       case 'craft': return this.craft(team, it.buildingId, it.item);
@@ -907,6 +908,47 @@ export class Game {
     this.log(team === PLAYER ? PLAYER : -1, team === PLAYER ? `A feast at your keep: ${town} eat${held.length === 1 ? 's' : ''} and rejoice${held.length === 1 ? 's' : ''} for ${FEAST.secs} s (${cost} grain${warmed ? `; ${warmed} free village${warmed === 1 ? '' : 's'} warm${warmed === 1 ? 's' : ''} to you` : ''}).` : `${p.name} holds a feast for ${town}.`, team === PLAYER ? 'good' : 'info');
     if (team === PLAYER) this.sfx('fanfare', b.x, b.y);
     return true;
+  }
+
+  // ---- feeding a village (T53): grain carted from the stockpile into a held village's store --------------------------------------
+  // seconds of eating left in a village's store (Infinity when nobody eats)
+  foodLeft(v) { const eat = v.pop * POP_FOOD; return eat > 0 ? (v.stores.food || 0) / eat : Infinity; }
+  villageHungry(v) { return !!v.hunger || this.foodLeft(v) < FEED.warn; }
+  hungryVillages(team) { return this.villages.filter((v) => v.owner === team && this.villageHungry(v)).sort((a, b) => this.foodLeft(a) - this.foodLeft(b)); }
+  // the nearest finished keep, market or warehouse of the house (or its seat) within FEED.r tiles: where the cart sets out from
+  feedFrom(team, v) {
+    let best = null, bd = FEED.r + 1e-9;
+    const seat = this.seatOf(team);
+    if (seat && seat.hp !== 0) { const d = Math.hypot(seat.x - v.x, seat.y - v.y); if (d <= bd) { bd = d; best = seat; } }
+    for (const b of this.buildings) {
+      if (b.team !== team || b.hp <= 0 || b.built < 1 || !(b.kind === 'keep' || b.kind === 'market' || b.kind === 'warehouse')) continue;
+      const d = Math.hypot(b.x - v.x, b.y - v.y); if (d <= bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  // how much grain one send would put in this village's store now (0 when it cannot be sent)
+  feedAmount(team, v, amount = FEED.amount) {
+    const p = this.players[team]; if (!p || !v) return 0;
+    return Math.max(0, Math.floor(Math.min(amount, FEED.cap - (v.stores.food || 0), p.food)));
+  }
+  // why grain cannot be sent to this village now (null when it can)
+  feedWhy(team, v) {
+    const p = this.players[team];
+    if (!p || !v || v.type !== 'village' || v.owner !== team) return 'Grain can be sent only to a village of yours.';
+    if ((v.stores.food || 0) >= FEED.cap - 1) return `${v.name}'s store is full (${FEED.cap} grain).`;
+    if (!this.feedFrom(team, v)) return `No seat, keep, market or warehouse of yours within ${FEED.r} tiles of ${v.name} to cart grain from.`;
+    if (p.food < 1) return 'You have no grain to send.';
+    return null;
+  }
+  feedVillage(team, villageId, amount = FEED.amount) {
+    const v = this.byId.get(villageId), why = this.feedWhy(team, v);
+    if (why) { if (team === PLAYER) this.deny(team, why); return 0; }
+    const n = this.feedAmount(team, v, Math.max(1, +amount || FEED.amount));
+    if (n <= 0) return 0;
+    const p = this.players[team], was = !!v.hunger;
+    p.food -= n; v.stores.food = (v.stores.food || 0) + n; v.hunger = 0; p.fed = (p.fed || 0) + n;
+    if (team === PLAYER) this.log(PLAYER, `${n} grain carted to ${v.name}${was ? ': its folk eat again' : ''} (${Math.floor(v.stores.food)} in store, about ${Math.round(this.foodLeft(v) / 60)} min).`, 'info');
+    return n;
   }
 
   // ---- science: learning and research ----------------------------------------------------------------------------------
