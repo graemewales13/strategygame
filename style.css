@@ -459,6 +459,11 @@ button.big.alt { background: linear-gradient(180deg, #4e381d, #31210f); font-siz
 #objectives .osteps { display: flex; gap: 4px; margin-top: 7px; }
 #objectives .osteps i { flex: 1; height: 4px; border-radius: 2px; background: #4a3a1a; }
 #objectives .osteps i.on { background: #d6aa44; }
+#objectives .obtns { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+#objectives .obtns button { background: #3a2a12; border: 1px solid #8a6a2c; border-radius: 4px; color: #efe0b4; font: 12px Georgia, serif; padding: 2px 8px; cursor: pointer; }
+#objectives .obtns button:hover { background: #5a4220; }
+#objectives .tport { float: left; width: 44px; height: 56px; object-fit: cover; margin: 0 8px 2px 0; border: 1px solid #8a6a2c; border-radius: 3px; }
+#objectives .onote { margin-top: 6px; font-size: 11px; color: #a8976c; font-style: italic; }
 
 /* ---- the Council of Houses, letters, leaders ---- */
 .rel.alliance { background: #8fd48a; color: #10260f; } .rel.me { background: #e2c15e; color: #1a1209; }

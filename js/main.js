@@ -8,6 +8,7 @@ import { loadArt } from './art.js';
 import { Recorder } from './recorder.js';
 import { learnPlaybook } from './learn.js';
 import { initTrainPanel } from './trainui.js';
+import { TUTORIAL } from './tutorial.js';
 
 const cfg = { houses: MAX_HOUSES, fog: true, diff: 'mid', people: 'random' };   // (every people at the table by default; the menu offers 3 to 8. The engine and tests keep DEFAULT_HOUSES)
 try { const p = localStorage.getItem('auld.people'); if (p) cfg.people = p; } catch {}
@@ -41,6 +42,15 @@ ui.onReroll = (opts) => {
   game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people });
   ui.setGame(game);
   recorder.start(game);
+  ui.firstFocus = false;
+  centerOnHall();
+};
+ui.onTutorial = () => {   // T04: a fixed small match on Easy; the lessons are not recorded for the rivals to learn from
+  recorder.finish('quit');
+  game.reset({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, fog: true, diff: TUTORIAL.diff, people: cfg.people, tutorial: true });
+  ui.setGame(game);
+  recorder.start(game, { record: false });
+  renderer.resetWorld?.();
   ui.firstFocus = false;
   centerOnHall();
 };

@@ -1,6 +1,7 @@
 // Auld World - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
 import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js';
 import { progress } from './objectives.js';
+import { LESSONS, lessonAt, lessonContext, lessonTarget } from './tutorial.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
@@ -72,7 +73,7 @@ export class UI {
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; this.tutCam = null; this.tutCouncil = false; this.tutSerfs0 = game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length; this.objKey = ''; this.objPrev = null; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -828,6 +829,7 @@ export class UI {
   }
   toggleCouncil(team = null) {
     const el = $('council'); this.councilOpen = team != null ? true : !this.councilOpen; this.councilFocus = team;
+    if (this.councilOpen) this.tutCouncil = true;   // (the tutorial's Council lesson, T04)
     if (team != null) { this.diploOpen = null; this.renderDiplo(); }
     el.classList.toggle('hidden', !this.councilOpen); this.sigCouncil = ''; if (this.councilOpen) this.renderCouncil();
   }
@@ -1544,6 +1546,7 @@ export class UI {
       location.reload();
     });
     $('mBegin').onclick = () => this.closeMenu();
+    if ($('mTutor')) $('mTutor').onclick = () => this.startTutorial();
     $('mBack').onclick = () => this.showMain();
     $('hContinue').onclick = () => this.closeMenu();
     // sound: browsers only start audio after a click or key, so unlock on the first one
@@ -1568,6 +1571,7 @@ export class UI {
     $('objectives').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-act]'); if (!b) return;
       if (b.dataset.act === 'objcollapse') { this.objCollapsed = !this.objCollapsed; this.objKey = ''; this.objT = 0; }
+      if (b.dataset.act.startsWith('tut')) this.tutorAct(b.dataset.act);
       if (b.dataset.act === 'objhide') { this.objHidden = true; if ($('sObj')) $('sObj').checked = false; try { localStorage.setItem('auld-world.objectives', 'off'); } catch { /* ignore */ } this.toast('Objectives hidden. Turn them back on under Options.', 'info'); $('objectives').classList.add('hidden'); }
     });
     // Options > Keys (T03): every command's key, rebound by clicking it and pressing the new key; kept in the browser
@@ -1620,6 +1624,7 @@ export class UI {
     const show = this.started && !this.menuOpen && !this.game.outcome && this.cfg.objectives !== false && !this.objHidden;
     if (!show) { el.classList.add('hidden'); return; }
     this.objT = (this.objT || 0) - 1; if (this.objT > 0) return; this.objT = 20;   // re-evaluate a few times a second
+    if (this.game.tutorial && !this.game.tutorial.done) return this.renderLessons(el);
     const p = progress(this.game), key = p.index + ':' + this.objCollapsed;
     if (key === this.objKey) { el.classList.remove('hidden'); return; }
     this.objKey = key;
@@ -1628,6 +1633,50 @@ export class UI {
     el.classList.remove('hidden');
     el.innerHTML = `<div class="ohead"><b>Objective ${p.index + 1}/${p.total}</b><span><button data-act="objcollapse" title="Fold">${this.objCollapsed ? '+' : '-'}</button><button data-act="objhide" title="Hide objectives (turn back on in Options)">x</button></span></div>`
       + `<div class="otitle">${esc(p.step.title)}</div>` + (this.objCollapsed ? '' : `<div class="ohint">${esc(fillKeys(p.step.hint, this.kmap))}</div><div class="osteps">${p.steps.map((s) => `<i class="${s.done ? 'on' : ''}" title="${esc(s.title)}"></i>`).join('')}</div>`);
+  }
+
+  // ------------------------------------------------------------ the tutorial's coach (T04): one lesson at a time, checked as you play
+  tutorContext() {
+    const g = this.game, c = lessonContext(g, this.sel), cam = this.r.cam;
+    if (!this.tutCam) this.tutCam = { x: cam.x, y: cam.y };
+    c.panned = Math.hypot(cam.x - this.tutCam.x, cam.y - this.tutCam.y) > 6;
+    c.council = !!this.tutCouncil; c.serfs0 = this.tutSerfs0 ?? 3;
+    return c;
+  }
+  renderLessons(el) {
+    const g = this.game, at = lessonAt(g, this.tutorContext());
+    if (at.index > (g.tutorial.step | 0)) this.host.send({ type: 'tutor', step: at.index });
+    if (at.done) {
+      this.host.send({ type: 'tutor', done: true });
+      this.toast('The lessons are done. The rival houses wake now: build up, guard your king and end their lines. The objectives panel guides you on.', 'good'); play('ready');
+      this.objKey = ''; this.objPrev = null; return;
+    }
+    const key = 'T' + at.index + ':' + this.objCollapsed;
+    if (key === this.objKey) { el.classList.remove('hidden'); return; }
+    this.objKey = key;
+    if (this.objPrev != null && at.index > this.objPrev) { this.toast(`Well done: ${LESSONS[at.index - 1].title}. Next: ${at.step.title}.`, 'good'); play('ready'); }
+    this.objPrev = at.index;
+    el.classList.remove('hidden');
+    const where = lessonTarget(g, at.step);
+    el.innerHTML = `<div class="ohead"><b>Lesson ${at.index + 1}/${at.total}</b><span><button data-act="objcollapse" title="Fold">${this.objCollapsed ? '+' : '-'}</button></span></div>`
+      + `<div class="otitle">${uiImg('portraits', 'steward', '', 'tport')}${esc(at.step.title)}</div>` + (this.objCollapsed ? '' : `<div class="ohint">${esc(fillKeys(at.step.hint, this.kmap))}</div>`
+      + `<div class="obtns">${where ? '<button data-act="tutshow" title="Centre the view on it">Show me</button>' : ''}<button data-act="tutskip" title="Count this lesson as done">Skip</button><button data-act="tutleave" title="End the lessons: the rivals stop holding back and the match goes on">Leave tutorial</button></div>`
+      + `<div class="osteps">${LESSONS.map((s, k) => `<i class="${k < at.index ? 'on' : ''}" title="${esc(s.title)}"></i>`).join('')}</div>`
+      + `<div class="onote">The rival houses keep the peace with you until the lessons end.</div>`);
+  }
+  tutorAct(act) {
+    const g = this.game; if (!g.tutorial || g.tutorial.done) return;
+    const at = lessonAt(g, this.tutorContext());
+    if (act === 'tutshow') {
+      const t = lessonTarget(g, at.step); if (!t) return;
+      this.r.centerOn(t.x, t.y);
+      if (t.type === 'village') this.sel = { type: 'village', ids: [], id: t.id };
+      else if (t.type === 'building') this.sel = { type: 'building', ids: [], id: t.id };
+      else if (t.type === 'unit' && at.step.id !== 'select' && at.step.id !== 'king') this.sel = { type: 'units', ids: [t.id], id: null };
+    }
+    if (act === 'tutskip') this.host.send({ type: 'tutor', step: at.index + 1 });
+    if (act === 'tutleave') { this.host.send({ type: 'tutor', done: true }); this.toast('Tutorial left. The rival houses no longer hold back.', 'info'); }
+    this.objKey = ''; this.objT = 0;
   }
 
   // ------------------------------------------------------------ save / load
@@ -1662,6 +1711,12 @@ export class UI {
   showMain() { this.refreshSaveBar(); $('menu').classList.add('hidden'); $('mainmenu').classList.remove('hidden'); }
   showSetup() { $('mainmenu').classList.add('hidden'); $('menu').classList.remove('hidden'); this.refreshMenu(); }
   closeMenu(keepStarted) { this.menuOpen = false; this.started = true; $('menu').classList.add('hidden'); $('mainmenu').classList.add('hidden'); if (!this.firstFocus) { this.focusHall(); this.firstFocus = true; } }
+  startTutorial() {   // T04: a fixed small match on Easy with three houses; the rivals keep a truce until the lessons end
+    if (this.started && !this.game.outcome && !confirm('Start the tutorial? The match in progress ends (save first with F5 if you want to keep it).')) return;
+    this.onTutorial?.();
+    this.started = false; this.firstFocus = false; this.objHidden = false; this.objCollapsed = false; this.closeMenu();
+    $('end').classList.add('hidden');
+  }
   newValley() {
     const seed = $('mSeedLock').checked ? this.game.seed : undefined;
     this.onReroll?.({ seed, houses: this.cfg.houses });

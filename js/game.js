@@ -45,8 +45,9 @@ export class Game {
   // title screens show the whole valley under the menu: the view ignores fog until the match begins (never affects the sim)
   get fogOn() { return this._fog && !this.titleView; }
   set fogOn(v) { this._fog = v; }
-  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order } = {}) {
+  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, tutorial = false } = {}) {
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
+    this.tutorial = tutorial ? { step: 0, done: false } : null;   // T04: the lessons' place, saved; null in every other match
     this.asks = [];   // the player's envoys on the road to rival houses: { from, to, state, coin, at } (coin: offered with a peace)
     this.losses = {}; this.spyIntel = {}; this._stance = {};   // nothing of the last match's wars or spies carries over
     this.diffKey = DIFFICULTY[diff] ? diff : 'mid'; this.diff = DIFFICULTY[this.diffKey];
@@ -652,6 +653,7 @@ export class Game {
       case 'enter': return this.cmdEnter(mine(), this.byId.get(it.targetId));
       case 'leave': return this.leave(team, it.buildingId);
       case 'bell': return this.ringBell(team);
+      case 'tutor': return this.tutor(team, it.step, !!it.done);
       case 'feast': return this.feast(team, it.buildingId);
       case 'feed': return this.feedVillage(team, it.villageId, it.amount) > 0;
       case 'hire': return this.hire(team, it.buildingId, it.index);
@@ -3290,6 +3292,19 @@ export class Game {
     p.kingId = k.id; p.kingName = k.name; p.heirAt = null;
     return k;
   }
+  // T04: the tutorial's truce. While the lessons last the rivals neither war on the learner nor demand tribute of him, nor he of them by
+  // accident: it holds until the last lesson (or Leave tutorial), or until a war touches the learner (he struck first, say).
+  truce(a, b) {
+    const t = this.tutorial; if (!t || t.done || (a !== PLAYER && b !== PLAYER)) return false;
+    return !this.players.some((q) => q.team !== PLAYER && this.rel[PLAYER][q.team] === 'war');
+  }
+  // the learner's place in the lessons (only forward); done ends the truce
+  tutor(team, step, done) {
+    const t = this.tutorial; if (team !== PLAYER || !t || t.done) return false;
+    if (Number.isFinite(step)) t.step = Math.max(t.step, Math.min(50, step | 0));
+    if (done) { t.done = true; this.log(PLAYER, 'The lessons are over: the rival houses no longer hold back.', 'warning'); }
+    return true;
+  }
   kingOf(team) { const k = this.byId.get(this.players[team]?.kingId); return k && k.hp > 0 ? k : null; }
   // is a soldier of `team` standing within the king's presence?
   kingNear(u) {
@@ -3781,7 +3796,7 @@ export class Game {
     }));
     const rle = (a) => { const out = []; let v = a[0], n = 0; for (let i = 0; i < a.length; i++) { if (a[i] === v && n < 65535) n++; else { out.push(v, n); v = a[i]; n = 1; } } out.push(v, n); return out; };
     return {
-      v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(),
+      v: 1, size: this.W, seed: this.seed, peopleOrder: this.peopleOrder, houses: this.houses, fog: this.fogOn, ai: this.aiOn, diff: this.diffKey, saved: Date.now(), tutorial: this.tutorial ? { ...this.tutorial } : null,
       time: this.time, nextId: this.nextId, rndA: this.rndA, rollA: this.rollA, outcome: this.outcome, forfeits: this.forfeits || 0, losses: this.losses || {}, spyIntel: this.spyIntel || {}, asks: this.asks || [],
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
@@ -3795,6 +3810,7 @@ export class Game {
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
     if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
     this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder });
+    this.tutorial = d.tutorial ? { step: d.tutorial.step | 0, done: !!d.tutorial.done } : null;
     this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this.asks = d.asks || []; this._stance = {};
     this._ug = null; this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;

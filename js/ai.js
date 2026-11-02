@@ -192,8 +192,8 @@ function think(game, team, p) {
   if (spy) {
     const watched = (v) => game.units.some((w) => w.team === team && w.kind === 'spy' && w.hp > 0 && (w.task.type === 'infiltrate' || w.task.type === 'infiltrateB') && w.task.targetId === v.id);
     const guard = spiedOn.find((v) => !watched(v));
-    const hostile = (o) => o >= 0 && o !== team && game.alive(o) && game.known[team][o] && game.rel[team][o] !== 'alliance' && (game.rel[team][o] === 'war' || (game.opinion[team][o] || 0) < 0);
-    const rival = nearestVillage(game, seat, (x) => x.owner >= 0 && x.owner !== team && game.rel[team][x.owner] !== 'alliance' && game.known[team][x.owner] && (hostile(x.owner) || Math.hypot(x.x - seat.x, x.y - seat.y) < 32), 60);
+    const hostile = (o) => o >= 0 && o !== team && !game.truce(team, o) && game.alive(o) && game.known[team][o] && game.rel[team][o] !== 'alliance' && (game.rel[team][o] === 'war' || (game.opinion[team][o] || 0) < 0);
+    const rival = nearestVillage(game, seat, (x) => x.owner >= 0 && x.owner !== team && !game.truce(team, x.owner) && game.rel[team][x.owner] !== 'alliance' && game.known[team][x.owner] && (hostile(x.owner) || Math.hypot(x.x - seat.x, x.y - seat.y) < 32), 60);
     const free = nearestFromFrontier(game, team, seat, (x) => x.owner < 0 && x.loyalty < 70, 18, 50);
     // or, in a hated or warring house's colours, into one of its keeps, barracks, markets or academies
     const bld = game.buildings.filter((b) => b.built >= 1 && b.hp > 0 && hostile(b.team) && SPY_COVER.kinds.includes(b.kind) && Math.hypot(b.x - seat.x, b.y - seat.y) < 70).sort((a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y))[0];
@@ -280,6 +280,7 @@ function think(game, team, p) {
     let target = null, bd = -1e9;
     for (const q of game.players) {
       if (!q.alive || q.team === team || !game.known[team][q.team] || !game.seatOf(q.team)) continue;
+      if (game.truce(team, q.team)) continue;   // the tutorial's truce (T04): the learner is left be
       if (game.rel[team][q.team] === 'alliance') continue;   // oaths are kept (until a leader's temper breaks them)
       const st = stance(game, team, q.team), war = game.rel[team][q.team] === 'war';
       if (!war && (st.war < game.diff.warBar + (doc.war || 0) || t <= earliest || raised < 7 || game.time - game.relSince[team][q.team] < 240)) continue;   // a peace just made is kept a while

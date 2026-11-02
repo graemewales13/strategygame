@@ -8,35 +8,36 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mvyetbii">
+<link rel="stylesheet" href="style.css?v=mvztysrm">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mvyetbii",
-    "./js/art.js": "./js/art.js?v=mvyetbii",
-    "./js/audio.js": "./js/audio.js?v=mvyetbii",
-    "./js/config.js": "./js/config.js?v=mvyetbii",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mvyetbii",
-    "./js/economy.js": "./js/economy.js?v=mvyetbii",
-    "./js/entities.js": "./js/entities.js?v=mvyetbii",
-    "./js/game.js": "./js/game.js?v=mvyetbii",
-    "./js/gfx.js": "./js/gfx.js?v=mvyetbii",
-    "./js/groups.js": "./js/groups.js?v=mvyetbii",
-    "./js/keys.js": "./js/keys.js?v=mvyetbii",
-    "./js/learn.js": "./js/learn.js?v=mvyetbii",
-    "./js/main.js": "./js/main.js?v=mvyetbii",
-    "./js/map.js": "./js/map.js?v=mvyetbii",
-    "./js/names.js": "./js/names.js?v=mvyetbii",
-    "./js/net.js": "./js/net.js?v=mvyetbii",
-    "./js/objectives.js": "./js/objectives.js?v=mvyetbii",
-    "./js/production.js": "./js/production.js?v=mvyetbii",
-    "./js/recorder.js": "./js/recorder.js?v=mvyetbii",
-    "./js/render.js": "./js/render.js?v=mvyetbii",
-    "./js/save.js": "./js/save.js?v=mvyetbii",
-    "./js/terrain.js": "./js/terrain.js?v=mvyetbii",
-    "./js/trainui.js": "./js/trainui.js?v=mvyetbii",
-    "./js/ui.js": "./js/ui.js?v=mvyetbii"
+    "./js/ai.js": "./js/ai.js?v=mvztysrm",
+    "./js/art.js": "./js/art.js?v=mvztysrm",
+    "./js/audio.js": "./js/audio.js?v=mvztysrm",
+    "./js/config.js": "./js/config.js?v=mvztysrm",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mvztysrm",
+    "./js/economy.js": "./js/economy.js?v=mvztysrm",
+    "./js/entities.js": "./js/entities.js?v=mvztysrm",
+    "./js/game.js": "./js/game.js?v=mvztysrm",
+    "./js/gfx.js": "./js/gfx.js?v=mvztysrm",
+    "./js/groups.js": "./js/groups.js?v=mvztysrm",
+    "./js/keys.js": "./js/keys.js?v=mvztysrm",
+    "./js/learn.js": "./js/learn.js?v=mvztysrm",
+    "./js/main.js": "./js/main.js?v=mvztysrm",
+    "./js/map.js": "./js/map.js?v=mvztysrm",
+    "./js/names.js": "./js/names.js?v=mvztysrm",
+    "./js/net.js": "./js/net.js?v=mvztysrm",
+    "./js/objectives.js": "./js/objectives.js?v=mvztysrm",
+    "./js/production.js": "./js/production.js?v=mvztysrm",
+    "./js/recorder.js": "./js/recorder.js?v=mvztysrm",
+    "./js/render.js": "./js/render.js?v=mvztysrm",
+    "./js/save.js": "./js/save.js?v=mvztysrm",
+    "./js/terrain.js": "./js/terrain.js?v=mvztysrm",
+    "./js/trainui.js": "./js/trainui.js?v=mvztysrm",
+    "./js/tutorial.js": "./js/tutorial.js?v=mvztysrm",
+    "./js/ui.js": "./js/ui.js?v=mvztysrm"
   }
 }
 </script>
@@ -44,7 +45,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mvyetbii';
+window.__BUILD = 'mvztysrm';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -140,6 +141,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
         <h1>Auld World</h1>
         <p class="sub">Up to eight houses. Sack a village, sit a keep on it, or leave a spy. Last house standing wins.</p>
         <button class="big" id="mBegin">Begin the Valley</button>
+        <button class="big alt" id="mTutor" title="A guided first match: three houses on Easy, and the rivals keep the peace until the lessons end">Learn to play (tutorial)</button>
         <button class="big alt" id="mBack">Back to the menu</button>
         <div class="opt"><span>Houses</span>
           <div class="seg" id="mHouses"><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button><button data-n="7">7</button><button data-n="8">8</button></div>

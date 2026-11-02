@@ -292,6 +292,7 @@ export function settleLetter(g, id, state) { const l = g.letters.find((x) => x.i
 // for things to change (a keep pulled down, soldiers withdrawn, a gift) before it declares. Called from ai.js. Returns true once at war.
 export function pressWar(g, team, b) {
   if (g.rel[team][b] === 'war') return true;
+  if (g.truce?.(team, b)) return false;   // the tutorial's truce (T04)
   const p = g.players[team], s = stance(g, team, b), top = s.reasons.find((r) => r.kind !== 'ties' && r.kind !== 'weariness');
   const text = top ? top.text : `${nameOf(g, b)} stands in our way`;
   if (b !== PLAYER) {
@@ -329,6 +330,7 @@ export function deliberate(g, team) {
   for (const q of g.players) {
     if (!q.alive || q.team === team || !g.known[team][q.team]) continue;
     const b = q.team, rel = g.rel[team][b], o = op(g, team, b), human = b === PLAYER;
+    if (g.truce?.(team, b)) continue;   // the tutorial's truce (T04): no demands, threats or offers while the learner reads
     // allies take up each other's wars
     if (rel === 'alliance') {
       for (const c of enemiesOf(g, b)) {

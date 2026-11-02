@@ -6,6 +6,7 @@ import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
+import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget } from '../js/tutorial.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
@@ -1967,4 +1968,50 @@ test('feast (T33): grain at a keep lifts the villages near it, refused with a re
   assert.equal(rp.feastT ?? null, null, 'not without grain to spare');
   rp.food += 1; rp.feastLook = 0; holdFeast(g, r, rp, g.time);
   assert.equal(rp.feastT, g.time); assert.equal(rv.loyalty, 40 + FEAST.loyalty);
+});
+
+test('tutorial (T04): lessons checked from play, saved and only forward, Show me targets; the rivals keep a truce until the lessons end', () => {
+  const g = new Game({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, diff: TUTORIAL.diff, ai: false, tutorial: true });
+  assert.deepEqual(g.tutorial, { step: 0, done: false });
+  assert.equal(lessonAt(g, {}).step.id, 'look');
+  assert.equal(lessonAt(g, { panned: true }).step.id, 'select');
+  const serf = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
+  const ctx = (sel) => ({ panned: true, serfs0: 3, ...lessonContext(g, sel) });
+  assert.equal(lessonAt(g, ctx({ type: 'units', ids: [serf.id] })).step.id, 'timber', 'selecting a serf passes the select lesson');
+  // Show me points at a serf, the nearest tree, the home village, the king and a free village
+  for (const id of ['select', 'timber', 'draft', 'king', 'village']) assert.ok(lessonTarget(g, LESSONS.find((l) => l.id === id)), `Show me for ${id}`);
+  assert.equal(lessonTarget(g, LESSONS.find((l) => l.id === 'look')), null);
+  const tree = lessonTarget(g, LESSONS.find((l) => l.id === 'timber'));
+  g.applyIntent({ team: PLAYER, type: 'context', ids: [serf.id], x: tree.x, y: tree.y });
+  run(g, 2);
+  assert.equal(lessonAt(g, ctx({ type: 'units', ids: [serf.id] })).step.id, 'draft', 'a serf cutting a tree passes the timber lesson');
+  // the place is saved through the intent, forward only, and a load keeps it
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'tutor', step: 3 }), true); assert.equal(g.tutorial.step, 3);
+  g.applyIntent({ team: PLAYER, type: 'tutor', step: 1 }); assert.equal(g.tutorial.step, 3, 'never back');
+  assert.equal(g.applyIntent({ team: 1, type: 'tutor', step: 9 }), false, 'a rival cannot move the lessons');
+  assert.equal(lessonAt(g, {}).index, 3, 'a lesson saved as passed stays passed with an empty context (after a load)');
+  const h = new Game({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(h.tutorial, { step: 3, done: false });
+  // the king and a free village are seen from the selection
+  assert.ok(lessonContext(g, { type: 'units', ids: [g.players[PLAYER].kingId] }).sel.king);
+  const free = g.villages.find((v) => v.owner < 0); assert.ok(lessonContext(g, { type: 'village', id: free.id }).sel.freeVillage);
+  assert.ok(!lessonContext(g, { type: 'village', id: g.seatOf(PLAYER).id }).sel.freeVillage, 'your own village is not a free one');
+  // the truce: rivals neither press war on the learner nor write to him; it does not cover rivals between themselves
+  assert.equal(g.truce(1, PLAYER), true); assert.equal(g.truce(PLAYER, 2), true); assert.equal(g.truce(1, 2), false);
+  g.time = 900; g.opinion[1][PLAYER] = -60; g.known[1][PLAYER] = g.known[PLAYER][1] = true;
+  assert.equal(pressWar(g, 1, PLAYER), false); assert.notEqual(g.rel[1][PLAYER], 'war');
+  for (let i = 0; i < 5; i++) { g.time += 60; dip_deliberate(g, 1); }
+  assert.equal(g.offers.filter((o) => o.to === PLAYER).length, 0, 'no demands or letters to the learner');
+  assert.equal(pressWar(g, 1, 2), true, 'rivals may still war on each other');
+  // a war that touches the learner ends the truce (he struck first, say); so does the last lesson or Leave tutorial
+  const k = new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, tutorial: true });
+  k.setRelation(PLAYER, 2, 'war'); assert.equal(k.truce(1, PLAYER), false);
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'tutor', done: true }), true);
+  assert.equal(g.truce(1, PLAYER), false); assert.ok(lessonAt(g, {}).done);
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'tutor', step: 9 }), false, 'nothing moves after the end');
+  // every other match has no lessons and no truce, and a reset clears a tutorial
+  g.reset({ seed: 8, houses: 3, ai: false }); assert.equal(g.tutorial, null); assert.equal(g.truce(1, PLAYER), false); assert.equal(lessonAt(g, {}), null);
+  assert.equal(mk().serialize().tutorial, null);
+  // every lesson's hint names only keys that exist
+  for (const l of LESSONS) { const ids = [...l.hint.matchAll(/\{key:(\w+)\}/g)].map((m) => m[1]); for (const id of ids) assert.ok(KEY_ACTIONS.some((a) => a.id === id), `${l.id} names key ${id}`); }
 });
