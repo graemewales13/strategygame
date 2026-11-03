@@ -2,15 +2,21 @@
 // learner until the lessons end (Game.truce), so nobody is overrun while reading. Pure functions of the game state and of a small
 // context the UI fills in (what is selected, whether the camera moved, whether the Council was opened), so the steps test headless.
 // Progress is saved with the match (game.tutorial.step, through the 'tutor' intent), so a load never sends the learner back.
-import { PLAYER } from './config.js';
+import { PLAYER, MAP_SIZES } from './config.js';
 
-export const TUTORIAL = { seed: 20261102, houses: 3, diff: 'easy' };
+// size: the tutorial always plays the small board, whatever Options > Board size says (T57: on Huge a learner walked for minutes)
+export const TUTORIAL = { seed: 20261102, houses: 3, diff: 'easy', size: MAP_SIZES.small };
 
 const serfs = (g) => g.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0);
 const built = (g, kind) => g.buildings.some((b) => b.team === PLAYER && b.kind === kind && b.built >= 1 && b.hp > 0);
 const placed = (g) => g.buildings.some((b) => b.team === PLAYER && b.hp > 0 && b.kind !== 'village');
 const near = (g, list, from) => { let best = null, bd = Infinity; for (const e of list) { const d = Math.hypot(e.x - from.x, e.y - from.y); if (d < bd) { bd = d; best = e; } } return best; };
 const home = (g) => g.seatOf(PLAYER) || g.kingOf(PLAYER);
+// a village the learner holds that he neither started in nor founded: won by influence, a spy or a sack (T57)
+export const wonVillage = (g) => g.villages.some((v) => v.owner === PLAYER && v.hp > 0 && v.home !== PLAYER && !v.founded);
+const freeSeen = (g) => { const free = g.villages.filter((v) => v.owner < 0 && v.hp > 0), seen = free.filter((v) => !g.fogOn || g.wasSeen(PLAYER, v.x, v.y)); return near(g, seen.length ? seen : free, home(g) || { x: 0, y: 0 }); };   // (one already seen, so Show me does not lift the fog)
+// the free village to win: the nearest seen one a few footmen can take (a hillfort's walls and guards beat a learner's first band)
+const softSeen = (g) => { const free = g.villages.filter((v) => v.owner < 0 && v.hp > 0 && v.kind !== 'hillfort' && (v.maxProtection || v.protection) <= 320), seen = free.filter((v) => !g.fogOn || g.wasSeen(PLAYER, v.x, v.y)); return seen.length ? near(g, seen, home(g) || { x: 0, y: 0 }) : freeSeen(g); };
 const cutting = (g) => serfs(g).some((u) => { const t = u.task || {}; const n = g.resources[t.type === 'gather' ? t.nodeId : t.resume]; return (t.type === 'gather' || t.type === 'return') && n && n.kind === 'tree'; });
 
 // Each step: what to do, why, how it is checked (done) and where Show me looks (where). {key:x} is filled with the player's key.
@@ -32,7 +38,9 @@ export const LESSONS = [
   { id: 'king', title: 'Find your king', hint: 'Click your king, or press {key:king}. Your house falls only when the last of its royal line dies: the king and his two heirs. Keep him safe, and hunt the kings of your rivals.',
     done: (g, c) => !!c.sel?.king, where: (g) => g.kingOf(PLAYER) },
   { id: 'village', title: 'Look at a free village', hint: 'Click a village no house holds. Its loyalty turns towards you while your keeps, soldiers or spies stand near it; win it and it pays you tribute. You can also sack it.',
-    done: (g, c) => !!c.sel?.freeVillage, where: (g) => { const free = g.villages.filter((v) => v.owner < 0 && v.hp > 0), seen = free.filter((v) => !g.fogOn || g.wasSeen(PLAYER, v.x, v.y)); return near(g, seen.length ? seen : free, home(g) || { x: 0, y: 0 }); } },   // (one already seen, so Show me does not lift the fog)
+    done: (g, c) => !!c.sel?.freeVillage || wonVillage(g), where: freeSeen },
+  { id: 'win', title: 'Win a village', hint: 'Train two or three soldiers, select them and right-click a free hamlet, abbey or mining camp (Show me finds one) to sack it: once its protection is gone it is yours, with most of its stores, though its folk take it hard. Leave hillforts for later: their walls and guards beat a small band. Or raise a barracks or tavern beside a village and keep soldiers near: its loyalty turns to you without a blow.',
+    done: (g) => wonVillage(g), where: softSeen },
   { id: 'council', title: 'Open the Council', hint: 'Press {key:council} or the Council button. It shows how every house reads you, and where you offer peace, trade or war. Rivals write letters there too.',
     done: (g, c) => !!c.council },
 ];

@@ -53,8 +53,11 @@ export class Renderer {
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.w = 0; this.h = 0;
     this.props = null; this.propsFor = null;
+    this.worldW = game.W; this.worldH = game.H;
     this.resize();
   }
+  // a match on another board size (the tutorial's small board, a save of another size: T57) needs ground chunks and fog sized to it
+  resetWorld() { const g = this.game; this.terrain = new TerrainCache(g); this.fog = new FogLayer(g); this.props = null; this.propsFor = null; this.worldW = g.W; this.worldH = g.H; this.clampCam(); }
   resize() {
     const r = this.canvas.parentElement.getBoundingClientRect();
     this.w = Math.max(200, Math.floor(r.width));
@@ -104,6 +107,7 @@ export class Renderer {
     ctx.fillRect(0, 0, this.w, this.h);
     const t = performance.now() / 1000;
     this.hits = [];
+    if (this.worldW !== g.W || this.worldH !== g.H) this.resetWorld();
     if (this.propsFor !== g.terrain) this.makeProps();
     const [x0, y0, x1, y1] = this.viewBounds(5);
     const seen = g.seen[PLAYER], vis = g.vis[PLAYER];

@@ -1,12 +1,12 @@
 // Tests for ratings, kings and diplomacy. Fast: `node test/rules.test.js` (part of `npm test`).
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { HOUSES } from '../js/config.js';
+import { HOUSES, MAP_W, MAP_SIZES } from '../js/config.js';
 import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
-import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget } from '../js/tutorial.js';
+import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, wonVillage } from '../js/tutorial.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
@@ -1971,7 +1971,7 @@ test('feast (T33): grain at a keep lifts the villages near it, refused with a re
 });
 
 test('tutorial (T04): lessons checked from play, saved and only forward, Show me targets; the rivals keep a truce until the lessons end', () => {
-  const g = new Game({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, diff: TUTORIAL.diff, ai: false, tutorial: true });
+  const g = new Game({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, diff: TUTORIAL.diff, ai: false, tutorial: true, size: TUTORIAL.size });
   assert.deepEqual(g.tutorial, { step: 0, done: false });
   assert.equal(lessonAt(g, {}).step.id, 'look');
   assert.equal(lessonAt(g, { panned: true }).step.id, 'select');
@@ -2004,7 +2004,7 @@ test('tutorial (T04): lessons checked from play, saved and only forward, Show me
   assert.equal(g.offers.filter((o) => o.to === PLAYER).length, 0, 'no demands or letters to the learner');
   assert.equal(pressWar(g, 1, 2), true, 'rivals may still war on each other');
   // a war that touches the learner ends the truce (he struck first, say); so does the last lesson or Leave tutorial
-  const k = new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, tutorial: true });
+  const k = new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, tutorial: true, size: TUTORIAL.size });
   k.setRelation(PLAYER, 2, 'war'); assert.equal(k.truce(1, PLAYER), false);
   assert.equal(g.applyIntent({ team: PLAYER, type: 'tutor', done: true }), true);
   assert.equal(g.truce(1, PLAYER), false); assert.ok(lessonAt(g, {}).done);
@@ -2014,4 +2014,43 @@ test('tutorial (T04): lessons checked from play, saved and only forward, Show me
   assert.equal(mk().serialize().tutorial, null);
   // every lesson's hint names only keys that exist
   for (const l of LESSONS) { const ids = [...l.hint.matchAll(/\{key:(\w+)\}/g)].map((m) => m[1]); for (const id of ids) assert.ok(KEY_ACTIONS.some((a) => a.id === id), `${l.id} names key ${id}`); }
+});
+
+test('a board size per match (T57): the tutorial always plays the small board, a save brings its own size, a new match goes back to the default', () => {
+  assert.equal(TUTORIAL.size, MAP_SIZES.small);
+  const g = new Game({ seed: TUTORIAL.seed, houses: 3, diff: 'easy', ai: false, tutorial: true, size: TUTORIAL.size });
+  assert.equal(g.W, MAP_SIZES.small); assert.equal(g.H, MAP_SIZES.small);
+  assert.equal(g.seen[PLAYER].length, g.W * g.H); assert.equal(g.walk.length, g.W * g.H);
+  assert.ok(g.map.starts.slice(0, 3).every(([x, y]) => x > 0 && y > 0 && x < g.W && y < g.H), 'every seat on the board');
+  assert.ok(g.villages.filter((v) => v.owner < 0).length >= 20, 'free villages to win on the small board');
+  for (let i = 0; i < 100; i++) g.tick(0.1);
+  const d = JSON.parse(JSON.stringify(g.serialize())); assert.equal(d.size, MAP_SIZES.small);
+  const h = new Game({ seed: 5, houses: 3, ai: false });   // a game at the default size loads a save of another size (it used to refuse)
+  assert.equal(h.W, MAP_W);
+  h.restore(d); assert.equal(h.W, MAP_SIZES.small); assert.equal(h.serialize().size, MAP_SIZES.small);
+  assert.deepEqual(h.tutorial, g.tutorial);
+  assert.equal(h.units.length, g.units.length);
+  h.reset({ seed: 5, houses: 3, ai: false }); assert.equal(h.W, MAP_W, 'a new match is on the Options size again');
+  assert.equal(new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, size: TUTORIAL.size }).map.villages.length, g.map.villages.length, 'the same seed and size make the same valley');
+});
+
+test('tutorial lesson: win a village (T57): passed by holding a village not started in nor founded; Show me finds one a small band can take', () => {
+  const g = new Game({ seed: TUTORIAL.seed, houses: 3, diff: 'easy', ai: false, tutorial: true, size: TUTORIAL.size });
+  const ids = LESSONS.map((l) => l.id);
+  assert.ok(ids.indexOf('win') === ids.indexOf('village') + 1 && ids.indexOf('win') < ids.indexOf('council'), 'after the free-village look, before the Council');
+  assert.equal(wonVillage(g), false, 'the home village does not count');
+  const win = LESSONS.find((l) => l.id === 'win'), v = lessonTarget(g, win);
+  assert.ok(v && v.owner < 0 && v.kind !== 'hillfort', 'Show me points at a free village that is not a hillfort');
+  assert.ok(g.wasSeen(PLAYER, v.x, v.y), 'one already seen: Show me does not lift the fog');
+  g.applyIntent({ team: PLAYER, type: 'tutor', step: ids.indexOf('win') });
+  assert.equal(lessonAt(g, {}).step.id, 'win');
+  const band = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, v.x + 3 + i * 0.8, v.y + 3).id);
+  g.applyIntent({ team: PLAYER, type: 'attack', ids: band, targetId: v.id });
+  for (let t = 0; t < 60 && v.owner !== PLAYER; t += 0.05) g.tick(0.05);
+  assert.equal(v.owner, PLAYER, 'three footmen sack the village Show me picks within a minute');
+  assert.ok(wonVillage(g)); assert.equal(lessonAt(g, {}).step.id, 'council', 'the lesson passes');
+  // a village he founded himself is not a won one
+  const k = new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, tutorial: true, size: TUTORIAL.size });
+  const f = k.villages.find((x) => x.owner < 0); f.owner = PLAYER; f.founded = true; assert.equal(wonVillage(k), false);
+  f.founded = false; assert.equal(wonVillage(k), true);
 });

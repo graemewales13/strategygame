@@ -1,7 +1,7 @@
 // Tutorial click-through (T04): serve the repo on :8123, then `node tools/tutor-smoke.cjs [shot.png]`. Opens Skirmish, clicks Learn to play,
 // checks the match is the tutorial's (three houses, Easy, the truce on), the coach shows lesson 1, panning the view passes it, Show me centres
 // on the serfs, selecting a serf passes lesson 2, Skip moves on (and is saved in the game), Leave tutorial ends the truce and the objectives
-// take over; no errors.
+// take over; the tutorial plays the small board (160) and a New valley after it is back on the Options size (T57); no errors.
 const { chromium } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1366, height: 768 } });
@@ -11,10 +11,11 @@ const { chromium } = require('playwright');
   const r = await p.locator('#hSkirmish').boundingBox(); await p.mouse.click(r.x + r.width / 2, r.y + r.height / 2); await p.waitForTimeout(700);
   await p.click('#mTutor'); await p.waitForTimeout(1500);
   const ok = [];
-  const st = () => p.evaluate(() => { const { game: g } = window.__seven, el = document.getElementById('objectives'); return { houses: g.houses, diff: g.diffKey, tut: g.tutorial && { ...g.tutorial }, truce: g.truce(1, 0), head: el.querySelector('.ohead b')?.textContent || '', title: el.querySelector('.otitle')?.textContent || '', shown: !el.classList.contains('hidden') }; });
+  const st = () => p.evaluate(() => { const { game: g } = window.__seven, el = document.getElementById('objectives'); return { W: g.W, rw: window.__seven.renderer.worldW, fogW: window.__seven.renderer.fog.cur.length, houses: g.houses, diff: g.diffKey, tut: g.tutorial && { ...g.tutorial }, truce: g.truce(1, 0), head: el.querySelector('.ohead b')?.textContent || '', title: el.querySelector('.otitle')?.textContent || '', shown: !el.classList.contains('hidden') }; });
   let s = await st();
   ok.push(['tutorial match: 3 houses, Easy, truce', s.houses === 3 && s.diff === 'easy' && s.tut && !s.tut.done && s.truce]);
-  ok.push(['coach shows lesson 1', s.shown && /Lesson 1\/10/.test(s.head) && /Look around/.test(s.title)]);
+  ok.push(['tutorial on the small board, ground and fog sized to it', s.W === 160 && s.rw === 160 && s.fogW === 160 * 160]);
+  ok.push(['coach shows lesson 1', s.shown && /Lesson 1\/11/.test(s.head) && /Look around/.test(s.title)]);
   await p.mouse.move(683, 300); await p.keyboard.down('ArrowRight'); await p.waitForTimeout(1500); await p.keyboard.up('ArrowRight'); await p.waitForTimeout(800);
   s = await st(); ok.push(['panning passes lesson 1', /Lesson 2\//.test(s.head) && s.tut.step >= 1]);
   const cam0 = await p.evaluate(() => ({ ...window.__seven.renderer.cam }));
@@ -30,6 +31,8 @@ const { chromium } = require('playwright');
   await p.click('#objectives button[data-act="tutleave"]'); await p.waitForTimeout(900);
   s = await st(); ok.push(['Leave tutorial ends the truce', s.tut.done && !s.truce]);
   ok.push(['objectives take over', /Objective \d+\//.test(s.head)]);
+  await p.evaluate(() => window.__seven.ui.newValley()); await p.waitForTimeout(900);
+  s = await st(); ok.push(['a new valley after the tutorial is on the Options size again', s.W === 320 && s.rw === 320 && s.fogW === 320 * 320 && !s.tut]);
   for (const [k, v] of ok) console.log(v ? 'ok  ' : 'FAIL', k);
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length || ok.some(([, v]) => !v) ? 1 : 0);
 })();

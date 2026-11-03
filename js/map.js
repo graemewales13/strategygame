@@ -1,7 +1,7 @@
 // Auld World - valley generation. Pure data, seeded, no DOM.
 // Guarantees: every start, village and resource node lies in ONE connected walkable region (the river has fords).
 
-import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW, BIOMES, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, VILLAGE_NAME_PARTS, MATS, AREA_MUL } from './config.js';
+import { MAP_W, MAP_H, T_GRASS, T_DIRT, T_WATER, T_FORD, T_DRY, T_SAND, T_ROCK, T_SNOW, BIOMES, VILLAGE_KINDS, VILLAGE_SIZE, VILLAGE_NAMES, VILLAGE_NAME_PARTS, MATS } from './config.js';
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -42,8 +42,9 @@ function fbm(x, y, s) {
   return n / t;
 }
 
-export function createMap(seed, houses = 4) {
-  const W = MAP_W, H = MAP_H;
+export function createMap(seed, houses = 4, size = MAP_W) {   // size: tiles a side for this match (T57: the tutorial always plays the small board)
+  const W = size | 0 || MAP_W, H = size | 0 || MAP_H;
+  const AREA_MUL = (W * H) / (112 * 112);   // (this match's board against the old 112x112 valley; ore and villages scale by it)
   const r = rng(seed);
   const ns = Math.floor(r() * 1e6);
   const terrain = new Uint8Array(W * H);

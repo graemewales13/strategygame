@@ -45,7 +45,7 @@ export class Game {
   // title screens show the whole valley under the menu: the view ignores fog until the match begins (never affects the sim)
   get fogOn() { return this._fog && !this.titleView; }
   set fogOn(v) { this._fog = v; }
-  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, tutorial = false } = {}) {
+  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, tutorial = false, size } = {}) {
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
     this.tutorial = tutorial ? { step: 0, done: false } : null;   // T04: the lessons' place, saved; null in every other match
     this.asks = [];   // the player's envoys on the road to rival houses: { from, to, state, coin, at } (coin: offered with a peace)
@@ -57,7 +57,7 @@ export class Game {
     this.seed = seed ?? Math.floor(Math.random() * 1e9) + 1;
     this.people = people; this.peopleOrder = setPeoples(order || seatPeoples(people, this.seed));   // which nation sits in which seat
     this.rndA = (this.seed ^ 0x9e3779b9) >>> 0; this.rollA = (this.seed ^ 0x85ebca6b) >>> 0; this.named = [];
-    const map = createMap(this.seed, this.houses);
+    const map = createMap(this.seed, this.houses, size || MAP_W);   // (a size per match: the tutorial's small board, or a save's own size)
     this.map = map;
     this.W = map.w;
     this.H = map.h;
@@ -3808,8 +3808,7 @@ export class Game {
   restore(d) {
     this.titleView = false;
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
-    if ((d.size || 320) !== this.W) throw new Error(`That save is for a ${d.size || 320}-tile board; this one is ${this.W}. Change Board size in Options to match.`);
-    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder });
+    this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder, size: d.size || 320 });   // (a save brings its own board size: T57)
     this.tutorial = d.tutorial ? { step: d.tutorial.step | 0, done: !!d.tutorial.done } : null;
     this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this.asks = d.asks || []; this._stance = {};
     this._ug = null; this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;

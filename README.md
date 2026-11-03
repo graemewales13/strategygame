@@ -20,7 +20,7 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 
 ## How to play
 
-New to the game? **Skirmish > Learn to play (tutorial)** starts a guided match: three houses on Easy, ten short lessons (look around, select and work serfs, draft, build, train, your king and the royal line, a free village, the Council), each checked as you play, with **Show me**, **Skip** and **Leave tutorial**. The rival houses keep the peace with you until the lessons end (or until you go to war yourself), and the tutorial is not recorded for the rivals to learn from.
+New to the game? **Skirmish > Learn to play (tutorial)** starts a guided match on the small board (whatever Board size says): three houses on Easy, eleven short lessons (look around, select and work serfs, draft, build, train, your king and the royal line, a free village, winning a village, the Council), each checked as you play, with **Show me**, **Skip** and **Leave tutorial**. The rival houses keep the peace with you until the lessons end (or until you go to war yourself), and the tutorial is not recorded for the rivals to learn from.
 
 1. **Gather.** Drag-select your three serfs, right-click timber, berries or gold. They carry goods to your village.
 2. **Grow.** Select your village (**H**). Draft serfs from its folk, or arm a villager now and then (one every 20 s, a recruit at about a quarter of a footman's strength: real soldiers come from a barracks or a keep's drill). Serfs fight back when struck, at about an eighth of a footman. At first you may raise a mine, farm, market, keep, barracks and tavern; the foundry (needs a mine), cottage (needs a market), mill (needs a farm), archery, tower, academy and the rest unlock as you build. There is no territory circle: build anywhere you have scouted. Distance changes the *community* around a site instead (see "Rules in one page").
@@ -163,7 +163,7 @@ js/
   recorder.js     records the player's orders and samples in the browser for learn.js
   trainui.js      the menu's AI-training box: recording on or off, export, import, clear
   objectives.js   the guided first match (each step done by what the player has)
-  tutorial.js     the tutorial's ten lessons, their checks and Show me targets, and its settings (the rivals' truce is Game.truce)
+  tutorial.js     the tutorial's eleven lessons, their checks and Show me targets, and its settings (the rivals' truce is Game.truce)
   production.js   the production overview and idle training buildings (read-only)
   economy.js      the economy ledger, idle serfs and their chime (read-only)
   groups.js       control groups and their row on the HUD
@@ -287,7 +287,7 @@ Set it in the Skirmish panel or with `?diff=easy|mid|hard`. `tools/play.js [min]
 - **Save / load**: the game autosaves; use the Save and Load buttons or F5 / F9. Saves stay in this browser. A loaded match plays on exactly as it would have without the save: the simulation draws all its chance from the match seed (the groundwork for replays, daily challenges and multiplayer).
 - **Sound**: effects and music with volume and mute in Options (button in the top bar).
 - **Objectives**: an eleven-step guide in the top left; hide it in Options.
-- **Tutorial** (Skirmish > Learn to play): ten lessons on a fixed three-house Easy valley, checked as you play and saved with the match; the rivals hold a truce until the lessons end, then the objectives take over.
+- **Tutorial** (Skirmish > Learn to play): eleven lessons on a fixed three-house Easy valley, always on the small board, checked as you play and saved with the match; the rivals hold a truce until the lessons end, then the objectives take over.
 - **Economy view**: markets show four pips (supply, works, homes, service). Select a market, or press E, to see its district ring and links.
 - **Stances and attack-move**: per-soldier stances shown on the unit panel; rival houses keep their home guard Defensive at peace and send their war hosts out Aggressive.
 - **Patrol** (Z): soldiers walk a round between posts and fight what they meet; rivals walk a pair of their home guard round at peace.
@@ -295,6 +295,6 @@ Set it in the Skirmish panel or with `?diff=easy|mid|hard`. `tools/play.js [min]
 - **Keep arrows**: a keep with folk inside shoots back, one arrow a volley for every two sheltering in it (the town bell fills it), up to four.
 - **Feasts**: the **Feast** button on a finished keep spends surplus grain (300, and 40 for each village fed): every village you hold within 24 tiles gains 10 loyalty, rejoices for 90 s (tribute x1.3, loyalty climbs) and gets 40 grain in its store, and free villages near it that lean on no other lord warm to you. Once every 4 minutes; rivals feast too when they have grain to spare. A held village's panel gives its tribute share with what makes it (loyalty, size, rejoicing, district).
 - **Send grain**: a village of yours whose store is running dry is listed under Hungry villages in the ledger; its **Send grain** button carts 60 grain from your stockpile into its store (up to 200 held), from your seat or a keep, market or warehouse within 36 tiles. Rivals feed their hungry villages too, when they have grain to spare.
-- **Board size**: Options, Board size: Small, Standard or Huge. Changing it reloads the page. A save only loads on the board size it was made at.
+- **Board size**: Options, Board size: Small, Standard or Huge. Changing it reloads the page. A save keeps its own board size and loads on any setting; the next new match is on the Options size again.
 
 See ROADMAP.md for what is still to do.

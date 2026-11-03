@@ -42,15 +42,16 @@ ui.onReroll = (opts) => {
   game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people });
   ui.setGame(game);
   recorder.start(game);
+  renderer.resetWorld();   // (back to the Options board size after a tutorial on the small one)
   ui.firstFocus = false;
   centerOnHall();
 };
 ui.onTutorial = () => {   // T04: a fixed small match on Easy; the lessons are not recorded for the rivals to learn from
   recorder.finish('quit');
-  game.reset({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, fog: true, diff: TUTORIAL.diff, people: cfg.people, tutorial: true });
+  game.reset({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, fog: true, diff: TUTORIAL.diff, people: cfg.people, tutorial: true, size: TUTORIAL.size });
   ui.setGame(game);
   recorder.start(game, { record: false });
-  renderer.resetWorld?.();
+  renderer.resetWorld();
   ui.firstFocus = false;
   centerOnHall();
 };
@@ -59,7 +60,7 @@ ui.onLoad = (data) => {
   game.restore(data);
   ui.setGame(game);
   recorder.start(game, { record: false });
-  renderer.resetWorld?.();
+  renderer.resetWorld();
   centerOnHall();
 };
 function centerOnHall() {
