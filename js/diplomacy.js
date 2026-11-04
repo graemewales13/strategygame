@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -183,6 +183,7 @@ export function judge(g, kind, from, to, ctx = {}) {
     case 'joinwar': {
       const T = ctx.target;
       if (T === to || T === from || !alive(g, T)) return no('There is no such foe.');
+      if (g.truce?.(to, T)) return no(`${me} keeps the peace with ${nameOf(g, T)} for now.`);   // (the tutorial's truce, T57)
       if (rel !== 'alliance' && o < DIPLO.need.joinwar) return no(`${me} is not close enough to ${N} to take up their quarrels.`);
       if (g.rel[to][T] === 'war') return yes({ already: true });
       if (g.rel[to][T] === 'alliance') return no(`${nameOf(g, T)} is ${me}'s ally.`);
@@ -334,7 +335,7 @@ export function deliberate(g, team) {
     // allies take up each other's wars
     if (rel === 'alliance') {
       for (const c of enemiesOf(g, b)) {
-        if (c === team || g.rel[team][c] === 'war' || !g.known[team][c] || settled(g, team, c)) continue;
+        if (c === team || g.rel[team][c] === 'war' || !g.known[team][c] || settled(g, team, c) || g.truce?.(team, c)) continue;   // (the tutorial's truce holds even for an ally of the foe, T57)
         const j = judge(g, 'joinwar', b, team, { target: c });
         if (j.ok) {
           g.setRelation(team, c, 'war'); shift(g, b, team, 8, 'came to our aid');
@@ -433,7 +434,7 @@ export function intel(g, t, viewer = PLAYER) {
     opinion: Math.round(o), attitude: attitudeLabel(o), why: (g.whyOp[t + '>' + viewer] || []).slice(0, 3),
     allies: alliesOf(g, t), enemies: enemiesOf(g, t),
     secrets: spied ? secretsOf(g, t) : null,
-    heirs: p.heirs ?? 2, fugitive: !g.seatOf(t), doctrine: t === viewer ? null : DOCTRINE[HOUSES[t]?.faction]?.label || null, techs: partner ? Object.keys(p.tech || {}).map((k) => TECH[k]?.label).filter(Boolean) : null,
+    heirs: p.heirs ?? KING.heirs, fugitive: !g.seatOf(t), doctrine: t === viewer ? null : DOCTRINE[HOUSES[t]?.faction]?.label || null, techs: partner ? Object.keys(p.tech || {}).map((k) => TECH[k]?.label).filter(Boolean) : null,
     stance: t === viewer ? null : stance(g, t, viewer),
   };
 }

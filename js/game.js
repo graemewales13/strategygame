@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI } from './ai.js';
@@ -125,6 +125,7 @@ export class Game {
       this.addUnit('serf', team, sx + 2.8, sy + 3.6);
       this.crown(team, sx + 0.4, sy + 4.6);
     });
+    if (this.tutorial) this.tutorFoe();
     this.recomputeWalk();
     this.updateVisibility(true);
     this.log(PLAYER, `${this.biomeLabel}. Your home village of thirty folk, three serfs and a starting purse: draft more serfs, raise a mine, a market and a keep, then claim the villages around you.`, 'info');
@@ -1390,6 +1391,7 @@ export class Game {
     const pace = this.paceOf(us), slot = this.formSlots(us, to.x + 1, to.y + (to.size || 2) / 2 + 2, false);
     for (const u of us) { const [tx, ty] = slot.at.get(u); u.task = { type: 'move', pace, retreat: true }; u.sally = null; u.engagedT = -99; this.setPath(u, tx, ty); }   // (the lock is broken: they turn and go)
     if (inFight.length >= RETREAT.min || inFight.some((u) => u.kind === 'king')) this.rout(team);
+    if (team === PLAYER && this.tutorial && !this.tutorial.done) this.tutorial.retreated = true;   // (the tutorial's Fall back lesson, T57)
     return true;
   }
   // a house's army left the field: its villages lose faith, slowly regained, and every other house smells weakness
@@ -2532,6 +2534,7 @@ export class Game {
 
   setRelation(a, b, state) {
     if (a === b || !RELATIONS.includes(state) || this.rel[a][b] === state) return;
+    if (state === 'war' && a !== PLAYER && this.truce(a, b)) return;   // the tutorial's truce (T57): only the learner can break his, house by house; nobody else wars on the scripted rival
     const was = this.rel[a][b];
     this.rel[a][b] = this.rel[b][a] = state;
     this.relSince[a][b] = this.relSince[b][a] = this.time;
@@ -3294,9 +3297,24 @@ export class Game {
   }
   // T04: the tutorial's truce. While the lessons last the rivals neither war on the learner nor demand tribute of him, nor he of them by
   // accident: it holds until the last lesson (or Leave tutorial), or until a war touches the learner (he struck first, say).
+  // T57: the truce holds house by house, so the war the last lessons teach (on the scripted weak rival) leaves the other rivals at peace.
+  // The scripted weak rival (tutorial.foe) is left for the learner: no other house wars on him while the lessons last.
   truce(a, b) {
-    const t = this.tutorial; if (!t || t.done || (a !== PLAYER && b !== PLAYER)) return false;
-    return !this.players.some((q) => q.team !== PLAYER && this.rel[PLAYER][q.team] === 'war');
+    const t = this.tutorial; if (!t || t.done || a === b) return false;
+    if (a !== PLAYER && b !== PLAYER) return t.foe != null && (a === t.foe || b === t.foe);
+    const o = a === PLAYER ? b : a;
+    return !!this.players[o] && this.rel[PLAYER][o] !== 'war';
+  }
+  // T57: the scripted weak rival of the tutorial's war lessons: the rival seat nearest the learner's, no heirs, a small army (TUTOR_FOE);
+  // met at the start (a herald), so the Council lists him from the first minute
+  tutorFoe() {
+    const h = this.seatOf(PLAYER); if (!h) return;
+    let foe = -1, bd = Infinity;
+    for (const p of this.players) { if (p.team === PLAYER) continue; const s = this.seatOf(p.team); const d = s ? Math.hypot(s.x - h.x, s.y - h.y) : Infinity; if (d < bd) { bd = d; foe = p.team; } }
+    if (foe < 0) return;
+    const p = this.players[foe];
+    p.heirs = TUTOR_FOE.heirs; p.meek = TUTOR_FOE.army;
+    this.tutorial.foe = foe; this.meet(PLAYER, foe);
   }
   // the learner's place in the lessons (only forward); done ends the truce
   tutor(team, step, done) {
@@ -3809,7 +3827,7 @@ export class Game {
     this.titleView = false;
     if (!d || d.v !== 1) throw new Error('This save is from a different version.');
     this.reset({ seed: d.seed, houses: d.houses, fog: d.fog, ai: d.ai, diff: d.diff, order: d.peopleOrder, size: d.size || 320 });   // (a save brings its own board size: T57)
-    this.tutorial = d.tutorial ? { step: d.tutorial.step | 0, done: !!d.tutorial.done } : null;
+    this.tutorial = d.tutorial ? { step: d.tutorial.step | 0, done: !!d.tutorial.done, ...(Number.isInteger(d.tutorial.foe) ? { foe: d.tutorial.foe } : {}), ...(d.tutorial.retreated ? { retreated: true } : {}) } : null;
     this.time = d.time; this.nextId = d.nextId; this.outcome = d.outcome; this.forfeits = d.forfeits || 0; this.losses = d.losses || {}; this.spyIntel = d.spyIntel || {}; this.asks = d.asks || []; this._stance = {};
     this._ug = null; this.units = d.units; this.buildings = d.buildings; this.villages = d.villages; this.wanderers = d.wanderers; this.projectiles = d.projectiles;
     this.players = d.players; this.known = d.known; this.offers = d.offers; this.snub = d.snub; if (d.opinion) { this.opinion = d.opinion; this.whyOp = d.whyOp || {}; this.letters = d.letters || []; this.cool = d.cool || {}; this.nextLetter = d.nextLetter || 1; } this.rel = d.rel; this.relSince = d.relSince;
@@ -3832,6 +3850,7 @@ export class Game {
     else if (this.fogOn) for (const b of this.buildings) if (b.team !== PLAYER && this.wasSeen(PLAYER, b.x, b.y)) this.mem[PLAYER][b.id] = { id: b.id, kind: b.kind, team: b.team, tx: b.tx, ty: b.ty, size: b.size, x: b.x, y: b.y, ore: b.ore, hp: b.hp, maxHp: b.maxHp, built: b.built, at: this.time };   // an older save: what was on seen ground counts as seen
     if (d.vmem) this.vmem = this.vmem.map((m, i) => d.vmem[i] || {});
     else if (this.fogOn) for (const v of this.villages) if (this.wasSeen(PLAYER, v.x, v.y)) this.vmem[PLAYER][v.id] = this.villageNote(v);   // an older save: as it is
+    if (this.tutorial && !this.tutorial.done && this.tutorial.foe == null && this.rel[PLAYER].every((r, i) => i === PLAYER || r !== 'war')) this.tutorFoe();   // a tutorial saved before the war lessons (T57) gets its weak rival
     return this;
   }
 

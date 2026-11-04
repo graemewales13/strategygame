@@ -6,7 +6,8 @@ import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
-import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, wonVillage } from '../js/tutorial.js';
+import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, wonVillage, tutorFoe, foeFelled } from '../js/tutorial.js';
+import { TUTOR_FOE } from '../js/config.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
@@ -1972,7 +1973,8 @@ test('feast (T33): grain at a keep lifts the villages near it, refused with a re
 
 test('tutorial (T04): lessons checked from play, saved and only forward, Show me targets; the rivals keep a truce until the lessons end', () => {
   const g = new Game({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, diff: TUTORIAL.diff, ai: false, tutorial: true, size: TUTORIAL.size });
-  assert.deepEqual(g.tutorial, { step: 0, done: false });
+  const foe = g.tutorial.foe; assert.ok(foe === 1 || foe === 2, 'a scripted weak rival (T57)');
+  assert.deepEqual(g.tutorial, { step: 0, done: false, foe });
   assert.equal(lessonAt(g, {}).step.id, 'look');
   assert.equal(lessonAt(g, { panned: true }).step.id, 'select');
   const serf = g.units.find((u) => u.team === PLAYER && u.kind === 'serf');
@@ -1991,21 +1993,24 @@ test('tutorial (T04): lessons checked from play, saved and only forward, Show me
   assert.equal(g.applyIntent({ team: 1, type: 'tutor', step: 9 }), false, 'a rival cannot move the lessons');
   assert.equal(lessonAt(g, {}).index, 3, 'a lesson saved as passed stays passed with an empty context (after a load)');
   const h = new Game({ seed: TUTORIAL.seed, houses: TUTORIAL.houses, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
-  assert.deepEqual(h.tutorial, { step: 3, done: false });
+  assert.deepEqual(h.tutorial, { step: 3, done: false, foe });
   // the king and a free village are seen from the selection
   assert.ok(lessonContext(g, { type: 'units', ids: [g.players[PLAYER].kingId] }).sel.king);
   const free = g.villages.find((v) => v.owner < 0); assert.ok(lessonContext(g, { type: 'village', id: free.id }).sel.freeVillage);
   assert.ok(!lessonContext(g, { type: 'village', id: g.seatOf(PLAYER).id }).sel.freeVillage, 'your own village is not a free one');
-  // the truce: rivals neither press war on the learner nor write to him; it does not cover rivals between themselves
-  assert.equal(g.truce(1, PLAYER), true); assert.equal(g.truce(PLAYER, 2), true); assert.equal(g.truce(1, 2), false);
+  // the truce: rivals neither press war on the learner nor write to him; between rivals it covers only the scripted weak one (T57)
+  assert.equal(g.truce(1, PLAYER), true); assert.equal(g.truce(PLAYER, 2), true); assert.equal(g.truce(1, 2), true, 'nobody wars on the scripted rival');
   g.time = 900; g.opinion[1][PLAYER] = -60; g.known[1][PLAYER] = g.known[PLAYER][1] = true;
   assert.equal(pressWar(g, 1, PLAYER), false); assert.notEqual(g.rel[1][PLAYER], 'war');
   for (let i = 0; i < 5; i++) { g.time += 60; dip_deliberate(g, 1); }
   assert.equal(g.offers.filter((o) => o.to === PLAYER).length, 0, 'no demands or letters to the learner');
-  assert.equal(pressWar(g, 1, 2), true, 'rivals may still war on each other');
-  // a war that touches the learner ends the truce (he struck first, say); so does the last lesson or Leave tutorial
+  assert.equal(pressWar(g, 1, 2), false, 'not even on the scripted rival');
+  const g4 = new Game({ seed: TUTORIAL.seed, houses: 4, ai: false, tutorial: true, size: TUTORIAL.size }), [r1, r2] = [1, 2, 3].filter((t) => t !== g4.tutorial.foe);
+  g4.time = 900; g4.known[r1][r2] = g4.known[r2][r1] = 1; assert.equal(pressWar(g4, r1, r2), true, 'other rivals may still war on each other');
+  // a war the learner starts ends the truce with that house only (T57: the war lesson); the last lesson or Leave tutorial ends it all
   const k = new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, tutorial: true, size: TUTORIAL.size });
-  k.setRelation(PLAYER, 2, 'war'); assert.equal(k.truce(1, PLAYER), false);
+  k.setRelation(PLAYER, 2, 'war'); assert.equal(k.truce(2, PLAYER), false); assert.equal(k.truce(1, PLAYER), true, 'the other house still keeps the peace');
+  k.setRelation(1, PLAYER, 'war'); assert.notEqual(k.rel[1][PLAYER], 'war', 'a rival cannot break the truce itself');
   assert.equal(g.applyIntent({ team: PLAYER, type: 'tutor', done: true }), true);
   assert.equal(g.truce(1, PLAYER), false); assert.ok(lessonAt(g, {}).done);
   assert.equal(g.applyIntent({ team: PLAYER, type: 'tutor', step: 9 }), false, 'nothing moves after the end');
@@ -2013,7 +2018,53 @@ test('tutorial (T04): lessons checked from play, saved and only forward, Show me
   g.reset({ seed: 8, houses: 3, ai: false }); assert.equal(g.tutorial, null); assert.equal(g.truce(1, PLAYER), false); assert.equal(lessonAt(g, {}), null);
   assert.equal(mk().serialize().tutorial, null);
   // every lesson's hint names only keys that exist
-  for (const l of LESSONS) { const ids = [...l.hint.matchAll(/\{key:(\w+)\}/g)].map((m) => m[1]); for (const id of ids) assert.ok(KEY_ACTIONS.some((a) => a.id === id), `${l.id} names key ${id}`); }
+  for (const l of LESSONS) { const ids = [...lessonHint(g, l).matchAll(/\{key:(\w+)\}/g)].map((m) => m[1]); for (const id of ids) assert.ok(KEY_ACTIONS.some((a) => a.id === id), `${l.id} names key ${id}`); }
+});
+
+test('tutorial war lessons (T57): a scripted weak rival, a truce kept house by house, declare war, attack-move, fall back, end his line', () => {
+  const g = new Game({ seed: TUTORIAL.seed, houses: 3, diff: 'easy', ai: true, tutorial: true, size: TUTORIAL.size });
+  const ids = LESSONS.map((l) => l.id), foe = tutorFoe(g), other = 3 - foe, h = g.seatOf(PLAYER);
+  assert.deepEqual(ids.slice(-5), ['council', 'war', 'fight', 'retreat', 'line'], 'the war lessons close the tutorial');
+  // the foe is the rival seat nearest the learner, met from the start, with no heir and a small army
+  const d = (t) => Math.hypot(g.seatOf(t).x - h.x, g.seatOf(t).y - h.y); assert.ok(d(foe) <= d(other));
+  assert.equal(g.known[PLAYER][foe], 1); assert.equal(g.players[foe].heirs, TUTOR_FOE.heirs); assert.equal(g.players[foe].meek, TUTOR_FOE.army);
+  assert.equal(g.players[other].meek, undefined); assert.ok(g.players[other].heirs == null || g.players[other].heirs === 2);
+  assert.ok(/MacAlpin|Aurelius|Khemet|Wessex|Borjigin|Ynglings|Komnenos|Sassan/.test(lessonHint(g, LESSONS[ids.indexOf('war')])), 'the hint names him');
+  run(g, 600);
+  assert.ok(g.alive(foe), 'nobody else ends him while the lessons last');
+  assert.ok(g.soldiersOf(foe).length < g.soldiersOf(other).length / 2, `a small army (${g.soldiersOf(foe).length} against ${g.soldiersOf(other).length})`);
+  assert.notEqual(g.rel[other][foe], 'war');
+  g.applyIntent({ team: PLAYER, type: 'tutor', step: ids.indexOf('war') });
+  assert.equal(lessonAt(g, {}).step.id, 'war');
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'relation', other: foe, state: 'war' }), true);
+  assert.equal(lessonAt(g, {}).step.id, 'fight', 'declaring war passes the lesson');
+  assert.equal(g.truce(other, PLAYER), true, 'the other house still keeps the peace'); assert.equal(g.truce(foe, PLAYER), false);
+  const s = g.seatOf(foe), band = Array.from({ length: 8 }, (_, i) => g.addUnit('footman', PLAYER, h.x + 4 + i * 0.8, h.y + 5).id);
+  g.applyIntent({ team: PLAYER, type: 'amove', ids: band, x: s.x, y: s.y + 6 });
+  for (let t = 0; t < 120 && foeFelled(g) < 1; t += 1) run(g, 1);
+  assert.ok(foeFelled(g) >= 1, 'an attack-move into his land fells one of his men'); assert.equal(lessonAt(g, {}).step.id, 'retreat');
+  const live = () => band.filter((id) => g.byId.get(id)?.hp > 0);
+  assert.ok(live().length, 'some of the band live'); assert.equal(g.applyIntent({ team: PLAYER, type: 'retreat', ids: live() }), true); assert.ok(g.tutorial.retreated);
+  assert.equal(lessonAt(g, {}).step.id, 'line', 'Retreat passes the fall-back lesson');
+  const sv = new Game({ seed: 1, houses: 3, ai: false }); sv.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(sv.tutorial.foe, foe); assert.equal(sv.tutorial.retreated, true); assert.equal(sv.players[foe].meek, TUTOR_FOE.army);
+  run(g, 5);
+  for (let t = 0; t < 400 && g.alive(foe); t += 5) { const k = g.kingOf(foe); if (k && live().length) g.applyIntent({ team: PLAYER, type: 'attack', ids: live(), targetId: k.id }); run(g, 5); }
+  assert.equal(g.alive(foe), false, 'a band of eight ends a line with no heir');
+  assert.ok(lessonAt(g, {}).done, 'the last lesson passes'); assert.ok(g.alive(other));
+  // Show me never points at a rival unseen: the war lessons give null under fog until his town was seen
+  const f = new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, tutorial: true, size: TUTORIAL.size });
+  if (!f.wasSeen(PLAYER, f.seatOf(f.tutorial.foe).x, f.seatOf(f.tutorial.foe).y)) assert.equal(lessonTarget(f, LESSONS[ids.indexOf('line')]), null);
+  // a tutorial saved before the war lessons gets its rival on load; a plain match never has one
+  const old = new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, tutorial: true, size: TUTORIAL.size }), data = JSON.parse(JSON.stringify(old.serialize()));
+  delete data.tutorial.foe; for (const p of data.players) { delete p.meek; delete p.heirs; }
+  const o2 = new Game({ seed: 1, houses: 3, ai: false }); o2.restore(data); assert.equal(o2.tutorial.foe, old.tutorial.foe); assert.equal(o2.players[o2.tutorial.foe].heirs, 0);
+  assert.equal(tutorFoe(mk()), -1); assert.equal(mk().players.some((p) => p.meek), false);
+});
+
+test('heir counts come from KING.heirs (T-113): no panel falls back to a hard-coded number', () => {
+  for (const f of readdirSync('js').filter((x) => x.endsWith('.js'))) assert.ok(!/heirs \?\? \d/.test(readFileSync('js/' + f, 'utf8')), `${f} has a hard-coded heir fallback`);
+  const g = mk(); assert.equal(intel(g, 1).heirs, KING.heirs, 'a rival with no fallen king shows the full line');
 });
 
 test('a board size per match (T57): the tutorial always plays the small board, a save brings its own size, a new match goes back to the default', () => {

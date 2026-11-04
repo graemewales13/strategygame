@@ -1,12 +1,12 @@
 // Auld World - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
 import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js';
 import { progress } from './objectives.js';
-import { LESSONS, lessonAt, lessonContext, lessonTarget } from './tutorial.js';
+import { LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint } from './tutorial.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
-  TILE, MAP_SIZES, PLAYER, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
+  TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
@@ -962,7 +962,7 @@ export class UI {
     for (let i = 0; i < g.houses; i++) {
       if (i === PLAYER) continue;
       const pl = g.players[i], met = g.known[PLAYER][i], rel = met ? g.rel[PLAYER][i] : 'unmet';
-      const tip = `<b>${esc(pl.name)}</b> · ${esc(FACTIONS[HOUSES[i].faction]?.label || '')}<br>${pl.alive ? `Relation: <b>${met ? rel : 'not met'}</b> · ${counts[i]} village${counts[i] === 1 ? '' : 's'} · ${(pl.heirs ?? 2) <= 0 ? 'last of the line' : `${pl.heirs ?? 2} heir${(pl.heirs ?? 2) === 1 ? '' : 's'}`}` : 'Fallen.'}<br><span class='info'>${met ? 'Click for diplomacy: peace, trade treaty, alliance or war.' : 'Not met yet: scout toward them to treat.'}</span>`;
+      const tip = `<b>${esc(pl.name)}</b> · ${esc(FACTIONS[HOUSES[i].faction]?.label || '')}<br>${pl.alive ? `Relation: <b>${met ? rel : 'not met'}</b> · ${counts[i]} village${counts[i] === 1 ? '' : 's'} · ${(pl.heirs ?? KING.heirs) <= 0 ? 'last of the line' : `${pl.heirs ?? KING.heirs} heir${(pl.heirs ?? KING.heirs) === 1 ? '' : 's'}`}` : 'Fallen.'}<br><span class='info'>${met ? 'Click for diplomacy: peace, trade treaty, alliance or war.' : 'Not met yet: scout toward them to treat.'}</span>`;
       html += `<div class="hchip rv ${pl.alive ? '' : 'fallen'}" data-house="${i}" data-tip="${encodeURIComponent(tip)}"><canvas width="22" height="24" data-crest="${i}"></canvas><i class="pip ${rel}"></i><span class="vc">${pl.alive ? counts[i] : '†'}</span></div>`;
     }
     if (this.brandFac !== HOUSES[PLAYER].faction) { this.brandFac = HOUSES[PLAYER].faction; const bc = $('brandCrest').getContext('2d'); bc.clearRect(0, 0, 36, 40); drawCrest(bc, 18, 20, 34, PLAYER); }   // (your people, and so your crest, change between games)
@@ -971,9 +971,9 @@ export class UI {
       $('houses').querySelectorAll('canvas[data-crest]').forEach((c) => { const x = c.getContext('2d'); x.clearRect(0, 0, 22, 24); drawCrest(x, 11, 12, 20, +c.dataset.crest); });
     }
     const left = g.players.filter((x) => x.alive && x.team !== PLAYER);
-    const frail = left.filter((x) => (x.heirs ?? 2) <= 0 || !g.seatOf(x.team));   // houses near their end: the last of the line, or a fugitive king
+    const frail = left.filter((x) => (x.heirs ?? KING.heirs) <= 0 || !g.seatOf(x.team));   // houses near their end: the last of the line, or a fugitive king
     // (the chips already show who stands; the bar speaks only of a house near its end, or of victory)
-    const hb = left.length ? frail.map((x) => esc(HOUSES[x.team].short) + ((x.heirs ?? 2) <= 0 ? ' last of the line' : '') + (!g.seatOf(x.team) ? ' (fugitive)' : '')).join(', ') : 'Every rival has fallen.';
+    const hb = left.length ? frail.map((x) => esc(HOUSES[x.team].short) + ((x.heirs ?? KING.heirs) <= 0 ? ' last of the line' : '') + (!g.seatOf(x.team) ? ' (fugitive)' : '')).join(', ') : 'Every rival has fallen.';
     if ($('holdbar').innerHTML !== hb) $('holdbar').innerHTML = hb;
     $('holdbar').classList.toggle('empty', !hb);
     document.querySelectorAll('.res').forEach((el) => { const r = el.dataset.res; if (r) el.classList.toggle('low', p[r] < 20); });
@@ -1277,7 +1277,7 @@ export class UI {
     if (far) h += `<div class="stat"><label>Gift</label><span data-tip="${encodeURIComponent(`<b>${far.perk}</b><br>${far.tip}`)}"><b>${esc(far.perk)}</b>: ${esc(far.tip)}</span></div>`;
     if (u.gear && (u.gear.weapon || u.gear.armour)) h += `<div class="stat"><label>Kit</label><span>${[u.gear.weapon, u.gear.armour].filter(Boolean).map((k) => `<span data-tip="${encodeURIComponent(`<b>${GEAR[k].label}</b><br>${GEAR[k].info}`)}">${uiImg('gear', k)}${esc(GEAR[k].label.replace(/s$/, ''))}</span>`).join(' · ')}</span></div>`;
     else if (['footman', 'bowman', 'knight'].includes(u.kind) && u.team === PLAYER) h += `<div class="stat"><label>Kit</label><span style="opacity:.7">plain issue: an Armoury makes better</span></div>`;
-    if (u.kind === 'king') { const hp = g.players[u.team], n = hp.heirs ?? 2; h += `<div class="stat"><label>Line</label><span>${n ? `${n} heir${n === 1 ? '' : 's'} after him` : '<b style="color:#e0866a">the last of the line: if he dies, the house falls</b>'}${g.seatOf(u.team) ? '' : ` · ${uiImg('marks', 'fugitive')}a fugitive: every house can see him`}</span></div>`; }
+    if (u.kind === 'king') { const hp = g.players[u.team], n = hp.heirs ?? KING.heirs; h += `<div class="stat"><label>Line</label><span>${n ? `${n} heir${n === 1 ? '' : 's'} after him` : '<b style="color:#e0866a">the last of the line: if he dies, the house falls</b>'}${g.seatOf(u.team) ? '' : ` · ${uiImg('marks', 'fugitive')}a fugitive: every house can see him`}</span></div>`; }
     if (u.captain) h += `<div class="stat"><label>Command</label><span>${uiImg('marks', 'captain')}Captain: soldiers within ${CAPTAIN.aura} tiles +${Math.round(CAPTAIN.dmg * 100)}% damage, +${Math.round(CAPTAIN.xp * 100)}% experience</span></div>`;
     if (u.deeds?.length) h += `<div class="chips">${u.deeds.map((d) => `<span class="chip" data-tip="${encodeURIComponent(`<b>${DEEDS[d].label}</b><br>${DEEDS[d].tip}`)}">${uiImg('marks', d)}${esc(DEEDS[d].label)}</span>`).join('')}</div>`;
     if (u.kind !== 'camel' && u.kind !== 'serf') {
@@ -1659,10 +1659,10 @@ export class UI {
     el.classList.remove('hidden');
     const where = lessonTarget(g, at.step);
     el.innerHTML = `<div class="ohead"><b>Lesson ${at.index + 1}/${at.total}</b><span><button data-act="objcollapse" title="Fold">${this.objCollapsed ? '+' : '-'}</button></span></div>`
-      + `<div class="otitle">${uiImg('portraits', 'steward', '', 'tport')}${esc(at.step.title)}</div>` + (this.objCollapsed ? '' : `<div class="ohint">${esc(fillKeys(at.step.hint, this.kmap))}</div>`
+      + `<div class="otitle">${uiImg('portraits', 'steward', '', 'tport')}${esc(at.step.title)}</div>` + (this.objCollapsed ? '' : `<div class="ohint">${esc(fillKeys(lessonHint(g, at.step), this.kmap))}</div>`
       + `<div class="obtns">${where ? '<button data-act="tutshow" title="Centre the view on it">Show me</button>' : ''}<button data-act="tutskip" title="Count this lesson as done">Skip</button><button data-act="tutleave" title="End the lessons: the rivals stop holding back and the match goes on">Leave tutorial</button></div>`
       + `<div class="osteps">${LESSONS.map((s, k) => `<i class="${k < at.index ? 'on' : ''}" title="${esc(s.title)}"></i>`).join('')}</div>`
-      + `<div class="onote">The rival houses keep the peace with you until the lessons end.</div>`);
+      + `<div class="onote">${g.tutorial.foe != null && g.rel[PLAYER][g.tutorial.foe] === 'war' ? `You are at war with ${esc(g.players[g.tutorial.foe].name)}; the other houses keep the peace until the lessons end.` : 'The rival houses keep the peace with you until the lessons end.'}</div>`);
   }
   tutorAct(act) {
     const g = this.game; if (!g.tutorial || g.tutorial.done) return;
@@ -1671,8 +1671,8 @@ export class UI {
       const t = lessonTarget(g, at.step); if (!t) return;
       this.r.centerOn(t.x, t.y);
       if (t.type === 'village') this.sel = { type: 'village', ids: [], id: t.id };
-      else if (t.type === 'building') this.sel = { type: 'building', ids: [], id: t.id };
-      else if (t.type === 'unit' && at.step.id !== 'select' && at.step.id !== 'king') this.sel = { type: 'units', ids: [t.id], id: null };
+      else if (t.type === 'building' && t.team === PLAYER) this.sel = { type: 'building', ids: [], id: t.id };
+      else if (t.type === 'unit' && t.team === PLAYER && at.step.id !== 'select' && at.step.id !== 'king') this.sel = { type: 'units', ids: [t.id], id: null };   // (never a rival's man)
     }
     if (act === 'tutskip') this.host.send({ type: 'tutor', step: at.index + 1 });
     if (act === 'tutleave') { this.host.send({ type: 'tutor', done: true }); this.toast('Tutorial left. The rival houses no longer hold back.', 'info'); }

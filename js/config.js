@@ -471,6 +471,9 @@ export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11,
 // line dies the house falls. A king whose house has lost its seat is a fugitive, seen by every house (`fugitiveSight`).
 export const KING = { safeR: 12, aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 20, heirs: 2, fugitiveSight: 2.5, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
   titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King', vikings: 'Jarl', byzantines: 'Basileus', persians: 'Shahanshah' } };
+// T57: the tutorial's last lessons are a war on one scripted weak rival, the house nearest the learner: its king has no heirs (one kill
+// ends the line) and its AI keeps a fraction of the army it would raise (`army`), so a learner's first band can win the war he is taught.
+export const TUTOR_FOE = { heirs: 0, army: 0.3 };
 // Leaders have a temper that colours how they treat the other houses (see ai.js diplomacy): aggr, greed, honor and wary are 0..1.
 export const TEMPERS = [
   { key: 'warlike', label: 'Warlike', tip: 'Quick to war, slow to forgive.' },
