@@ -2,7 +2,7 @@
 // learner until the lessons end (Game.truce), so nobody is overrun while reading; the last lessons are a war on one weak scripted rival. Pure functions of the game state and of a small
 // context the UI fills in (what is selected, whether the camera moved, whether the Council was opened), so the steps test headless.
 // Progress is saved with the match (game.tutorial.step, through the 'tutor' intent), so a load never sends the learner back.
-import { PLAYER, MAP_SIZES } from './config.js';
+import { PLAYER, MAP_SIZES, KING, heirsWord } from './config.js';
 
 // size: the tutorial always plays the small board, whatever Options > Board size says (T57: on Huge a learner walked for minutes)
 export const TUTORIAL = { seed: 20261102, houses: 3, diff: 'easy', size: MAP_SIZES.small };
@@ -47,7 +47,7 @@ export const LESSONS = [
     done: (g) => built(g, 'barracks') },
   { id: 'train', title: 'Train a soldier', hint: 'Select the barracks and click Footman. Shift-click queues five; Repeat keeps them coming while you can pay.',
     done: (g) => g.soldiersOf(PLAYER).length >= 1, where: (g) => g.buildings.find((b) => b.team === PLAYER && b.kind === 'barracks' && b.hp > 0) },
-  { id: 'king', title: 'Find your king', hint: 'Click your king, or press {key:king}. Your house falls only when the last of its royal line dies: the king and his two heirs. Keep him safe, and hunt the kings of your rivals.',
+  { id: 'king', title: 'Find your king', hint: `Click your king, or press {key:king}. Your house falls only when the last of its royal line dies: the king and his ${heirsWord(KING.heirs)}. Keep him safe, and hunt the kings of your rivals.`,
     done: (g, c) => !!c.sel?.king, where: (g) => g.kingOf(PLAYER) },
   { id: 'village', title: 'Look at a free village', hint: 'Click a village no house holds. Its loyalty turns towards you while your keeps, soldiers or spies stand near it; win it and it pays you tribute. You can also sack it.',
     done: (g, c) => !!c.sel?.freeVillage || wonVillage(g), where: freeSeen },

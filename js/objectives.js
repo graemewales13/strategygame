@@ -1,6 +1,6 @@
 // Auld World - guided objectives for a first match. Pure functions of the game state (no DOM) so they can be tested headless.
 // Each step is "done" by what the player now has, so loading a save or skipping ahead needs no bookkeeping.
-import { PLAYER } from './config.js';
+import { PLAYER, KING, heirsWord } from './config.js';
 
 const mine = (g, kind) => g.buildings.some((b) => b.team === PLAYER && b.kind === kind && b.built >= 1 && b.hp > 0);
 const count = (g, kind) => g.buildings.filter((b) => b.team === PLAYER && b.kind === kind && b.built >= 1 && b.hp > 0).length;
@@ -31,7 +31,7 @@ export const OBJECTIVES = [
     done: (g) => heldVillages(g) >= 1 },
   { id: 'arms', title: 'Study and arm', hint: 'Raise an Academy and choose research (Masonry, then Metallurgy). Metallurgy unlocks the Armoury (it also needs a Forge): order spears and mail there, and your soldiers take them up.',
     done: (g) => mine(g, 'armoury') || g.units.some((u) => u.team === PLAYER && u.hp > 0 && u.gear) },
-  { id: 'conquer', title: 'Rule the valley', hint: 'A house falls when the last of its royal line dies (a king and two heirs). Kill every rival line, and guard your own. Press {key:standings} for standings.',
+  { id: 'conquer', title: 'Rule the valley', hint: `A house falls when the last of its royal line dies (a king and ${heirsWord(KING.heirs)}). Kill every rival line, and guard your own. Press {key:standings} for standings.`,
     done: () => false },
 ];
 

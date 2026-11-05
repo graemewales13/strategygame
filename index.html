@@ -8,36 +8,37 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mw2ovce1">
+<link rel="stylesheet" href="style.css?v=mw4488wj">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mw2ovce1",
-    "./js/art.js": "./js/art.js?v=mw2ovce1",
-    "./js/audio.js": "./js/audio.js?v=mw2ovce1",
-    "./js/config.js": "./js/config.js?v=mw2ovce1",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mw2ovce1",
-    "./js/economy.js": "./js/economy.js?v=mw2ovce1",
-    "./js/entities.js": "./js/entities.js?v=mw2ovce1",
-    "./js/game.js": "./js/game.js?v=mw2ovce1",
-    "./js/gfx.js": "./js/gfx.js?v=mw2ovce1",
-    "./js/groups.js": "./js/groups.js?v=mw2ovce1",
-    "./js/keys.js": "./js/keys.js?v=mw2ovce1",
-    "./js/learn.js": "./js/learn.js?v=mw2ovce1",
-    "./js/main.js": "./js/main.js?v=mw2ovce1",
-    "./js/map.js": "./js/map.js?v=mw2ovce1",
-    "./js/names.js": "./js/names.js?v=mw2ovce1",
-    "./js/net.js": "./js/net.js?v=mw2ovce1",
-    "./js/objectives.js": "./js/objectives.js?v=mw2ovce1",
-    "./js/production.js": "./js/production.js?v=mw2ovce1",
-    "./js/recorder.js": "./js/recorder.js?v=mw2ovce1",
-    "./js/render.js": "./js/render.js?v=mw2ovce1",
-    "./js/save.js": "./js/save.js?v=mw2ovce1",
-    "./js/terrain.js": "./js/terrain.js?v=mw2ovce1",
-    "./js/trainui.js": "./js/trainui.js?v=mw2ovce1",
-    "./js/tutorial.js": "./js/tutorial.js?v=mw2ovce1",
-    "./js/ui.js": "./js/ui.js?v=mw2ovce1"
+    "./js/ai.js": "./js/ai.js?v=mw4488wj",
+    "./js/art.js": "./js/art.js?v=mw4488wj",
+    "./js/audio.js": "./js/audio.js?v=mw4488wj",
+    "./js/config.js": "./js/config.js?v=mw4488wj",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mw4488wj",
+    "./js/economy.js": "./js/economy.js?v=mw4488wj",
+    "./js/entities.js": "./js/entities.js?v=mw4488wj",
+    "./js/game.js": "./js/game.js?v=mw4488wj",
+    "./js/gfx.js": "./js/gfx.js?v=mw4488wj",
+    "./js/groups.js": "./js/groups.js?v=mw4488wj",
+    "./js/keys.js": "./js/keys.js?v=mw4488wj",
+    "./js/learn.js": "./js/learn.js?v=mw4488wj",
+    "./js/main.js": "./js/main.js?v=mw4488wj",
+    "./js/map.js": "./js/map.js?v=mw4488wj",
+    "./js/names.js": "./js/names.js?v=mw4488wj",
+    "./js/net.js": "./js/net.js?v=mw4488wj",
+    "./js/objectives.js": "./js/objectives.js?v=mw4488wj",
+    "./js/production.js": "./js/production.js?v=mw4488wj",
+    "./js/recorder.js": "./js/recorder.js?v=mw4488wj",
+    "./js/render.js": "./js/render.js?v=mw4488wj",
+    "./js/save.js": "./js/save.js?v=mw4488wj",
+    "./js/terrain.js": "./js/terrain.js?v=mw4488wj",
+    "./js/tips.js": "./js/tips.js?v=mw4488wj",
+    "./js/trainui.js": "./js/trainui.js?v=mw4488wj",
+    "./js/tutorial.js": "./js/tutorial.js?v=mw4488wj",
+    "./js/ui.js": "./js/ui.js?v=mw4488wj"
   }
 }
 </script>
@@ -45,7 +46,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mw2ovce1';
+window.__BUILD = 'mw4488wj';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -101,6 +102,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     <canvas id="game"></canvas>
     <div id="toasts"></div>
     <div id="objectives" class="hidden"></div>
+    <div id="ftip" class="hidden" role="status"></div>
     <div id="diplo" class="hidden"></div>
     <div id="council" class="hidden"></div>
     <div id="prodPanel" class="hidden"></div>
@@ -166,6 +168,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
           <label class="chk"><input type="checkbox" id="sObj" checked> Show objectives</label>
           <label class="chk"><input type="checkbox" id="sDmg"> Damage numbers</label>
           <label class="chk"><input type="checkbox" id="sIdle" checked> Chime when a serf goes idle</label>
+          <label class="chk"><input type="checkbox" id="sTips" checked> Tips on first sight</label><button id="sTipsAgain" class="small" title="Show every tip again the next time it applies">Show tips again</button>
         </div>
         <div class="optrow"><span class="seedlabel">Seed</span><input id="mSeed" type="text" inputmode="numeric" spellcheck="false"><button id="mSeedGo" class="small">Roll this seed</button></div>
         <div class="optrow sound"><span class="seedlabel">Sound</span>

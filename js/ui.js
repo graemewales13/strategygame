@@ -1,6 +1,7 @@
 // Auld World - HUD, input, menu and campaign map. Talks to the host ONLY through host.send(intent).
 import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js';
 import { progress } from './objectives.js';
+import { dueTip, tipMemory, loadSeen, saveSeen, TIP_SHOW } from './tips.js';
 import { LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint } from './tutorial.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
@@ -59,6 +60,7 @@ export class UI {
     this.keys = new Set(); this.mouse = { x: 0, y: 0, in: false };
     let store = null; try { store = localStorage; } catch { store = null; }
     this.keyStore = store; this.kmap = loadKeys(store); this.rebinding = null;   // the key map (T03), rebound in Options > Keys
+    this.tipSeen = loadSeen(store); this.tipMem = tipMemory(); this.tipAt = -1e9; this.tipLook = -1e9; this.tipShown = null;   // tips on first sight (T58): the ones seen, kept in the browser
     this.gridKeys = loadGrid(store); this.gridMap = [];   // Grid keys (T03, AoE IV layout): the command card's buttons by place, Options > Keys
     this.speed = 1; this.paused = false; this.started = false;
     this.menuOpen = true; this.campaignOpen = false; this.endShown = false;
@@ -73,7 +75,7 @@ export class UI {
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; this.tutCam = null; this.tutCouncil = false; this.tutSerfs0 = game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length; this.objKey = ''; this.objPrev = null; $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; this.tutCam = null; this.tutCouncil = false; this.tutSerfs0 = game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length; this.objKey = ''; this.objPrev = null; this.tipMem = tipMemory(); this.tipAt = this.tipLook = -1e9; this.hideTip(); $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -506,6 +508,28 @@ export class UI {
     if (r.chime) { this.idleChimeT = g.time; if (this.idleSound) play('idle'); }
     this.idleSeen = new Set(ids);
   }
+  // tips on first sight (T58): once a second of game time ask tips.js for a tip not yet seen whose rule holds; show it as a card,
+  // mark it seen at once (a reload never repeats it), and take it down after TIP_SHOW seconds or on Got it
+  renderTip() {
+    const g = this.game; if (!this.tipsOn || !this.started || this.menuOpen || g.time - this.tipLook < 1) return;
+    this.tipLook = g.time;
+    const t = dueTip(g, this.tipSeen, this.tipMem, this.tipAt); if (!t) return;
+    this.tipSeen.add(t.id); saveSeen(this.keyStore, this.tipSeen); this.tipAt = g.time;
+    this.showTip(t);
+  }
+  showTip(t) {
+    const el = $('ftip'); if (!el) return;
+    el.innerHTML = `<div class="ttitle">${uiImg('marks', 'tip', '', 'tico')}${esc(t.title)}</div><div class="ttext">${String(t.text).split(/(\{key:\w+\})/).map((x) => (/^\{key:\w+\}$/.test(x) ? `<kbd>${esc(fillKeys(x, this.kmap))}</kbd>` : esc(x))).join('')}</div>`
+      + `<div class="tbtns"><button data-act="tipok">Got it</button><button data-act="tipoff" title="Turn tips off (back on in Options)">No more tips</button></div>`;
+    el.dataset.id = t.id; el.classList.remove('hidden'); this.tipShown = t.id;
+    clearTimeout(this.tipTimer); this.tipTimer = setTimeout(() => this.hideTip(), TIP_SHOW * 1000);
+  }
+  hideTip() { clearTimeout(this.tipTimer); this.tipShown = null; $('ftip')?.classList.add('hidden'); }
+  setTips(on) {
+    this.tipsOn = on; if ($('sTips')) $('sTips').checked = on;
+    try { localStorage.setItem('auld-world.tipson', on ? 'on' : 'off'); } catch { /* private window */ }
+    if (!on) this.hideTip();
+  }
   renderProd() {
     const n = idleProduction(this.game, PLAYER).length, badge = $('prodIdle');
     if (badge) { const t = n ? String(n) : ''; if (badge.textContent !== t) { badge.textContent = t; badge.classList.toggle('hidden', !n); } }
@@ -892,7 +916,7 @@ export class UI {
     g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     // (not while a button is held down: a panel rebuilt under the pointer loses the click)
-    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); this.renderIdle(); this.renderLedger(); if (this.diploOpen != null) this.renderDiplo(); }
+    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); this.renderIdle(); this.renderTip(); this.renderLedger(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
@@ -1565,6 +1589,10 @@ export class UI {
     // damage numbers over a fight: off unless chosen (remembered)
     try { this.idleSound = localStorage.getItem('auld-world.idlechime') !== 'off'; } catch { this.idleSound = true; }   // (T52: on unless switched off)
     if ($('sIdle')) { $('sIdle').checked = this.idleSound; $('sIdle').onchange = () => { this.idleSound = $('sIdle').checked; try { localStorage.setItem('auld-world.idlechime', this.idleSound ? 'on' : 'off'); } catch { /* private window */ } if (this.idleSound) { unlock(); play('idle'); } }; }
+    try { this.tipsOn = localStorage.getItem('auld-world.tipson') !== 'off'; } catch { this.tipsOn = true; }   // (T58: on unless switched off)
+    if ($('sTips')) { $('sTips').checked = this.tipsOn; $('sTips').onchange = () => this.setTips($('sTips').checked); }
+    if ($('sTipsAgain')) $('sTipsAgain').onclick = () => { this.tipSeen.clear(); saveSeen(this.keyStore, this.tipSeen); this.setTips(true); this.toast('Every tip will show again the next time it applies.', 'info'); };
+    $('ftip')?.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.act === 'tipoff') { this.setTips(false); this.toast('Tips off. Turn them back on under Options.', 'info'); } this.hideTip(); });
     try { this.dmgNums = localStorage.getItem('auld-world.dmgnums') === 'on'; } catch { this.dmgNums = false; }
     if ($('sDmg')) { $('sDmg').checked = this.dmgNums; $('sDmg').onchange = () => { this.dmgNums = $('sDmg').checked; try { localStorage.setItem('auld-world.dmgnums', this.dmgNums ? 'on' : 'off'); } catch { /* private window */ } }; }
     if ($('sObj')) { $('sObj').checked = !this.objHidden; $('sObj').onchange = () => { this.objHidden = !$('sObj').checked; this.objKey = ''; try { localStorage.setItem('auld-world.objectives', this.objHidden ? 'off' : 'on'); } catch { /* private window */ } }; }

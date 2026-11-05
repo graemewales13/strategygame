@@ -22,6 +22,8 @@ Tests (Node 18+, no installs): `node test/sim.test.js`. They run the simulation 
 
 New to the game? **Skirmish > Learn to play (tutorial)** starts a guided match on the small board (whatever Board size says): three houses on Easy, fifteen short lessons (look around, select and work serfs, draft, build, train, your king and the royal line, a free village, winning a village, the Council, then a small war: declare war on the nearest house, attack-move into a fight, fall back with Retreat, and end that house's royal line), each checked as you play, with **Show me**, **Skip** and **Leave tutorial**. The nearest house is the tutorial's weak rival: a small army and a king with no heir, and no other house wars on it while the lessons last. The other rival houses keep the peace with you until the lessons end (a war you declare ends the peace with that house only), and the tutorial is not recorded for the rivals to learn from.
 
+**Tips on first sight.** Later, the first time you meet a rule that can cost you the match (a rival's tribute demand, a war, a mine nobody digs, a hungry or wavering village, a village lost, an army that fled, your king fallen, your seat lost, unpaid soldiers, a full house) a short card at the bottom left says what it means and what to do. Each shows once (remembered in this browser) and never during the tutorial's lessons; Options has *Tips on first sight* to switch them off and *Show tips again*.
+
 1. **Gather.** Drag-select your three serfs, right-click timber, berries or gold. They carry goods to your village.
 2. **Grow.** Select your village (**H**). Draft serfs from its folk, or arm a villager now and then (one every 20 s, a recruit at about a quarter of a footman's strength: real soldiers come from a barracks or a keep's drill). Serfs fight back when struck, at about an eighth of a footman. At first you may raise a mine, farm, market, keep, barracks and tavern; the foundry (needs a mine), cottage (needs a market), mill (needs a farm), archery, tower, academy and the rest unlock as you build. There is no territory circle: build anywhere you have scouted. Distance changes the *community* around a site instead (see "Rules in one page").
 3. **Take villages.** Fourteen independent villages sit in the gaps. Three ways to win one:
@@ -163,6 +165,7 @@ js/
   recorder.js     records the player's orders and samples in the browser for learn.js
   trainui.js      the menu's AI-training box: recording on or off, export, import, clear
   objectives.js   the guided first match (each step done by what the player has)
+  tips.js         tips on first sight: eleven tips, each on its own rule of the game state, shown once (UI only, never read by the rules)
   tutorial.js     the tutorial's fifteen lessons, their checks and Show me targets, and its settings (the rivals' truce is Game.truce)
   production.js   the production overview and idle training buildings (read-only)
   economy.js      the economy ledger, idle serfs and their chime (read-only)

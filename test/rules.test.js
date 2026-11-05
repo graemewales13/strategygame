@@ -6,6 +6,7 @@ import { Game } from '../js/game.js';
 import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
+import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSeen, saveSeen } from '../js/tips.js';
 import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, wonVillage, tutorFoe, foeFelled } from '../js/tutorial.js';
 import { TUTOR_FOE } from '../js/config.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
@@ -2065,6 +2066,10 @@ test('tutorial war lessons (T57): a scripted weak rival, a truce kept house by h
 test('heir counts come from KING.heirs (T-113): no panel falls back to a hard-coded number', () => {
   for (const f of readdirSync('js').filter((x) => x.endsWith('.js'))) assert.ok(!/heirs \?\? \d/.test(readFileSync('js/' + f, 'utf8')), `${f} has a hard-coded heir fallback`);
   const g = mk(); assert.equal(intel(g, 1).heirs, KING.heirs, 'a rival with no fallen king shows the full line');
+  // T-114: the hints that name the line's length follow KING.heirs too
+  for (const f of ['objectives.js', 'tutorial.js', 'tips.js']) assert.ok(!/\b(two|2) heirs\b/.test(readFileSync(new URL(`../js/${f}`, import.meta.url), 'utf8')), `${f} names the heirs from KING.heirs`);
+  assert.ok(OBJECTIVES.find((o) => o.id === 'conquer').hint.includes(`a king and ${KING.heirs === 2 ? 'two heirs' : ''}`));
+  assert.ok(LESSONS.find((l) => l.id === 'king').hint.includes('his two heirs'), 'the default line still reads two heirs');
 });
 
 test('a board size per match (T57): the tutorial always plays the small board, a save brings its own size, a new match goes back to the default', () => {
@@ -2104,4 +2109,46 @@ test('tutorial lesson: win a village (T57): passed by holding a village not star
   const k = new Game({ seed: TUTORIAL.seed, houses: 3, ai: false, tutorial: true, size: TUTORIAL.size });
   const f = k.villages.find((x) => x.owner < 0); f.owner = PLAYER; f.founded = true; assert.equal(wonVillage(k), false);
   f.founded = false; assert.equal(wonVillage(k), true);
+});
+
+test('tips on first sight (T58): each tip on its own rule, once, never in the tutorial\'s lessons, spaced out, remembered', () => {
+  const g = new Game({ seed: 58, houses: 3, ai: false, size: MAP_SIZES.small });
+  const mem = tipMemory(), seen = new Set();
+  assert.equal(dueTip(g, seen, mem), null, 'nothing to say at the start of a match');
+  for (const t of TIPS) for (const [, id] of t.text.matchAll(/\{key:(\w+)\}/g)) assert.ok(KEY_ACTIONS.some((a) => a.id === id), `tip ${t.id}: key ${id} exists`);
+  assert.equal(new Set(TIP_IDS).size, TIPS.length); assert.ok(TIPS.length >= 10, 'ten tips or more');
+  const p = g.players[PLAYER], rival = 1;
+  // each rule, met one at a time, gives its own tip
+  const check = (id, set, unset) => { set(); const t = dueTip(g, new Set(TIP_IDS.filter((x) => x !== id)), mem); assert.equal(t?.id, id, `the ${id} tip shows on its rule`); unset(); assert.equal(dueTip(g, new Set(TIP_IDS.filter((x) => x !== id)), mem), null, `no ${id} tip without its rule`); };
+  check('demand', () => g.offers.push({ id: 999, from: rival, to: PLAYER, kind: 'tribute', amount: 40, t: g.time, expires: g.time + 60 }), () => { g.offers.length = 0; });
+  check('war', () => { g.rel[PLAYER][rival] = g.rel[rival][PLAYER] = 'war'; }, () => { g.rel[PLAYER][rival] = g.rel[rival][PLAYER] = 'peace'; });
+  const v = g.villages.find((x) => x.owner === PLAYER);
+  check('waver', () => { v.loyalty = 20; v.lean = rival; }, () => { v.loyalty = 80; v.lean = PLAYER; });
+  check('hungry', () => { v.stores.food = 0; }, () => { v.stores.food = 5000; });
+  check('rout', () => { p.routs = 1; }, () => { p.routs = 0; });
+  check('king', () => { p.heirAt = g.time + 20; }, () => { p.heirAt = null; });
+  check('broke', () => { p.brokeT = 3; }, () => { p.brokeT = 0; });
+  const seat = g.seatOf(PLAYER); check('seat', () => { seat.owner = -1; g._vOwn = null; }, () => { seat.owner = PLAYER; g._vOwn = null; });
+  const t0 = g.time; check('popcap', () => { g.popCap = () => 0; g.time = 100; }, () => { delete g.popCap; g.time = t0; });
+  const far = g.addBuilding('mine', PLAYER, 5, 5, 1); check('idlemine', () => { far._crew = null; }, () => { g.buildings.splice(g.buildings.indexOf(far), 1); g._bIdx = null; });
+  // a village lost since the last look
+  const m2 = tipMemory(); noteTips(g, m2); assert.equal(m2.lost, 0);
+  const prev = v.owner; v.owner = -1; g._vOwn = null; noteTips(g, m2); assert.equal(m2.lost, 1, 'a held village that left is counted');
+  assert.equal(dueTip(g, new Set(TIP_IDS.filter((x) => x !== 'lostvillage')), m2)?.id, 'lostvillage'); v.owner = prev; g._vOwn = null;
+  // once seen, never again; spaced TIP_GAP apart; none in the tutorial's lessons, none once the match is over
+  g.rel[PLAYER][rival] = g.rel[rival][PLAYER] = 'war';
+  assert.equal(dueTip(g, new Set(['war']), tipMemory()), null, 'a tip seen does not come back');
+  assert.equal(dueTip(g, seen, tipMemory(), g.time - 1), null, 'not within TIP_GAP of the last tip');
+  assert.equal(dueTip(g, seen, tipMemory(), g.time - TIP_GAP)?.id, 'war');
+  g.tutorial = { step: 3, done: false }; assert.equal(dueTip(g, seen, tipMemory()), null, 'no tips during the lessons');
+  g.tutorial.done = true; assert.equal(dueTip(g, seen, tipMemory())?.id, 'war', 'tips come once the lessons are done');
+  g.tutorial = null; g.outcome = { win: false }; assert.equal(dueTip(g, seen, tipMemory()), null); g.outcome = null;
+  // kept in the browser; a blocked store is no error
+  const box = new Map(), store = { getItem: (k) => box.get(k) ?? null, setItem: (k, s) => box.set(k, s) };
+  assert.ok(saveSeen(store, new Set(['war', 'demand']))); assert.deepEqual([...loadSeen(store)].sort(), ['demand', 'war']);
+  box.set(TIP_STORE, '["war","nonsense"]'); assert.deepEqual([...loadSeen(store)], ['war'], 'unknown ids are dropped');
+  const bad = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('full'); } };
+  assert.equal(loadSeen(bad).size, 0); assert.equal(saveSeen(bad, seen), false);
+  // tips are UI only: the rules never read them (a match plays the same with or without)
+  assert.ok(!readFileSync(new URL('../js/game.js', import.meta.url), 'utf8').includes('tips.js'));
 });

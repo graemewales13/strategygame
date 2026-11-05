@@ -450,6 +450,8 @@ export const TRAIN = { queue: 5, shift: 5, set: 24 };
 // of game time, never for serfs the player has selected (he is looking at them) nor at the first look of a match.
 export const IDLE_ALERT = { chimeEvery: 20 };
 // a unit kind's name for many of them, in words a player reads ('Footmen', 'Spies'; T-096: 'Spys' and 'footmans' were shown)
+// the royal line's heirs in words, for hints and tips that must follow KING.heirs (T-114: two hints said 'two heirs' outright)
+export const heirsWord = (n) => (n <= 0 ? 'no heir' : n === 1 ? 'one heir' : `${['two', 'three', 'four', 'five'][n - 2] || n} heirs`);
 export const plural = (l) => (/man$/.test(l) ? l.replace(/man$/, 'men') : /[^aeiou]y$/.test(l) ? l.replace(/y$/, 'ies') : /s$/.test(l) ? l : l + 's');
 export const unitPlural = (kind) => plural(UNITS[kind]?.label || kind);
 // Patrol (T39): the AI's home guard walks a round between its seat and its nearest held village at peace: `pair` soldiers at most, sent only
