@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING, SIGNAL } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -157,7 +157,7 @@ export function drift(g) {
 const settled = (g, a, b) => g.time - g.relSince[a][b] < 240;   // a peace just made is not broken at once
 const yes = (extra = {}) => ({ ok: true, ...extra });
 const no = (why) => ({ ok: false, why });
-// `to` (an AI house) answers a request from `from`. kind: trade | peace | alliance | joinwar {target} | tribute {amount} | aid {amount}
+// `to` (an AI house) answers a request from `from`. kind: trade | peace | alliance | joinwar {target} | tribute {amount} | aid {amount} | flare {foe, x, y}
 export function judge(g, kind, from, to, ctx = {}) {
   const pr = pers(g, to), o = op(g, to, from), N = nameOf(g, from), me = leaderName(g, to);
   const sTo = strength(g, to), sFrom = strength(g, from), rel = g.rel[to][from];
@@ -198,6 +198,17 @@ export function judge(g, kind, from, to, ctx = {}) {
       const amount = ctx.amount || 0, bar = 1.7 - pr.wary * 0.5 + (pr.honor > 0.7 ? 0.5 : 0);
       if (g.players[to].gold < amount) return no(`${me} has not that much coin.`);
       if (sFrom / sTo < bar) return no(`${me} laughs: "Come and take it, ${N}."`);
+      return yes();
+    }
+    case 'flare': {   // an ally's signal (T54): ctx { foe, x, y }; whether `to` has soldiers to spare is the AI's to say (answerFlare in ai.js)
+      const F = ctx.foe;
+      if (rel !== 'alliance') return no(`${me} is not ${N}'s ally.`);
+      if (F == null || F < 0) return no(`${me} sees no foe of ${N} at the mark.`);
+      if (g.truce?.(to, F)) return no(`${me} keeps the peace with ${nameOf(g, F)} for now.`);
+      if (g.rel[to][F] !== 'war') return no(`${me} is not at war with ${nameOf(g, F)}; ask him on the Council to join your war first.`);
+      const seat = g.seatOf(to);
+      if (!seat) return no(`${me} has lost his seat and has no host to send.`);
+      if (Math.hypot(seat.x - ctx.x, seat.y - ctx.y) > SIGNAL.reach * g.W) return no(`${me}: "That is too far from my halls, ${N}."`);
       return yes();
     }
     case 'aid': {

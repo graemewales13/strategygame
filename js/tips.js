@@ -3,7 +3,7 @@
 // full house) a short card says what it means and what to do. Each tip shows once, remembered in the browser, and never during the
 // tutorial's lessons (they teach the same things in order). Pure functions of the game state and a small per-match memory, so they test
 // headless; the UI only decides when a card may show and keeps the list of tips already seen. Nothing here touches the simulation.
-import { PLAYER, KING } from './config.js';
+import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS } from './config.js';
 
 export const TIP_STORE = 'auld-world.tips';
 export const TIP_GAP = 25;        // seconds of game time between two tips, so a bad minute is not a wall of cards
@@ -18,10 +18,10 @@ export const TIPS = [
     text: 'A letter that asks for coin is an ultimatum: pay it and the peace holds a while; refuse or ignore it and that house marches on you within the minute. Weigh his army against yours on the Council ({key:council}) before you answer.',
     when: (g) => g.offers.some((o) => o.to === PLAYER && o.kind === 'tribute') },
   { id: 'war', title: 'You are at war',
-    text: 'Idle soldiers within 14 tiles turn on anyone who strikes your folk or buildings. {key:alert} jumps to where you are hit, {key:army} selects your army, {key:amove} attack-moves it. Keep your king behind the line: when your royal line ends, your house falls.',
+    text: `Idle soldiers within ${DEFEND_R} tiles turn on anyone who strikes your folk or buildings. {key:alert} jumps to where you are hit, {key:army} selects your army, {key:amove} attack-moves it. Keep your king behind the line: when your royal line ends, your house falls.`,
     when: (g) => atWarWith(g).length > 0 },
   { id: 'idlemine', title: 'A mine with nobody to dig it',
-    text: 'Mines are worked by the folk of villages within 16 tiles, never by serfs. Win or found a village near the deposit (serfs can found a mining camp beside ore), or raise your next mine closer to the villages you hold.',
+    text: `Mines are worked by the folk of villages within ${MINE_JOBS.r} tiles, never by serfs. Win or found a village near the deposit (serfs can found a mining camp beside ore), or raise your next mine closer to the villages you hold.`,
     when: (g) => g.buildings.some((b) => b.team === PLAYER && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && g.minersOf(b) === 0) },
   { id: 'hungry', title: 'A village is running out of grain',
     text: 'A held village eats from its own store; when it runs dry its folk leave and it shrinks. Select it and press Send grain to cart grain from your stockpile, or hold a Feast at a keep. The ledger ({key:ledger}) lists every hungry village.',
@@ -33,7 +33,7 @@ export const TIPS = [
     text: 'A village you held is gone: sacked, won over by a rival\'s keeps and soldiers, or slipped for want of a lord nearby. You can win it back the same ways. Keep soldiers near the villages that pay you most.',
     when: (g, mem) => mem.lost > 0 },
   { id: 'rout', title: 'Your army fled the field',
-    text: 'Retreat ({key:retreat}) saves lives but it costs: every village of yours lost a fifth of its loyalty, and it comes back slowly for three minutes. The other kings read it as weakness. Fall back early, or not at all.',
+    text: `Retreat ({key:retreat}) saves lives but it costs: every village of yours lost ${Math.round(RETREAT.loyalty * 100)}% of its loyalty, and it comes back slowly over ${Math.round(RETREAT.shame / 60)} minutes. The other kings read it as weakness. Fall back early, or not at all.`,
     when: (g) => (g.players[PLAYER].routs || 0) > 0 },
   { id: 'king', title: 'Your king has fallen',
     text: `The next heir takes the crown in ${KING.heir} seconds, at your seat or wherever your house still holds. When the king and every heir are dead, your house falls: the king's card ({key:king}) shows how many heirs are left. Keep the new king out of the fighting.`,
@@ -45,7 +45,7 @@ export const TIPS = [
     text: 'Past the first few, soldiers draw wages in coin. With empty coffers their pay falls behind, and after a while they start to desert. Sell goods at a market, send camels trading, or train fewer men.',
     when: (g) => (g.players[PLAYER].brokeT || 0) > 0 },
   { id: 'popcap', title: 'Your house is full',
-    text: 'No room for more folk: nothing new can be trained or drafted. Raise cottages (+5 each, beside a market) or win villages, whose folk are housed where they live.',
+    text: `No room for more folk: nothing new can be trained or drafted. Raise cottages (+${BUILDINGS.cottage.pop} each, once you have a market; within ${MARKET_RADIUS} tiles of one they also shop there) or win villages, whose folk are housed where they live.`,
     when: (g) => g.popUsed(PLAYER) >= g.popCap(PLAYER) && g.time > 60 },
 ];
 export const TIP_IDS = TIPS.map((t) => t.id);

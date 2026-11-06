@@ -8,7 +8,7 @@ import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSeen, saveSeen } from '../js/tips.js';
 import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, wonVillage, tutorFoe, foeFelled } from '../js/tutorial.js';
-import { TUTOR_FOE } from '../js/config.js';
+import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT } from '../js/config.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
@@ -2151,4 +2151,65 @@ test('tips on first sight (T58): each tip on its own rule, once, never in the tu
   assert.equal(loadSeen(bad).size, 0); assert.equal(saveSeen(bad, seen), false);
   // tips are UI only: the rules never read them (a match plays the same with or without)
   assert.ok(!readFileSync(new URL('../js/game.js', import.meta.url), 'utf8').includes('tips.js'));
+});
+
+test('signal your allies (T54): an ally at war with the foe at the mark sends what it can spare; refusals say why; rivals signal too', () => {
+  const g = mk(), foe = 2, ally = 1, mark = g.seatOf(foe);
+  g.known[PLAYER][ally] = g.known[ally][PLAYER] = g.known[ally][foe] = g.known[foe][ally] = g.known[PLAYER][foe] = g.known[foe][PLAYER] = 1;
+  // no ally: refused with a reason, no mark
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'flare', x: mark.x, y: mark.y }), false);
+  assert.match(g.diploNote, /no allies/i); assert.equal(g.players[PLAYER].flare, undefined);
+  g.setRelation(PLAYER, ally, 'alliance'); g.setRelation(PLAYER, foe, 'war');
+  const a = g.seatOf(ally), men = Array.from({ length: 9 }, (_, i) => g.addUnit('footman', ally, a.x + (i % 3) * 1.2, a.y + 5 + Math.floor(i / 3) * 1.2));
+  const fog = g.fogOn; g.fogOn = false;   // the foe's seat in sight (the fog rule is checked below)
+  // the ally is not at war with the foe: it says so, and nobody marches
+  assert.equal(g.flare(PLAYER, mark.x, mark.y), true, 'the mark is made whatever the answers');
+  assert.equal(g.players[PLAYER].flare.answers.length, 0);
+  assert.match(g.letters[0].text, /not at war with/); assert.equal(g.letters[0].state, 'declined');
+  assert.ok(men.every((u) => u.task.type === 'idle'));
+  // too soon for another signal
+  assert.equal(g.flare(PLAYER, mark.x, mark.y), false); assert.match(g.diploNote, /signal again in/);
+  // at war with the foe: sends all but its home guard, attack-moving to the mark, and thinks better of us for asking
+  g.setRelation(ally, foe, 'war'); g.time += SIGNAL.cool; const op0 = g.opinion[PLAYER][ally];
+  assert.equal(g.flare(PLAYER, mark.x, mark.y), true);
+  const f = g.players[PLAYER].flare, keep = Math.max(SIGNAL.keep, Math.ceil(9 * SIGNAL.keepShare));
+  assert.equal(f.answers.length, 1); assert.equal(f.answers[0].team, ally); assert.equal(f.answers[0].foe, foe);
+  assert.equal(f.answers[0].ids.length, 9 - keep, 'a home guard stays');
+  for (const id of f.answers[0].ids) { const u = g.byId.get(id); assert.equal(u.task.type, 'amove'); assert.equal(u.team, ally); }
+  assert.equal(g.letters[0].state, 'accepted'); assert.match(g.letters[0].text, new RegExp(`sends ${9 - keep} soldiers against ${HOUSES[foe].short}`));
+  assert.ok(g.opinion[PLAYER][ally] >= op0, 'opinion of an ally that answered does not fall');
+  // those already marching are not free: a second call finds too few to spare
+  g.time += SIGNAL.cool; g.flare(PLAYER, mark.x, mark.y);
+  assert.match(g.letters[0].text, /no soldiers to spare/);
+  // nothing of the foe's at an empty spot; and under fog, what neither house can see does not count
+  g.time += SIGNAL.cool; g.flare(PLAYER, 2, 2); assert.match(g.letters[0].text, /sees no foe/);
+  g.fogOn = true; g.vis[PLAYER].fill(0); g.vis[ally].fill(0);
+  assert.equal(g.flareFoe(PLAYER, mark.x, mark.y, [PLAYER, ally], ally), -1, 'the fog hides the foe from the answer');
+  g.vis[PLAYER].fill(1); assert.equal(g.flareFoe(PLAYER, mark.x, mark.y, [PLAYER, ally], ally), foe);
+  g.fogOn = fog;
+  // bad spots and a fallen house are refused
+  g.time += SIGNAL.cool; assert.equal(g.flare(PLAYER, -5, 3), false); assert.match(g.diploNote, /Mark a spot/);
+  // saved and loaded with the house
+  const h = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(h.players[PLAYER].flare, g.players[PLAYER].flare); assert.equal(h.players[PLAYER].flareT, g.players[PLAYER].flareT);
+  // a rival's war host calls its allies the same way; the player, called, gets a letter
+  const r = new Game({ seed: 8, houses: 3, ai: false }); r.known[1][PLAYER] = r.known[PLAYER][1] = 1;
+  r.setRelation(1, PLAYER, 'alliance'); r.setRelation(1, 2, 'war'); r.fogOn = false;
+  assert.equal(r.flare(1, r.seatOf(2).x, r.seatOf(2).y), true);
+  assert.equal(r.letters[0].to, PLAYER); assert.match(r.letters[0].text, /calls you to the mark/);
+  // the rule reads only the seeded state: no Math.random in it
+  const src = readFileSync(new URL('../js/game.js', import.meta.url), 'utf8'), body = src.slice(src.indexOf('  flareFoe('), src.indexOf('// ---- science: learning'));
+  assert.ok(body.length > 100 && !body.includes('Math.random'));
+});
+
+test('tips and README name the rules\' own numbers (T-116): defence reach, mine reach, the rout, cottages, the signal', () => {
+  const t = Object.fromEntries(TIPS.map((x) => [x.id, x.text]));
+  assert.ok(t.war.includes(`within ${DEFEND_R} tiles`)); assert.ok(t.idlemine.includes(`within ${MINE_JOBS.r} tiles`));
+  assert.ok(t.rout.includes(`${Math.round(RETREAT.loyalty * 100)}%`) && t.rout.includes(`${Math.round(RETREAT.shame / 60)} minutes`));
+  assert.ok(t.popcap.includes(`+${BUILDINGS.cottage.pop} each`) && !/beside a market/.test(t.popcap), 'a cottage needs a market, not to stand beside one');
+  assert.deepEqual(BUILDINGS.cottage.requires, ['market']);
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8'), row = readme.split('\n').find((l) => l.startsWith('| Signal your allies |'));
+  assert.ok(row, 'README controls has the signal row');
+  for (const s of [`for ${SIGNAL.show} s`, `within ${SIGNAL.r} tiles`, `home guard of ${SIGNAL.keep} or ${Math.round(SIGNAL.keepShare * 100)}%`, `at most ${SIGNAL.max}`, `every ${SIGNAL.cool} s`, 'than the board is wide']) assert.ok(row.includes(s), s);
+  assert.equal(SIGNAL.reach, 1);
 });

@@ -456,6 +456,13 @@ export const plural = (l) => (/man$/.test(l) ? l.replace(/man$/, 'men') : /[^aei
 export const unitPlural = (kind) => plural(UNITS[kind]?.label || kind);
 // Patrol (T39): the AI's home guard walks a round between its seat and its nearest held village at peace: `pair` soldiers at most, sent only
 // while `spare` stand idle at the seat, checked every `every` seconds; the village within `reach` tiles, else `out` tiles toward the middle.
+// Signal your allies (T54, AoE II's flare): the house marks a spot; every ally of it that is at war with whoever stands there sends the
+// soldiers it can spare, keeping a home guard, or writes why not. r: tiles round the spot searched for the foe; reach: an ally whose seat
+// is further from the spot than this share of the board's width will not march (only the far corners); keep / keepShare: soldiers an ally keeps at home (the larger); max: most it sends;
+// min: fewer to spare than this and it sends none; cool: seconds between two flares of one house; show: seconds the ping is drawn;
+// march: seconds an answering band is drawn on the minimap; aiCool: seconds between two flares of a rival house (it signals its war hosts'
+// goal); thanks: opinion gained by an ally that answered.
+export const SIGNAL = { r: 10, reach: 1, keep: 3, keepShare: 0.3, max: 12, min: 2, cool: 20, show: 12, march: 120, aiCool: 120, thanks: 4 };
 export const PATROL = { pair: 2, spare: 4, every: 20, reach: 26, out: 10 };
 // Explore (T45, AoE IV's auto-scout): a scout sent exploring rides to the nearest unseen ground he can reach, again and again. Unseen ground is
 // sampled every `step` tiles; it is checked again every `look` seconds (on to the next place once his goal is seen, or a foe is near);

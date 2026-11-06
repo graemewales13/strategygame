@@ -9,10 +9,10 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
-import { updateAI } from './ai.js';
+import { updateAI, answerFlare } from './ai.js';
 import * as dip from './diplomacy.js';
 import { pickName, shortName, FOUNDED, FAR_NAMES } from './names.js';
 
@@ -657,6 +657,7 @@ export class Game {
       case 'tutor': return this.tutor(team, it.step, !!it.done);
       case 'feast': return this.feast(team, it.buildingId);
       case 'feed': return this.feedVillage(team, it.villageId, it.amount) > 0;
+      case 'flare': return this.flare(team, +it.x, +it.y);
       case 'hire': return this.hire(team, it.buildingId, it.index);
       case 'research': return this.startResearch(team, it.tech);
       case 'craft': return this.craft(team, it.buildingId, it.item);
@@ -952,6 +953,85 @@ export class Game {
     p.food -= n; v.stores.food = (v.stores.food || 0) + n; v.hunger = 0; p.fed = (p.fed || 0) + n;
     if (team === PLAYER) this.log(PLAYER, `${n} grain carted to ${v.name}${was ? ': its folk eat again' : ''} (${Math.floor(v.stores.food)} in store, about ${Math.round(this.foodLeft(v) / 60)} min).`, 'info');
     return n;
+  }
+
+  // ---- signal your allies (T54, AoE II's flare) --------------------------------------------------------------------------------
+  // The house at war with `team` that stands most at (x, y): its soldiers, buildings and villages within SIGNAL.r tiles, counted only where
+  // one of `viewers` can see them (an answer must not tell what the fog hides). A house that `prefer` is also at war with comes first.
+  flareFoe(team, x, y, viewers = [team], prefer = -1) {
+    const r = SIGNAL.r, seen = (o) => viewers.some((v) => this.canSee(v, o.x, o.y)), w = new Map();
+    const add = (t, n) => { if (t >= 0 && t !== team && this.rel[team][t] === 'war' && this.alive(t)) w.set(t, (w.get(t) || 0) + n); };
+    for (const u of this.unitsNear(x, y, r)) if (u.hp > 0 && !u.inside && Math.hypot(u.x - x, u.y - y) <= r && seen(u)) add(u.team, 1);
+    for (const b of this.buildings) if (b.hp > 0 && Math.hypot(b.x - x, b.y - y) <= r && seen(b)) add(b.team, 2);
+    for (const v of this.villages) if (v.owner >= 0 && Math.hypot(v.x - x, v.y - y) <= r && seen(v)) add(v.owner, 3);
+    let best = -1, bw = 0;
+    for (const [t, n] of [...w].sort((a, b) => a[0] - b[0])) {
+      const s = n + (prefer >= 0 && this.rel[prefer][t] === 'war' ? 1000 : 0);
+      if (s > bw) { bw = s; best = t; }
+    }
+    return best;
+  }
+  alliesOf(team) { return this.players.filter((q) => q.alive && q.team !== team && this.rel[team][q.team] === 'alliance').map((q) => q.team); }
+  // why `team` cannot signal now (null when it can)
+  flareWhy(team, x, y) {
+    const p = this.players[team];
+    if (!p?.alive) return 'Your house has fallen.';
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= this.W || y >= this.H) return 'Mark a spot on the field.';
+    const ago = this.time - (p.flareT ?? -1e9);
+    if (ago < SIGNAL.cool) return `Your last signal was ${Math.floor(ago)} s ago; signal again in ${Math.ceil(SIGNAL.cool - ago)} s.`;
+    if (!this.alliesOf(team).length) return 'You have no allies to signal. Seal an alliance on the Council first.';
+    return null;
+  }
+  // Mark a spot for every ally: an AI ally judges it (dip.judge 'flare': at war with the foe there, not too far) and sends the soldiers it
+  // can spare (answerFlare in ai.js), or says why not, in a letter; an ally the player commands is told where he is called. The mark and the
+  // answering bands are kept on the house (p.flare) for the field and minimap. True when the mark was made, whatever the answers.
+  flare(team, x, y) {
+    const why = this.flareWhy(team, x, y);
+    if (why) { if (team === PLAYER) this.deny(team, why); return false; }
+    const p = this.players[team], to = this.alliesOf(team), me = team === PLAYER;
+    p.flareT = this.time; p.flares = (p.flares || 0) + 1;
+    const f = p.flare = { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, t: this.time, to, answers: [] };
+    if (me) this.sfx('horn', x, y);
+    for (const a of to) {
+      const who = `${dip.leaderName(this, a)} of ${HOUSES[a].short}`;
+      if (!this.players[a].ai) {   // the player is called by an ally (a rival house's war host marching)
+        const foe = this.flareFoe(team, x, y, [team, a], a);
+        const text = `${dip.leaderName(this, team)} of ${HOUSES[team].short} calls you to the mark on your map${foe >= 0 ? ` against ${HOUSES[foe].short}` : ''}.`;
+        dip.record(this, team, a, 'flare', text, 'note'); if (a === PLAYER) this.log(PLAYER, text, 'info');
+        continue;
+      }
+      const foe = this.flareFoe(team, x, y, [team, a], a), j = dip.judge(this, 'flare', team, a, { foe, x, y });
+      const ans = j.ok ? answerFlare(this, a, x, y) : { ids: [], why: j.why };
+      if (ans.ids.length) {
+        f.answers.push({ team: a, ids: ans.ids, foe });
+        this.opinionShift(team, a, SIGNAL.thanks, 'answered our call');
+        const text = `${who} sends ${ans.ids.length} soldier${ans.ids.length === 1 ? '' : 's'} against ${HOUSES[foe].short} at the mark.`;
+        dip.record(this, a, team, 'flare', text, 'accepted'); this.log(me ? PLAYER : -1, text, me ? 'good' : 'info');
+      } else {
+        const text = j.ok ? `${who} ${ans.why}.` : `${who} will not come: ${j.why}`;
+        dip.record(this, a, team, 'flare', text, 'declined'); if (me) this.log(PLAYER, text, 'warn');
+      }
+    }
+    return true;
+  }
+
+  // The signals the player sees (drawn on the field and minimap, never read by the rules): his own, and his allies' that called him; each
+  // { team, x, y, age, bands: [{ team, x, y }] }, a band being the middle of an answering ally's soldiers still marching to the mark.
+  shownFlares(viewer = PLAYER) {
+    const out = [];
+    for (const p of this.players) {
+      const f = p.flare; if (!f || !p.alive) continue;
+      if (p.team !== viewer && !(f.to || []).includes(viewer)) continue;
+      const age = this.time - f.t; if (age < 0 || age > Math.max(SIGNAL.show, SIGNAL.march)) continue;
+      const bands = [];
+      for (const a of f.answers || []) {
+        const us = a.ids.map((id) => this.byId.get(id)).filter((u) => u && u.hp > 0 && u.team === a.team && !u.inside && u.task.type === 'amove' && Math.hypot(u.task.x - f.x, u.task.y - f.y) < SIGNAL.r);
+        if (us.length) bands.push({ team: a.team, n: us.length, x: us.reduce((s, u) => s + u.x, 0) / us.length, y: us.reduce((s, u) => s + u.y, 0) / us.length });
+      }
+      if (age > SIGNAL.show && !bands.length) continue;
+      out.push({ team: p.team, x: f.x, y: f.y, age, bands });
+    }
+    return out;
   }
 
   // ---- science: learning and research ----------------------------------------------------------------------------------

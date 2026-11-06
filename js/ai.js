@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, DEFEND_R } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -295,7 +295,11 @@ function think(game, team, p) {
       const fighters = army.filter((u) => game.fighter(u)).length + game.soldiersOf(team).filter((u) => u.inside && !u.drilling && u.kind !== 'recruit').length;
       if (ready.length >= Math.max(7, Math.ceil(fighters * (game.diff.mass || 0))) && t >= (p.regroupUntil || 0)) {
         const goal = huntGoal(game, team, target.team, seat, ready);
-        if (goal) { game.setStance(ready, 'aggressive'); game.setFormation(ready, 'line'); game.cmdAttack(ready, goal); }
+        if (goal) {
+          game.setStance(ready, 'aggressive'); game.setFormation(ready, 'line'); game.cmdAttack(ready, goal);
+          // and calls its allies to the same goal (T54): the player's signal, by the same rule; an ally the player commands is told where
+          if (game.time - (p.flareT ?? -1e9) >= SIGNAL.aiCool && game.alliesOf(team).length) game.flare(team, goal.x, goal.y);
+        }
       }
     }
     regroup(game, team, p, seat, army, t);
@@ -306,6 +310,22 @@ function think(game, team, p) {
     if (guard.length) game.setStance(guard, 'defensive');
     patrolBounds(game, team, p, seat, army, t);
   }
+}
+
+// An ally's signal (T54), once dip.judge('flare') has found the house willing: send the soldiers it can spare to the mark, attack-moving,
+// nearest first, keeping a home guard (SIGNAL.keep, or SIGNAL.keepShare of its fighters, the larger). None while its own seat is under
+// attack. Returns { ids } of those sent, or { ids: [], why } (why reads after the leader's name).
+export function answerFlare(game, team, x, y) {
+  const seat = game.seatOf(team);
+  if (seat && game.unitsNear(seat.x, seat.y, DEFEND_R).some((o) => o.hp > 0 && !o.inside && game.isEnemy(team, o.team) && game.fighter(o) && Math.hypot(o.x - seat.x, o.y - seat.y) <= DEFEND_R)) return { ids: [], why: 'is hard pressed at home and cannot send a man' };
+  const fighters = game.militaryOf(team).filter((u) => game.fighter(u));
+  const free = fighters.filter((u) => onCall(u) && !u.drilling && !u.task.next?.length);
+  const keep = Math.max(SIGNAL.keep, Math.ceil(fighters.length * SIGNAL.keepShare)), n = Math.min(SIGNAL.max, free.length - keep);
+  if (n < SIGNAL.min) return { ids: [], why: `has no soldiers to spare (${free.length} free, ${keep} kept at home)` };
+  const d = (u) => Math.hypot(u.x - x, u.y - y);
+  const go = free.sort((a, c) => d(a) - d(c) || a.id - c.id).slice(0, n);
+  game.setStance(go, 'aggressive'); game.setFormation(go, 'line'); game.cmdAttackMove(go, x, y);
+  return { ids: go.map((u) => u.id) };
 }
 
 // soldiers free for a march: standing idle, or walking a patrol (T39), which any new order ends

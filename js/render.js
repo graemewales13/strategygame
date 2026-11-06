@@ -1,7 +1,7 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf, SIEGE } from './config.js';
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf, SIEGE, SIGNAL } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
 import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, ORE_ART, armedKey, factionSprite, siegeSprite } from './art.js';
@@ -182,6 +182,7 @@ export class Renderer {
     this.econOverlay(ctx, ui, t, z);
     this.routeOverlay(ctx, ui, t, z);
     this.orderLines(ctx, ui, t, z);
+    this.flares(ctx, t, z);
     if (ui?.placing) this.ghost(ctx, g, ui);
     if (ui?.dragBox) {
       const b = ui.dragBox;
@@ -361,6 +362,38 @@ export class Renderer {
   }
   // The economy made visible: each own market wears four pips (supply, works, homes, service: lit when linked). Select a market, or press E,
   // to see its district ring and the lines along which goods and folk flow to it.
+  // signals to allies (T54): the mark rings out in the signalling house's colour for SIGNAL.show seconds (the painted flare mark of
+  // ARTREQUIREMENTS priority 29 stands on it once delivered; until then a pennant drawn here), and each answering band's road to it is dashed
+  flares(ctx, t, z) {
+    const g = this.game, list = g.shownFlares?.(PLAYER); if (!list?.length) return;
+    ctx.save();
+    for (const f of list) {
+      const [x, y] = this.toScreen(f.x, f.y), col = HOUSES[f.team].accent;
+      for (const b of f.bands) {
+        const [bx, by] = this.toScreen(b.x, b.y);
+        ctx.setLineDash([6 * z, 6 * z]); ctx.lineDashOffset = -t * 18; ctx.lineWidth = Math.max(1.5, 2 * z);
+        ctx.strokeStyle = 'rgba(20,14,8,0.45)'; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(x, y); ctx.stroke();
+        ctx.strokeStyle = HOUSES[b.team].accent; ctx.lineWidth = Math.max(1, 1.2 * z); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      if (f.age > SIGNAL.show) continue;
+      const fade = Math.max(0, 1 - f.age / SIGNAL.show);
+      for (let i = 0; i < 2; i++) {
+        const ph = ((f.age * 0.9) + i * 0.5) % 1;
+        ctx.globalAlpha = fade * (1 - ph); ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, 2.5 * z);
+        ctx.beginPath(); ctx.ellipse(x, y, (6 + ph * 34) * z, (3 + ph * 17) * z, 0, 0, 7); ctx.stroke();
+      }
+      ctx.globalAlpha = fade;
+      if (!this.mark(ctx, 'flare', x, y, 34 * z, col)) {   // until painted: a pole and a pennant in the house's colour
+        ctx.strokeStyle = '#2a1c10'; ctx.lineWidth = Math.max(1.2, 2 * z); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 34 * z); ctx.stroke();
+        const wv = Math.sin(t * 6) * 2.5 * z;
+        ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y - 34 * z); ctx.lineTo(x + 20 * z, y - 27 * z + wv); ctx.lineTo(x, y - 20 * z); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(20,14,8,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
   // where each selected soldier of ours is going (T06): a faint line to a march's end, red for an attack-move or an attack, ending in a mark
   orderLines(ctx, ui, t, z) {
     if (!ui || ui.sel?.type !== 'units') return;
@@ -988,6 +1021,15 @@ export class Minimap {
       const ph = ((g.time - a.born) * 1.2) % 1;
       ctx.globalAlpha = Math.max(0, 1 - age / 10) * (1 - ph * 0.6); ctx.strokeStyle = '#ff4a3a'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(a.x * sx, a.y * sy, 4 + ph * 12, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    // signals to allies (T54): the mark pulses in the house's colour, each answering band is a dashed line to it in its own colour
+    for (const f of g.shownFlares?.(PLAYER) || []) {
+      for (const b of f.bands) { ctx.setLineDash([3, 3]); ctx.strokeStyle = HOUSES[b.team].accent; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(b.x * sx, b.y * sy); ctx.lineTo(f.x * sx, f.y * sy); ctx.stroke(); ctx.setLineDash([]); }
+      if (f.age > SIGNAL.show) continue;
+      const ph = (f.age * 1.1) % 1;
+      ctx.globalAlpha = Math.max(0, 1 - f.age / SIGNAL.show) * (1 - ph * 0.5); ctx.strokeStyle = HOUSES[f.team].accent; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(f.x * sx, f.y * sy, 3 + ph * 14, 0, 7); ctx.stroke();
+      ctx.fillStyle = HOUSES[f.team].accent; ctx.fillRect(f.x * sx - 2, f.y * sy - 2, 4, 4); ctx.globalAlpha = 1;
     }
     const q = this.r.viewPoly();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy))); ctx.closePath(); ctx.stroke();

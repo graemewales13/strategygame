@@ -75,7 +75,7 @@ export class UI {
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; this.tutCam = null; this.tutCouncil = false; this.tutSerfs0 = game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length; this.objKey = ''; this.objPrev = null; this.tipMem = tipMemory(); this.tipAt = this.tipLook = -1e9; this.hideTip(); $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.setFlare(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; this.tutCam = null; this.tutCouncil = false; this.tutSerfs0 = game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length; this.objKey = ''; this.objPrev = null; this.tipMem = tipMemory(); this.tipAt = this.tipLook = -1e9; this.hideTip(); $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -146,7 +146,8 @@ export class UI {
     const mmPos = (e) => { const b = mm.getBoundingClientRect(); return [((e.clientX - b.left) / b.width) * this.game.W, ((e.clientY - b.top) / b.height) * this.game.H]; };
     mm.addEventListener('mousedown', (e) => {
       const [x, y] = mmPos(e);
-      if (e.button === 2) { this.command(null, null, x, y, e.shiftKey, e.ctrlKey); return; }
+      if (e.button === 2) { if (this.flareArm) { this.setFlare(false); return; } this.command(null, null, x, y, e.shiftKey, e.ctrlKey); return; }
+      if (e.button === 0 && (e.altKey || this.flareArm)) { this.setFlare(false); this.signalAt(x, y); return; }   // signal your allies (T54)
       this.r.centerOn(x, y); this.mmDrag = true;
     });
     window.addEventListener('mousemove', (e) => { if (this.mmDrag) { const [x, y] = mmPos(e); this.r.centerOn(Math.max(0, Math.min(this.game.W, x)), Math.max(0, Math.min(this.game.H, y))); } });
@@ -214,10 +215,12 @@ export class UI {
       if (this.placing) { this.placing = null; $('game').classList.remove('placing'); return; }
       if (this.amove) { this.setAmove(false); return; }
       if (this.patrolArm) { this.setPatrol(false); return; }
+      if (this.flareArm) { this.setFlare(false); return; }
       this.command(sx, sy, wx, wy, e.shiftKey, e.ctrlKey); return;
     }
     if (e.button !== 0) return;
     if (this.placing) { this.tryPlace(e.shiftKey); return; }
+    if (e.altKey || this.flareArm) { this.setFlare(false); this.signalAt(wx, wy); return; }   // signal your allies (T54)
     if (this.amove) { if (!e.shiftKey) this.setAmove(false); this.command(sx, sy, wx, wy, e.shiftKey, true); return; }   // Shift keeps attack-move on to queue more legs
     if (this.patrolArm) { if (!e.shiftKey) this.setPatrol(false); this.patrolTo(wx, wy, e.shiftKey); return; }   // Shift keeps patrol on to add more posts (T39)
     this.drag = { sx, sy, shift: e.shiftKey };
@@ -294,9 +297,15 @@ export class UI {
     if (!shift) this.clearSel();
   }
   // Attack-move is armed by F or the button; the next left-click (or Ctrl+right-click at any time) fights its way to the spot
-  setAmove(on) { this.amove = !!on; if (on) this.patrolArm = false; $('game').classList.toggle('placing', this.amove || this.patrolArm || !!this.placing); }
+  setAmove(on) { this.amove = !!on; if (on) this.patrolArm = this.flareArm = false; $('game').classList.toggle('placing', this.amove || this.patrolArm || this.flareArm || !!this.placing); }
+  // signal your allies (T54): the key arms it and the next click (field or minimap) marks the spot; Alt-click marks it at once
+  setFlare(on) { this.flareArm = !!on; if (on) { this.amove = this.patrolArm = false; this.toast(`Click the field or the minimap to signal your allies there (${keyName(this.kmap.flare)} again or right-click to cancel).`, 'info'); } $('game').classList.toggle('placing', this.amove || this.patrolArm || this.flareArm || !!this.placing); }
+  signalAt(x, y) {
+    const r = this.host.send({ type: 'flare', x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 });
+    if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn');
+  }
   // Patrol (T39) is armed by its key or button; the next left-click sets the far post (Shift-clicks add more posts to the round)
-  setPatrol(on) { this.patrolArm = !!on; if (on) this.amove = false; $('game').classList.toggle('placing', this.amove || this.patrolArm || !!this.placing); }
+  setPatrol(on) { this.patrolArm = !!on; if (on) this.amove = this.flareArm = false; $('game').classList.toggle('placing', this.amove || this.patrolArm || this.flareArm || !!this.placing); }
   patrolTo(wx, wy, shift) {
     const units = this.selUnits().filter((u) => u.team === PLAYER && this.game.fighter(u));
     if (!units.length) return;
@@ -351,7 +360,7 @@ export class UI {
     const tg = e.target;
     if (tg && (tg.tagName === 'TEXTAREA' || (tg.tagName === 'INPUT' && tg.type !== 'checkbox'))) { if (k === 'enter' || k === 'escape') tg.blur?.(); if (k !== 'escape') return; }
     if (this.rebinding) { e.preventDefault(); return this.takeRebind(k); }   // (Options > Keys: the next key pressed is the new one; Esc cancels)
-    if (k === 'escape') { if (this.amove) return this.setAmove(false); if (this.patrolArm) return this.setPatrol(false); return this.onEsc(); }
+    if (k === 'escape') { if (this.amove) return this.setAmove(false); if (this.patrolArm) return this.setPatrol(false); if (this.flareArm) return this.setFlare(false); return this.onEsc(); }
     if (k === 'f5') { e.preventDefault(); return void this.saveGame('manual'); }
     if (k === 'f9') { e.preventDefault(); return void this.loadGame('manual'); }
     if (this.menuOpen) { if (k === 'enter' && this.started) this.closeMenu(); return; }
@@ -384,6 +393,7 @@ export class UI {
       case 'production': this.toggleProd(); break;
       case 'ledger': this.toggleLedger(); break;
       case 'bell': this.ringBell(); break;
+      case 'flare': this.setFlare(!this.flareArm); break;
       case 'charge': if (fighters()) this.onCmd({ act: 'charge' }); break;
       case 'retreat': if (this.selUnits().some((u) => u.team === PLAYER && (this.game.fighter(u) || u.kind === 'king'))) this.onCmd({ act: 'retreat' }); break;
       case 'amove': if (fighters()) this.setAmove(!this.amove); break;
