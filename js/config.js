@@ -451,6 +451,10 @@ export const TRAIN = { queue: 5, shift: 5, set: 24 };
 export const IDLE_ALERT = { chimeEvery: 20 };
 // a unit kind's name for many of them, in words a player reads ('Footmen', 'Spies'; T-096: 'Spys' and 'footmans' were shown)
 // the royal line's heirs in words, for hints and tips that must follow KING.heirs (T-114: two hints said 'two heirs' outright)
+// the rout's numbers as words (T-118): "three or more", "a fifth", so tooltips, hints and the README follow RETREAT
+export const countWord = (n) => ['no', 'one', 'two', 'three', 'four', 'five', 'six'][n] ?? String(n);
+export const shareWord = (f) => ({ 0.5: 'half', 0.25: 'a quarter', 0.2: 'a fifth', 0.1: 'a tenth' })[f] || `${Math.round(f * 100)}%`;
+export const routWords = () => ({ min: `${countWord(RETREAT.min)} or more`, share: shareWord(RETREAT.loyalty), mins: `${countWord(Math.round(RETREAT.shame / 60))} minute${Math.round(RETREAT.shame / 60) === 1 ? '' : 's'}` });
 export const heirsWord = (n) => (n <= 0 ? 'no heir' : n === 1 ? 'one heir' : `${['two', 'three', 'four', 'five'][n - 2] || n} heirs`);
 export const plural = (l) => (/man$/.test(l) ? l.replace(/man$/, 'men') : /[^aeiou]y$/.test(l) ? l.replace(/y$/, 'ies') : /s$/.test(l) ? l : l + 's');
 export const unitPlural = (kind) => plural(UNITS[kind]?.label || kind);
@@ -478,6 +482,10 @@ export const FORMATION = { gap: 1.1, mass: 0.9, loose: 1.9, label: { mass: 'Mass
 export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11, lookR: 9 };
 // The royal line: a house has a king and `heirs` heirs. Each fallen king is followed by the next heir after `heir` seconds; when the last of the
 // line dies the house falls. A king whose house has lost its seat is a fugitive, seen by every house (`fugitiveSight`).
+// T61: the king's war cry. A king standing on the field (not inside walls) steadies every soldier of his within r tiles for secs seconds: they
+// strike dmg harder, and a Retreat they make from that fight is no rout (RETREAT). Once every cool seconds. Rivals cry when at least aiFoes
+// foe soldiers and aiOwn of their own stand within r of their king; a band so steadied does not fall back to regroup while it lasts.
+export const WARCRY = { r: 10, secs: 20, cool: 180, dmg: 0.15, aiFoes: 3, aiOwn: 3 };
 export const KING = { safeR: 12, aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 20, heirs: 2, fugitiveSight: 2.5, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
   titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King', vikings: 'Jarl', byzantines: 'Basileus', persians: 'Shahanshah' } };
 // T57: the tutorial's last lessons are a war on one scripted weak rival, the house nearest the learner: its king has no heirs (one kill

@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, DEFEND_R } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, DEFEND_R, WARCRY } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -264,6 +264,7 @@ function think(game, team, p) {
   { const hurt = game.buildings.find((b) => b.team === team && b.built >= 1 && b.hp > 0 && b.hp < b.maxHp * 0.75 && (b.hitT ?? 0) <= 0 && !game.unitsNear(b.x, b.y, 12).some((o) => o.hp > 0 && game.isEnemy(team, o.team) && Math.hypot(o.x - b.x, o.y - b.y) < 12));   // mend what is damaged, once the foe has gone
     if (hurt && !game.units.some((u) => u.team === team && u.task.type === 'repair')) game.repairWith(team, hurt, 2); }
   townBell(game, team, p, seat, t);
+  warCry(game, team);
   holdFeast(game, team, p, t);
   feedVillages(game, team, p, t);
   courtVillages(game, team, p, seat, army, need, t);
@@ -389,9 +390,18 @@ export function feedVillages(game, team, p, t) {
 
 // A war band that is losing falls back to its seat to join the rest and heal, instead of dying to the last man: the foes' fighting power
 // around the band (their soldiers and towers within reach) against its own. Then it waits a little before marching again.
+// The king's war cry (T61), by the player's rule: a rival's king cries when a fight is close round him (WARCRY.aiFoes foe soldiers and
+// WARCRY.aiOwn of his own within WARCRY.r); the band so steadied holds rather than falling back to regroup.
+export function warCry(game, team) {
+  if (game.warCryWhy(team)) return false;
+  const k = game.kingOf(team); let foes = 0;
+  for (const u of game.unitsNear(k.x, k.y, WARCRY.r)) if (u.hp > 0 && !u.inside && game.isEnemy(team, u.team) && game.fighter(u) && Math.hypot(u.x - k.x, u.y - k.y) <= WARCRY.r) foes++;
+  if (foes < WARCRY.aiFoes || game.cryHearers(team, k).length < WARCRY.aiOwn) return false;
+  return game.warCry(team);
+}
 export function regroup(game, team, p, seat, army, t) {
   const ratio = game.diff.regroup; if (!ratio) return;
-  const band = army.filter((u) => !u.inside && (u.task.type === 'attack' || u.task.type === 'amove') && Math.hypot(u.x - seat.x, u.y - seat.y) > 14);
+  const band = army.filter((u) => !u.inside && !game.steadied(u) && (u.task.type === 'attack' || u.task.type === 'amove') && Math.hypot(u.x - seat.x, u.y - seat.y) > 14);
   if (band.length < 3) return;
   const cx = band.reduce((a, u) => a + u.x, 0) / band.length, cy = band.reduce((a, u) => a + u.y, 0) / band.length;
   const foe = (o) => o !== team && o >= 0 && game.rel[team][o] === 'war';

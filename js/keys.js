@@ -23,6 +23,7 @@ export const KEY_ACTIONS = [
   { id: 'retreat', label: 'Retreat', def: 'r', group: 'Orders' },
   { id: 'stop', label: 'Stop', def: 'x', group: 'Orders' },
   { id: 'bell', label: 'Town bell (shelter / back to work)', def: 'b', group: 'Orders' },
+  { id: 'warcry', label: "The king's war cry", def: 'v', group: 'Orders' },
   { id: 'flare', label: 'Signal your allies (then click; or Alt-click)', def: 'n', group: 'Orders' },
   { id: 'council', label: 'Council of Houses', def: 'c', group: 'Panels' },
   { id: 'standings', label: 'Standings', def: 't', group: 'Panels' },

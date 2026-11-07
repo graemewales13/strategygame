@@ -1,7 +1,7 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf, SIEGE, SIGNAL } from './config.js';
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf, SIEGE, SIGNAL, WARCRY } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
 import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, ORE_ART, armedKey, factionSprite, siegeSprite } from './art.js';
@@ -857,6 +857,7 @@ export class Renderer {
     ctx.restore();
     this.hit(u, 'unit', sx - w * 0.4, sy - h * foot - bob, sx + w * 0.4, sy + 3 * z);
     if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }
+    if (this.game.steadied?.(u)) this.cryRing(ctx, u, sx, sy, t, z);   // steadied by the king's war cry (T61)
     if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
     if (u.name && (ui?.isSelected(u) || z >= 1.15) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
     if (u.kind === 'spy' && u.disguise != null && u.team === PLAYER && !this.mark(ctx, 'disguise', sx, sy - h * foot - 4 - bob, 16 * z)) { ctx.font = `${Math.round(12 * Math.min(1.4, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#f0e2a0'; ctx.strokeStyle = 'rgba(20,12,4,.9)'; ctx.lineWidth = 3; ctx.strokeText('🎭', sx, sy - h * foot - 4 - bob); ctx.fillText('🎭', sx, sy - h * foot - 4 - bob); ctx.textAlign = 'start'; }   // (only you see the mask)
@@ -867,6 +868,22 @@ export class Renderer {
     if (u.hp < u.maxHp || ui?.isSelected(u)) { const bw = Math.max(20, w * 0.7); this.bar(ctx, sx - bw / 2, sy - h * foot - 8 - bob, bw, 3, u.hp / u.maxHp, this.hpColor(u.hp / u.maxHp)); }
   }
 
+  // the king's war cry (T61): a turning ring in the house's colour at the feet of every man it steadies, and, as the king cries, a ring
+  // that spreads from him over the WARCRY.r tiles his voice carries
+  cryRing(ctx, u, sx, sy, t, z) {
+    const left = u.cryT - this.game.time, col = HOUSES[u.team]?.accent || '#f0e2a0';
+    ctx.save();
+    ctx.globalAlpha = 0.6 * Math.min(1, left / 3); ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, 1.5 * z);
+    ctx.setLineDash([3 * z, 3 * z]); ctx.lineDashOffset = -t * 12;
+    ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 12 * z, 6 * z, 0, 0, 7); ctx.stroke();
+    const since = WARCRY.secs - left;
+    if (u.kind === 'king' && since < 2) {
+      const ph = since / 2, r = WARCRY.r * ph / Math.SQRT2, [ox, oy] = this.toScreen(u.x, u.y), [ax] = this.toScreen(u.x + r, u.y - r), [, by] = this.toScreen(u.x + r, u.y + r);
+      ctx.setLineDash([]); ctx.globalAlpha = 0.8 * (1 - ph); ctx.lineWidth = Math.max(1.5, 3 * z);
+      ctx.beginPath(); ctx.ellipse(sx, sy, Math.max(1, Math.abs(ax - ox)), Math.max(1, Math.abs(by - oy)), 0, 0, 7); ctx.stroke();
+    }
+    ctx.restore();
+  }
   // a painted mark (assets/shared/ui/marks) centred on x, bottom at y, `s` px tall; false when the art is missing
   mark(ctx, key, x, y, s, tint) {
     let img = UIART.marks[key]; if (!img) return false;

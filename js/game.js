@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -658,6 +658,7 @@ export class Game {
       case 'feast': return this.feast(team, it.buildingId);
       case 'feed': return this.feedVillage(team, it.villageId, it.amount) > 0;
       case 'flare': return this.flare(team, +it.x, +it.y);
+      case 'warcry': return this.warCry(team);
       case 'hire': return this.hire(team, it.buildingId, it.index);
       case 'research': return this.startResearch(team, it.tech);
       case 'craft': return this.craft(team, it.buildingId, it.item);
@@ -1227,6 +1228,7 @@ export class Game {
     let d = (s.dmg + (u.dmgAdd || 0)) * (1 + RANK_BONUS.dmg * (u.rank || 0));
     if (this.kingNear(u)) d *= 1 + KING.dmg;
     if (p.leaderless) d *= KING.leaderless;
+    if (this.steadied(u)) d *= 1 + WARCRY.dmg;
     if (p.broke) d *= BROKE.fight;
     d *= this.charMul(u, null);
     d += this.gearOf(u, 'weapon')?.dmg || 0;
@@ -1467,7 +1469,7 @@ export class Game {
     const team = us[0].team, cx = us.reduce((a, u) => a + u.x, 0) / us.length, cy = us.reduce((a, u) => a + u.y, 0) / us.length;
     const keep = this.kindB(team, 'keep').filter((b) => b.team === team && b.kind === 'keep' && b.built >= 1 && b.hp > 0).sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0];
     const to = keep || this.seatOf(team); if (!to) return false;
-    const inFight = us.filter((u) => this.time - (u.engagedT ?? -99) < RETREAT.engaged || this.locked(u));
+    const inFight = us.filter((u) => !this.steadied(u) && (this.time - (u.engagedT ?? -99) < RETREAT.engaged || this.locked(u)));   // (men steadied by the king's war cry leave in order: no rout, T61)
     const pace = this.paceOf(us), slot = this.formSlots(us, to.x + 1, to.y + (to.size || 2) / 2 + 2, false);
     for (const u of us) { const [tx, ty] = slot.at.get(u); u.task = { type: 'move', pace, retreat: true }; u.sally = null; u.engagedT = -99; this.setPath(u, tx, ty); }   // (the lock is broken: they turn and go)
     if (inFight.length >= RETREAT.min || inFight.some((u) => u.kind === 'king')) this.rout(team);
@@ -1479,7 +1481,7 @@ export class Game {
     const p = this.players[team]; if (!p || this.time - (p.routT ?? -1e9) < RETREAT.cool) return;
     p.routT = this.time; p.routs = (p.routs || 0) + 1;
     for (const v of this.villages) if (v.owner === team) v.loyalty = Math.max(0, v.loyalty * (1 - RETREAT.loyalty));
-    if (team === PLAYER) this.log(PLAYER, `Your army fled the field. Your villages lose faith in you (a fifth of their loyalty, slow to come back), and the other houses smell weakness.`, 'bad');
+    if (team === PLAYER) this.log(PLAYER, `Your army fled the field. Your villages lose faith in you (${routWords().share} of their loyalty, slow to come back), and the other houses smell weakness.`, 'bad');
     else if (this.known[PLAYER][team]) this.log(PLAYER, `${this.players[team].name}'s army fled the field. Their villages waver.`, 'good');
   }
   cmdMove(units, x, y, queue = false) {
@@ -3333,6 +3335,7 @@ export class Game {
     dmg *= 1 + RANK_BONUS.dmg * (u.rank || 0);
     if (this.kingNear(u)) dmg *= 1 + KING.dmg;
     if (this.players[u.team].leaderless) dmg *= KING.leaderless;
+    if (this.steadied(u)) dmg *= 1 + WARCRY.dmg;   // the king's war cry (T61)
     if (this.players[u.team].broke) dmg *= BROKE.fight;
     dmg *= this.charMul(u, t);
     { const w = this.gearOf(u, 'weapon'); if (w) { dmg += w.dmg || 0; if (w.vsHorse && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || SIEGE.has(t.kind))) dmg *= 1 + w.vsHorse; } }   // the kit from the armoury
@@ -3401,6 +3404,31 @@ export class Game {
     const t = this.tutorial; if (team !== PLAYER || !t || t.done) return false;
     if (Number.isFinite(step)) t.step = Math.max(t.step, Math.min(50, step | 0));
     if (done) { t.done = true; this.log(PLAYER, 'The lessons are over: the rival houses no longer hold back.', 'warning'); }
+    return true;
+  }
+  // ---- the king's war cry (T61): a king on the field steadies the soldiers round him for a while (WARCRY) ------------------------------------
+  steadied(u) { return (u.cryT ?? -1) > this.time; }
+  warCryReady(team) { const p = this.players[team]; return Math.max(0, (p?.cryT ?? -1e9) + WARCRY.cool - this.time); }   // seconds until the king may cry again
+  cryHearers(team, k) { return this.units.filter((u) => u.team === team && u !== k && u.hp > 0 && !u.inside && this.fighter(u) && Math.hypot(u.x - k.x, u.y - k.y) <= WARCRY.r); }
+  // why the king cannot cry now (null when he can)
+  warCryWhy(team) {
+    const p = this.players[team]; if (!p || !p.alive) return 'Your house has fallen.';
+    const k = this.kingOf(team);
+    if (!k) return p.leaderless ? 'No king to cry: the next heir is not yet crowned.' : 'Your house has no king on the field.';
+    if (k.inside) return 'The king must stand on the field to cry, not inside walls.';
+    const wait = this.warCryReady(team); if (wait > 0) return `The king's voice is spent: ${Math.ceil(wait)} s.`;
+    if (!this.cryHearers(team, k).length) return `No soldier of yours within ${WARCRY.r} tiles of the king to hear him.`;
+    return null;
+  }
+  warCry(team) {
+    const why = this.warCryWhy(team);
+    if (why) { if (team === PLAYER) this.deny(team, why); return false; }
+    const p = this.players[team], k = this.kingOf(team), hear = this.cryHearers(team, k), until = this.time + WARCRY.secs;
+    for (const u of hear) u.cryT = until;
+    k.cryT = until; p.cryT = this.time; p.cries = (p.cries || 0) + 1;
+    const title = k.title || 'King';
+    if (team === PLAYER) { this.log(PLAYER, `Your ${title} cries out: ${hear.length} soldier${hear.length === 1 ? '' : 's'} round him strike ${Math.round(WARCRY.dmg * 100)}% harder for ${WARCRY.secs} s, and may fall back from this fight with no rout.`, 'good'); this.sfx('horn', k.x, k.y); }
+    else if (this.known[PLAYER][team] && this.canSee(PLAYER, k.x, k.y)) this.log(PLAYER, `${p.name}'s ${title} cries his men on: they fight harder for ${WARCRY.secs} s.`, 'warn');
     return true;
   }
   kingOf(team) { const k = this.byId.get(this.players[team]?.kingId); return k && k.hp > 0 ? k : null; }

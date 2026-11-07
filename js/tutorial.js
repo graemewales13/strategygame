@@ -2,7 +2,7 @@
 // learner until the lessons end (Game.truce), so nobody is overrun while reading; the last lessons are a war on one weak scripted rival. Pure functions of the game state and of a small
 // context the UI fills in (what is selected, whether the camera moved, whether the Council was opened), so the steps test headless.
 // Progress is saved with the match (game.tutorial.step, through the 'tutor' intent), so a load never sends the learner back.
-import { PLAYER, MAP_SIZES, KING, heirsWord } from './config.js';
+import { PLAYER, MAP_SIZES, KING, heirsWord, routWords } from './config.js';
 
 // size: the tutorial always plays the small board, whatever Options > Board size says (T57: on Huge a learner walked for minutes)
 export const TUTORIAL = { seed: 20261102, houses: 3, diff: 'easy', size: MAP_SIZES.small };
@@ -59,7 +59,7 @@ export const LESSONS = [
     done: atWar },
   { id: 'fight', title: 'Attack-move into a fight', hint: (g) => `Select your soldiers, press {key:amove} (Attack-move) and click ground near ${foeName(g)}'s town: they march there and fight whatever foe they meet on the way, where a plain right-click would walk past it. Fell one of their men.`,
     done: (g) => foeFelled(g) >= 1 || foeFallen(g), where: foeSeen },
-  { id: 'retreat', title: 'Fall back', hint: 'When a fight goes badly, select the band and press Retreat ({key:retreat}): they break off and go to your nearest keep or your home village. It has a price: three or more leaving a fight (or the king) is a rout, and all your villages lose a fifth of their loyalty for a while. Try it once, then send them back in.',
+  { id: 'retreat', title: 'Fall back', hint: `When a fight goes badly, select the band and press Retreat ({key:retreat}): they break off and go to your nearest keep or your home village. It has a price: ${routWords().min} leaving a fight (or the king) is a rout, and all your villages lose ${routWords().share} of their loyalty for a while. Try it once, then send them back in.`,
     done: (g) => !!g.tutorial?.retreated || foeFallen(g) },
   { id: 'line', title: 'End his royal line', hint: (g) => `A house falls only when the last of its royal line dies. ${foeName(g)}'s king has no heir: find him (Show me, once you have seen his town) and kill him with your band. Keeps shoot arrows, so bring enough men.`,
     done: foeFallen, where: foeSeen },

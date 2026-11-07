@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES, MAP_W, MAP_SIZES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages, regroup, warCry as aiWarCry } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSeen, saveSeen } from '../js/tips.js';
 import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, wonVillage, tutorFoe, foeFelled } from '../js/tutorial.js';
-import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT } from '../js/config.js';
+import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT, WARCRY, routWords, countWord, shareWord } from '../js/config.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
@@ -2200,6 +2200,77 @@ test('signal your allies (T54): an ally at war with the foe at the mark sends wh
   // the rule reads only the seeded state: no Math.random in it
   const src = readFileSync(new URL('../js/game.js', import.meta.url), 'utf8'), body = src.slice(src.indexOf('  flareFoe('), src.indexOf('// ---- science: learning'));
   assert.ok(body.length > 100 && !body.includes('Math.random'));
+});
+
+test('the king\'s war cry (T61): refused with reasons; steadies the soldiers round him, harder blows, no rout; rivals cry when a fight is close', () => {
+  const g = mk(), k = g.kingOf(PLAYER), p = g.players[PLAYER];
+  g.fogOn = false;
+  // nobody near to hear him
+  for (const u of g.units) if (u.team === PLAYER && u !== k && g.fighter(u) && Math.hypot(u.x - k.x, u.y - k.y) <= WARCRY.r) u.x += 40;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'warcry' }), false); assert.match(g.diploNote, /No soldier of yours within/);
+  // inside walls: refused
+  const men = Array.from({ length: 4 }, (_, i) => g.addUnit('footman', PLAYER, k.x + 1 + i, k.y + 1));
+  const far = g.addUnit('footman', PLAYER, k.x + WARCRY.r + 4, k.y);
+  k.inside = g.seatOf(PLAYER).id; assert.equal(g.warCry(PLAYER), false); assert.match(g.diploNote, /on the field/); k.inside = null;
+  // the cry: those in reach are steadied, the one beyond is not; the king too
+  const d0 = g.shownDamage(men[0]);
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'warcry' }), true);
+  assert.ok(men.every((u) => g.steadied(u)) && g.steadied(k) && !g.steadied(far));
+  assert.ok(g.shownDamage(men[0]) > d0, 'they strike harder');
+  assert.equal(p.cries, 1);
+  // the voice is spent
+  assert.equal(g.warCry(PLAYER), false); assert.match(g.diploNote, /voice is spent: \d+ s/);
+  // a retreat from the fight while steadied is no rout
+  g.addUnit('footman', 1, k.x + 2, k.y + 2); g.setRelation(PLAYER, 1, 'war');
+  for (const u of men) u.engagedT = g.time;
+  const v = g.villages.find((x) => x.owner === PLAYER); const loy = v?.loyalty;
+  g.cmdRetreat(men); assert.equal(p.routs || 0, 0, 'steadied men leave in order');
+  if (v) assert.equal(v.loyalty, loy);
+  // saved and loaded
+  const h = new Game({ seed: 8, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(h.players[PLAYER].cryT, p.cryT); assert.ok(h.steadied(h.byId.get(men[0].id)));
+  // it wears off: the same retreat is then a rout
+  g.time += WARCRY.secs + 0.1; assert.ok(!g.steadied(men[0]));
+  for (const u of men) u.engagedT = g.time;
+  g.cmdRetreat(men); assert.equal(p.routs, 1, 'without the cry, a band leaving a fight routs');
+  // cooled down, he may cry again
+  g.time = p.cryT + WARCRY.cool; for (const u of men) { u.x = k.x + 1; u.y = k.y + 1; }
+  assert.equal(g.warCryWhy(PLAYER), null);
+  // no king crowned: refused
+  const k2 = g.kingOf(PLAYER); g.players[PLAYER].kingId = -1; g.players[PLAYER].leaderless = true;
+  assert.match(g.warCryWhy(PLAYER), /not yet crowned/); g.players[PLAYER].kingId = k2.id; g.players[PLAYER].leaderless = false;
+  // a rival's king cries by the same rule, only when a fight is close; a steadied band does not regroup
+  const r = mk(), rk = r.kingOf(1); r.fogOn = false; r.setRelation(1, PLAYER, 'war');
+  for (const u of r.units) if (u.team !== 1 && Math.hypot(u.x - rk.x, u.y - rk.y) <= WARCRY.r + 2) u.x += 60;
+  const ours = Array.from({ length: WARCRY.aiOwn }, (_, i) => r.addUnit('footman', 1, rk.x + 1 + i, rk.y + 1));
+  assert.equal(aiWarCry(r, 1), false, 'no foe near: no cry');
+  const theirs = Array.from({ length: WARCRY.aiFoes }, (_, i) => r.addUnit('knight', PLAYER, rk.x + 1 + i, rk.y + 3));
+  r._ug = null;
+  assert.equal(aiWarCry(r, 1), true); assert.ok(ours.every((u) => r.steadied(u)));
+  for (const u of ours) { u.x += 30; u.task = { type: 'attack' }; }
+  for (const [i, u] of theirs.entries()) { u.x = ours[0].x + i; u.y = ours[0].y + 1; }
+  r._ug = null; r.diff = { ...r.diff, regroup: 0.5 };
+  const rp = r.players[1]; regroup(r, 1, rp, r.seatOf(1), ours, r.time);
+  assert.ok(ours.every((u) => u.task.type === 'attack') && !(rp.routs > 0), 'a steadied band holds');
+  r.time += WARCRY.secs + 0.1; r._ug = null; regroup(r, 1, rp, r.seatOf(1), ours, r.time);
+  assert.ok(ours.some((u) => u.task.type === 'move'), 'once it wears off, a beaten band falls back as before');
+  // the rule reads only the seeded state
+  const src = readFileSync(new URL('../js/game.js', import.meta.url), 'utf8'), body = src.slice(src.indexOf('  steadied(u)'), src.indexOf('  kingOf(team)'));
+  assert.ok(body.length > 100 && !body.includes('Math.random'));
+});
+
+test('the rout\'s numbers are read from RETREAT on the Retreat tooltip, the rout message, the tutorial and the README (T-118)', () => {
+  assert.equal(countWord(3), 'three'); assert.equal(shareWord(0.2), 'a fifth'); assert.equal(shareWord(0.3), '30%');
+  const w = routWords(); assert.equal(w.min, `${countWord(RETREAT.min)} or more`); assert.equal(w.share, shareWord(RETREAT.loyalty));
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8'), game = readFileSync(new URL('../js/game.js', import.meta.url), 'utf8');
+  assert.ok(!/If three or more of them/.test(ui) && !/a fifth of its loyalty/.test(ui), 'the Retreat tooltip reads RETREAT');
+  assert.ok(!/a fifth of their loyalty/.test(game), 'the rout message reads RETREAT');
+  const lesson = LESSONS.find((l) => l.id === 'retreat'), hint = typeof lesson.hint === 'function' ? lesson.hint(mk()) : lesson.hint;
+  assert.ok(hint.includes(w.min) && hint.includes(w.share));
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n');
+  const ret = readme.find((l) => l.startsWith('| Retreat |')), cry = readme.find((l) => l.startsWith('| War cry |'));
+  assert.ok(ret.includes(`If ${w.min}`) && ret.includes(`${w.share} of its loyalty`) && ret.includes(`for ${w.mins}`), 'README retreat row matches RETREAT');
+  for (const s of [`within ${WARCRY.r} tiles`, `for ${WARCRY.secs} s`, `${Math.round(WARCRY.dmg * 100)}% harder`, `every ${WARCRY.cool / 60} minutes`]) assert.ok(cry.includes(s), `README war cry row: ${s}`);
 });
 
 test('tips and README name the rules\' own numbers (T-116): defence reach, mine reach, the rout, cottages, the signal', () => {

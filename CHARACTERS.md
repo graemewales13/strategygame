@@ -63,6 +63,7 @@ Each people has its own name pool (`FAR_NAMES` in `names.js`). Rival AIs hire th
 ### What was built from that comparison
 
 - **Captains** (Seven Kingdoms' generals): an Elite or better footman, bowman or knight can be commissioned for 60 coin, at most 3 per house. Soldiers within 6 tiles get +6% damage and +25% experience, and a captain on guard counts half again for village influence. The AI appoints captains too.
+- **The king's war cry** (Warcraft III's and Northgard's hero abilities, Bannerlord's battle orders; T61, 2026-11-07): a king standing on the field can cry once every 3 minutes (V, or the War cry button on his card); every soldier of his within 10 tiles is steadied for 20 s (+15% damage, and a Retreat from that fight is no rout). It is the one active power of the royal line, so the king who rides to the front risks the house for it. Rival kings cry when a fight is close round them, and a steadied band holds instead of falling back to regroup.
 - **Far-land mercenaries at the inn** (Seven Kingdoms, Mount & Blade companions): section 3.
 - **Deeds** (traits earned in play, as in Total War, Crusader Kings and Battle Brothers):
 
