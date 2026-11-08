@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, DEFEND_R, WARCRY } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -13,12 +13,35 @@ const PLAN = [
   ['tower', 1], ['workshop', 1], ['cottage', 5], ['cottage', 6], ['cottage', 7],
 ];
 
+// T59: what a house has seen of its foes' soldiers, by class (foot, bow, horse); the memory fades over COUNTER_AI.fade seconds
+export function noteFoes(game, team, p) {
+  const now = game.time, dt = Math.max(0, now - (p.foeSeenT ?? now)), keep = Math.exp(-dt / COUNTER_AI.fade), cur = { foot: 0, bow: 0, horse: 0 };
+  for (const u of game.units) {
+    const c = UNIT_CLASS[u.kind];
+    if (u.hp > 0 && !u.inside && c in cur && u.kind !== 'king' && u.kind !== 'scout' && u.kind !== 'camel' && game.isEnemy(team, u.team) && game.canSee(team, u.x, u.y)) cur[c]++;
+  }
+  const was = p.foeSeen || { foot: 0, bow: 0, horse: 0 };
+  p.foeSeen = Object.fromEntries(Object.keys(cur).map((c) => [c, Math.round(Math.max(was[c] * keep, cur[c]) * 100) / 100]));
+  p.foeSeenT = now;
+  return p.foeSeen;
+}
+// the house's mix with COUNTER_AI.share of it turned to the kind that beats the class it has seen most of (when it has seen enough)
+export function answerMix(game, team, p, mix) {
+  const seen = p.foeSeen || {}, top = Object.keys(seen).sort((a, b) => seen[b] - seen[a])[0];
+  if (!top || seen[top] < COUNTER_AI.min) return mix;
+  const kind = Object.keys(COUNTER).find((k) => COUNTER[k][top]); if (!kind) return mix;
+  const out = {}; for (const k of Object.keys(mix)) out[k] = mix[k] * (1 - COUNTER_AI.share);
+  out[kind] = (out[kind] || 0) + COUNTER_AI.share;
+  return out;
+}
+
 export function updateAI(game, dt) {
   for (const p of game.players) {
     if (!p.ai || !p.alive) continue;
     p.think -= dt;
     if (p.think > 0) continue;
     p.think = 1.5 * game.diff.think;
+    noteFoes(game, p.team, p);
     think(game, p.team, p);
   }
 }
@@ -160,7 +183,7 @@ function think(game, team, p) {
     } else {
       const have = (k) => army.filter((u) => u.kind === k).length + queued(game, team, k);
       const total = Math.max(1, raised + queuedMil);
-      const mix = doc.mix || { footman: 0.6, bowman: 0.25, knight: 0.15 };
+      const mix = answerMix(game, team, p, doc.mix || { footman: 0.6, bowman: 0.25, knight: 0.15 });   // leaning to counter the foe's army (T59)
       const order = ['knight', 'bowman', 'footman'].filter((k) => mix[k]).sort((a, b) => (mix[b] - have(b) / total) - (mix[a] - have(a) / total));
       for (const k of order) {
         if (k === 'knight' && !game.hasBuilding(team, 'stable')) continue;

@@ -204,6 +204,24 @@ export const UNITS = {
   trebuchet: { label: 'Trebuchet', hp: 230, speed: 0.85, dmg: 110, range: 11, cd: 6.0, sight: 9, cost: { food: 0, wood: 360, gold: 200, stone: 80 }, time: 46, from: ['workshop'], bld: 3.6, vil: 3.6, unit: 0.3, tech: 'counterweight', info: 'Siege. Hurls boulders 11 tiles: the worst a wall can meet. Slow, and poor against men. Needs Counterweight engines.' },
 };
 
+// ---- Unit counters (T59) --------------------------------------------------------------------
+// A light triangle, as in AoE II/IV: footmen's spears stop horse, horse rides down bowmen (and siege crews), bowmen shoot down foot.
+// `COUNTER[attacker kind][target class]` is the extra share of a blow; UNIT_CLASS sorts targets (the king rides, so spears find him too).
+export const UNIT_CLASS = { footman: 'foot', recruit: 'foot', bowman: 'bow', knight: 'horse', king: 'horse', scout: 'horse', camel: 'horse', ram: 'siege', onager: 'siege', trebuchet: 'siege' };
+export const COUNTER = { footman: { horse: 0.3 }, knight: { bow: 0.3, siege: 0.5 }, bowman: { foot: 1.6 } };
+export const CLASS_WORD = { foot: 'foot', bow: 'bowmen', horse: 'horse', siege: 'siege engines' };
+export const counterOf = (kind, target) => (target && COUNTER[kind]?.[UNIT_CLASS[target]]) || 0;
+// what a card says: the classes a kind is strong against, and the trained kinds strong against it
+export const strongAgainst = (kind) => Object.keys(COUNTER[kind] || {}).map((c) => CLASS_WORD[c]);
+export const weakAgainst = (kind) => Object.keys(COUNTER).filter((k) => counterOf(k, kind) > 0).map((k) => plural(UNITS[k].label).toLowerCase());
+// one line for cards and tooltips, e.g. "Strong against horse (+30%) · weak against Bowmen"; '' for a kind outside the triangle
+export const counterWords = (kind) => {
+  const st = Object.entries(COUNTER[kind] || {}).map(([c, v]) => `${CLASS_WORD[c]} (+${Math.round(v * 100)}%)`), wk = weakAgainst(kind);
+  return [st.length ? 'Strong against ' + st.join(', ') : '', wk.length ? (st.length ? 'weak' : 'Weak') + ' against ' + wk.join(', ') : ''].filter(Boolean).join(' · ');
+};
+// the rivals answer what they have seen of a foe's army: `share` of their next picks lean to the counter, seen soldiers fade over `fade` s
+export const COUNTER_AI = { share: 0.5, fade: 240, min: 4 };
+
 // ---- Buildings ---------------------------------------------------------------------------
 export const BUILDINGS = {
   keep:      { label: 'Keep',          size: 4, hp: 1900, sight: 12, pop: 8, cost: { food: 0, wood: 280, gold: 150, stone: 40 }, time: 36, requires: [],          info: 'Stone seat. Strong influence over villages while soldiers garrison it; shoots arrows at raiders while folk shelter inside; trains serfs and scouts, more pop.' },
@@ -537,7 +555,7 @@ export const ROUTE_STOPS = 5;      // markets a camel keeps on its circuit (besi
 // dwell: seconds spent at each stop; perGood: most of one good per leg; minGain: smallest coin gain per unit worth carrying
 // home: what a camel earns carrying goods between a house's OWN markets, against the full arbitrage it makes with a partner (owner,
 // 2026-10-15: trade was pointless when a house could shuttle goods round its own towns for the same coin; real money is abroad)
-export const ROUTE = { home: 0.25, arb: 0.6, purse: 100, dwell: 1.2, perGood: 25, minGain: 0.05, eat: 0.02, eatEach: 0.012, pay: 0.45 };   // eat: goods a market's folk use per second per good that came by camel (+eatEach per customer), paid at pay x the local price
+export const ROUTE = { home: 0.25, arb: 0.6, purse: 100, dwell: 1.2, perGood: 25, minGain: 0.05, eat: 0.02, eatEach: 0.012, pay: 0.45, reach: 160, reachBoard: 0.8 };   // reach: how far (tiles) a partner's market may lie from the camel's home market for Trade partners, at least reachBoard x the board's side (T-120); eat: goods a market's folk use per second per good that came by camel (+eatEach per customer), paid at pay x the local price
 export const CAMEL_CAP = 40;       // goods per camel
 // ---- communities. A market and the people and works around it form a district. The flow it models:
 //   SUPPLY (mines dig, farms and mills grow)  ->  WORKS (foundries, forges, workshops make steel and ware)  ->  MARKET (shelf, camels, coin)  ->  HOMES (cottages, towns) who pay, and SERVICE (taverns, temples, abbeys) who keep them content.

@@ -8,7 +8,7 @@ import {
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
-  MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
+  counterOf, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -1222,7 +1222,7 @@ export class Game {
     if (this.captainNear(u)) m += CAPTAIN.dmg;
     return m;
   }
-  // the damage a unit's panel shows: what it deals to an ordinary foot soldier, every standing bonus counted
+  // the damage a unit's panel shows: its plain blow, every standing bonus counted (unit counters, T59, are a row of their own on the card)
   shownDamage(u) {
     const s = UNITS[u.kind], p = this.players[u.team]; if (!s || !s.dmg || !p) return 0;
     let d = (s.dmg + (u.dmgAdd || 0)) * (1 + RANK_BONUS.dmg * (u.rank || 0));
@@ -2398,6 +2398,9 @@ export class Game {
     if (done && team === PLAYER) { const u = camels[0], r = u.route; this.log(team, r ? `${camels.length > 1 ? `${camels.length} camels` : (u.name || 'The camel')} will trade at ${r.stops.length} market${r.stops.length > 1 ? 's' : ''}.` : 'The route is cleared.', 'good'); }
     return done > 0;
   }
+  // how far a partner's market may be for Trade partners: a fixed 160 left every partner out of reach on the full board (T-120)
+  routeReach() { return Math.max(ROUTE.reach, this.W * ROUTE.reachBoard); }
+
   // one click: loop every market of yours ('own'), or the best treaty-partner markets ('partners'); replaces the camel's route
   cmdRouteAuto(units, mode, quiet = false) {
     const camels = units.filter((u) => u.kind === 'camel' && u.hp > 0);
@@ -2409,7 +2412,9 @@ export class Game {
       if (!home) return say('A route starts at one of your markets: raise a market first.');
       let pool;
       if (mode === 'partners') {
-        pool = this.buildings.filter((b) => b.kind === 'market' && b.team !== team && b.built >= 1 && b.hp > 0 && this.canDeal(team, b).ok && Math.hypot(b.x - home.x, b.y - home.y) < 160);
+        const deal = this.buildings.filter((b) => b.kind === 'market' && b.team !== team && b.built >= 1 && b.hp > 0 && this.canDeal(team, b).ok);
+        pool = deal.filter((b) => Math.hypot(b.x - home.x, b.y - home.y) < this.routeReach());
+        if (deal.length && !pool.length) return say(`Your trade partners' markets are too far for a camel (over ${Math.round(this.routeReach())} tiles from its home market): raise a market nearer them.`);
         pool.sort((a, b) => (this.legQuote(team, home, b, ROUTE.purse).profit + this.legQuote(team, b, home, ROUTE.purse).profit) - (this.legQuote(team, home, a, ROUTE.purse).profit + this.legQuote(team, a, home, ROUTE.purse).profit));
         pool = pool.slice(0, Math.min(3, ROUTE_STOPS));
       } else pool = this.marketsOf(team).filter((m) => m.id !== home.id);
@@ -3341,6 +3346,7 @@ export class Game {
     { const w = this.gearOf(u, 'weapon'); if (w) { dmg += w.dmg || 0; if (w.vsHorse && t.type === 'unit' && (t.kind === 'knight' || t.kind === 'king' || SIEGE.has(t.kind))) dmg *= 1 + w.vsHorse; } }   // the kit from the armoury
     if ((u.kind === 'footman' || u.kind === 'knight') && this.hasBuilding(u.team, 'forge')) dmg += 3 + arms * 1.5;
     if (u.kind === 'bowman' && this.hasBuilding(u.team, 'forge')) dmg += 2 + arms;
+    if (t.type === 'unit') dmg *= 1 + counterOf(u.kind, t.kind);   // the counter triangle: spears on horse, horse on bowmen, arrows on foot (T59)
     if (t.type === 'village') return this.hitVillage(u, t, dmg * s.vil, s);
     if (t.type === 'building') dmg *= s.bld * (t.built < 1 ? SITE_FRAGILE : 1);   // scaffolding comes down far easier than finished walls
     if (t.type === 'unit' && s.unit != null) dmg *= s.unit;   // (a siege engine's shot is made for walls)

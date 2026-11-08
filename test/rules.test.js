@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES, MAP_W, MAP_SIZES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages, regroup, warCry as aiWarCry } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages, regroup, warCry as aiWarCry, noteFoes, answerMix } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSeen, saveSeen } from '../js/tips.js';
@@ -14,7 +14,7 @@ import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
 import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, jobOf, JOBS } from '../js/economy.js';
-import { IDLE_ALERT } from '../js/config.js';
+import { IDLE_ALERT, ROUTE, COUNTER, COUNTER_AI, counterOf, counterWords } from '../js/config.js';
 import { MARKET_RADIUS, HAUL, SHELF_CAP, WAREHOUSE_CAP, FEAST, FEED, POP_FOOD, SETTLE_FOOD } from '../js/config.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN, unitPlural, plural } from '../js/config.js';
 
@@ -2283,4 +2283,68 @@ test('tips and README name the rules\' own numbers (T-116): defence reach, mine 
   assert.ok(row, 'README controls has the signal row');
   for (const s of [`for ${SIGNAL.show} s`, `within ${SIGNAL.r} tiles`, `home guard of ${SIGNAL.keep} or ${Math.round(SIGNAL.keepShare * 100)}%`, `at most ${SIGNAL.max}`, `every ${SIGNAL.cool} s`, 'than the board is wide']) assert.ok(row.includes(s), s);
   assert.equal(SIGNAL.reach, 1);
+});
+
+// T-120: Trade partners took only markets within a fixed 160 tiles of the camel's home, so on the full board a three-house match
+// had no partner in reach and the refusal blamed the treaty. The reach now grows with the board, and an out-of-reach partner is named as such.
+test('routes: Trade partners reaches across the full board, and says so when every partner is too far', () => {
+  const place = (g, team, kind) => { const h = g.seatOf(team); for (let r = 5; r < 20; r++) for (let a = 0; a < 90; a++) { const tx = Math.round(h.x + Math.cos(a / 14.3) * r - 1.5), ty = Math.round(h.y + Math.sin(a / 14.3) * r - 1.5); if (g.canPlace(team, kind, tx, ty).ok) return g.addBuilding(kind, team, tx, ty, true); } };
+  const small = new Game({ seed: 9, houses: 3, ai: false, size: 160 }); assert.equal(small.routeReach(), ROUTE.reach, 'the small board keeps 160');
+  const g = new Game({ seed: 9, houses: 3, ai: false, size: 320 }); assert.equal(g.routeReach(), 320 * ROUTE.reachBoard);
+  const mk = place(g, 0, 'market'), T = 1, mb = place(g, T, 'market');
+  const d = Math.hypot(mk.x - mb.x, mk.y - mb.y); assert.ok(d > ROUTE.reach && d < g.routeReach(), 'house 1 sits beyond the old reach: ' + d.toFixed(0));
+  g.meet(0, T); g.proposeRelation(0, T, 'trade', true);
+  const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
+  assert.equal(g.applyIntent({ type: 'routeauto', team: 0, ids: [camel.id], mode: 'partners' }), true, 'a partner across the board is in reach');
+  assert.deepEqual(camel.route.stops, [mb.id]);
+  // move the partner's market out of reach (house 2 is farther still): refused, and the reason is the distance, not the treaty
+  const far = place(g, 2, 'market'); g.meet(0, 2); g.proposeRelation(0, 2, 'trade', true); mb.hp = 0;
+  if (Math.hypot(far.x - mk.x, far.y - mk.y) >= g.routeReach()) {
+    const c2 = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 3.5);
+    assert.equal(g.applyIntent({ type: 'routeauto', team: 0, ids: [c2.id], mode: 'partners' }), false);
+    assert.match(g.diploNote, /too far for a camel/);
+  }
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  assert.ok(readme.includes(`reach: ${ROUTE.reach} tiles, or ${ROUTE.reachBoard} of the board's side`), 'README gives the reach');
+});
+
+// T59: unit counters. Spears stop horse, horse rides down bowmen, arrows shoot down foot; cards say so; rivals answer what they have seen.
+test('unit counters (T59): a light triangle in one table, on the cards, each counter wins at equal cost; rivals answer the foe they see', () => {
+  assert.ok(counterOf('footman', 'knight') > 0 && counterOf('knight', 'bowman') > 0 && counterOf('bowman', 'footman') > 0, 'the triangle');
+  assert.equal(counterOf('knight', 'footman'), 0); assert.equal(counterOf('footman', 'footman'), 0); assert.equal(counterOf('bowman', 'serf'), 0, 'serfs are not in it');
+  assert.ok(counterOf('footman', 'king') > 0, 'the king rides: spears find him too');
+  assert.equal(counterWords('footman'), `Strong against horse (+${Math.round(COUNTER.footman.horse * 100)}%) · weak against bowmen`);
+  assert.match(counterWords('knight'), /^Strong against bowmen .*siege engines .* · weak against footmen$/); assert.equal(counterWords('serf'), '');
+  // one blow: a footman hits a knight harder than a footman, by exactly the table's share
+  const blow = (kind) => {
+    const g = mk(); g.rel[0][1] = g.rel[1][0] = 'war'; const h = g.seatOf(0), x = h.x + 9, y = h.y + 9;
+    const u = g.addUnit('footman', 0, x, y), t = g.addUnit(kind, 1, x + 0.9, y); t.hp = t.maxHp = 9999; t.stance = 'passive';
+    g.cmdAttack([u], t); for (let i = 0; i < 60 && t.hp === 9999; i++) g.tick(0.05);
+    return 9999 - t.hp;
+  };
+  const plain = blow('footman'), horse = blow('knight');
+  assert.ok(plain > 0, 'a blow landed'); assert.ok(Math.abs(horse / plain - (1 + COUNTER.footman.horse)) < 0.02, `spear on horse x${(horse / plain).toFixed(2)}`);
+  // equal cost on open ground: each counter wins its match-up (the same fight as tools/duel.js)
+  const duel = (a, b) => {
+    const g = new Game({ seed: 2, houses: 3, fog: false, ai: false, size: 160 }); g.rel[0][1] = g.rel[1][0] = 'war'; g.players.forEach((p) => { p.gold = 1e6; });
+    const cost = (k) => Object.values(UNITS[k].cost).reduce((s, v) => s + v, 0), h = g.seatOf(0);
+    let spot = null; for (let r = 14; r < 60 && !spot; r += 2) for (let an = 0; an < 24 && !spot; an++) { const x = Math.round(h.x + Math.cos(an / 3.82) * r), y = Math.round(h.y + Math.sin(an / 3.82) * r); let ok = true; for (let dy = -4; dy <= 4 && ok; dy++) for (let dx = -2; dx <= 16 && ok; dx++) if (!g.walk[(y + dy) * g.W + x + dx]) ok = false; if (ok) spot = [x, y]; }
+    const [x, y] = spot, band = (k, team, x0) => Array.from({ length: Math.floor(800 / cost(k)) }, (_, i) => g.addUnit(k, team, x0 + (i % 3) * 1.1, y - 3 + Math.floor(i / 3) * 1.1));
+    const A = band(a, 0, x), B = band(b, 1, x + 13); g.cmdAttackMove(A, x + 14, y); g.cmdAttackMove(B, x, y);
+    for (let t = 0; t < 150 && A.some((u) => u.hp > 0) && B.some((u) => u.hp > 0); t += 0.1) g.tick(0.1);
+    return A.filter((u) => u.hp > 0).length > 0 && !B.some((u) => u.hp > 0);
+  };
+  assert.ok(duel('footman', 'knight'), 'footmen beat knights at equal cost'); assert.ok(duel('knight', 'bowman'), 'knights beat bowmen'); assert.ok(duel('bowman', 'footman'), 'bowmen beat footmen');
+  // the rivals: a house that has seen a host of footmen turns half its picks to bowmen; the memory fades
+  const g = mk(), p = g.players[1]; g.rel[0][1] = g.rel[1][0] = 'war'; const s1 = g.seatOf(1);
+  const foes = Array.from({ length: 6 }, (_, i) => g.addUnit('footman', 0, s1.x + 4 + (i % 3), s1.y + 4 + Math.floor(i / 3)));
+  noteFoes(g, 1, p); assert.equal(p.foeSeen.foot, 6);
+  const base = { footman: 0.6, bowman: 0.25, knight: 0.15 }, m = answerMix(g, 1, p, base);
+  assert.ok(Math.abs(m.bowman - (0.25 * (1 - COUNTER_AI.share) + COUNTER_AI.share)) < 1e-9 && m.bowman > m.footman, 'leans to bowmen: ' + JSON.stringify(m));
+  for (const u of foes) u.hp = 0; g.time += COUNTER_AI.fade * 2; noteFoes(g, 1, p);
+  assert.ok(p.foeSeen.foot < COUNTER_AI.min, 'the memory fades'); assert.deepEqual(answerMix(g, 1, p, base), base, 'and the house goes back to its habit');
+  const q = mk(); q.restore(JSON.parse(JSON.stringify(g.serialize()))); assert.deepEqual(q.players[1].foeSeen, p.foeSeen, 'saved');
+  const row = readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n').find((l) => l.startsWith('| **Unit counters** |'));
+  assert.ok(row, 'README rules table has the counters');
+  for (const v of [COUNTER.footman.horse, COUNTER.knight.bow, COUNTER.knight.siege, COUNTER.bowman.foot]) assert.ok(row.includes(`${Math.round(v * 100)}% harder`), 'README gives ' + v);
 });

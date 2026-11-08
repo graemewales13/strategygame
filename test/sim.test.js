@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { Game } from '../js/game.js';
-import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE, ROUTE_STOPS, TECH } from '../js/config.js';
+import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE, ROUTE_STOPS, TECH, MINE_JOBS } from '../js/config.js';
 
 // Deterministic runs: the sim uses Math.random for spawn jitter and spy catches.
 let _s = 12345;
@@ -664,8 +664,10 @@ test('routes: a camel loops for ever between your own markets, carries goods to 
 test('routes: a camel buys cheap goods from a partner and sells them dear at home, so trade runs both ways', () => {
   const g = new Game({ seed: 9, houses: 3, ai: false });
   const mk = placeNear(g, 0, 'market'); g.addBuilding('cottage', 0, g.seatOf(0).tx - 5, g.seatOf(0).ty, true);
-  const mb = placeNear(g, 1, 'market'); g.meet(0, 1); g.proposeRelation(0, 1, 'trade', true); assert.equal(g.rel[0][1], 'trade');
-  const p = g.players[0], them = g.players[1];
+  // the nearest house is the partner: on the full board house 1 can sit beyond a camel's 160-tile reach (T-120)
+  const T = [1, 2].sort((a, b) => Math.hypot(g.seatOf(a).x - g.seatOf(0).x, g.seatOf(a).y - g.seatOf(0).y) - Math.hypot(g.seatOf(b).x - g.seatOf(0).x, g.seatOf(b).y - g.seatOf(0).y))[0];
+  const mb = placeNear(g, T, 'market'); g.meet(0, T); g.proposeRelation(0, T, 'trade', true); assert.equal(g.rel[0][T], 'trade');
+  const p = g.players[0], them = g.players[T];
   mk.stock = {}; mb.stock = { copper: 50, steel: 40 }; them.gold = 400;
   const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
   const c0 = p.copper || 0, g0 = p.gold;
@@ -881,8 +883,9 @@ const freshMine = (g, team, x, y, ore = 'stone') => {
   const b = g.addBuilding('mine', team, Math.round(x), Math.round(y), true); b.ore = ore; b.nodeIds = [];
   const n = { id: g.resources.length, kind: ore, x: b.tx, y: b.ty, amount: 5000, covered: false }; g.resources.push(n); b.nodeIds.push(n.id); return b;
 };
-// the spot with the most room around it; any village still in reach is handed to a rival (rival villagers never work your mines)
-const isolate = (g, x, y, except = null) => { for (const v of g.villages) if (v !== except && Math.hypot(v.x - x, v.y - y) <= 17) { v.owner = 1; v.lean = 1; } };
+// the spot with the most room around it; any village still in reach is handed to a rival (rival villagers never work your mines).
+// The reach is measured from the mine's centre, which can sit a tile or two from (x, y), so the margin is generous (T-120).
+const isolate = (g, x, y, except = null) => { for (const v of g.villages) if (v !== except && Math.hypot(v.x - x, v.y - y) <= MINE_JOBS.r + 3) { v.owner = 1; v.lean = 1; } };
 const farFromVillages = (g) => { let best = null, bd = -1; for (let y = 8; y < g.H - 8; y += 3) for (let x = 8; x < g.W - 8; x += 3) { if (!g.walk[y * g.W + x]) continue; const d = Math.min(...g.villages.map((v) => Math.hypot(v.x - x, v.y - y))); if (d > bd) { bd = d; best = [x, y]; } } if (best) isolate(g, best[0], best[1]); return best; };
 
 test('mines: a mine with no village in reach has no workers and yields nothing', () => {
@@ -914,6 +917,7 @@ test('mines: rival villagers never work your mine, and a village cannot lend the
   const m = freshMine(g, PLAYER, v.x + 3, v.y + 3); g.refreshCrews();
   assert.equal(g.minersOf(m), 0, 'a rival-held village sends no one');
   v.owner = -1; v.lean = -1; v.pop = 10;   // spare = floor((10 - 6) * 0.3) = 1
+  isolate(g, v.x - 4, v.y - 3, v); isolate(g, v.x + 5, v.y - 4, v);   // (only this village may be in reach of the two new mines too)
   const m2 = freshMine(g, PLAYER, v.x - 4, v.y - 3), m3 = freshMine(g, PLAYER, v.x + 5, v.y - 4); g.refreshCrews();
   assert.equal(g.minersOf(m) + g.minersOf(m2) + g.minersOf(m3), 1, 'one spare pair of hands, shared out once');
 });
