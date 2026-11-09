@@ -221,6 +221,12 @@ export const counterWords = (kind) => {
 };
 // the rivals answer what they have seen of a foe's army: `share` of their next picks lean to the counter, seen soldiers fade over `fade` s
 export const COUNTER_AI = { share: 0.5, fade: 240, min: 4 };
+// T64: what the player has seen of each rival's army, by class, fading the same way (`fade` s); a class under `show` is forgotten,
+// and once `min` of one class have been seen the Council names its counter
+export const ARMY_SEEN = { fade: COUNTER_AI.fade, show: 0.5, min: COUNTER_AI.min, classes: ['foot', 'bow', 'horse', 'siege'] };
+export const NOT_ARMY = new Set(['king', 'scout', 'camel']);   // seen riders that are not the army (the king is shown on his own)
+// the trained kinds strong against a class, e.g. answerTo('horse') -> ['Footmen']
+export const answerTo = (cls) => Object.keys(COUNTER).filter((k) => COUNTER[k][cls]).map((k) => plural(UNITS[k].label));
 
 // ---- Buildings ---------------------------------------------------------------------------
 export const BUILDINGS = {

@@ -7,7 +7,7 @@ import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
-  counterWords, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
+  counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO } from './diplomacy.js';
@@ -818,6 +818,7 @@ export class UI {
       const col = st.mood === 'means war' || st.mood === 'fighting on' ? '#e0866a' : st.mood === 'wary' ? '#e8c35a' : '#9fe08f';
       html += `<div class="dline" data-tip="${encodeURIComponent('<b>How they see you</b><br><b>Threat</b>: your buildings swaying their villages, your soldiers in their land, your army close and stronger.<br><b>Temptation</b>: you are weaker, busy at war, leaderless, broke, or a village of yours lies close and poorly guarded.<br><b>Ties</b>: trade, alliance, a common enemy, goodwill, distance, a fresh peace.<br>They go to war when threat and temptation clearly outweigh the ties (and warn you first).')}">They see you: <b style="color:${col}">${st.mood}</b> · threat ${pct(st.threat)}% · temptation ${pct(st.temptation)}% · ties ${pct(st.ties)}%${rel === 'war' ? ` · weariness ${pct(st.weariness)}%` : ''}${top ? `<br><small>${top}</small>` : ''}</div>`;
     }
+    html += this.seenArmyLine(t);
     if (i.secrets) {
       const s = i.secrets, mix = Object.entries(s.mix).map(([k, n]) => `${n} ${UNITS[k].label.toLowerCase()}${n === 1 ? '' : 's'}`).join(', ') || 'no soldiers';
       const plan = s.war != null ? `means war on <b>${s.war === PLAYER ? 'you' : esc(HOUSES[s.war].short)}</b>` : s.warIn ? `not ready for war (about ${Math.ceil(s.warIn / 60)} min)` : 'no war planned';
@@ -1360,6 +1361,16 @@ export class UI {
     const rows = c.list.map((e) => `${e.n} from ${esc(e.v.name)}${e.own ? ' (yours, +' + Math.round((MINE_JOBS.ownBonus - 1) * 100) + '%)' : ''}`).join(', ');
     return `<div class="stat"><label>Diggers</label><span>${c.n}/${MINE_MAX_WORKERS} · yield ×${c.power.toFixed(2)}</span></div><div class="hint">${rows}. Their goodwill drifts to you.</div>`;
   }
+  // T64: what the player's eyes have seen of house t's army, one line (or a dim one when nothing has been seen)
+  seenArmyLine(t) {
+    const a = this.game.armySeen(PLAYER, t);
+    const tip = encodeURIComponent(`<b>Seen of their army</b><br>The most of each kind your folk, scouts and buildings have had in sight at once, fading over about ${Math.round(ARMY_SEEN.fade / 60)} minutes once out of sight (soldiers inside buildings, scouts, camels and the king not counted). Only what your own eyes saw: send a scout, or a spy for the whole roll.<br>Spears stop horse, horse rides down bowmen and siege crews, arrows shoot down foot.`);
+    if (!a) return `<div class="dline seenarmy" style="opacity:.7" data-tip="${tip}">${uiImg('marks', 'seen', '👁', 'tico')} Seen of their army: nothing yet. Scout them (a scout's Explore) to learn their mix.</div>`;
+    const ago = a.ago < 5 ? 'in sight now' : a.ago < 90 ? `${Math.round(a.ago)} s ago` : `${Math.round(a.ago / 60)} min ago`;
+    const parts = ARMY_SEEN.classes.filter((k) => a[k] > 0).map((k) => `<b>${a[k]}</b> ${a[k] === 1 && k === 'siege' ? 'siege engine' : a[k] === 1 && k === 'bow' ? 'bowman' : CLASS_WORD[k]}`);
+    const ans = a.top ? ` · <span class="counter">mostly ${CLASS_WORD[a.top]}: answer with ${answerTo(a.top).join(' or ').toLowerCase()}</span>` : '';
+    return `<div class="dline seenarmy" data-tip="${tip}">${uiImg('marks', 'seen', '👁', 'tico')} Seen of their army <small>(${ago})</small>: ${parts.join(', ')}${ans}</div>`;
+  }
   chainLine(b) {
     const g = this.game, d = g.districtAt(PLAYER, b.x, b.y), m = g.nearestMarket(PLAYER, b.x, b.y, DISTRICT.r);
     if (b.kind === 'mine') return d ? `<div class="hint">Ore flows to your market ${Math.round(Math.hypot(b.x - m.x, b.y - m.y))} tiles away. Its community of ${d.score}/4 speeds the haul by <b>+${8 * d.score}%</b>. A foundry beside it turns ore into steel and ware.</div>` : `<div class="hint">No market of yours within ${DISTRICT.r} tiles: ore reaches your stores slowly. Raise a market and a foundry beside it.</div>`;
@@ -1517,7 +1528,7 @@ export class UI {
       html = `<div class="ctitle">Options</div><div class="cgrid">${this.btn('sendarmyb', { glyph: '⚔', name: 'Attack', off: !army, sub: army ? `${army} soldiers` : '', tip: '<b>Attack</b><br>Sends every soldier at it. Or select units and right-click it (rams are best against walls).' })}${ent.team >= 0 && ent.team !== PLAYER ? this.btn('council', { glyph: '⚜', name: 'Council', data: { team: ent.team }, tip: '<b>Council of Houses</b><br>Everything about this house and every dealing with it.' }) : ''}</div>${ent.kind === 'market' ? this.tradeBoard(ent) : ''}<div class="hint">${esc(HOUSES[ent.team].name)} building. Select units and right-click it to attack.</div>`;
     } else if (s.type === 'units' && this.selUnits().length) {
       const t = this.selUnits()[0].team;
-      html = `<div class="ctitle">${esc(HOUSES[t].name)}</div><div class="cgrid">${this.btn('council', { glyph: '⚜', name: 'Council', data: { team: t }, tip: `<b>Council of Houses</b><br>Their strength, wealth and temper, and every dealing with them: peace, trade, alliance, gifts, war.` })}</div>`;
+      html = `<div class="ctitle">${esc(HOUSES[t].name)}</div><div class="cgrid">${this.btn('council', { glyph: '⚜', name: 'Council', data: { team: t }, tip: `<b>Council of Houses</b><br>Their strength, wealth and temper, and every dealing with them: peace, trade, alliance, gifts, war.` })}</div>` + (t >= 0 && t !== PLAYER ? this.seenArmyLine(t) : '');
     } else if (s.type === 'node' && g.resources[s.id]) {
       const n = g.resources[s.id], mined = MINEABLE.includes(n.kind), hasMine = mined && g.buildings.some((b) => b.kind === 'mine' && b.hp > 0 && b.nodeIds?.includes(n.id));
       html = `<div class="ctitle">Options</div><div class="cgrid">${mined && !hasMine ? this.btn('minehere', { glyph: '⛏', art: 'mine', name: 'Build mine', sub: costShort(BUILDINGS.mine.cost), off: !g.canAfford(PLAYER, BUILDINGS.mine.cost), tip: `<b>Mine</b><br>Raised beside the deposit; then assign serfs. <span class="cost">${costText(BUILDINGS.mine.cost, g.players[PLAYER])}</span>` }) : ''}${!mined ? this.btn('gathernode', { glyph: '⚒', name: 'Gather', sub: '4 idle serfs', tip: '<b>Gather</b><br>Sends up to four idle serfs.' }) : ''}</div><div class="hint">${mined ? (hasMine ? 'A mine stands here: select it to send diggers.' : 'Ore needs a <b>Mine</b>. Once built, serfs dig it into your stockpile.') : 'Select serfs and right-click to gather.'}</div>`;

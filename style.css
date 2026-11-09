@@ -602,6 +602,7 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 #ftip .ttitle::before { content: 'Tip'; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #c9a24a; border: 1px solid #8a6a2c; border-radius: 3px; padding: 0 4px; }
 #ftip kbd { font: 700 11px/1 Georgia, serif; color: #f3d58a; background: #2a1c0d; border: 1px solid #8a6a2c; border-radius: 3px; padding: 1px 5px; }
 #ftip .tico { width: 22px; height: 22px; }
+.seenarmy img.tico { width: 18px; height: 18px; vertical-align: -4px; }
 #ftip .tbtns { display: flex; gap: 6px; margin-top: 7px; }
 #ftip .tbtns button { background: linear-gradient(180deg, #6d4d27, #3b2815); color: #efe0b4; border: 1px solid #8a6a2c; border-radius: 3px; padding: 3px 9px; font: 700 12px Georgia, serif; cursor: pointer; }
 #ftip .tbtns button:hover { background: linear-gradient(180deg, #86602f, #4a3319); color: #fff; }

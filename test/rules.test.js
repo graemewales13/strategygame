@@ -14,7 +14,7 @@ import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
 import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, jobOf, JOBS } from '../js/economy.js';
-import { IDLE_ALERT, ROUTE, COUNTER, COUNTER_AI, counterOf, counterWords } from '../js/config.js';
+import { IDLE_ALERT, ROUTE, COUNTER, COUNTER_AI, counterOf, counterWords, ARMY_SEEN, answerTo } from '../js/config.js';
 import { MARKET_RADIUS, HAUL, SHELF_CAP, WAREHOUSE_CAP, FEAST, FEED, POP_FOOD, SETTLE_FOOD } from '../js/config.js';
 import { PLAYER, RANKS, RANK_BONUS, UNITS, KING, STANCE, SPY_COVER, BUILDINGS, packWords, packOf, TECH, BELL, PATROL, KEEP_ARROWS, GEAR, VILLAGE_SIZE, EXPLORE, TRAIN, unitPlural, plural } from '../js/config.js';
 
@@ -2347,4 +2347,46 @@ test('unit counters (T59): a light triangle in one table, on the cards, each cou
   const row = readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n').find((l) => l.startsWith('| **Unit counters** |'));
   assert.ok(row, 'README rules table has the counters');
   for (const v of [COUNTER.footman.horse, COUNTER.knight.bow, COUNTER.knight.siege, COUNTER.bowman.foot]) assert.ok(row.includes(`${Math.round(v * 100)}% harder`), 'README gives ' + v);
+});
+
+test('what your scouts saw of a rival\'s army (T64): per house, by class, only what was in sight, fading, saved, reset, with its counter', () => {
+  const g = new Game({ seed: 64, houses: 3, ai: false, size: MAP_SIZES.small }), s1 = g.seatOf(1), s0 = g.seatOf(PLAYER);
+  assert.equal(g.armySeen(PLAYER, 1), null, 'nothing seen at the start');
+  const far = Array.from({ length: 5 }, (_, i) => g.addUnit('knight', 1, s1.x + 3 + i, s1.y + 3));
+  g.updateVisibility(true);
+  assert.ok(!far.some((u) => g.canSee(PLAYER, u.x, u.y)), 'fixture: his knights stand in fog');
+  assert.equal(g.armySeen(PLAYER, 1), null, 'soldiers in the fog are not seen (fog rules hold)');
+  // a band in sight beside our seat: 5 footmen, 2 bowmen, a ram; his king, a scout and a camel are not the army
+  const near = (k, i) => g.addUnit(k, 1, s0.x + 4 + (i % 4), s0.y + 4 + Math.floor(i / 4));
+  const band = [...Array.from({ length: 5 }, (_, i) => near('footman', i)), near('bowman', 5), near('bowman', 6), near('ram', 7), near('scout', 8), near('camel', 9)];
+  const inside = near('footman', 10); inside.inside = s0.id;
+  g.updateVisibility(true);
+  let a = g.armySeen(PLAYER, 1);
+  assert.deepEqual([a.foot, a.bow, a.horse, a.siege], [5, 2, 0, 1], 'by class: ' + JSON.stringify(a));
+  assert.equal(a.top, 'foot', 'four or more of one kind names it'); assert.ok(a.ago < 1);
+  assert.equal(g.armySeen(PLAYER, 2), null, 'per house: the other rival is unseen');
+  assert.deepEqual(answerTo('foot'), ['Bowmen']); assert.deepEqual(answerTo('horse'), ['Footmen']);
+  // the band leaves sight: still remembered, then fading over ARMY_SEEN.fade
+  for (const u of band) { u.x = s1.x + 2; u.y = s1.y + 2; }
+  g.time += 60; g.updateVisibility(true); a = g.armySeen(PLAYER, 1);
+  assert.equal(a.foot, Math.round(5 * Math.exp(-60 / ARMY_SEEN.fade)), 'kept out of sight, fading'); assert.ok(a.ago >= 60, 'with how long ago');
+  // saved and loaded as it was
+  const q = new Game({ seed: 64, houses: 3, ai: false, size: MAP_SIZES.small }); q.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(q.armySeen(PLAYER, 1), a, 'saved');
+  // forgotten in time, and a new match starts blank
+  g.time += ARMY_SEEN.fade * 3; g.updateVisibility(true);
+  assert.equal(g.armySeen(PLAYER, 1), null, 'forgotten'); assert.deepEqual(g.amem[PLAYER], {}, 'and dropped');
+  q.reset({ seed: 5, houses: 3, ai: false, size: MAP_SIZES.small }); assert.deepEqual(q.amem[PLAYER], {}, 'reset clears it');
+  // the tip on first sight: at war with a house whose army you have seen enough of
+  const w = new Game({ seed: 64, houses: 3, ai: false, size: MAP_SIZES.small }), all = new Set(TIP_IDS.filter((x) => x !== 'counter'));
+  Array.from({ length: 4 }, (_, i) => w.addUnit('knight', 1, s0.x + 4 + i, s0.y + 4)); w.updateVisibility(true);
+  assert.equal(dueTip(w, all, tipMemory()), null, 'not at peace');
+  w.rel[PLAYER][1] = w.rel[1][PLAYER] = 'war'; assert.equal(dueTip(w, all, tipMemory())?.id, 'counter', 'the counter tip at war');
+  assert.match(TIPS.find((t) => t.id === 'counter').text, /footmen beat horse/);
+  // T-122: the rivals answer siege engines too (knights ride down their crews); a save from before keeps working
+  const r = mk(), rp = r.players[1], rs = r.seatOf(1); r.rel[0][1] = r.rel[1][0] = 'war';
+  Array.from({ length: 4 }, (_, i) => r.addUnit('ram', 0, rs.x + 4 + i * 1.5, rs.y + 4));
+  rp.foeSeen = { foot: 1, bow: 0, horse: 0 }; noteFoes(r, 1, rp);
+  assert.equal(rp.foeSeen.siege, 4, 'rams seen'); assert.equal(rp.foeSeen.foot, 1, 'an old memory without siege still fades in');
+  const mix = answerMix(r, 1, rp, { footman: 0.6, bowman: 0.25, knight: 0.15 }); assert.ok(mix.knight > mix.footman, 'leans to knights: ' + JSON.stringify(mix));
 });

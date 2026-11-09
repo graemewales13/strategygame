@@ -1,9 +1,9 @@
 // Auld World - tips on first sight (T58). The first time the player meets a rule that can cost him the match (a rival's demand, a war,
-// a mine nobody digs, a hungry or wavering village, a village lost, an army that fled, his king fallen, his seat lost, empty coffers, a
+// a foe's army seen, a mine nobody digs, a hungry or wavering village, a village lost, an army that fled, his king fallen, his seat lost, empty coffers, a
 // full house) a short card says what it means and what to do. Each tip shows once, remembered in the browser, and never during the
 // tutorial's lessons (they teach the same things in order). Pure functions of the game state and a small per-match memory, so they test
 // headless; the UI only decides when a card may show and keeps the list of tips already seen. Nothing here touches the simulation.
-import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS } from './config.js';
+import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS, CLASS_WORD, answerTo } from './config.js';
 
 export const TIP_STORE = 'auld-world.tips';
 export const TIP_GAP = 25;        // seconds of game time between two tips, so a bad minute is not a wall of cards
@@ -20,6 +20,9 @@ export const TIPS = [
   { id: 'war', title: 'You are at war',
     text: `Idle soldiers within ${DEFEND_R} tiles turn on anyone who strikes your folk or buildings. {key:alert} jumps to where you are hit, {key:army} selects your army, {key:amove} attack-moves it. Keep your king behind the line: when your royal line ends, your house falls.`,
     when: (g) => atWarWith(g).length > 0 },
+  { id: 'counter', title: 'Know what they field',
+    text: `You have seen enough of a foe's army to answer it: ${['horse', 'bow', 'foot'].map((c) => `${answerTo(c).join(' and ').toLowerCase()} beat ${CLASS_WORD[c]}`).join(', ')}. The Council ({key:council}) and a click on any of their soldiers show what your eyes have seen of each house's army; train the answer before you march.`,
+    when: (g) => atWarWith(g).some((p) => g.armySeen(PLAYER, p.team)?.top) },
   { id: 'idlemine', title: 'A mine with nobody to dig it',
     text: `Mines are worked by the folk of villages within ${MINE_JOBS.r} tiles, never by serfs. Win or found a village near the deposit (serfs can found a mining camp beside ore), or raise your next mine closer to the villages you hold.`,
     when: (g) => g.buildings.some((b) => b.team === PLAYER && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && g.minersOf(b) === 0) },

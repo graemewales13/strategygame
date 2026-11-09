@@ -8,7 +8,7 @@ import {
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
-  counterOf, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
+  counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
@@ -101,6 +101,7 @@ export class Game {
     this.vis = Array.from({ length: n }, () => new Uint8Array(this.W * this.H));
     this.mem = Array.from({ length: n }, () => ({}));   // what each house last saw of others' buildings under fog, by id (T44; drawn, never read by the rules)
     this.vmem = Array.from({ length: n }, () => ({}));   // and of every village (owner, folk, loyalty...), by id (T46; the same)
+    this.amem = Array.from({ length: n }, () => ({}));   // and of every rival house's army, by class, fading (T64; the same: panels only)
     this.walk = new Uint8Array(this.W * this.H);
     this.block = new Uint8Array(this.W * this.H);
 
@@ -379,6 +380,35 @@ export class Game {
       if (v.owner !== team && !(o && o.owner === team) && !this.seesFoot(team, v)) continue;
       m[v.id] = this.villageNote(v, o);
     }
+  }
+  // What `team` has seen of each other house's army (T64): soldiers in sight now, by class (foot, bow, horse, siege; not the king, scouts,
+  // camels or anyone inside a building), kept as the most seen at once and fading over ARMY_SEEN.fade s, with when any was last in sight.
+  // The same fading memory the rivals keep of their foes (ai.js noteFoes), but per house. Never read by the rules.
+  rememberArmies(team) {
+    const m = this.amem[team]; if (!m) return;
+    const now = this.time, cur = {};
+    for (const u of this.units) {
+      const c = UNIT_CLASS[u.kind];
+      if (!c || u.team === team || u.team < 0 || u.hp <= 0 || u.inside || NOT_ARMY.has(u.kind) || !this.canSee(team, u.x, u.y)) continue;
+      (cur[u.team] ||= { foot: 0, bow: 0, horse: 0, siege: 0 })[c]++;
+    }
+    for (const t of new Set([...Object.keys(m), ...Object.keys(cur)])) {
+      const o = m[t] ||= { foot: 0, bow: 0, horse: 0, siege: 0, at: now, t: now }, c = cur[t], keep = Math.exp(-Math.max(0, now - o.t) / ARMY_SEEN.fade);
+      for (const k of ARMY_SEEN.classes) o[k] = Math.round(Math.max(o[k] * keep, c ? c[k] : 0) * 100) / 100;
+      o.t = now; if (c) o.at = now;
+      if (ARMY_SEEN.classes.every((k) => o[k] < ARMY_SEEN.show)) delete m[t];   // all forgotten
+    }
+  }
+  // what `team` remembers of house `of`'s army: { foot, bow, horse, siege (whole numbers, faded), ago (s since any was seen), top, answer }
+  // or null when it has seen none (or forgotten them)
+  armySeen(team, of) {
+    const o = this.amem[team]?.[of]; if (!o) return null;
+    const keep = Math.exp(-Math.max(0, this.time - o.t) / ARMY_SEEN.fade), out = { ago: Math.max(0, this.time - o.at) };
+    for (const k of ARMY_SEEN.classes) out[k] = Math.round(o[k] * keep);
+    if (ARMY_SEEN.classes.every((k) => out[k] < 1)) return null;
+    const top = ARMY_SEEN.classes.reduce((a, k) => (out[k] > out[a] ? k : a), 'foot');
+    out.top = out[top] >= ARMY_SEEN.min ? top : null;
+    return out;
   }
   villageNote(v, o = {}) {
     return Object.assign(o, { id: v.id, owner: v.owner, pop: v.pop, popMax: v.popMax, loyalty: v.loyalty, protection: v.protection, maxProtection: v.maxProtection, hunger: !!v.hunger, food: v.stores?.food || 0, joyT: v.joyT > 0 ? 1 : 0, at: this.time });
@@ -3814,7 +3844,7 @@ export class Game {
   // ------------------------------------------------------------------ fog of war
   setFog(on) {
     this.titleView = false; this.fogOn = on;
-    if (on) { this.seen.forEach((a) => a.fill(0)); this.mem.forEach((m) => { for (const k in m) delete m[k]; }); this.vmem.forEach((m) => { for (const k in m) delete m[k]; }); }
+    if (on) { this.seen.forEach((a) => a.fill(0)); this.mem.forEach((m) => { for (const k in m) delete m[k]; }); this.vmem.forEach((m) => { for (const k in m) delete m[k]; }); this.amem.forEach((m) => { for (const k in m) delete m[k]; }); }
     this.updateVisibility(true);
   }
 
@@ -3847,7 +3877,8 @@ export class Game {
       for (const v of this.villages) if (v.owner === t) mark(v.x, v.y, v.home === t ? 13 : 8);
       for (const p of this.players) { const k = p.alive && p.team !== t && !this.seatOf(p.team) ? this.kingOf(p.team) : null; if (k && !k.inside) mark(k.x, k.y, KING.fugitiveSight); }   // a king without a seat is hunted: all can see him
     }
-    if (this.fogOn) { this.remember(PLAYER); this.rememberVillages(PLAYER); }   // (only the player's eyes are drawn; the network branch remembers for every seat)
+    if (this.fogOn) { this.remember(PLAYER); this.rememberVillages(PLAYER); }
+    this.rememberArmies(PLAYER);   // (fog or not: with the fog off every soldier is in sight)   // (only the player's eyes are drawn; the network branch remembers for every seat)
     // meeting: a house is "known" once any of its people or buildings has been in sight (mutual: they have seen you too)
     for (let a = 0; a < this.houses; a++) for (let b = 0; b < this.houses; b++) {
       if (a === b || this.known[a][b]) continue;
@@ -3933,7 +3964,7 @@ export class Game {
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
-      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem,
+      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem, amem: this.amem,
       timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {} }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
   }
@@ -3962,6 +3993,7 @@ export class Game {
     else { this.visT = 0; this.updateVisibility(true); }
     if (d.mem) this.mem = this.mem.map((m, i) => d.mem[i] || {});
     else if (this.fogOn) for (const b of this.buildings) if (b.team !== PLAYER && this.wasSeen(PLAYER, b.x, b.y)) this.mem[PLAYER][b.id] = { id: b.id, kind: b.kind, team: b.team, tx: b.tx, ty: b.ty, size: b.size, x: b.x, y: b.y, ore: b.ore, hp: b.hp, maxHp: b.maxHp, built: b.built, at: this.time };   // an older save: what was on seen ground counts as seen
+    if (d.amem) this.amem = this.amem.map((m, i) => d.amem[i] || {});   // (an older save starts with nothing seen)
     if (d.vmem) this.vmem = this.vmem.map((m, i) => d.vmem[i] || {});
     else if (this.fogOn) for (const v of this.villages) if (this.wasSeen(PLAYER, v.x, v.y)) this.vmem[PLAYER][v.id] = this.villageNote(v);   // an older save: as it is
     if (this.tutorial && !this.tutorial.done && this.tutorial.foe == null && this.rel[PLAYER].every((r, i) => i === PLAYER || r !== 'war')) this.tutorFoe();   // a tutorial saved before the war lessons (T57) gets its weak rival

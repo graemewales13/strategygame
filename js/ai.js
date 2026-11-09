@@ -13,15 +13,15 @@ const PLAN = [
   ['tower', 1], ['workshop', 1], ['cottage', 5], ['cottage', 6], ['cottage', 7],
 ];
 
-// T59: what a house has seen of its foes' soldiers, by class (foot, bow, horse); the memory fades over COUNTER_AI.fade seconds
+// T59: what a house has seen of its foes' soldiers, by class (foot, bow, horse, siege); the memory fades over COUNTER_AI.fade seconds
 export function noteFoes(game, team, p) {
-  const now = game.time, dt = Math.max(0, now - (p.foeSeenT ?? now)), keep = Math.exp(-dt / COUNTER_AI.fade), cur = { foot: 0, bow: 0, horse: 0 };
+  const now = game.time, dt = Math.max(0, now - (p.foeSeenT ?? now)), keep = Math.exp(-dt / COUNTER_AI.fade), cur = { foot: 0, bow: 0, horse: 0, siege: 0 };   // (siege too: knights ride down engine crews, T-122)
   for (const u of game.units) {
     const c = UNIT_CLASS[u.kind];
     if (u.hp > 0 && !u.inside && c in cur && u.kind !== 'king' && u.kind !== 'scout' && u.kind !== 'camel' && game.isEnemy(team, u.team) && game.canSee(team, u.x, u.y)) cur[c]++;
   }
-  const was = p.foeSeen || { foot: 0, bow: 0, horse: 0 };
-  p.foeSeen = Object.fromEntries(Object.keys(cur).map((c) => [c, Math.round(Math.max(was[c] * keep, cur[c]) * 100) / 100]));
+  const was = p.foeSeen || {};
+  p.foeSeen = Object.fromEntries(Object.keys(cur).map((c) => [c, Math.round(Math.max((was[c] || 0) * keep, cur[c]) * 100) / 100]));   // (a save from before T-122 has no siege)
   p.foeSeenT = now;
   return p.foeSeen;
 }

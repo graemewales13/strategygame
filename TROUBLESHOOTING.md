@@ -571,3 +571,18 @@ Causes and fixes:
 - **UI**: a *Counters* row on a soldier's card ("Strong against horse (+30%) · weak against bowmen", with a tooltip on the triangle) and the same line in each train button's tooltip, from `counterWords()`. Art: two small marks requested (ARTREQUIREMENTS priority 31; text until then, not probed).
 - Tests: rules "unit counters (T59)" (the table, the card words, one footman blow on a knight is exactly 1.3x one on a footman, each counter wins an equal-cost duel, a rival that sees six footmen leans its mix to bowmen and forgets them, saved). `tools/counter-smoke.cjs` (the Counters row on a footman's, bowman's and knight's card), checked in a 1366x768 screenshot. Soaks: same anomaly types.
 
+
+## T-122 - Rivals never answered siege engines (fixed 2026-11-09)
+
+- **Symptom**: the counter table (T59) has knights +50% on siege, and the soldier's card tells the player so, but a rival that watched a column of rams walk up to its walls never leaned to knights.
+- **Cause**: `noteFoes` in `js/ai.js` only counted foot, bow and horse (`cur = { foot, bow, horse }`, and `c in cur` dropped the `siege` class), so `answerMix` could never pick the knight's siege counter: an AI-versus-player asymmetry (the player is told the counter; the AI could not use it).
+- **Fix**: siege is counted too; an older save's memory without a `siege` field reads it as 0 (no NaN).
+- **Guard**: rules "what your scouts saw of a rival's army (T64)": a rival that sees four rams has `foeSeen.siege` 4 and leans its mix to knights; an old memory still fades in.
+
+## T-123 - What your scouts saw of a rival's army (added 2026-11-09, T64)
+
+- **Why**: with counters live (T59) the rivals remembered the player's mix and answered it, but the player had no memory at all: the Council showed a rival's army as one number, so scouting could not tell him whether to train spears, horse or bows.
+- **Rules side** (`js/game.js`, never read by the rules, like the fog memory of T44/T46): `amem[team][rival]` keeps, for each class (foot, bow, horse, siege; not the king, scouts, camels or soldiers inside buildings), the most seen in sight at once, fading over `ARMY_SEEN.fade` (240 s, the rivals' own `COUNTER_AI.fade`), with when any was last in sight. `rememberArmies(PLAYER)` runs with every fog update (fog on or off); `armySeen(team, of)` gives whole numbers, how long ago, and the class to answer once `ARMY_SEEN.min` (4) of it were seen. Saved and loaded (`amem`), cleared by `reset()` and by turning the fog on.
+- **UI**: a *Seen of their army* line on each rival's Council card and on the card shown when one of their soldiers is clicked ("Seen of their army (2 min ago): 8 foot, 3 bowmen, 1 siege engine · mostly foot: answer with bowmen"; "nothing yet" with a hint to scout). A twelfth tip on first sight, *Know what they field*, when at war with a house whose army you have seen four of one kind. `answerTo()` in config names the counter from `COUNTER`.
+- **Art**: a scouted-army mark requested (ARTREQUIREMENTS priority 32); a 👁 glyph until then, not probed.
+- **Tests**: rules "what your scouts saw of a rival's army (T64)": soldiers in fog are not seen, by class with the king, scouts, camels and a garrisoned soldier left out, per house, kept and fading out of sight with how long ago, saved, forgotten, reset, the tip at war only. `tools/scout-smoke.cjs` checks the line on the Council card and a rival soldier's card in a browser.
