@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING, SIGNAL } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING, SIGNAL, COALITION } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -77,7 +77,8 @@ function readStance(g, a, b) {
   // ties
   const shared = sharedEnemies(g, a, b), settledNow = g.time - g.relSince[a][b] < 240 && rel !== 'war';
   const paid = g.players[a].appeased?.[b], appeased = paid != null && g.time - paid < 300 ? 0.6 : 0;
-  const tie = { appeased, trade: rel === 'trade' ? 0.35 : 0, ally: rel === 'alliance' ? 0.8 : 0, common: 0.25 * shared.length, good: o > 0 ? (o / 100) * 0.6 : 0, far: (1 - prox) * 0.6, fresh: settledNow ? 0.5 : 0 };
+  const tie = { appeased, trade: rel === 'trade' ? 0.35 : 0, ally: rel === 'alliance' ? 0.8 : 0, common: 0.25 * shared.length, good: o > 0 ? (o / 100) * 0.6 : 0, far: (1 - prox) * 0.6, fresh: settledNow ? 0.5 : 0, dread: 0 };
+  const D = dread(g, a, b); if (D >= 0 && rel !== 'war') tie.dread = 0.3;   // a common dread (T62)
   why('ties', tie.appeased, 'they paid us to keep the peace');
   why('ties', tie.ally, 'we are sworn allies');
   why('ties', tie.trade, 'our caravans trade');
@@ -85,6 +86,7 @@ function readStance(g, a, b) {
   why('ties', tie.good, 'there is goodwill between us');
   why('ties', tie.far, `${nameOf(g, b)} lies far away`);
   why('ties', tie.fresh, 'a peace newly made');
+  why('ties', tie.dread, `we both fear ${D >= 0 ? nameOf(g, D) : ''}`);   // (D is never b, so never 'you' to b's face)
   const ties = Math.min(1.5, Object.values(tie).reduce((x, y) => x + y, 0));
   const grudge = clamp01(-o / 100);
   { const w = (g.whyOp[a + '>' + b] || []).find((x) => x.d < 0)?.why; why('grudge', grudge, w ? `they ${w}` : 'old grievances', w ? `you ${w}` : 'you have wronged us'); }
@@ -116,6 +118,23 @@ export const alive = (g, t) => !!g.players[t]?.alive;
 export const alliesOf = (g, t) => g.players.filter((q) => q.team !== t && q.alive && g.rel[t][q.team] === 'alliance').map((q) => q.team);
 export const enemiesOf = (g, t) => g.players.filter((q) => q.team !== t && q.alive && g.rel[t][q.team] === 'war').map((q) => q.team);
 const sharedEnemies = (g, a, b) => enemiesOf(g, a).filter((c) => g.rel[b][c] === 'war');
+// the house a and b both dread (T62): the strongest living house other than them, known to both, allied to neither, at least COALITION.lead
+// times as strong as each of them; -1 when there is none. `S` (optional) is a strength per team, so a loop over every pair reckons each once.
+export function dread(g, a, b, S = null) {
+  const st = (t) => (S ? S[t] : strength(g, t));
+  let T = -1, sT = 0;
+  for (const q of g.players) {
+    const c = q.team;
+    if (c === a || c === b || !q.alive || !g.known[a][c] || !g.known[b][c] || g.rel[a][c] === 'alliance' || g.rel[b][c] === 'alliance') continue;
+    const s = st(c); if (s > sT) { sT = s; T = c; }
+  }
+  return T >= 0 && sT >= COALITION.lead * Math.max(st(a), st(b)) ? T : -1;
+}
+// the opinion `to` needs of `from` before it swears an alliance (judge and the AI's own proposals use the same number)
+export function allianceNeed(g, to, from) {
+  const pr = pers(g, to), base = pr.temper === 'honourable' ? DIPLO.need.alliance - 8 : pr.temper === 'cunning' ? DIPLO.need.alliance - 3 : DIPLO.need.alliance;
+  return dread(g, to, from) >= 0 ? base - COALITION.ease : base;
+}
 export const cooled = (g, a, b, kind) => g.time - (g.cool[a + '>' + b + ':' + kind] ?? -1e9) >= DIPLO.cool[kind];
 export const stamp = (g, a, b, kind) => { g.cool[a + '>' + b + ':' + kind] = g.time; };
 
@@ -128,7 +147,8 @@ export function shift(g, a, b, d, why) {
 }
 // slow drift, every opinionEvery seconds: what makes friends and enemies without anyone writing a letter
 export function drift(g) {
-  const top = g.players.filter((p) => p.alive).sort((x, y) => strength(g, y.team) - strength(g, x.team))[0]?.team;
+  const S = g.players.map((p) => (p.alive ? strength(g, p.team) : 0));
+  const top = g.players.filter((p) => p.alive).sort((x, y) => S[y.team] - S[x.team])[0]?.team;
   for (const A of g.players) {
     if (!A.alive || A.team === PLAYER) continue;
     const a = A.team, pr = pers(g, a);
@@ -142,7 +162,8 @@ export function drift(g) {
       for (const c of alliesOf(g, a)) if (c !== b && g.rel[b][c] === 'war') d -= 1.0;          // you are fighting my friend
       for (const c of enemiesOf(g, a)) if (c !== b && g.rel[b][c] === 'alliance') d -= 0.5;   // you befriend my enemy
       const st = stance(g, a, b); d -= 0.6 * st.threat;   // their keeps over our villages and their soldiers in our land are resented
-      const sa = strength(g, a), sb = strength(g, b);
+      const sa = S[a], sb = S[b];
+      if (rel !== 'war' && dread(g, a, b, S) >= 0) d += COALITION.warm;                       // a common dread: a house far stronger than both (T62)
       if (rel !== 'alliance') {
         if (sb > sa * 1.8) d -= 0.25 + pr.greed * 0.3;                                         // envy of the stronger
         if (b === top && rel !== 'trade') d -= 0.25;                                           // balance of power: the strongest is watched by all
@@ -172,12 +193,12 @@ export function judge(g, kind, from, to, ctx = {}) {
     }
     case 'alliance': {
       if (rel === 'war') return no('End the war first.');
-      const need = pr.temper === 'honourable' ? DIPLO.need.alliance - 8 : pr.temper === 'cunning' ? DIPLO.need.alliance - 3 : DIPLO.need.alliance;
-      if (o < need) return no(`${me} does not yet count ${N} a friend (${attitudeLabel(o)}, ${o >= 0 ? '+' : ''}${Math.round(o)}; needs ${need}). Trade, gifts and common enemies warm him.`);
+      const need = allianceNeed(g, to, from), D = dread(g, to, from);
+      if (o < need) return no(`${me} does not yet count ${N} a friend (${attitudeLabel(o)}, ${o >= 0 ? '+' : ''}${Math.round(o)}; needs ${need}${D >= 0 ? `, less for fear of ${nameOf(g, D)}` : ''}). Trade, gifts and common enemies warm him.`);
       if (rel !== 'alliance' && alliesOf(g, to).length >= 2) return no(`${me} is already bound by two oaths.`);
       for (const c of alliesOf(g, to)) if (c !== from && g.rel[from][c] === 'war') return no(`${me} is bound to ${nameOf(g, c)}, whom you are fighting.`);
       if (pr.temper === 'cunning' && sFrom < sTo * 0.7) return no(`${me} sees no use in an alliance with the weak.`);
-      if (pr.temper === 'warlike' && !enemiesOf(g, to).length && !sharedEnemies(g, to, from).length) return no(`${me}: "Give me a common enemy and we will talk."`);
+      if (pr.temper === 'warlike' && !enemiesOf(g, to).length && !sharedEnemies(g, to, from).length && D < 0) return no(`${me}: "Give me a common enemy and we will talk."`);
       return yes();
     }
     case 'joinwar': {
@@ -220,6 +241,24 @@ export function judge(g, kind, from, to, ctx = {}) {
   }
   return no('Unknown request.');
 }
+
+// why two houses are sworn to each other, as the Council says it (T62): the foes they share, the house they both dread, else old friendship
+export function pactWhy(g, a, b) {
+  const shared = sharedEnemies(g, a, b), D = dread(g, a, b), r = [];
+  if (shared.length) r.push(`against ${shared.map((c) => (c === PLAYER ? 'you' : nameOf(g, c))).join(' and ')}`);
+  if (D >= 0 && !shared.includes(D)) r.push(`for fear of ${D === PLAYER ? 'you' : nameOf(g, D)}`);
+  return r.join(', ') || 'in friendship';
+}
+// two rival houses swear an alliance (T62): the news reaches the player when he has met either of them, with the reason
+function swore(g, a, b) {
+  const text = `${nameOf(g, a)} and ${nameOf(g, b)} swear an alliance, ${pactWhy(g, a, b)}.`;
+  record(g, a, b, 'alliance', text, 'note');
+  // setRelation has just written the bare line of news; it becomes this one, with the reason (a coalition against you is your news, with a warning)
+  const A = g.players[a].name, B = g.players[b].name, ev = g.events.findLast((e) => e.team === -1 && e.text === `${A} and ${B} swear an alliance.`);
+  if (ev) { ev.text = text; if (aimedAtPlayer(g, a, b)) { ev.team = PLAYER; ev.kind = 'warn'; } }
+  else g.log(aimedAtPlayer(g, a, b) ? PLAYER : -1, text, aimedAtPlayer(g, a, b) ? 'warn' : 'info');
+}
+const aimedAtPlayer = (g, a, b) => sharedEnemies(g, a, b).includes(PLAYER) || dread(g, a, b) === PLAYER;
 
 // ---- effects of an accepted request (shared by every route) ------------------------------------------------
 export function exec(g, kind, from, to, ctx = {}) {   // `from` asked, `to` agreed
@@ -368,13 +407,14 @@ export function deliberate(g, team) {
       continue;
     }
     // proposals among friends
-    if ((rel === 'peace' || rel === 'trade') && o >= DIPLO.need.alliance && cooled(g, team, b, 'alliance')) {
+    if ((rel === 'peace' || rel === 'trade') && cooled(g, team, b, 'alliance') && o >= allianceNeed(g, team, b)) {
       const commonThreat = g.players.some((c) => c.alive && c.team !== team && c.team !== b && g.known[team][c.team] && stance(g, team, c.team).threat >= 0.35 && stance(g, b, c.team).threat >= 0.25);
-      const useful = sharedEnemies(g, team, b).length || commonThreat || (enemiesOf(g, team).length && strength(g, b) > myS * 0.5) || (human && pr.honor > 0.6);
-      if (!human && alliesOf(g, team).length >= 1) continue;
+      const D = dread(g, team, b);   // a coalition against a house far stronger than both (T62)
+      const useful = sharedEnemies(g, team, b).length || commonThreat || D >= 0 || (enemiesOf(g, team).length && strength(g, b) > myS * 0.5) || (human && pr.honor > 0.6);
+      if (!human && alliesOf(g, team).length >= (D >= 0 ? 2 : 1)) continue;
       if (useful) {
-        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER && x.state === 'alliance')) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'alliance', { state: 'alliance' }); wrote(); } }
-        else { stamp(g, team, b, 'alliance'); if (judge(g, 'alliance', team, b).ok && judge(g, 'alliance', b, team).ok) exec(g, 'alliance', team, b); }
+        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER && x.state === 'alliance')) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'alliance', { state: 'alliance', text: D >= 0 ? voice(g, 'alliance', team, b).replace(/"$/, ` ${nameOf(g, D)} grows too mighty for either of us alone."`) : undefined }); wrote(); } }
+        else { stamp(g, team, b, 'alliance'); if (judge(g, 'alliance', team, b).ok && judge(g, 'alliance', b, team).ok) { exec(g, 'alliance', team, b); swore(g, team, b); } }
       }
     }
     // ask a friend to join a war

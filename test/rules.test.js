@@ -9,7 +9,8 @@ import { OBJECTIVES } from '../js/objectives.js';
 import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSeen, saveSeen } from '../js/tips.js';
 import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, wonVillage, tutorFoe, foeFelled } from '../js/tutorial.js';
 import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT, WARCRY, routWords, countWord, shareWord } from '../js/config.js';
-import { deliberate as dip_deliberate, intel, stance, pressWar } from '../js/diplomacy.js';
+import { deliberate as dip_deliberate, intel, stance, pressWar, dread, allianceNeed, judge as dip_judge, pactWhy, drift as dip_drift, strength as dip_strength } from '../js/diplomacy.js';
+import { COALITION } from '../js/config.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
@@ -2389,4 +2390,42 @@ test('what your scouts saw of a rival\'s army (T64): per house, by class, only w
   rp.foeSeen = { foot: 1, bow: 0, horse: 0 }; noteFoes(r, 1, rp);
   assert.equal(rp.foeSeen.siege, 4, 'rams seen'); assert.equal(rp.foeSeen.foot, 1, 'an old memory without siege still fades in');
   const mix = answerMix(r, 1, rp, { footman: 0.6, bowman: 0.25, knight: 0.15 }); assert.ok(mix.knight > mix.footman, 'leans to knights: ' + JSON.stringify(mix));
+});
+
+test('T62: rivals ally against a house far stronger than both, by the same judge the player faces, and the news says why', () => {
+  const g = new Game({ seed: 62, houses: 4, ai: false, size: MAP_SIZES.small });
+  for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) g.known[a][b] = 1;
+  g.time = 600; for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) if (a !== b) { g.rel[a][b] = 'peace'; g.relSince[a][b] = 0; }
+  assert.equal(dread(g, 1, 2), -1, 'no house far ahead, no dread');
+  const base = allianceNeed(g, 1, 2);
+  const s3 = g.seatOf(3); for (let i = 0; i < 30; i++) g.addUnit('knight', 3, s3.x + 2 + (i % 6), s3.y + 2 + Math.floor(i / 6));
+  assert.ok(dip_strength(g, 3) >= COALITION.lead * Math.max(dip_strength(g, 1), dip_strength(g, 2)), 'house 3 is far ahead');
+  assert.equal(dread(g, 1, 2), 3, 'the common dread is the strongest house');
+  assert.equal(allianceNeed(g, 1, 2), base - COALITION.ease, 'an alliance needs less goodwill');
+  // drift warms the two toward each other by COALITION.warm more than it would without the dread
+  const h = new Game({ seed: 62, houses: 4, ai: false, size: MAP_SIZES.small }); h.known = g.known; h.time = 600; h.rel = JSON.parse(JSON.stringify(g.rel)); h.relSince = g.relSince;
+  dip_drift(g); dip_drift(h);
+  assert.ok(Math.abs((g.opinion[1][2] - h.opinion[1][2]) - COALITION.warm) < 0.2, `warmer by about ${COALITION.warm}: ${g.opinion[1][2]} vs ${h.opinion[1][2]}`);
+  // the same judge the player faces: short of the usual need, yes for fear of house 3; and the player gets the same ease
+  g.opinion[1][2] = allianceNeed(g, 1, 2); g.opinion[2][1] = allianceNeed(g, 2, 1);
+  assert.ok(g.opinion[1][2] < base, 'below the old bar');
+  assert.ok(dip_judge(g, 'alliance', 2, 1).ok && dip_judge(g, 'alliance', 1, 2).ok, 'both swear');
+  g.opinion[1][PLAYER] = allianceNeed(g, 1, PLAYER) - 1; const no = dip_judge(g, 'alliance', PLAYER, 1);
+  assert.ok(!no.ok && /less for fear of/.test(no.why), 'a refusal names the dread: ' + no.why);
+  g.opinion[1][PLAYER] += 1; const yes = dip_judge(g, 'alliance', PLAYER, 1); assert.ok(yes.ok, 'the player gets the same ease: ' + yes.why);
+  g.opinion[1][PLAYER] = 0;
+  // a rival proposes of its own accord, and the news reaches the player with the reason
+  dip_deliberate(g, 1);
+  assert.equal(g.rel[1][2], 'alliance', 'sworn: ' + g.rel[1][2]);
+  const l = g.letters.find((x) => /swear an alliance/.test(x.text));
+  assert.ok(l && /for fear of/.test(l.text), 'the news says why: ' + l?.text);
+  assert.match(pactWhy(g, 1, 2), /for fear of/, 'the Council reason');
+  const news = g.events.filter((e) => /swear an alliance/.test(e.text));
+  assert.equal(news.length, 1, 'one line of news, not two'); assert.ok(news[0].team === -1 && /for fear of/.test(news[0].text), 'quiet, with the reason: ' + news[0].text);
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  assert.ok(readme.includes(`${COALITION.lead} times either`) && readme.includes(`(${COALITION.ease} less`), 'README gives COALITION\'s numbers');
+  g.rel[1][PLAYER] = g.rel[PLAYER][1] = g.rel[2][PLAYER] = g.rel[PLAYER][2] = 'war';
+  assert.match(pactWhy(g, 1, 2), /^against you/, 'a shared war comes first');
+  // no dread between allies of the strong house
+  g.rel[1][3] = g.rel[3][1] = 'alliance'; assert.equal(dread(g, 1, 2), -1, 'allied to the strong house: no dread of it');
 });

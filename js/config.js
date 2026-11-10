@@ -491,6 +491,10 @@ export const unitPlural = (kind) => plural(UNITS[kind]?.label || kind);
 // march: seconds an answering band is drawn on the minimap; aiCool: seconds between two flares of a rival house (it signals its war hosts'
 // goal); thanks: opinion gained by an ally that answered.
 export const SIGNAL = { r: 10, reach: 1, keep: 3, keepShare: 0.3, max: 12, min: 2, cool: 20, show: 12, march: 120, aiCool: 120, thanks: 4 };
+// Coalitions (T62, CK3's and Total War's coalitions against the strongest): a house whose strength is at least `lead` times that of both
+// a and b (and that is allied to neither, and known to both) is their common dread. Each drift it warms a and b toward each other by `warm`
+// (not at war), and the opinion an alliance needs between them is `ease` lower; the same rule answers the player's alliance requests.
+export const COALITION = { lead: 1.4, warm: 0.35, ease: 12 };
 export const PATROL = { pair: 2, spare: 4, every: 20, reach: 26, out: 10 };
 // Explore (T45, AoE IV's auto-scout): a scout sent exploring rides to the nearest unseen ground he can reach, again and again. Unseen ground is
 // sampled every `step` tiles; it is checked again every `look` seconds (on to the next place once his goal is seen, or a foe is near);

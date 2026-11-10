@@ -10,7 +10,7 @@ import {
   counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords } from './config.js';
 import { drawCrest, drawVale } from './render.js';
-import { intel, ranking, DIPLO } from './diplomacy.js';
+import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
 import { productionRows, idleProduction, researchRow } from './production.js';
 import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, JOBS, JOB_LABEL } from './economy.js';
@@ -50,6 +50,11 @@ function patchRows(el, html) {
   el.scrollTop = top;
 }
 
+// T-124: the goodwill a rival needs before it swears an alliance with you, and what it holds now (the same allianceNeed judge() uses)
+export function allianceBar(g, t) {
+  const need = allianceNeed(g, t, PLAYER), o = Math.round(g.opinion[t][PLAYER]), D = dread(g, t, PLAYER), sg = (x) => (x >= 0 ? '+' : '') + x;
+  return `An alliance needs their goodwill at ${sg(need)} (now ${sg(o)})${D >= 0 ? `, eased by their fear of ${esc(HOUSES[D].short)}` : ''}.${o >= need ? ' They may well agree.' : ''}`;
+}
 export class UI {
   constructor({ game, host, renderer, minimap, cfg }) {
     this.game = game; this.host = host; this.r = renderer; this.mini = minimap; this.cfg = cfg;
@@ -809,7 +814,7 @@ export class UI {
       + `</div>`;
     if (me) return html;
     const rels = [];
-    if (i.allies.length) rels.push('Allied with ' + i.allies.map((c) => esc(HOUSES[c].short)).join(', '));
+    if (i.allies.length) rels.push('Allied with ' + i.allies.map((c) => `${c === PLAYER ? 'you' : esc(HOUSES[c].short)} <small>(${esc(pactWhy(g, t, c))})</small>`).join(', '));
     if (i.enemies.length) rels.push('At war with ' + i.enemies.map((c) => esc(HOUSES[c].short)).join(', '));
     if (rels.length) html += `<div class="dline">${rels.join(' · ')}</div>`;
     html += `<div class="dline"><span class="att ${i.opinion >= 10 ? 'good' : i.opinion <= -10 ? 'bad' : ''}">${i.attitude} toward you (${i.opinion >= 0 ? '+' : ''}${i.opinion})</span>${i.why.length ? ' · ' + i.why.map((w) => `${w.d > 0 ? '+' : ''}${w.d} ${esc(w.why)}`).join('; ') : ''}</div>`;
@@ -830,6 +835,7 @@ export class UI {
     const tradeWhy = rel === 'war' ? 'Make peace first' : rel === 'alliance' ? 'Allies already trade' : pend ? 'Offer sent' : '';
     const allyWhy = rel === 'war' ? 'End the war first' : pend ? 'Offer sent' : '';
     html += `<div class="drow">${btn('peace', 'Peace', peaceWhy)}${btn('trade', 'Trade', tradeWhy)}${btn('alliance', 'Alliance', allyWhy)}${btn('war', 'War', '')}</div>`;
+    if (rel === 'peace' || rel === 'trade') html += `<div class="dnote allyneed">${allianceBar(g, t)}</div>`;   // T-124: the bar an alliance must clear, before the envoy rides
     if (rel === 'war' && !me) {   // peace bought with a share of the treasury: the coin rides with the envoy and is paid only if they agree
       const purse = Math.floor(g.players[PLAYER].gold);
       html += `<div class="drow">${PEACE_COIN.shares.map((f) => { const c = Math.floor(purse * f); return `<button class="dbtn sm" data-act="treaty" data-team="${t}" data-state="peace" data-coin="${c}" ${peaceWhy || c < 10 ? 'disabled' : ''} data-tip="${encodeURIComponent(`<b>Peace and ${Math.round(f * 100)}% of our coin</b><br>Your envoy offers peace and ${c} coin. Paid only if ${esc(HOUSES[t].short)} agrees; the more coin, the likelier they take it, even while they are winning.`)}">Peace + ${Math.round(f * 100)}% (${c}c)</button>`; }).join('')}</div>`;
