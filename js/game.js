@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords } from './config.js';
+  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -102,6 +102,7 @@ export class Game {
     this.mem = Array.from({ length: n }, () => ({}));   // what each house last saw of others' buildings under fog, by id (T44; drawn, never read by the rules)
     this.vmem = Array.from({ length: n }, () => ({}));   // and of every village (owner, folk, loyalty...), by id (T46; the same)
     this.amem = Array.from({ length: n }, () => ({}));   // and of every rival house's army, by class, fading (T64; the same: panels only)
+    this.battles = []; this.battleLog = []; this.nextBattle = 1; this._batT = 0;   // fights under way and battles filed (T63; panels only)
     this.walk = new Uint8Array(this.W * this.H);
     this.block = new Uint8Array(this.W * this.H);
 
@@ -1270,6 +1271,7 @@ export class Game {
   earnDeed(u, key) {
     if (!u || u.hp <= 0 || !DEEDS[key] || (u.deeds ||= []).includes(key)) return;
     u.deeds.push(key);
+    if (key !== 'blooded') { const f = this.battleWith(u); if (f && f.deeds.length < 12) f.deeds.push({ id: u.id, team: u.team, name: u.name ? shortName(u.name) : UNITS[u.kind].label, deed: key }); }
     const hp = DEEDS[key].hp; if (hp) { const old = u.maxHp; u.maxHp = Math.round(old * (1 + hp)); u.hp += u.maxHp - old; }
     if (u.team === PLAYER && key !== 'blooded') this.log(PLAYER, `${u.name ? shortName(u.name) : UNITS[u.kind].label} is now called ${DEEDS[key].label}.`, 'good');
   }
@@ -1510,9 +1512,52 @@ export class Game {
   rout(team) {
     const p = this.players[team]; if (!p || this.time - (p.routT ?? -1e9) < RETREAT.cool) return;
     p.routT = this.time; p.routs = (p.routs || 0) + 1;
+    for (const f of this.battles) if (f.sides[team] && this.time - f.t1 < BATTLE.quiet && !f.routs.includes(team)) f.routs.push(team);
     for (const v of this.villages) if (v.owner === team) v.loyalty = Math.max(0, v.loyalty * (1 - RETREAT.loyalty));
     if (team === PLAYER) this.log(PLAYER, `Your army fled the field. Your villages lose faith in you (${routWords().share} of their loyalty, slow to come back), and the other houses smell weakness.`, 'bad');
     else if (this.known[PLAYER][team]) this.log(PLAYER, `${this.players[team].name}'s army fled the field. Their villages waver.`, 'good');
+  }
+  // ---- battle reports (T63) -------------------------------------------------------------------------------
+  // A blow between two houses (a unit or building of one struck by a unit or building of another) joins the fight under way within
+  // BATTLE.r tiles of where it fell, or starts one. A fight keeps, per house, who took part (by id and class), its dead and their worth,
+  // buildings lost and blows struck; and whose men fought steadied by a war cry, deeds earned, kings fallen, routs and villages taken.
+  // With no blow for BATTLE.quiet s it is over and filed in battleLog (the last BATTLE.keep). Panels only: no rule ever reads them.
+  battleAt(x, y) { let best = null, bd = BATTLE.r; for (const f of this.battles) { const d = Math.hypot(f.x - x, f.y - y); if (d <= bd) { bd = d; best = f; } } return best; }
+  battleWith(u) { return u && u.team >= 0 ? this.battles.find((f) => f.sides[u.team]?.men[u.id]) || null : null; }
+  noteBlow(t, by, byTeam) {
+    const tt = t.type === 'unit' || t.type === 'building' ? t.team : -1;
+    if (!(tt >= 0) || !(byTeam >= 0) || tt === byTeam || !this.players[tt] || !this.players[byTeam]) return null;
+    let f = this.battleAt(t.x, t.y);
+    if (!f) { f = { id: this.nextBattle++, x: t.x, y: t.y, sx: 0, sy: 0, n: 0, t0: this.time, t1: this.time, sides: {}, cries: [], deeds: [], kings: [], routs: [], villages: [] }; this.battles.push(f); }
+    f.n++; f.sx += t.x; f.sy += t.y; f.x = f.sx / f.n; f.y = f.sy / f.n; f.t1 = this.time;
+    const side = (team) => (f.sides[team] ||= { men: {}, dead: {}, worth: 0, razed: 0, struck: 0 });
+    const join = (u) => { if (u?.type !== 'unit' || !(u.team >= 0)) return; side(u.team).men[u.id] = BATTLE_CLASS(u.kind); if (this.steadied(u) && !f.cries.includes(u.team)) f.cries.push(u.team); };
+    side(tt); side(byTeam).struck++; join(t); join(by);
+    return f;
+  }
+  noteFallen(f, t) {
+    const s = f.sides[t.team]; if (!s) return;
+    if (t.type === 'unit') { const c = BATTLE_CLASS(t.kind); s.dead[c] = (s.dead[c] || 0) + 1; s.worth += Object.values(UNITS[t.kind]?.cost || {}).reduce((a, n) => a + n, 0); }
+    else if (t.built >= 1) s.razed++;
+  }
+  updateBattles(dt) {
+    if ((this._batT -= dt) > 0) return;
+    this._batT = 1;
+    for (const f of this.battles) if (this.time - f.t1 > BATTLE.quiet) this.fileBattle(f);
+    this.battles = this.battles.filter((f) => this.time - f.t1 <= BATTLE.quiet);
+  }
+  fileBattle(f) {
+    const sides = Object.keys(f.sides).map(Number).sort((a, b) => a - b).map((team) => {
+      const s = f.sides[team], men = {}; let hurt = 0, n = 0;
+      for (const id in s.men) { const c = s.men[id]; men[c] = (men[c] || 0) + 1; n++; const u = this.byId.get(+id); if (u && u.hp > 0 && u.hp < u.maxHp - 0.5) hurt++; }
+      return { team, n, men, dead: { ...s.dead }, worth: s.worth, hurt, razed: s.razed, struck: s.struck };
+    });
+    const fallen = sides.reduce((a, s) => a + s.razed + Object.values(s.dead).reduce((x, k) => x + k, 0), 0);
+    if (f.n < BATTLE.minBlows && !fallen) return null;
+    const r = { id: f.id, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, t0: f.t0, t1: f.t1, blows: f.n, sides, cries: [...f.cries], deeds: f.deeds.map((d) => ({ ...d })), kings: f.kings.map((k) => ({ ...k })), routs: [...f.routs], villages: f.villages.map((v) => ({ ...v })) };
+    this.battleLog.push(r);
+    if (this.battleLog.length > BATTLE.keep) this.battleLog.shift();
+    return r;
   }
   cmdMove(units, x, y, queue = false) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
@@ -2972,7 +3017,7 @@ export class Game {
     this.updateWanderers(dt);
     this.updateSally(dt);
     this.updateUnits(dt); this.updateGear(dt); this.separate(dt); this.autoCamels(dt);
-    this.updateProjectiles(dt);
+    this.updateProjectiles(dt); this.updateBattles(dt);
     if (this.aiOn) updateAI(this, dt);
     this.cleanup();
     this.checkEnd(dt);
@@ -3216,6 +3261,7 @@ export class Game {
     const prev = v.owner;
     this.ejectAll(v);
     v.owner = team; this._vOwn = null; v.lean = team; v.spyFlip = -1; if (team === PLAYER) this.sfx('fanfare', v.x, v.y);
+    const fv = this.battleAt(v.x, v.y); if (fv && this.time - fv.t1 < BATTLE.quiet) fv.villages.push({ id: v.id, name: v.name, to: team, from: prev });
     const taken = this.claimTown(v, team, prev);
     let spoils = null;
     if (how === 'pillage') { v.pop = Math.max(2, v.pop * (1 - SACK.killed)); spoils = this.plunder(v, team); }   // the sack costs lives
@@ -3504,6 +3550,7 @@ export class Game {
   kingFalls(k, byTeam, by) {
     const p = this.players[k.team]; if (!p || p.kingId !== k.id) return;
     if (p.heirs == null) p.heirs = KING.heirs;
+    const f = this.battleWith(k); if (f) f.kings.push({ team: k.team, name: `${k.title || 'King'} ${shortName(k.name || '')}`.trim(), last: p.heirs <= 0 });
     p.kingsLost = (p.kingsLost || 0) + 1;
     if (p.heirs <= 0) { if (by) this.award(by, KING.killXp); this.endLine(k.team, k, byTeam); return; }   // the last of the line: the house falls with him
     p.heirs -= 1; p.heirAt = this.time + KING.heir; p.leaderless = true;
@@ -3545,6 +3592,7 @@ export class Game {
     const before = t.hp;
     if (t.type === 'unit' && byTeam >= 0) { t.engagedT = this.time; if (by) by.engagedT = this.time; }
     this.turnOnAttacker(t, by);
+    const fight = this.noteBlow(t, by, byTeam);   // (the battle report's account of the fight: T63)
     t.hp -= amt; t.flash = 0.15; this.sfx('hit', t.x, t.y);
     if (this.dmgNums && this.sfxOn && amt >= 0.5 && this.floaters.length < 60 && (t.team === PLAYER || byTeam === PLAYER || !this.fogOn || this.vis[PLAYER][Math.floor(t.y) * this.W + Math.floor(t.x)])) this.floaters.push({ x: t.x, y: t.y - 0.4, text: `-${Math.round(amt)}`, res: t.team === PLAYER ? 'hurt' : 'hit', age: 0 });   // optional damage numbers (Options)
     if (byTeam >= 0 && (t.type === 'building' || t.type === 'unit') && t.hp > 0) this.rallyDefenders(t, by, byTeam);
@@ -3552,6 +3600,7 @@ export class Game {
     if (t.type === 'unit' && t.hp > 0 && t.hp < t.maxHp * 0.1 && SOLDIER.has(t.kind)) t._brink = true;   // near death: if they live through it, a deed
     if (t.hp <= 0) {
       t.hp = 0;
+      if (fight) this.noteFallen(fight, t);
       if (by && by.type === 'unit' && by.team !== t.team) {   // the killer's service record and deeds
         if (t.type === 'unit') {
           if (t.team >= 0) { const lk = t.team + '>' + by.team; (this.losses ||= {})[lk] = (this.losses[lk] || 0) + 1; }   // men lost to whom: war weariness
@@ -3964,8 +4013,8 @@ export class Game {
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
-      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem, amem: this.amem,
-      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {} }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
+      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem, amem: this.amem, battles: this.battles, battleLog: this.battleLog, nextBattle: this.nextBattle,
+      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {}, _batT: this._batT }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
   }
   restore(d) {
@@ -3994,6 +4043,7 @@ export class Game {
     if (d.mem) this.mem = this.mem.map((m, i) => d.mem[i] || {});
     else if (this.fogOn) for (const b of this.buildings) if (b.team !== PLAYER && this.wasSeen(PLAYER, b.x, b.y)) this.mem[PLAYER][b.id] = { id: b.id, kind: b.kind, team: b.team, tx: b.tx, ty: b.ty, size: b.size, x: b.x, y: b.y, ore: b.ore, hp: b.hp, maxHp: b.maxHp, built: b.built, at: this.time };   // an older save: what was on seen ground counts as seen
     if (d.amem) this.amem = this.amem.map((m, i) => d.amem[i] || {});   // (an older save starts with nothing seen)
+    this.battles = d.battles || []; this.battleLog = d.battleLog || []; this.nextBattle = d.nextBattle || 1; this._batT ??= 0;   // (an older save starts with no reports: T63)
     if (d.vmem) this.vmem = this.vmem.map((m, i) => d.vmem[i] || {});
     else if (this.fogOn) for (const v of this.villages) if (this.wasSeen(PLAYER, v.x, v.y)) this.vmem[PLAYER][v.id] = this.villageNote(v);   // an older save: as it is
     if (this.tutorial && !this.tutorial.done && this.tutorial.foe == null && this.rel[PLAYER].every((r, i) => i === PLAYER || r !== 'war')) this.tutorFoe();   // a tutorial saved before the war lessons (T57) gets its weak rival

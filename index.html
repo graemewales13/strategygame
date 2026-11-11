@@ -8,37 +8,38 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 3h24v14c0 7-6 11-12 13C10 28 4 24 4 17z%27 fill=%27%23c9a42e%27 stroke=%27%235c4510%27 stroke-width=%272%27/%3E%3C/svg%3E">
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="style.css?v=mwb9s2zj">
+<link rel="stylesheet" href="style.css?v=mwcoxdkk">
 
 <script type="importmap">
 {
   "imports": {
-    "./js/ai.js": "./js/ai.js?v=mwb9s2zj",
-    "./js/art.js": "./js/art.js?v=mwb9s2zj",
-    "./js/audio.js": "./js/audio.js?v=mwb9s2zj",
-    "./js/config.js": "./js/config.js?v=mwb9s2zj",
-    "./js/diplomacy.js": "./js/diplomacy.js?v=mwb9s2zj",
-    "./js/economy.js": "./js/economy.js?v=mwb9s2zj",
-    "./js/entities.js": "./js/entities.js?v=mwb9s2zj",
-    "./js/game.js": "./js/game.js?v=mwb9s2zj",
-    "./js/gfx.js": "./js/gfx.js?v=mwb9s2zj",
-    "./js/groups.js": "./js/groups.js?v=mwb9s2zj",
-    "./js/keys.js": "./js/keys.js?v=mwb9s2zj",
-    "./js/learn.js": "./js/learn.js?v=mwb9s2zj",
-    "./js/main.js": "./js/main.js?v=mwb9s2zj",
-    "./js/map.js": "./js/map.js?v=mwb9s2zj",
-    "./js/names.js": "./js/names.js?v=mwb9s2zj",
-    "./js/net.js": "./js/net.js?v=mwb9s2zj",
-    "./js/objectives.js": "./js/objectives.js?v=mwb9s2zj",
-    "./js/production.js": "./js/production.js?v=mwb9s2zj",
-    "./js/recorder.js": "./js/recorder.js?v=mwb9s2zj",
-    "./js/render.js": "./js/render.js?v=mwb9s2zj",
-    "./js/save.js": "./js/save.js?v=mwb9s2zj",
-    "./js/terrain.js": "./js/terrain.js?v=mwb9s2zj",
-    "./js/tips.js": "./js/tips.js?v=mwb9s2zj",
-    "./js/trainui.js": "./js/trainui.js?v=mwb9s2zj",
-    "./js/tutorial.js": "./js/tutorial.js?v=mwb9s2zj",
-    "./js/ui.js": "./js/ui.js?v=mwb9s2zj"
+    "./js/ai.js": "./js/ai.js?v=mwcoxdkk",
+    "./js/art.js": "./js/art.js?v=mwcoxdkk",
+    "./js/audio.js": "./js/audio.js?v=mwcoxdkk",
+    "./js/battle.js": "./js/battle.js?v=mwcoxdkk",
+    "./js/config.js": "./js/config.js?v=mwcoxdkk",
+    "./js/diplomacy.js": "./js/diplomacy.js?v=mwcoxdkk",
+    "./js/economy.js": "./js/economy.js?v=mwcoxdkk",
+    "./js/entities.js": "./js/entities.js?v=mwcoxdkk",
+    "./js/game.js": "./js/game.js?v=mwcoxdkk",
+    "./js/gfx.js": "./js/gfx.js?v=mwcoxdkk",
+    "./js/groups.js": "./js/groups.js?v=mwcoxdkk",
+    "./js/keys.js": "./js/keys.js?v=mwcoxdkk",
+    "./js/learn.js": "./js/learn.js?v=mwcoxdkk",
+    "./js/main.js": "./js/main.js?v=mwcoxdkk",
+    "./js/map.js": "./js/map.js?v=mwcoxdkk",
+    "./js/names.js": "./js/names.js?v=mwcoxdkk",
+    "./js/net.js": "./js/net.js?v=mwcoxdkk",
+    "./js/objectives.js": "./js/objectives.js?v=mwcoxdkk",
+    "./js/production.js": "./js/production.js?v=mwcoxdkk",
+    "./js/recorder.js": "./js/recorder.js?v=mwcoxdkk",
+    "./js/render.js": "./js/render.js?v=mwcoxdkk",
+    "./js/save.js": "./js/save.js?v=mwcoxdkk",
+    "./js/terrain.js": "./js/terrain.js?v=mwcoxdkk",
+    "./js/tips.js": "./js/tips.js?v=mwcoxdkk",
+    "./js/trainui.js": "./js/trainui.js?v=mwcoxdkk",
+    "./js/tutorial.js": "./js/tutorial.js?v=mwcoxdkk",
+    "./js/ui.js": "./js/ui.js?v=mwcoxdkk"
   }
 }
 </script>
@@ -46,7 +47,7 @@
 // Before the game code has finished loading, a click on the splash cannot open the menu yet. Say so, and open it the moment the game is ready.
 // Registered on the document from <head> so not even an instant click is lost.
 window.__boot = { ready: false, pending: false };
-window.__BUILD = 'mwb9s2zj';
+window.__BUILD = 'mwcoxdkk';
 // If the game cannot start, say exactly why on the splash instead of waiting for ever.
 (function () {
   function show(msg) {
@@ -103,6 +104,7 @@ document.addEventListener('keydown', function () { if (!window.__boot.ready) { w
     <div id="toasts"></div>
     <div id="objectives" class="hidden"></div>
     <div id="ftip" class="hidden" role="status"></div>
+    <div id="bcard" class="hidden" role="status"></div>
     <div id="diplo" class="hidden"></div>
     <div id="council" class="hidden"></div>
     <div id="prodPanel" class="hidden"></div>

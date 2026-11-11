@@ -606,3 +606,15 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 #ftip .tbtns { display: flex; gap: 6px; margin-top: 7px; }
 #ftip .tbtns button { background: linear-gradient(180deg, #6d4d27, #3b2815); color: #efe0b4; border: 1px solid #8a6a2c; border-radius: 3px; padding: 3px 9px; font: 700 12px Georgia, serif; cursor: pointer; }
 #ftip .tbtns button:hover { background: linear-gradient(180deg, #86602f, #4a3319); color: #fff; }
+/* battle report card (T63): bottom right of the field, the tip card's twin */
+#bcard { position: absolute; right: 10px; bottom: 10px; width: 330px; max-width: calc(100% - 20px); max-height: 46%; overflow: auto; z-index: 4; padding: 8px 10px 9px; background: rgba(14,10,5,.92); border: 1px solid #c9a24a; border-radius: 6px; color: #efe0b4; font: 12.5px/1.35 Georgia, serif; box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+#bcard .btitle { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: #f3d58a; font-size: 13.5px; }
+#bcard .btitle small { margin-left: auto; color: #a8946a; font-size: 11px; }
+#bcard .tico { width: 22px; height: 22px; }
+#bcard .bline { margin: 2px 0; } #bcard .bline.good, #bcard .bverdict.good { color: #a9d68a; } #bcard .bline.bad, #bcard .bverdict.bad { color: #e9917a; } #bcard .bline.warn { color: #e8c260; }
+#bcard .bverdict { margin-top: 5px; font-weight: 700; }
+#bcard .tbtns { display: flex; gap: 6px; margin-top: 7px; align-items: center; }
+#bcard .tbtns button { background: linear-gradient(180deg, #6d4d27, #3b2815); color: #efe0b4; border: 1px solid #8a6a2c; border-radius: 3px; padding: 3px 9px; font: 700 12px Georgia, serif; cursor: pointer; }
+#bcard .tbtns button:hover { background: linear-gradient(180deg, #86602f, #4a3319); color: #fff; }
+#bcard .bmore { margin-left: auto; font-size: 10.5px; color: #a8946a; }
+.battles .brow { cursor: pointer; } .battles .brow:hover { background: #3a2a16; }

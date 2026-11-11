@@ -77,6 +77,7 @@ Each people has its own name pool (`FAR_NAMES` in `names.js`). Rival AIs hire th
 | Wall-breaker | razing 3 buildings | +25% damage against buildings |
 
 - **A service record** for every fighter: kills, buildings razed, time served, where they were raised.
+- **Battle reports** (Total War's and Bannerlord's post-battle screens; T63, 2026-11-11): when a fight ends, the card names the deeds your people earned in it (*Dougal, the Slayer*), whether your king fought and cried his men on, and any king who fell there, so a character's moment is told where it happened, not only on his service record.
 
 ### Worth doing next (not built)
 

@@ -2,6 +2,7 @@
 import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js';
 import { progress } from './objectives.js';
 import { dueTip, tipMemory, loadSeen, saveSeen, TIP_SHOW } from './tips.js';
+import { newBattle, battleWords, battlesOf, battleRow, BATTLE_SHOW, BATTLE_LIST } from './battle.js';
 import { LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint } from './tutorial.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
@@ -80,7 +81,7 @@ export class UI {
     this.bind();
     this.buildMenu();
   }
-  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.setFlare(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; this.tutCam = null; this.tutCouncil = false; this.tutSerfs0 = game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length; this.objKey = ''; this.objPrev = null; this.tipMem = tipMemory(); this.tipAt = this.tipLook = -1e9; this.hideTip(); $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
+  setGame(game) { this.game = game; this.heard = null; this.mini.setGame(game); this.clearSel(); this.placing = null; this.setAmove(false); this.setPatrol(false); this.setFlare(false); this.endShown = false; this.sigCmd = this.sigSel = this.sigGroups = this.sigProd = this.sigLedger = ''; this.econHist = []; this.ledgerI = {}; this.idleSeen = null; this.idleChimeT = -Infinity; this.groups = {}; this.lastGroup = null; this.lastAuto = game.time; this.tutCam = null; this.tutCouncil = false; this.tutSerfs0 = game.units.filter((u) => u.team === PLAYER && u.kind === 'serf' && u.hp > 0).length; this.objKey = ''; this.objPrev = null; this.tipMem = tipMemory(); this.tipAt = this.tipLook = -1e9; this.hideTip(); this.batSeen = Math.max(0, ...(game.battleLog || []).map((r) => r.id)); this.batLook = -1e9; this.hideBattle(); $('end').classList.add('hidden'); }   // (a new or loaded match keeps no old groups: their ids would name other men; nor the old autosave clock; nor an armed attack-move or patrol, which ate the first click on the new field: T-091)
 
   // ------------------------------------------------------------ selection helpers
   isSelected(e) {
@@ -540,6 +541,24 @@ export class UI {
     el.dataset.id = t.id; el.classList.remove('hidden'); this.tipShown = t.id;
     clearTimeout(this.tipTimer); this.tipTimer = setTimeout(() => this.hideTip(), TIP_SHOW * 1000);
   }
+  // battle reports (T63): once a second of game time, the newest battle the player's people were in that the rules have filed since the
+  // last look (battle.js newBattle) shows as a card at the bottom right of the field, with Show me and Close, for BATTLE_SHOW seconds
+  renderBattle() {
+    const g = this.game; if (!this.started || this.menuOpen || g.time - this.batLook < 1) return;
+    this.batLook = g.time;
+    const r = newBattle(g, this.batSeen ?? 0); if (!r) return;
+    this.batSeen = r.id; this.showBattle(r);
+  }
+  showBattle(r) {
+    const el = $('bcard'); if (!el) return;
+    const w = battleWords(this.game, r);
+    el.innerHTML = `<div class="btitle">${uiImg('marks', 'battle', '⚔', 'tico')}<b>${esc(w.title)}</b><small>${esc(w.when)}</small></div>`
+      + w.lines.map((l) => `<div class="bline ${l.cls}">${esc(l.text)}</div>`).join('') + `<div class="bverdict ${w.verdict.cls}">${esc(w.verdict.text)}</div>`
+      + `<div class="tbtns"><button data-act="bgo" data-x="${r.x}" data-y="${r.y}">Show me</button><button data-act="bclose">Close</button><span class="bmore">All battles: Council (${esc(keyName(this.kmap.council))})</span></div>`;
+    el.dataset.id = r.id; el.classList.remove('hidden');
+    clearTimeout(this.batTimer); this.batTimer = setTimeout(() => this.hideBattle(), BATTLE_SHOW * 1000);
+  }
+  hideBattle() { clearTimeout(this.batTimer); $('bcard')?.classList.add('hidden'); }
   hideTip() { clearTimeout(this.tipTimer); this.tipShown = null; $('ftip')?.classList.add('hidden'); }
   setTips(on) {
     this.tipsOn = on; if ($('sTips')) $('sTips').checked = on;
@@ -751,6 +770,7 @@ export class UI {
       case 'askwar': this.ask('askwar', +d.team, { target: +d.target }); break;
       case 'council': this.toggleCouncil(d.team != null ? +d.team : null); break;
       case 'councilclose': this.councilOpen = false; $('council').classList.add('hidden'); break;
+      case 'bgo': this.r.centerOn(+d.x, +d.y); break;   // a battle report's spot (T63)
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'bell': this.ringBell(); break;
@@ -867,7 +887,9 @@ export class UI {
       const known = i.known || me;
       html += `<div class="hcard ${me ? 'me' : ''} ${pl.alive ? '' : 'fallen'} ${this.councilFocus === t ? 'focus' : ''}"><div class="hctop"><canvas width="30" height="34" data-ccrest="${t}"></canvas><div><b style="color:${HOUSES[t].accent}">${esc(HOUSES[t].name)}</b><div class="hmotto">${esc(HOUSES[t].motto)}</div></div>${me ? '<span class="rel me">you</span>' : `<span class="rel ${i.rel}">${known ? i.rel : 'unmet'}</span>`}${pl.alive && known ? `<span class="hrank">#${i.rank}</span>` : ''}</div>${pl.alive ? this.houseCard(t) : '<div class="dline">This house has fallen.</div>'}</div>`;
     }
-    html += `</div><div class="ctitle">Correspondence</div><div class="letters">${g.letters.filter((l) => l.to === PLAYER || l.from === PLAYER).slice(0, 14).map((l) => this.letterRow(l)).join('') || '<div class="hint">No letters yet. Rival lords write once they have met you.</div>'}</div>`;
+    const bats = battlesOf(g).slice(0, BATTLE_LIST);   // the player's last battles (T63), each a click to its spot
+    html += `</div><div class="ctitle">Battles</div><div class="letters battles">${bats.map((r) => `<div class="lrow brow" data-act="bgo" data-x="${r.x}" data-y="${r.y}" title="Show the spot">${esc(battleRow(g, r))}</div>`).join('') || '<div class="hint">No battles yet. Each fight your people are in is told here when it ends.</div>'}</div>`;
+    html += `<div class="ctitle">Correspondence</div><div class="letters">${g.letters.filter((l) => l.to === PLAYER || l.from === PLAYER).slice(0, 14).map((l) => this.letterRow(l)).join('') || '<div class="hint">No letters yet. Rival lords write once they have met you.</div>'}</div>`;
     return html;
   }
   toggleCouncil(team = null) {
@@ -935,7 +957,7 @@ export class UI {
     g.sfxOn = true; g.dmgNums = this.dmgNums; for (const s of g.sfxQ.splice(0)) playAt(s.name, s.x, s.y, this.r.cam);
     this.hudT -= dt;
     // (not while a button is held down: a panel rebuilt under the pointer loses the click)
-    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); this.renderIdle(); this.renderTip(); this.renderLedger(); if (this.diploOpen != null) this.renderDiplo(); }
+    if (this.hudT <= 0 && !this.uiHold) { this.hudT = 0.12; this.autoSave(); this.renderOffers(); this.renderCouncil(); this.renderTop(); this.renderSel(); this.renderCmd(); this.renderGroups(); this.renderProd(); this.renderIdle(); this.renderTip(); this.renderBattle(); this.renderLedger(); if (this.diploOpen != null) this.renderDiplo(); }
     if (g.outcome && !this.endShown) this.showEnd();
     if (this.campaignOpen) { this.campT = (this.campT || 0) - dt; if (this.campT <= 0) { this.campT = 0.15; this.drawCampaign(); } }
   }
@@ -1633,6 +1655,7 @@ export class UI {
     try { this.tipsOn = localStorage.getItem('auld-world.tipson') !== 'off'; } catch { this.tipsOn = true; }   // (T58: on unless switched off)
     if ($('sTips')) { $('sTips').checked = this.tipsOn; $('sTips').onchange = () => this.setTips($('sTips').checked); }
     if ($('sTipsAgain')) $('sTipsAgain').onclick = () => { this.tipSeen.clear(); saveSeen(this.keyStore, this.tipSeen); this.setTips(true); this.toast('Every tip will show again the next time it applies.', 'info'); };
+    $('bcard')?.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.act === 'bgo') this.r.centerOn(+b.dataset.x, +b.dataset.y); else this.hideBattle(); });
     $('ftip')?.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.act === 'tipoff') { this.setTips(false); this.toast('Tips off. Turn them back on under Options.', 'info'); } this.hideTip(); });
     try { this.dmgNums = localStorage.getItem('auld-world.dmgnums') === 'on'; } catch { this.dmgNums = false; }
     if ($('sDmg')) { $('sDmg').checked = this.dmgNums; $('sDmg').onchange = () => { this.dmgNums = $('sDmg').checked; try { localStorage.setItem('auld-world.dmgnums', this.dmgNums ? 'on' : 'off'); } catch { /* private window */ } }; }

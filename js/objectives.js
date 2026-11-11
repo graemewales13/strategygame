@@ -1,6 +1,6 @@
 // Auld World - guided objectives for a first match. Pure functions of the game state (no DOM) so they can be tested headless.
 // Each step is "done" by what the player now has, so loading a save or skipping ahead needs no bookkeeping.
-import { PLAYER, KING, heirsWord } from './config.js';
+import { PLAYER, KING, heirsWord, MINE_JOBS, DISTRICT } from './config.js';
 
 const mine = (g, kind) => g.buildings.some((b) => b.team === PLAYER && b.kind === kind && b.built >= 1 && b.hp > 0);
 const count = (g, kind) => g.buildings.filter((b) => b.team === PLAYER && b.kind === kind && b.built >= 1 && b.hp > 0).length;
@@ -14,11 +14,11 @@ export const OBJECTIVES = [
     done: (g) => g.players[PLAYER].wood > 500 * g.diff.playerMul || anyBuilt(g) },
   { id: 'serfs', title: 'Draft more serfs', hint: 'Press {key:hall} to open your home village and draft serfs. More hands, faster work.',
     done: (g) => serfs(g) >= 6 || anyBuilt(g) },
-  { id: 'mine', title: 'Raise a mine', hint: 'Open the build menu, choose Mine and place it on a deposit (the glints in the rock). Villagers from villages within 16 tiles dig for it; with no village near it has no workers.',
+  { id: 'mine', title: 'Raise a mine', hint: `Open the build menu, choose Mine and place it on a deposit (the glints in the rock). Villagers from villages within ${MINE_JOBS.r} tiles dig for it; with no village near it has no workers.`,
     done: (g) => mine(g, 'mine') },
   { id: 'market', title: 'Raise a market', hint: 'Mines feed a market. It sells their ore and earns coin from the homes and villages around it.',
     done: (g) => mine(g, 'market') },
-  { id: 'community', title: 'Build a community', hint: 'Keep a mine, a foundry, cottages and a tavern within 20 tiles of the market. Select the market to see which links it lacks.',
+  { id: 'community', title: 'Build a community', hint: `Keep a mine, a foundry, cottages and a tavern within ${DISTRICT.r} tiles of the market. Select the market to see which links it lacks.`,
     done: (g) => g.buildings.some((b) => b.team === PLAYER && b.kind === 'market' && b.built >= 1 && g.district(b).score >= 3) },
   { id: 'keep', title: 'Raise a keep and barracks', hint: 'The keep sways nearby villages and drills soldiers. The barracks trains them.',
     done: (g) => mine(g, 'keep') && mine(g, 'barracks') },

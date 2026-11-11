@@ -10,7 +10,8 @@ import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSee
 import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, wonVillage, tutorFoe, foeFelled } from '../js/tutorial.js';
 import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT, WARCRY, routWords, countWord, shareWord } from '../js/config.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar, dread, allianceNeed, judge as dip_judge, pactWhy, drift as dip_drift, strength as dip_strength } from '../js/diplomacy.js';
-import { COALITION } from '../js/config.js';
+import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT } from '../js/config.js';
+import { battleWords, battlesOf, newBattle, battleRow, menWords } from '../js/battle.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
@@ -2428,4 +2429,73 @@ test('T62: rivals ally against a house far stronger than both, by the same judge
   assert.match(pactWhy(g, 1, 2), /^against you/, 'a shared war comes first');
   // no dread between allies of the strong house
   g.rel[1][3] = g.rel[3][1] = 'alliance'; assert.equal(dread(g, 1, 2), -1, 'allied to the strong house: no dread of it');
+});
+
+test('battle reports (T63): blows group into one fight by place, file when quiet, count men, dead and worth, saved, reset, never on a scratch', () => {
+  const g = mk({ size: MAP_SIZES.small }); g.rel[0][1] = g.rel[1][0] = 'war';
+  const h = g.seatOf(PLAYER), x = h.x + 20, y = h.y + 6;
+  const us = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, x + i, y)), them = [0, 1].map((i) => g.addUnit('bowman', 1, x + i, y + 1));
+  // a scratch is no battle: two blows then quiet
+  g.damage(them[0], 1, PLAYER, us[0]); g.damage(us[0], 1, 1, them[0]);
+  assert.equal(g.battles.length, 1, 'one fight under way'); assert.equal(g.battleAt(x, y), g.battles[0]);
+  g.time += BATTLE.quiet + 1; g.updateBattles(1);
+  assert.equal(g.battles.length, 0, 'over'); assert.equal(g.battleLog.length, 0, 'a scratch is not filed');
+  // a real fight: blows near each other are one battle; a blow far away is another
+  for (let i = 0; i < BATTLE.minBlows; i++) g.damage(us[i % 3], 2, 1, them[i % 2]);
+  const far = g.addUnit('footman', PLAYER, x + BATTLE.r + 30, y), farFoe = g.addUnit('footman', 1, x + BATTLE.r + 31, y);
+  g.damage(far, 1, 1, farFoe);
+  assert.equal(g.battles.length, 2, 'a blow beyond BATTLE.r starts another fight');
+  g.damage(them[1], 999, PLAYER, us[1]);   // a bowman dies
+  const f = g.battleWith(us[1]); assert.ok(f && f.sides[1].dead.bow === 1, 'the dead are counted by class');
+  assert.equal(f.sides[1].worth, Object.values(UNITS.bowman.cost).reduce((a, n) => a + n, 0), 'and their worth');
+  assert.equal(BATTLE_CLASS('king'), 'king'); assert.equal(BATTLE_CLASS('serf'), 'folk'); assert.equal(BATTLE_CLASS('camel'), 'folk'); assert.equal(BATTLE_CLASS('knight'), 'horse');
+  // saved and restored mid-fight
+  const q = new Game({ seed: 1, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(q.battles, g.battles, 'fights under way are saved'); assert.equal(q.nextBattle, g.nextBattle);
+  g.time += BATTLE.quiet + 1; g.updateBattles(1);
+  const r = g.battleLog.find((b) => b.id === f.id); assert.ok(r, 'filed');
+  const mine = r.sides.find((s) => s.team === PLAYER), theirs = r.sides.find((s) => s.team === 1);
+  assert.equal(mine.n, 3, 'three of ours fought'); assert.deepEqual(mine.men, { foot: 3 }); assert.equal(theirs.n, 2); assert.equal(mine.hurt, 3, 'all three wounded');
+  assert.equal(g.battleLog.length, 1, 'the far scratch was not filed');
+  assert.equal(newBattle(g, 0), r, 'the newest for the player'); assert.equal(newBattle(g, r.id), null, 'and no more once seen');
+  const w = battleWords(g, r);
+  assert.match(w.title, /^Battle (at|near|in)/); assert.match(w.lines[0].text, /^You \(3: 3 foot\) against .+ \(2: 2 bowmen\)\.$/);
+  assert.ok(w.lines.some((l) => /losses: 1 dead \(1 bowman\)/.test(l.text)), 'their dead: ' + JSON.stringify(w.lines));
+  assert.equal(w.verdict.cls, 'good', 'they lost a bowman, we lost nobody');
+  assert.match(battleRow(g, r), /you lost 0, they lost 1/);
+  assert.equal(menWords({ foot: 2, bow: 1, king: 1 }), '1 king, 2 foot and 1 bowman');
+  // the battle log is panels only: the rules never read it
+  const src = readFileSync(new URL('../js/ai.js', import.meta.url), 'utf8') + readFileSync(new URL('../js/diplomacy.js', import.meta.url), 'utf8');
+  assert.ok(!/battleLog|battles\b/.test(src), 'no rule reads the reports');
+  // reset forgets
+  g.reset({ seed: 5, houses: 3, ai: false, size: MAP_SIZES.small }); assert.deepEqual(g.battleLog, []); assert.deepEqual(g.battles, []); assert.equal(g.nextBattle, 1);
+});
+
+test('battle reports (T63): the king\'s war cry, a fallen king, deeds, a rout and a village taken are told', () => {
+  const g = mk({ size: MAP_SIZES.small }); g.rel[0][1] = g.rel[1][0] = 'war';
+  const k = g.kingOf(PLAYER), x = k.x, y = k.y;
+  const men = [0, 1, 2, 3].map((i) => g.addUnit('footman', PLAYER, x + 1 + (i % 2), y + Math.floor(i / 2)));
+  const foes = [0, 1, 2].map((i) => g.addUnit('footman', 1, x + 3, y + i));
+  for (const u of men) u.cryT = g.time + 10; k.cryT = g.time + 10;   // steadied by the cry
+  for (let i = 0; i < BATTLE.minBlows; i++) g.damage(foes[i % 3], 1, PLAYER, men[i % 4]);
+  g.damage(foes[0], 1, PLAYER, k);
+  const f = g.battleWith(k); assert.ok(f, 'the king joined'); assert.ok(f.cries.includes(PLAYER), 'his cry is noted');
+  g.earnDeed(men[0], 'slayer'); assert.equal(f.deeds.length, 1, 'a deed in the fight'); g.earnDeed(men[1], 'blooded'); assert.equal(f.deeds.length, 1, 'not the first-blood deed');
+  for (const u of men) u.engagedT = g.time;
+  g.rout(PLAYER); assert.deepEqual(f.routs, [PLAYER], 'the rout');
+  const fk = g.kingOf(1); fk.x = x + 3; fk.y = y + 3; g.damage(fk, 1e6, PLAYER, men[2]);
+  assert.equal(f.kings.length, 1, 'their king fell here');
+  const v = g.villages.find((x) => x.owner !== PLAYER); f.x = v.x; f.y = v.y; g.submit(v, PLAYER, 'sack');
+  assert.deepEqual(f.villages.map((o) => o.name), [v.name], 'the village taken in the fight');
+  g.time += BATTLE.quiet + 1; g.updateBattles(1);
+  const r = battlesOf(g)[0], w = battleWords(g, r), text = w.lines.map((l) => l.text).join(' | ');
+  assert.match(text, /fought in it and cried his men on/); assert.match(text, /Deeds: .+Slayer|Deeds: .+, /); assert.match(text, /Your army fled the field: every village of yours lost 20%/);
+  assert.match(text, /'s .+ fell/, 'the fallen king: ' + text); assert.ok(text.includes(`You took ${v.name}.`), 'the village: ' + text);
+});
+
+test('the objectives guide reads its reaches from config (T-127): the mine\'s villages and the market\'s district', () => {
+  const hint = (id) => OBJECTIVES.find((o) => o.id === id).hint;
+  assert.ok(hint('mine').includes(`within ${MINE_JOBS.r} tiles`), hint('mine'));
+  assert.ok(hint('community').includes(`within ${DISTRICT.r} tiles`), hint('community'));
+  assert.ok(!/\b\d+ tiles\b/.test(readFileSync(new URL('../js/objectives.js', import.meta.url), 'utf8')), 'no tile count written out by hand');
 });

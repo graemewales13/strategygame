@@ -513,6 +513,14 @@ export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11,
 // T61: the king's war cry. A king standing on the field (not inside walls) steadies every soldier of his within r tiles for secs seconds: they
 // strike dmg harder, and a Retreat they make from that fight is no rout (RETREAT). Once every cool seconds. Rivals cry when at least aiFoes
 // foe soldiers and aiOwn of their own stand within r of their king; a band so steadied does not fall back to regroup while it lasts.
+// T63: battle reports. Every blow between two houses' people or buildings joins the fight under way within r tiles of where it fell
+// (a fight's spot is the mean of its blows), else starts one; a fight with no blow for quiet seconds is over, and filed when it was a
+// battle at all (at least minBlows blows, or someone died). keep reports are kept. Panels only: never read by the rules' decisions.
+export const BATTLE = { r: 14, quiet: 20, minBlows: 6, keep: 40 };
+// (a report sorts men by class: the king apart, soldiers by UNIT_CLASS, and serfs, camels, spies and scholars as folk)
+export const BATTLE_CLASS = (kind) => (kind === 'king' ? 'king' : kind === 'camel' ? 'folk' : UNIT_CLASS[kind] || 'folk');
+export const BATTLE_WORD = { king: ['king', 'kings'], foot: ['foot', 'foot'], bow: ['bowman', 'bowmen'], horse: ['horseman', 'horse'], siege: ['siege engine', 'siege engines'], folk: ['of the folk', 'folk'] };
+export const BATTLE_ORDER = ['king', 'foot', 'bow', 'horse', 'siege', 'folk'];
 export const WARCRY = { r: 10, secs: 20, cool: 180, dmg: 0.15, aiFoes: 3, aiOwn: 3 };
 export const KING = { safeR: 12, aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 20, heirs: 2, fugitiveSight: 2.5, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
   titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King', vikings: 'Jarl', byzantines: 'Basileus', persians: 'Shahanshah' } };

@@ -601,3 +601,17 @@ Causes and fixes:
 - **Measured** (`AULD_MAP=112`, six houses, all AI, 25 minutes): seed 2, four rival alliances (first at minute 5.0); seed 3, three (5.8); seed 5, one (4.3). Before: none, none, two (9.1).
 - **Balance note**: a player far ahead now meets neighbours who join hands and take up each other's wars. The AI's own proposals still need the usual goodwill when no house is far ahead.
 - **Tests**: `test/rules.test.js` (dread, the eased bar, the drift's extra warmth, the same judge for the player, a rival's own proposal, the news line once and with the reason, the Council reason, README numbers from `COALITION`); `tools/ally-smoke.cjs`.
+
+## T-126 - Battle reports (added 2026-11-11, T63)
+
+- **Why**: a fight ended with no account. The player saw floaters and the log, and could not tell who fought, what each side lost or whether the trade of men was good; the war cry, deeds, routs and fallen kings went by as single toasts.
+- **Rule** (`js/game.js` `noteBlow`, `noteFallen`, `updateBattles`, `fileBattle`; numbers in `BATTLE` in `js/config.js`): every blow between two houses' people or buildings joins the fight under way within `BATTLE.r` (14) tiles of where it fell (a fight's spot is the mean of its blows), else starts one. A fight keeps per house who took part (id and class: king, foot, bow, horse, siege, folk), the dead and their worth (their training cost), buildings lost and blows struck; and whose men fought steadied by a war cry, deeds earned (not *Blooded*), kings fallen, routs and villages taken there. With no blow for `BATTLE.quiet` (20) s it is over and, if it was a battle (at least `BATTLE.minBlows` blows, or someone fell), filed in `game.battleLog` (the last `BATTLE.keep`, 40) with the wounded counted. Seeded, no randomness, saved (`battles`, `battleLog`, `nextBattle`, the `_batT` clock) and reset. No rule reads them (guarded by a test over `ai.js` and `diplomacy.js`).
+- **UI** (`js/battle.js`, `js/ui.js` `renderBattle`): the newest filed battle with the player in it shows as a card at the bottom right of the field for 24 s (Show me, Close); a loaded save does not replay old reports. The Council lists the last eight under *Battles*, each a click to its spot. The verdict compares the dead's worth: *a good trade* at 1.5 times or better, *a costly fight* at the reverse, else *an even trade*; nobody dead is *a skirmish*.
+- **Tests**: `test/rules.test.js` (grouping by place, a scratch not filed, the dead by class and worth, save mid-fight, the words, the row, reset, no rule reads it; the cry, a deed, a rout, a fallen king and a village taken told); `tools/battle-smoke.cjs` (a real fight beside the seat, the card read, Show me and Close, the Council list, at 1366x768).
+
+## T-127 - The objectives guide wrote its tile reaches by hand (fixed 2026-11-11)
+
+- **Symptom**: the guide's *Raise a mine* and *Build a community* hints said "within 16 tiles" and "within 20 tiles", written out by hand. They matched `MINE_JOBS.r` and `DISTRICT.r` today, but the tips were already moved to config numbers for the same reason (T-116), and a balance change would have left the guide telling the player the wrong reach.
+- **Fix** (`js/objectives.js`): both hints read `MINE_JOBS.r` and `DISTRICT.r`.
+- **Test**: `test/rules.test.js` checks both numbers and that no tile count is written out by hand in `objectives.js`.
+
