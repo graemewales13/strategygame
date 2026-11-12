@@ -10,6 +10,7 @@ import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSee
 import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, wonVillage, tutorFoe, foeFelled } from '../js/tutorial.js';
 import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT, WARCRY, routWords, countWord, shareWord } from '../js/config.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar, dread, allianceNeed, judge as dip_judge, pactWhy, drift as dip_drift, strength as dip_strength } from '../js/diplomacy.js';
+import { updateCoalitions, coalitionOf, coalitionAgainst, coalitionWords, boundTo, wronged } from '../js/diplomacy.js';
 import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT } from '../js/config.js';
 import { battleWords, battlesOf, newBattle, battleRow, menWords } from '../js/battle.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
@@ -2429,6 +2430,69 @@ test('T62: rivals ally against a house far stronger than both, by the same judge
   assert.match(pactWhy(g, 1, 2), /^against you/, 'a shared war comes first');
   // no dread between allies of the strong house
   g.rel[1][3] = g.rel[3][1] = 'alliance'; assert.equal(dread(g, 1, 2), -1, 'allied to the strong house: no dread of it');
+});
+
+test('T66: coalition wars: three houses that dread a wronging house declare war on it together, make no peace of their own, and make peace with their leader', () => {
+  const setup = () => {
+    const g = new Game({ seed: 66, houses: 5, ai: false, size: MAP_SIZES.small });
+    for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) g.known[a][b] = 1;
+    g.time = COALITION.from + 100; for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) if (a !== b) { g.rel[a][b] = 'peace'; g.relSince[a][b] = 0; }
+    return g;
+  };
+  // an AI runaway (house 4), far stronger than 1, 2 and 3
+  const g = setup(), s4 = g.seatOf(4);
+  for (let i = 0; i < 40; i++) g.addUnit('knight', 4, s4.x + 2 + (i % 8), s4.y + 2 + Math.floor(i / 8));
+  updateCoalitions(g);
+  assert.equal(g.coalitions.length, 0, 'dread alone is not enough: nobody was wronged');
+  g.time += 1; wronged(g, 2, 4, 'took Glenmore');
+  const P = g.players[PLAYER]; P.gold = 0;   // (too poor to be strong: the player dreads house 4 too, and is invited)
+  updateCoalitions(g);
+  const c = coalitionAgainst(g, 4);
+  assert.ok(c, 'a coalition forms against the wronging house');
+  assert.equal(c.leader, 2, 'the wronged house leads'); assert.equal(c.state, 'war');
+  for (const m of [1, 2, 3]) { assert.equal(g.rel[m][4], 'war', `house ${m} at war with 4`); assert.equal(coalitionOf(g, m), c); }
+  assert.ok(!c.members.includes(PLAYER), 'the player is never drafted');
+  assert.match(coalitionWords(g, c), /\(leading\) .*against .*took Glenmore/, 'the Council words: ' + coalitionWords(g, c));
+  assert.ok(g.letters.some((l) => /A coalition under .* declares war on/.test(l.text)), 'the news');
+  assert.ok(g.offers.some((o) => o.kind === 'joinwar' && o.from === 2 && o.to === PLAYER && o.target === 4), 'the player is asked to march with them');
+  // members make no peace of their own; the leader's peace is theirs
+  assert.ok(boundTo(g, 1, 4) && !boundTo(g, 2, 4), 'members are bound, the leader is not');
+  const j = dip_judge(g, 'peace', 4, 1, { coin: 5000 });
+  assert.ok(!j.ok && /sworn to the coalition/.test(j.why), 'a member refuses a peace of its own: ' + j.why);
+  dip_deliberate(g, 1); assert.equal(g.rel[1][4], 'war', 'and does not sue for one');
+  g.time += 1000; g.setRelation(2, 4, 'peace'); updateCoalitions(g);
+  for (const m of [1, 3]) assert.equal(g.rel[m][4], 'peace', `house ${m} makes peace with its leader`);
+  assert.equal(coalitionAgainst(g, 4), null, 'the coalition ends');
+  wronged(g, 1, 4, 'slew our king'); updateCoalitions(g);
+  assert.equal(coalitionAgainst(g, 4), null, `none again for ${COALITION.again} s`);
+  // saved, restored and reset
+  const h = setup(); for (let i = 0; i < 40; i++) h.addUnit('knight', 4, s4.x + 2 + (i % 8), s4.y + 2 + Math.floor(i / 8)); wronged(h, 3, 4, 'declared war on us'); updateCoalitions(h);
+  const r = new Game({ seed: 1, houses: 3, ai: false, size: MAP_SIZES.small }).restore(JSON.parse(JSON.stringify(h.serialize())));
+  assert.deepEqual(r.coalitions, h.coalitions, 'coalitions saved'); assert.deepEqual(r.wrongs, h.wrongs, 'wrongs saved');
+  r.reset({ seed: 2, houses: 3, size: MAP_SIZES.small }); assert.equal(r.coalitions.length, 0); assert.deepEqual(r.wrongs, {}, 'reset clears');
+  // against the player: the leader's ultimatum first; paying it stands the coalition down, ignoring it brings war from all
+  const u = setup(); u.players[PLAYER].gold = 500; const sp = u.seatOf(PLAYER);
+  for (let i = 0; i < 40; i++) u.addUnit('knight', PLAYER, sp.x + 2 + (i % 8), sp.y + 2 + Math.floor(i / 8));
+  wronged(u, 3, PLAYER, 'sacked Kilbride'); updateCoalitions(u);
+  const cu = coalitionAgainst(u, PLAYER); assert.ok(cu && cu.state === 'ultimatum' && cu.leader === 3, 'an ultimatum, from the wronged house');
+  assert.ok([1, 2, 3, 4].every((m) => u.rel[m][PLAYER] === 'peace'), 'no war yet');
+  const lt = u.offers.find((o) => o.id === cu.letter); assert.ok(lt && lt.kind === 'tribute' && lt.amount === 200 && /stand together against you/.test(lt.text), 'the letter: ' + lt?.text);
+  const v = (() => { const w = setup(); w.players[PLAYER].gold = 500; for (let i = 0; i < 40; i++) w.addUnit('knight', PLAYER, sp.x + 2 + (i % 8), sp.y + 2 + Math.floor(i / 8)); wronged(w, 3, PLAYER, 'sacked Kilbride'); updateCoalitions(w); return w; })();
+  assert.ok(u.respondOffer(PLAYER, 3, true, cu.letter), 'paid'); u.time += 1; updateCoalitions(u);
+  assert.equal(coalitionAgainst(u, PLAYER), null, 'paid: the coalition stands down'); assert.ok([1, 2, 3, 4].every((m) => u.rel[m][PLAYER] === 'peace'));
+  v.time += STANCE.ultimatum + 1; updateCoalitions(v);
+  const cv = coalitionAgainst(v, PLAYER); assert.ok(cv && cv.state === 'war', 'ignored: war');
+  assert.ok(cv.members.length >= COALITION.min && cv.members.every((m) => v.rel[m][PLAYER] === 'war'), 'every member at war with you');
+  // the AI's war host prefers the coalition's foe
+  assert.ok(readFileSync(new URL('../js/ai.js', import.meta.url), 'utf8').includes('COALITION.focus'), 'the war host leans to the coalition\'s foe');
+});
+
+test('the panels read their reaches and times from config (T-128): a mining camp, the Armoury swap, the spy report', () => {
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  assert.ok(ui.includes('within ${MINE_JOBS.r} tiles at camp rates') && ui.includes('within ${REFIT.r} tiles of an Armoury') && ui.includes('It fades ${SPY_INTEL.fresh} s after'), 'read from config');
+  assert.ok(!/within (16|7) tiles|fades 45 s/.test(ui), 'no hand-written copy left');
+  // and inside template strings, so they are filled in
+  for (const k of ['MINE_JOBS.r} tiles at camp', 'REFIT.r} tiles of an Armoury', 'SPY_INTEL.fresh} s after']) { const line = ui.split('\n').find((l) => l.includes(k)); const pre = line.slice(0, line.indexOf(k)); assert.ok(pre.lastIndexOf('`') > pre.lastIndexOf("'"), 'a template string: ' + k); }
 });
 
 test('battle reports (T63): blows group into one fight by place, file when quiet, count men, dead and worth, saved, reset, never on a scratch', () => {

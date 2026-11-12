@@ -2,9 +2,9 @@
 // They start with a home village of thirty folk and three serfs: no keep, no army. They train serfs, gather, build in a fixed order,
 // raise a keep toward the nearest free village, contest villages, send a spy, then eventually go to war.
 
-import { deliberate, DIPLO, stance, pressWar, STANCE } from './diplomacy.js';
+import { deliberate, DIPLO, stance, pressWar, STANCE, coalitionOf } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -308,7 +308,7 @@ function think(game, team, p) {
       if (game.rel[team][q.team] === 'alliance') continue;   // oaths are kept (until a leader's temper breaks them)
       const st = stance(game, team, q.team), war = game.rel[team][q.team] === 'war';
       if (!war && (st.war < game.diff.warBar + (doc.war || 0) || t <= earliest || raised < 7 || game.time - game.relSince[team][q.team] < 240)) continue;   // a peace just made is kept a while
-      const score = (war ? 1 : 0) + st.war + st.temptation * 0.5;
+      const score = (war ? 1 : 0) + st.war + st.temptation * 0.5 + (war && coalitionOf(game, team)?.against === q.team ? COALITION.focus : 0);   // a coalition's foe first (T66)
       if (score > bd) { bd = score; target = q; }
     }
     p.planWar = target ? target.team : null;

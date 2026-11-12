@@ -494,7 +494,12 @@ export const SIGNAL = { r: 10, reach: 1, keep: 3, keepShare: 0.3, max: 12, min: 
 // Coalitions (T62, CK3's and Total War's coalitions against the strongest): a house whose strength is at least `lead` times that of both
 // a and b (and that is allied to neither, and known to both) is their common dread. Each drift it warms a and b toward each other by `warm`
 // (not at war), and the opinion an alliance needs between them is `ease` lower; the same rule answers the player's alliance requests.
-export const COALITION = { lead: 1.4, warm: 0.35, ease: 12 };
+// Coalition wars (T66): every `every` s, when at least `min` AI houses dread the same house (it is `lead` times as strong as each, known to each,
+// allied to none of them) and it has wronged one of them in the last `wrongFor` s (a village taken, a king slain, a war declared), they band
+// together under the strongest wronged house and declare war on it as one (against the player, the leader's ultimatum comes first, answered
+// within STANCE.ultimatum s); members do not make a peace of their own: the leader's peace is theirs. Not before `from` s; after a coalition ends,
+// none against the same house for `again` s. A member's war host prefers the coalition's foe (+`focus` on its choice of target).
+export const COALITION = { lead: 1.4, warm: 0.35, ease: 12, every: 5, min: 3, wrongFor: 600, from: 360, again: 600, focus: 0.6, purse: 0.4 };
 export const PATROL = { pair: 2, spare: 4, every: 20, reach: 26, out: 10 };
 // Explore (T45, AoE IV's auto-scout): a scout sent exploring rides to the nearest unseen ground he can reach, again and again. Unseen ground is
 // sampled every `step` tiles; it is checked again every `look` seconds (on to the next place once his goal is seen, or a foe is near);

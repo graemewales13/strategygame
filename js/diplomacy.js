@@ -188,6 +188,8 @@ export function judge(g, kind, from, to, ctx = {}) {
       return yes();
     }
     case 'peace': {
+      const bound = boundTo(g, to, from);   // a coalition member makes no peace of its own (T66)
+      if (bound) return no(`${me} is sworn to the coalition under ${leaderName(g, bound.leader)} of ${nameOf(g, bound.leader)}: treat with ${leaderName(g, bound.leader)}.`);
       if (o < -60 - Math.min(25, (ctx.coin || 0) / 20)) return no(`${me} will hear nothing from ${N} (${attitudeLabel(o).toLowerCase()}).`);   // (coin softens even a bitter enemy, a little)
       return yes();
     }
@@ -259,6 +261,99 @@ function swore(g, a, b) {
   else g.log(aimedAtPlayer(g, a, b) ? PLAYER : -1, text, aimedAtPlayer(g, a, b) ? 'warn' : 'info');
 }
 const aimedAtPlayer = (g, a, b) => sharedEnemies(g, a, b).includes(PLAYER) || dread(g, a, b) === PLAYER;
+
+// ---- coalition wars (T66): houses that dread the same runaway house, and were wronged by it, go to war on it together ------------------------
+// g.coalitions: [{ id, against, leader, members, since, state: 'ultimatum' | 'war', what, at, letter }]. Members are AI houses; one coalition
+// per house, one against a house. The leader speaks for all: the leader's ultimatum, war and peace are the coalition's.
+export const coalitionOf = (g, t) => (g.coalitions || []).find((c) => c.members.includes(t)) || null;
+export const coalitionAgainst = (g, D) => (g.coalitions || []).find((c) => c.against === D) || null;
+// a house bound by its coalition: a member, not the leader, at war with the coalition's foe (it makes no peace of its own)
+export const boundTo = (g, t, foe) => { const c = coalitionOf(g, t); return c && c.state === 'war' && c.against === foe && c.leader !== t ? c : null; };
+// a wrong done to `victim` by `by` (a village taken, a king slain, a war declared), remembered for COALITION.wrongFor seconds
+export function wronged(g, victim, by, what) {
+  if (victim == null || by == null || victim < 0 || by < 0 || victim === by) return;
+  (g.wrongs ||= {})[victim + '>' + by] = { t: g.time, what };
+}
+const wrongOf = (g, m, D) => { const w = g.wrongs?.[m + '>' + D]; return w && g.time - w.t <= COALITION.wrongFor ? w : null; };
+const andList = (a) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
+const who = (g, t, viewer) => (t === viewer ? 'you' : nameOf(g, t));
+// how the Council says a coalition: "the coalition of Wessex, Ynglings and Sassan under King Harald of Ynglings, against you (they took Glenmore)"
+export function coalitionWords(g, c, viewer = PLAYER) {
+  const names = c.members.map((m) => (m === c.leader ? `${who(g, m, viewer)} (leading)` : who(g, m, viewer)));
+  return `${andList(names)} against ${who(g, c.against, viewer)}${c.state === 'ultimatum' ? ', an ultimatum waiting' : ''}: ${nameOf(g, c.leader)} says ${who(g, c.against, viewer)} ${c.what}`;
+}
+function endCoalition(g, c, text) {
+  g.coalitions = g.coalitions.filter((x) => x !== c);
+  (g.coalEnd ||= {})[c.against] = g.time;
+  if (text) { const mine = c.against === PLAYER || g.known[PLAYER][c.against] || c.members.some((m) => g.known[PLAYER][m]); record(g, c.leader, c.against, 'note', text, 'note'); g.log(mine ? PLAYER : -1, text, 'info'); }
+}
+function declareCoalition(g, c) {
+  c.state = 'war';
+  for (const m of c.members) if (g.rel[m][c.against] !== 'war' && !(settled(g, m, c.against) && g.rel[m][c.against] !== 'war')) g.setRelation(m, c.against, 'war');
+  c.members = c.members.filter((m) => g.rel[m][c.against] === 'war');
+  if (!c.members.includes(c.leader) || c.members.length < 2) { endCoalition(g, c, null); return; }
+  const text = `A coalition under ${leaderName(g, c.leader)} of ${nameOf(g, c.leader)} (${andList(c.members.map((m) => nameOf(g, m)))}) declares war on ${nameOf(g, c.against)}, who ${c.what}.`;
+  record(g, c.leader, c.against, 'warning', text, 'note');
+  const mine = c.against === PLAYER || g.known[PLAYER][c.against] || c.members.some((m) => g.known[PLAYER][m]);
+  g.log(mine ? PLAYER : -1, text, c.against === PLAYER ? 'war' : 'warn');
+  // the player, if he too dreads the foe and is free of it, is asked to march with them (an ordinary call to arms: Accept declares his war)
+  const P = g.players[PLAYER], D = c.against;
+  if (D !== PLAYER && P?.alive && g.known[PLAYER][D] && g.known[PLAYER][c.leader] && g.rel[PLAYER][D] !== 'war' && g.rel[PLAYER][D] !== 'alliance' && g.rel[PLAYER][c.leader] !== 'war'
+    && strength(g, D) >= COALITION.lead * strength(g, PLAYER) && !g.truce?.(PLAYER, D) && !g.offers.some((o) => o.kind === 'joinwar' && o.from === c.leader && o.to === PLAYER)) {
+    writeLetter(g, c.leader, PLAYER, 'joinwar', { target: D, text: `${leaderName(g, c.leader)} of ${nameOf(g, c.leader)}: "${nameOf(g, D)} grows too mighty for any of us alone, and ${andList(c.members.map((m) => nameOf(g, m)))} have taken up arms against it. March with us."` });
+  }
+}
+// every COALITION.every seconds (updateDiplomacy): tend the coalitions there are, then let new ones form
+export function updateCoalitions(g) {
+  g.coalitions ||= [];
+  for (const c of [...g.coalitions]) {
+    const D = c.against, L = () => `${leaderName(g, c.leader)} of ${nameOf(g, c.leader)}`;
+    if (!alive(g, D)) { endCoalition(g, c, `The coalition against ${nameOf(g, D)} disbands: its work is done.`); continue; }
+    c.members = c.members.filter((m) => alive(g, m) && g.rel[m][D] !== 'alliance');
+    if (c.state === 'ultimatum') {
+      if (!c.members.includes(c.leader)) { g.offers = g.offers.filter((o) => o.id !== c.letter); endCoalition(g, c, null); continue; }
+      const paid = g.players[c.leader].appeased?.[D];
+      if (paid != null && paid >= c.at) { endCoalition(g, c, `${L()}: "Wisely done. The coalition stands down."`); continue; }
+      if (g.offers.some((o) => o.id === c.letter) && g.time - c.at < STANCE.ultimatum) continue;
+      g.offers = g.offers.filter((o) => o.id !== c.letter);
+      declareCoalition(g, c); continue;
+    }
+    if (!c.members.includes(c.leader)) {   // the leader's house fell or turned: the strongest member at war leads
+      const next = c.members.filter((m) => g.rel[m][D] === 'war').sort((x, y) => strength(g, y) - strength(g, x) || x - y)[0];
+      if (next == null) { endCoalition(g, c, null); continue; }
+      c.leader = next;
+    }
+    if (g.rel[c.leader][D] !== 'war') {   // the leader made peace: the members make it with him
+      for (const m of c.members) if (m !== c.leader && g.rel[m][D] === 'war') g.setRelation(m, D, 'peace');
+      endCoalition(g, c, `The coalition under ${L()} makes peace with ${nameOf(g, D)}, and every house in it makes peace too.`); continue;
+    }
+    c.members = c.members.filter((m) => g.rel[m][D] === 'war');
+    if (c.members.length < 2) endCoalition(g, c, `The coalition against ${nameOf(g, D)} breaks up.`);
+  }
+  if (g.time < COALITION.from) return;
+  const S = g.players.map((p) => (p.alive ? strength(g, p.team) : 0));
+  for (const Q of g.players) {
+    const D = Q.team;
+    if (!Q.alive || coalitionAgainst(g, D) || g.time - (g.coalEnd?.[D] ?? -1e9) < COALITION.again) continue;
+    const members = g.players.filter((p) => {
+      const m = p.team;
+      return p.alive && p.ai && m !== D && g.known[m][D] && g.rel[m][D] !== 'alliance' && !g.truce?.(m, D) && !coalitionOf(g, m)
+        && S[D] >= COALITION.lead * S[m] && (g.rel[m][D] === 'war' || !settled(g, m, D));
+    }).map((p) => p.team);
+    const hurt = members.filter((m) => wrongOf(g, m, D));
+    if (members.length < COALITION.min || !hurt.length) continue;
+    const leader = hurt.sort((x, y) => S[y] - S[x] || x - y)[0];
+    const c = { id: g.nextCoalition = (g.nextCoalition || 0) + 1, against: D, leader, members, since: g.time, state: 'war', what: wrongOf(g, leader, D).what, at: g.time, letter: null };
+    g.coalitions.push(c);
+    if (D !== PLAYER) { declareCoalition(g, c); continue; }
+    // against the player: the leader's ultimatum, for all of them, first (DEMANDS: warn the player before declaring war)
+    c.state = 'ultimatum';
+    const purse = Math.floor(g.players[PLAYER].gold || 0), amount = Math.min(Math.floor(purse / 10) * 10, Math.max(60, Math.round((purse * COALITION.purse) / 10) * 10));
+    const others = andList(members.filter((m) => m !== leader).map((m) => nameOf(g, m)));
+    const o = writeLetter(g, leader, PLAYER, 'tribute', { amount, text: `${leaderName(g, leader)} of ${nameOf(g, leader)}, speaking also for ${others}: "You ${c.what}. ${andList(members.map((m) => nameOf(g, m)))} stand together against you. ${amount ? `Send ${amount} coin and we stand down` : 'You have nothing to give: bend the knee and we stand down'}, or we all march."` });
+    c.letter = o.id;
+  }
+}
 
 // ---- effects of an accepted request (shared by every route) ------------------------------------------------
 export function exec(g, kind, from, to, ctx = {}) {   // `from` asked, `to` agreed
@@ -395,6 +490,7 @@ export function deliberate(g, team) {
       }
     }
     // a house that is losing sues for peace
+    if (rel === 'war' && boundTo(g, team, b)) continue;   // sworn to a coalition (T66): its leader makes the peace
     if (rel === 'war' && g.parleyIn(team, b) <= 0) {
       const sue = stance(g, team, b).peace >= 0.55;
       if (sue && cooled(g, team, b, 'alliance')) {

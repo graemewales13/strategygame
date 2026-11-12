@@ -9,9 +9,9 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords } from './config.js';
 import { drawCrest, drawVale } from './render.js';
-import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread } from './diplomacy.js';
+import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread, coalitionOf, coalitionAgainst, coalitionWords } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
 import { productionRows, idleProduction, researchRow } from './production.js';
 import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, JOBS, JOB_LABEL } from './economy.js';
@@ -837,6 +837,8 @@ export class UI {
     if (i.allies.length) rels.push('Allied with ' + i.allies.map((c) => `${c === PLAYER ? 'you' : esc(HOUSES[c].short)} <small>(${esc(pactWhy(g, t, c))})</small>`).join(', '));
     if (i.enemies.length) rels.push('At war with ' + i.enemies.map((c) => esc(HOUSES[c].short)).join(', '));
     if (rels.length) html += `<div class="dline">${rels.join(' · ')}</div>`;
+    { const c = coalitionOf(g, t) || coalitionAgainst(g, t);   // a coalition war (T66): who is in it, who leads, against whom, and the wrong
+      if (c) html += `<div class="dline coal" data-tip="${encodeURIComponent('<b>Coalition</b><br>Houses that fear the same far stronger house, one of them wronged by it, war on it together under one leader. Its members make no peace of their own: treat with the leader, whose peace is theirs.')}">${uiImg('marks', 'coalition', '⚑', 'tico')} <b>Coalition</b>: ${esc(coalitionWords(g, c))}</div>`; }
     html += `<div class="dline"><span class="att ${i.opinion >= 10 ? 'good' : i.opinion <= -10 ? 'bad' : ''}">${i.attitude} toward you (${i.opinion >= 0 ? '+' : ''}${i.opinion})</span>${i.why.length ? ' · ' + i.why.map((w) => `${w.d > 0 ? '+' : ''}${w.d} ${esc(w.why)}`).join('; ') : ''}</div>`;
     if (i.stance) {
       const st = i.stance, pct = (x) => Math.round(Math.min(1, x) * 100), top = st.reasons.slice(0, 3).map((r) => esc(r.text)).join('; ');
@@ -847,7 +849,7 @@ export class UI {
     if (i.secrets) {
       const s = i.secrets, mix = Object.entries(s.mix).map(([k, n]) => `${n} ${UNITS[k].label.toLowerCase()}${n === 1 ? '' : 's'}`).join(', ') || 'no soldiers';
       const plan = s.war != null ? `means war on <b>${s.war === PLAYER ? 'you' : esc(HOUSES[s.war].short)}</b>` : s.warIn ? `not ready for war (about ${Math.ceil(s.warIn / 60)} min)` : 'no war planned';
-      html += `<div class="dline" data-tip="${encodeURIComponent('<b>Spy report</b><br>Your spy inside one of their villages sends word. It fades 45 s after the spy leaves or is caught; a caught spy angers their lord.')}">🕵 <b>Spy report:</b> ${mix}${s.captains.length ? ` · captains ${s.captains.map(esc).join(', ')}` : ''}${s.far.length ? ` · far-landers ${s.far.map(esc).join(', ')}` : ''} · ${plan}${s.village ? ` · marching on <b>${esc(s.village)}</b>` : ''}${s.research ? ` · studying ${esc(s.research)}` : ''}${s.kit?.length ? ` · kit in store: ${s.kit.map(esc).join(', ')}` : ''}</div>`;
+      html += `<div class="dline" data-tip="${encodeURIComponent(`<b>Spy report</b><br>Your spy inside one of their villages sends word. It fades ${SPY_INTEL.fresh} s after the spy leaves or is caught; a caught spy angers their lord.`)}">🕵 <b>Spy report:</b> ${mix}${s.captains.length ? ` · captains ${s.captains.map(esc).join(', ')}` : ''}${s.far.length ? ` · far-landers ${s.far.map(esc).join(', ')}` : ''} · ${plan}${s.village ? ` · marching on <b>${esc(s.village)}</b>` : ''}${s.research ? ` · studying ${esc(s.research)}` : ''}${s.kit?.length ? ` · kit in store: ${s.kit.map(esc).join(', ')}` : ''}</div>`;
     } else if (i.known) html += `<div class="dline" style="opacity:.7">Put a spy inside one of their villages to learn their army, captains and plans.</div>`;
     const known = true, wait = Math.ceil(g.parleyIn(PLAYER, t)), pend = g.offers.some((o) => o.from === PLAYER && o.to === t) || (g.asks || []).some((x) => x.from === PLAYER && x.to === t);
     const btn = (state, label, why) => `<button class="dbtn ${rel === state ? 'cur' : ''} ${state === 'war' ? 'warbtn' : ''}" data-act="treaty" data-team="${t}" data-state="${state}" ${rel === state || why ? 'disabled' : ''} title="${esc(why || '')}">${label}</button>`;
@@ -889,6 +891,8 @@ export class UI {
     }
     const bats = battlesOf(g).slice(0, BATTLE_LIST);   // the player's last battles (T63), each a click to its spot
     html += `</div><div class="ctitle">Battles</div><div class="letters battles">${bats.map((r) => `<div class="lrow brow" data-act="bgo" data-x="${r.x}" data-y="${r.y}" title="Show the spot">${esc(battleRow(g, r))}</div>`).join('') || '<div class="hint">No battles yet. Each fight your people are in is told here when it ends.</div>'}</div>`;
+    const coals = (g.coalitions || []).filter((c) => c.against === PLAYER || g.known[PLAYER][c.against] || c.members.some((m) => g.known[PLAYER][m]));   // coalition wars under way that you have heard of (T66)
+    if (coals.length) html += `<div class="ctitle">Coalitions</div><div class="letters coals">${coals.map((c) => `<div class="lrow ${c.against === PLAYER ? 'declined' : 'note'}">${uiImg('marks', 'coalition', '⚑', 'tico')} ${esc(coalitionWords(g, c))}</div>`).join('')}</div>`;
     html += `<div class="ctitle">Correspondence</div><div class="letters">${g.letters.filter((l) => l.to === PLAYER || l.from === PLAYER).slice(0, 14).map((l) => this.letterRow(l)).join('') || '<div class="hint">No letters yet. Rival lords write once they have met you.</div>'}</div>`;
     return html;
   }
@@ -1136,7 +1140,7 @@ export class UI {
       const v = memo ? { ...live, ...memo, stores: { ...live.stores, food: memo.food }, garrison: [] } : live;
       const k = VILLAGE_KINDS[v.kind], lord = v.owner >= 0 ? HOUSES[v.owner].name : 'Independent';
       const tr = k.tribute;
-      html = `<div class="seltitle">${esc(v.name)} <small style="color:#cdbb8a;font-size:12px">${v.founded ? (v.kind === 'mine' ? 'Mining camp' : 'Village') : k.label}</small></div><div class="selsub">${v.founded ? (v.kind === 'mine' ? 'Founded by your house beside ore. Its folk work the mines within 16 tiles at camp rates, pay tax and can be drafted.' : 'Founded by your house. Its folk till, pay tax and can be drafted.') : esc(k.blurb)}${v.owner === PLAYER ? ` Tax <b>+${(v.pop * TAX * (v.loyalty / 100)).toFixed(2)}</b> coin/s.` : ''}</div>
+      html = `<div class="seltitle">${esc(v.name)} <small style="color:#cdbb8a;font-size:12px">${v.founded ? (v.kind === 'mine' ? 'Mining camp' : 'Village') : k.label}</small></div><div class="selsub">${v.founded ? (v.kind === 'mine' ? `Founded by your house beside ore. Its folk work the mines within ${MINE_JOBS.r} tiles at camp rates, pay tax and can be drafted.` : 'Founded by your house. Its folk till, pay tax and can be drafted.') : esc(k.blurb)}${v.owner === PLAYER ? ` Tax <b>+${(v.pop * TAX * (v.loyalty / 100)).toFixed(2)}</b> coin/s.` : ''}</div>
         <div class="stat"><label>Lord</label><span>${esc(lord)}</span></div>
         <div class="stat"><label>Loyalty</label><div class="meter"><i class="loy" style="width:${v.loyalty}%"></i></div><span class="v">${v.loyalty | 0}</span></div>
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
@@ -1232,7 +1236,7 @@ export class UI {
     }
     html += `</div>`;
     if (b.craft?.length) html += `<div class="qrow">${b.craft.map((q, i) => `<div class="qslot" data-act="uncraft" data-i="${i}" data-tip="${encodeURIComponent(`<b>${GEAR[q.item].label}</b><br>Click to cancel (refund).`)}">${uiImg('gear', q.item, '⛨', 'qico')}${i === 0 ? `<i style="width:${(q.t / GEAR[q.item].time) * 100}%"></i>` : ''}</div>`).join('')}</div>`;
-    return html + `<div class="hint">Kit goes into your stockpile. New soldiers take the best for their kind; soldiers standing idle within 7 tiles of an Armoury swap up and hand the old kit back.</div>`;
+    return html + `<div class="hint">Kit goes into your stockpile. New soldiers take the best for their kind; soldiers standing idle within ${REFIT.r} tiles of an Armoury swap up and hand the old kit back.</div>`;
   }
   stanceGrid(us) {
     const g = this.game, fs = us.filter((u) => g.fighter(u) || u.kind === 'king'), cur = new Set(fs.map((u) => g.stanceOf(u)));

@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS } from './config.js';
+  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -103,6 +103,7 @@ export class Game {
     this.vmem = Array.from({ length: n }, () => ({}));   // and of every village (owner, folk, loyalty...), by id (T46; the same)
     this.amem = Array.from({ length: n }, () => ({}));   // and of every rival house's army, by class, fading (T64; the same: panels only)
     this.battles = []; this.battleLog = []; this.nextBattle = 1; this._batT = 0;   // fights under way and battles filed (T63; panels only)
+    this.coalitions = []; this.wrongs = {}; this.coalEnd = {}; this.nextCoalition = 0; this._coalT = 0;   // coalition wars and the wrongs they avenge (T66)
     this.walk = new Uint8Array(this.W * this.H);
     this.block = new Uint8Array(this.W * this.H);
 
@@ -2717,7 +2718,7 @@ export class Game {
     }
     if (state === 'war') {   // striking a house strikes its friends
       for (const p of this.players) if (p.alive && p.team !== a && p.team !== b && this.rel[p.team][b] === 'alliance') this.opinionShift(p.team, a, -25, `attacked our ally ${HOUSES[b].short}`);
-      this.opinionShift(b, a, -20, 'declared war on us');
+      this.opinionShift(b, a, -20, 'declared war on us'); dip.wronged(this, b, a, 'declared war on us');   // (a wrong a coalition may avenge, T66)
     }
     if (state !== 'war') {
       // units of both houses stand down
@@ -2849,6 +2850,8 @@ export class Game {
     }
     this._opT -= dt;
     if (this._opT <= 0) { this._opT = dip.DIPLO.opinionEvery; dip.drift(this); }
+    this._coalT = (this._coalT ?? 0) - dt;
+    if (this._coalT <= 0) { this._coalT = COALITION.every; if (this.aiOn) dip.updateCoalitions(this); }   // coalition wars (T66)
     for (let i = this.offers.length - 1; i >= 0; i--) {
       const o = this.offers[i];
       if (o.expires == null) o.expires = this.time + dip.DIPLO.expire.treaty;
@@ -3268,7 +3271,7 @@ export class Game {
     v.loyalty = how === 'pillage' ? 48 : 62;
     v.protection = v.maxProtection * 0.4;
     v.hitT = 0; v.flash = 1;
-    if (prev >= 0 && prev !== team) this.opinionShift(prev, team, how === 'pillage' ? -20 : -10, how === 'pillage' ? `sacked ${v.name}` : `swayed ${v.name} away`);
+    if (prev >= 0 && prev !== team) { this.opinionShift(prev, team, how === 'pillage' ? -20 : -10, how === 'pillage' ? `sacked ${v.name}` : `swayed ${v.name} away`); dip.wronged(this, prev, team, how === 'pillage' ? `sacked ${v.name}` : `took ${v.name}`); }
     const who = HOUSES[team].short;
     const text = { pillage: `${v.name} falls to ${who} after the sack.`, castle: `${v.name} bows to ${who}'s influence.`, spy: `${v.name} is turned by ${who}'s spy.` }[how] || `${v.name} submits to ${who}.`;
     this.heardOf(v);   // (the news below names the new lord, so the map must not still show the old one: T-093)
@@ -3557,7 +3560,7 @@ export class Game {
     for (const v of this.villages) if (v.owner === k.team) v.loyalty = Math.max(0, v.loyalty - KING.loyaltyHit);
     if (by) this.award(by, KING.killXp);
     this.log(k.team === PLAYER || byTeam === PLAYER ? PLAYER : -1, k.team === PLAYER ? `Your ${k.title} ${shortName(k.name)} has fallen! Your soldiers lose heart until an heir rises (${p.heirs} heir${p.heirs === 1 ? '' : 's'} left after this one${p.heirs ? '' : ': guard the last of your line'}).` : `${k.title} ${shortName(k.name)} of ${HOUSES[k.team].short} has fallen!`, k.team === PLAYER ? 'bad' : 'good');
-    if (this.opinionShift && byTeam >= 0 && byTeam !== k.team) this.opinionShift(k.team, byTeam, -40, 'slew your king');
+    if (this.opinionShift && byTeam >= 0 && byTeam !== k.team) { this.opinionShift(k.team, byTeam, -40, 'slew your king'); dip.wronged(this, k.team, byTeam, 'slew our king'); }
   }
 
   // ---- ratings -----------------------------------------------------------------------------------------
@@ -4014,7 +4017,8 @@ export class Game {
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
       resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem, amem: this.amem, battles: this.battles, battleLog: this.battleLog, nextBattle: this.nextBattle,
-      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {}, _batT: this._batT }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
+      coalitions: this.coalitions, wrongs: this.wrongs, coalEnd: this.coalEnd, nextCoalition: this.nextCoalition,
+      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {}, _batT: this._batT, _coalT: this._coalT }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
   }
   restore(d) {
@@ -4044,6 +4048,7 @@ export class Game {
     else if (this.fogOn) for (const b of this.buildings) if (b.team !== PLAYER && this.wasSeen(PLAYER, b.x, b.y)) this.mem[PLAYER][b.id] = { id: b.id, kind: b.kind, team: b.team, tx: b.tx, ty: b.ty, size: b.size, x: b.x, y: b.y, ore: b.ore, hp: b.hp, maxHp: b.maxHp, built: b.built, at: this.time };   // an older save: what was on seen ground counts as seen
     if (d.amem) this.amem = this.amem.map((m, i) => d.amem[i] || {});   // (an older save starts with nothing seen)
     this.battles = d.battles || []; this.battleLog = d.battleLog || []; this.nextBattle = d.nextBattle || 1; this._batT ??= 0;   // (an older save starts with no reports: T63)
+    this.coalitions = d.coalitions || []; this.wrongs = d.wrongs || {}; this.coalEnd = d.coalEnd || {}; this.nextCoalition = d.nextCoalition || 0; this._coalT ??= 0;   // (an older save: no coalitions yet, T66)
     if (d.vmem) this.vmem = this.vmem.map((m, i) => d.vmem[i] || {});
     else if (this.fogOn) for (const v of this.villages) if (this.wasSeen(PLAYER, v.x, v.y)) this.vmem[PLAYER][v.id] = this.villageNote(v);   // an older save: as it is
     if (this.tutorial && !this.tutorial.done && this.tutorial.foe == null && this.rel[PLAYER].every((r, i) => i === PLAYER || r !== 'war')) this.tutorFoe();   // a tutorial saved before the war lessons (T57) gets its weak rival
