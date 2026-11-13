@@ -86,3 +86,7 @@ Each people has its own name pool (`FAR_NAMES` in `names.js`). Rival AIs hire th
 3. **Injuries** (Battle Brothers): a fighter who nearly dies may come back with a lasting wound, a counterweight to Death-cheater.
 4. **Unique unit per people** (AoE II): for example a Mongol horse archer or a Roman legionary, trained only by that house.
 5. ~~**Rival character intel through spies**~~: done 2026-10-08 (spy reports on the Council card: purse, army, captains, far-landers, plans).
+
+## Heirs of the royal line (T65, 2026-11-13)
+
+The heirs were a number on the king's card. Now each is a person of the house's people (a name and byname from `names.js`, drawn from a hash of the seed, the house and the heir's place, so a seed always deals the same line), aged 16 to 27, with one trait from `HEIR.traits` that tells once crowned: **Soldier** (the new ruler has 25% more health and strikes 3 harder), **Steward** (the house's villages pay 12% more tribute, shown on the village's tribute line) or **Diplomat** (every house that knows them warms by 12 at the crowning, and their sway over villages is half again as strong). The heir-apparent is crowned; the player names one on the king's card (*Name heir*), rivals by need (a soldier at war, a steward with four villages, else a diplomat). The Council names every met house's heirs. Heir busts (ARTREQUIREMENTS priority 34) and trait marks (priority 36) show once painted.

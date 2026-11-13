@@ -529,6 +529,18 @@ export const BATTLE_ORDER = ['king', 'foot', 'bow', 'horse', 'siege', 'folk'];
 export const WARCRY = { r: 10, secs: 20, cool: 180, dmg: 0.15, aiFoes: 3, aiOwn: 3 };
 export const KING = { safeR: 12, aura: 8, dmg: 0.10, xp: 0.25, pull: 0.55, pullR: 14, heir: 20, heirs: 2, fugitiveSight: 2.5, leaderless: 0.85, loyaltyHit: 8, killXp: 80, leash: 14,
   titles: { egyptians: 'Pharaoh', romans: 'Imperator', british: 'King', mongols: 'Khan', scottish: 'High King', vikings: 'Jarl', byzantines: 'Basileus', persians: 'Shahanshah' } };
+// T65: heirs as characters. Each heir of the royal line is a named person of the house's people, of an age (`age`) with one trait that
+// tells on his reign once he is crowned (never a win: DEMANDS). The first in the line is the heir-apparent; the player names him on the
+// king's card, rivals by their need (`ai`). A soldier king is hardier and strikes harder; a steward king's villages pay more tribute; a
+// diplomat king warms every house that knows his when crowned and sways villages further. The founding king of a match has no trait.
+// Heirs may be men or women (the texts use no pronoun for them, as T-129's coalition letters do not); the title stays the people's.
+export const HEIR = { age: [16, 27], aiEvery: 15,
+  traits: {
+    soldier:  { label: 'Soldier',  glyph: '⚔', hp: 1.25, dmg: 3, tip: 'Raised among the soldiers. Crowned: 25% more health, and every blow 3 harder.' },
+    steward:  { label: 'Steward',  glyph: '⚖', tribute: 0.12, tip: 'Raised among the reeves and granaries. Crowned: every village of the house pays 12% more tribute.' },
+    diplomat: { label: 'Diplomat', glyph: '✉', warm: 12, pull: 1.5, tip: 'Raised at the courts of other houses. Crowned: every house that knows yours warms by 12, and the new ruler sways villages half again as strongly.' },
+  } };
+export const HEIR_TRAITS = Object.keys(HEIR.traits);
 // T57: the tutorial's last lessons are a war on one scripted weak rival, the house nearest the learner: its king has no heirs (one kill
 // ends the line) and its AI keeps a fraction of the army it would raise (`army`), so a learner's first band can win the war he is taught.
 export const TUTOR_FOE = { heirs: 0, army: 0.3 };

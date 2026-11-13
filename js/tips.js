@@ -39,7 +39,7 @@ export const TIPS = [
     text: `Retreat ({key:retreat}) saves lives but it costs: every village of yours lost ${Math.round(RETREAT.loyalty * 100)}% of its loyalty, and it comes back slowly over ${Math.round(RETREAT.shame / 60)} minutes. The other kings read it as weakness. Fall back early, or not at all.`,
     when: (g) => (g.players[PLAYER].routs || 0) > 0 },
   { id: 'king', title: 'Your king has fallen',
-    text: `The next heir takes the crown in ${KING.heir} seconds, at your seat or wherever your house still holds. When the king and every heir are dead, your house falls: the king's card ({key:king}) shows how many heirs are left. Keep the new king out of the fighting.`,
+    text: `The heir-apparent takes the crown in ${KING.heir} seconds, at your seat or wherever your house still holds, and reigns by that heir's trait (a soldier, a steward or a diplomat). When the king and every heir are dead, your house falls: the king's card ({key:king}) names the heirs left and lets you choose the next. Keep the new king out of the fighting.`,
     when: (g) => g.players[PLAYER].heirAt != null || g.players[PLAYER].heirs < KING.heirs },
   { id: 'seat', title: 'Your seat is lost',
     text: 'Losing the seat does not end your house, but your king is now a fugitive every house can see on the map. Raise a keep and win a village to rebuild, and keep him guarded.',

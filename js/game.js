@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS } from './config.js';
+  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, HEIR, HEIR_TRAITS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -691,6 +691,7 @@ export class Game {
       case 'feed': return this.feedVillage(team, it.villageId, it.amount) > 0;
       case 'flare': return this.flare(team, +it.x, +it.y);
       case 'warcry': return this.warCry(team);
+      case 'heir': return this.nameHeir(team, +it.index);
       case 'hire': return this.hire(team, it.buildingId, it.index);
       case 'research': return this.startResearch(team, it.tech);
       case 'craft': return this.craft(team, it.buildingId, it.item);
@@ -3147,7 +3148,7 @@ export class Game {
     for (const p of this.players) {   // a ruler among the folk sways them: handshakes, feasts, promises
       const k = this._kings?.[p.team]; if (!k || k.inside || !p.alive) continue;
       const d = Math.hypot(v.x - k.x, v.y - k.y); if (d >= KING.pullR) continue;
-      pulls[p.team] += KING.pull * (1 - d / KING.pullR) * (1 + RANK_BONUS.guard * (k.rank || 0));
+      pulls[p.team] += KING.pull * (1 - d / KING.pullR) * (1 + RANK_BONUS.guard * (k.rank || 0)) * (k.reign === 'diplomat' ? HEIR.traits.diplomat.pull : 1);   // (a diplomat king sways further, T65)
     }
     for (const e of this._aura?.envoy || []) {   // an envoy from a far land talks the folk round
       if (e.inside) continue; const d = Math.hypot(v.x - e.x, v.y - e.y); if (d < PERK.envoyR) pulls[e.team] += PERK.envoy * (1 - d / PERK.envoyR);
@@ -3234,7 +3235,8 @@ export class Game {
   // a held village's tribute against its kind's base: loyalty and size (`rate`), rejoicing and the district (`joy`); the panel shows the same numbers (T-102)
   tributeShare(v, vd = v.owner >= 0 ? this.districtAt(v.owner, v.x, v.y) : null) {
     const loy = 0.4 + (0.8 * v.loyalty) / 100, size = 0.5 + 0.7 * (v.pop / v.popMax), glad = v.joyT > 0 ? 1.3 : 1, dist = vd ? 1 + 0.12 * vd.score : 1;
-    return { loy, size, glad, dist, rate: loy * size, joy: glad * dist, total: loy * size * glad * dist };
+    const crown = v.owner >= 0 && this.kingOf(v.owner)?.reign === 'steward' ? 1 + HEIR.traits.steward.tribute : 1;   // a steward king (T65)
+    return { loy, size, glad, dist, crown, rate: loy * size, joy: glad * dist * crown, total: loy * size * glad * dist * crown };
   }
 
   // the village a building belongs to: the nearest one whose walls are within TOWN_RANGE tiles of it
@@ -3537,6 +3539,7 @@ export class Game {
   updateKings(dt) {
     this._kings = this.players.map((p) => { const k = this.byId.get(p.kingId); return k && k.hp > 0 ? k : null; });
     for (const p of this.players) {
+      if (p.alive) this.lineOf(p.team);   // the heirs as people (T65), kept to the line's count
       if (!p.alive || this._kings[p.team]) continue;
       if (p.heirs == null) p.heirs = KING.heirs;
       if (p.heirAt == null) p.heirAt = this.time + KING.heir;   // a king who vanished without a record (old saves, odd cases) is followed like any other
@@ -3544,11 +3547,56 @@ export class Game {
       const at = this.time >= p.heirAt ? this.thronePlace(p.team) : null;
       if (this.time >= p.heirAt && !at) { this.endLine(p.team, null, -1); continue; }   // nobody left to crown an heir among
       if (at) {
-        const k = this.crown(p.team, at.x, at.y);
-        p.leaderless = false; this._kings[p.team] = k;
-        this.log(p.team === PLAYER ? PLAYER : -1, p.team === PLAYER ? `An heir, ${shortName(k.name)}, takes the crown of your house.` : `${p.name} has a new ${k.title}: ${k.name}.`, p.team === PLAYER ? 'good' : 'info');
+        const k = this.crown(p.team, at.x, at.y), h = p.nextHeir || this.makeHeir(p.team);
+        p.leaderless = false; this._kings[p.team] = k; p.nextHeir = null;
+        this.reignBegins(k, h);
+        const tr = HEIR.traits[h.trait];
+        this.log(p.team === PLAYER ? PLAYER : -1, p.team === PLAYER ? `An heir, ${shortName(k.name)} (${tr.label.toLowerCase()}, ${h.age}), takes the crown of your house. ${tr.tip.replace(/^[^.]*\.\s*/, '')}` : `${p.name} has a new ${k.title}: ${k.name}, a ${tr.label.toLowerCase()}.`, p.team === PLAYER ? 'good' : 'info');
       }
     }
+  }
+  // T65: the heirs of a house as people. `lineOf` keeps p.line (heir-apparent first) to the line's count: it fills from the end with new
+  // heirs and drops the youngest when the count was cut (the tutorial's foe, tests). An heir is drawn from a hash of the seed, the house
+  // and his place in its count, never from the seeded streams, so it does not matter when the line is first read.
+  lineOf(team) {
+    const p = this.players[team]; if (!p) return [];
+    const n = Math.max(0, p.heirs ?? KING.heirs), line = (p.line ||= []);
+    while (line.length > n) line.pop();
+    while (line.length < n) line.push(this.makeHeir(team));
+    return line;
+  }
+  makeHeir(team) {
+    const p = this.players[team], seq = p.heirSeq = (p.heirSeq || 0) + 1;
+    let a = (Math.imul(this.seed | 0, 0x9e3779b1) ^ Math.imul(team + 1, 0x85ebca6b) ^ Math.imul(seq, 0xc2b2ae35)) >>> 0;
+    const r = () => { a = (a + 0x6d2b79f5) >>> 0; return mix32(a); };
+    const taken = new Set([...(p.line || []).map((h) => h.name), p.kingName, ...(this.named[team] || [])].filter(Boolean));
+    const [lo, hi] = HEIR.age;
+    const firsts = new Set([...(p.line || []).map((h) => shortName(h.name)), shortName(p.kingName)]);
+    let name = pickName(HOUSES[team]?.faction, taken, r);
+    for (let n = 0; n < 12 && firsts.has(shortName(name)); n++) name = pickName(HOUSES[team]?.faction, taken, r);   // (no two of the line, king included, share a given name)
+    return { name, age: lo + Math.floor(r() * (hi - lo + 1)), trait: HEIR_TRAITS[Math.floor(r() * HEIR_TRAITS.length)] };
+  }
+  // why `team` may not name heir `i` its heir-apparent, or null
+  nameHeirWhy(team, i) {
+    const line = this.lineOf(team);
+    if (!line.length) return 'There is no heir left to name: the king is the last of his line.';
+    if (!(i >= 0 && i < line.length)) return 'There is no such heir.';
+    if (i === 0) return `${shortName(line[0].name)} is already the heir-apparent.`;
+    return null;
+  }
+  nameHeir(team, i) {
+    const why = this.nameHeirWhy(team, i); if (why) { if (team === PLAYER) this.deny(team, why); return false; }
+    const line = this.lineOf(team), [h] = line.splice(i, 1); line.unshift(h);
+    if (team === PLAYER) this.log(PLAYER, `${h.name}, the ${HEIR.traits[h.trait].label.toLowerCase()}, is named heir-apparent, to take the crown if the king falls.`, 'info');
+    return true;
+  }
+  // an heir crowned: his name, age and trait are the new king's, and the trait tells at once (a soldier's strength, a diplomat's welcome)
+  reignBegins(k, h) {
+    const p = this.players[k.team], t = HEIR.traits[h.trait]; if (!t) return;
+    (this.named[k.team] ||= new Set()).add(h.name);
+    k.name = h.name; k.age = h.age; k.reign = h.trait; p.kingName = k.name;
+    if (t.hp) { k.hpMul = t.hp; k.dmgAdd = (k.dmgAdd || 0) + t.dmg; k.maxHp = this.maxHpFor(k); k.hp = k.maxHp; }
+    if (t.warm) for (const q of this.players) if (q.alive && q.team !== k.team && this.known[q.team]?.[k.team]) this.opinionShift(q.team, k.team, t.warm, `crowned a gracious ${k.title || 'king'}`);
   }
   kingFalls(k, byTeam, by) {
     const p = this.players[k.team]; if (!p || p.kingId !== k.id) return;
@@ -3556,10 +3604,11 @@ export class Game {
     const f = this.battleWith(k); if (f) f.kings.push({ team: k.team, name: `${k.title || 'King'} ${shortName(k.name || '')}`.trim(), last: p.heirs <= 0 });
     p.kingsLost = (p.kingsLost || 0) + 1;
     if (p.heirs <= 0) { if (by) this.award(by, KING.killXp); this.endLine(k.team, k, byTeam); return; }   // the last of the line: the house falls with him
+    p.nextHeir = this.lineOf(k.team).shift() || null;   // the heir-apparent will be crowned (T65)
     p.heirs -= 1; p.heirAt = this.time + KING.heir; p.leaderless = true;
     for (const v of this.villages) if (v.owner === k.team) v.loyalty = Math.max(0, v.loyalty - KING.loyaltyHit);
     if (by) this.award(by, KING.killXp);
-    this.log(k.team === PLAYER || byTeam === PLAYER ? PLAYER : -1, k.team === PLAYER ? `Your ${k.title} ${shortName(k.name)} has fallen! Your soldiers lose heart until an heir rises (${p.heirs} heir${p.heirs === 1 ? '' : 's'} left after this one${p.heirs ? '' : ': guard the last of your line'}).` : `${k.title} ${shortName(k.name)} of ${HOUSES[k.team].short} has fallen!`, k.team === PLAYER ? 'bad' : 'good');
+    this.log(k.team === PLAYER || byTeam === PLAYER ? PLAYER : -1, k.team === PLAYER ? `Your ${k.title} ${shortName(k.name)} has fallen! Your soldiers lose heart until ${p.nextHeir ? `${shortName(p.nextHeir.name)} the ${HEIR.traits[p.nextHeir.trait].label.toLowerCase()} is crowned` : 'an heir rises'} (${p.heirs} heir${p.heirs === 1 ? '' : 's'} left after this one${p.heirs ? '' : ': guard the last of your line'}).` : `${k.title} ${shortName(k.name)} of ${HOUSES[k.team].short} has fallen!`, k.team === PLAYER ? 'bad' : 'good');
     if (this.opinionShift && byTeam >= 0 && byTeam !== k.team) { this.opinionShift(k.team, byTeam, -40, 'slew your king'); dip.wronged(this, k.team, byTeam, 'slew our king'); }
   }
 

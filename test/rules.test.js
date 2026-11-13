@@ -2563,3 +2563,64 @@ test('the objectives guide reads its reaches from config (T-127): the mine\'s vi
   assert.ok(hint('community').includes(`within ${DISTRICT.r} tiles`), hint('community'));
   assert.ok(!/\b\d+ tiles\b/.test(readFileSync(new URL('../js/objectives.js', import.meta.url), 'utf8')), 'no tile count written out by hand');
 });
+
+// T65: heirs as characters
+import { HEIR, HEIR_TRAITS } from '../js/config.js';
+import { chooseHeir, heirWanted } from '../js/ai.js';
+test('heirs as characters (T65): named heirs with an age and a trait, the same for a seed, kept to the line\'s count', () => {
+  const g = mk(), h = mk(); run(g, 0.2); run(h, 0.2);
+  for (const p of g.players) {
+    const line = g.lineOf(p.team); assert.equal(line.length, KING.heirs);
+    for (const x of line) {
+      assert.ok(x.name && x.name.includes(' '), 'a name and a byname');
+      assert.ok(x.age >= HEIR.age[0] && x.age <= HEIR.age[1]); assert.ok(HEIR_TRAITS.includes(x.trait));
+    }
+    assert.deepEqual(line, h.lineOf(p.team), 'the same seed gives the same heirs');
+  }
+  assert.notDeepEqual(g.lineOf(0), g.lineOf(1), 'each house has its own');
+  for (const p of g.players) { const f = [p.kingName, ...g.lineOf(p.team).map((x) => x.name)].map((n) => n.split(' ')[0]); assert.equal(new Set(f).size, f.length, 'no two of the line share a given name'); }
+  // reading the line never touches the seeded streams
+  const a = g.rndA, b = g.rollA; g.players[2].line = null; g.players[2].heirSeq = 0; g.lineOf(2); assert.equal(g.rndA, a); assert.equal(g.rollA, b);
+  g.players[1].heirs = 0; assert.equal(g.lineOf(1).length, 0, 'a cut line drops its heirs');
+});
+test('heirs (T65): the player names the heir-apparent by intent, refused with reasons; the heir-apparent is the one crowned', () => {
+  const g = mk(); run(g, 0.2); const p = g.players[PLAYER], line = g.lineOf(PLAYER), second = line[1];
+  assert.equal(g.nameHeirWhy(PLAYER, 0), `${second === line[0] ? '' : line[0].name.split(' ')[0]} is already the heir-apparent.`.trimStart());
+  assert.match(g.nameHeirWhy(PLAYER, 5), /no such heir/);
+  assert.ok(g.applyIntent({ team: PLAYER, type: 'heir', index: 1 })); assert.equal(g.lineOf(PLAYER)[0], second, 'named heir-apparent');
+  const k = g.kingOf(PLAYER), by = g.addUnit('footman', 1, k.x, k.y);
+  g.damage(k, 1e6, 1, by); assert.equal(p.nextHeir.name, second.name, 'the heir-apparent waits to be crowned'); assert.equal(g.lineOf(PLAYER).length, KING.heirs - 1);
+  by.hp = 0; run(g, KING.heir + 1);
+  const nk = g.kingOf(PLAYER); assert.ok(nk); assert.equal(nk.name, second.name); assert.equal(nk.reign, second.trait); assert.equal(nk.age, second.age);
+  assert.equal(p.kingName, second.name); assert.equal(p.nextHeir, null);
+  // the line saves and loads
+  const d = JSON.parse(JSON.stringify(g.serialize())), o = mk(); o.restore(d); assert.deepEqual(o.lineOf(PLAYER), g.lineOf(PLAYER)); assert.equal(o.kingOf(PLAYER).reign, second.trait);
+  g.players[PLAYER].heirs = 0; assert.match(g.nameHeirWhy(PLAYER, 1), /last of his line/);
+});
+test('heirs (T65): each trait tells once crowned: a soldier is hardier, a steward taxes more, a diplomat is welcomed and sways further', () => {
+  const crownAs = (trait) => {
+    const g = mk(); run(g, 0.2); const p = g.players[1]; g.known[PLAYER][1] = g.known[1][PLAYER] = 1;
+    g.lineOf(1)[0].trait = trait; const k = g.kingOf(1), hp0 = k.maxHp, op0 = g.opinion?.[PLAYER]?.[1];
+    g.damage(k, 1e6, -1, null); run(g, KING.heir + 1); return { g, k: g.kingOf(1), hp0, p };
+  };
+  { const { k, hp0 } = crownAs('soldier'); assert.ok(k.maxHp >= Math.round(hp0 * HEIR.traits.soldier.hp) - 1, `${k.maxHp} vs ${hp0}`); assert.equal(k.hp, k.maxHp); assert.equal(k.dmgAdd, HEIR.traits.soldier.dmg); }
+  { const { g } = crownAs('steward'); const v = g.villagesOf(1)[0]; assert.ok(v); assert.equal(g.tributeShare(v).crown, 1 + HEIR.traits.steward.tribute);
+    const u = mk(); run(u, 0.2); assert.equal(u.tributeShare(u.villagesOf(1)[0]).crown, 1, 'the founding king has no trait'); }
+  { const g = mk(); run(g, 0.2); g.known[PLAYER][1] = g.known[1][PLAYER] = 1; g.lineOf(1)[0].trait = 'diplomat';
+    const before = (g.whyOp['1>0'] || []).length; g.damage(g.kingOf(1), 1e6, -1, null); run(g, KING.heir + 1);
+    assert.equal(g.kingOf(1).reign, 'diplomat'); assert.ok((g.whyOp['1>0'] || []).some((w) => /gracious/.test(JSON.stringify(w))) || JSON.stringify(g.whyOp).includes('gracious'), 'the houses that know him hear of a gracious king'); }
+});
+test('heirs (T65): rivals name their heir by need: a soldier at war, a steward with four villages, else a diplomat', () => {
+  const g = mk(); run(g, 0.2); const p = g.players[1];
+  p.line = [{ name: 'Aulus Ironhand', age: 20, trait: 'diplomat' }, { name: 'Gaius the Stoic', age: 22, trait: 'soldier' }]; p.heirs = 2;
+  assert.equal(heirWanted(g, 1), g.villagesOf(1).length >= 4 ? 'steward' : 'diplomat');
+  g.rel[0][1] = g.rel[1][0] = 'war'; assert.equal(heirWanted(g, 1), 'soldier');
+  assert.ok(chooseHeir(g, 1, p, g.time)); assert.equal(g.lineOf(1)[0].trait, 'soldier');
+  assert.equal(chooseHeir(g, 1, p, g.time + 1), false, 'not again before HEIR.aiEvery');
+  const i = intel(g, 1, PLAYER); assert.equal(i.line.length, 2); assert.equal(i.line[0].trait, 'soldier');
+});
+test('the tutorial\'s barracks lesson reads the barracks\' price from BUILDINGS (T-131); the king texts name the heirs (T65)', () => {
+  const b = LESSONS.find((l) => l.id === 'barracks'); assert.ok(b.hint.includes(`${BUILDINGS.barracks.cost.wood} timber, ${BUILDINGS.barracks.cost.gold} coin`));
+  assert.ok(!/\b140 timber\b/.test(readFileSync(new URL('../js/tutorial.js', import.meta.url), 'utf8')), 'no price written by hand');
+  assert.match(LESSONS.find((l) => l.id === 'king').hint, /names them/); assert.match(TIPS.find((t) => t.id === 'king').text, /heir-apparent/);
+});

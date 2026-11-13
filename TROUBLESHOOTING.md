@@ -628,3 +628,16 @@ Causes and fixes:
 - **Measured** (six AI houses, 25 min, small board): seed 5 formed one at 7:39 (Aurelius, Wessex and Ynglings under Wessex against Borjigin, who had declared war on Wessex), which made peace at 8:40 after Wessex lost its king; seeds 2 and 3 formed none (no house pulled 1.4 times ahead of three others). The standard soak is unchanged in its anomaly types and counts; one slow-tick sample at the 900 s mark comes and goes between runs of the same code (27.5 ms and 45.1 ms on two runs; the coalition tick itself costs 0.12 ms every 5 s).
 - **Text**: the coalition's letters and news name the leader and use no pronoun for him or her (a leader can be a queen, e.g. Basileus Anna).
 - **Tests**: `test/rules.test.js` T66 (forming only with a wrong, the leader, war from all, the news, the player's invitation, bound members, peace with the leader, the cooldown, save, restore and reset, the ultimatum paid and ignored); `tools/coalition-smoke.cjs` in the browser (the ultimatum letter, war from all, the refusal, the Council's Coalition line and list).
+
+## T-130 - Heirs as characters (T65, 2026-11-13)
+
+- **What**: the royal line was a count (`p.heirs`). Now `p.line` holds the heirs as people (`{ name, age, trait }`, heir-apparent first) and `Game.lineOf(team)` keeps it to the count every tick (drops the youngest when the count is cut, as the tutorial's foe and tests do; fills from `makeHeir`). An heir is drawn from a hash of the seed, the house and `p.heirSeq`, never from `rnd`/`roll`, so reading the line from a panel cannot change how the match plays. When a king falls the heir-apparent becomes `p.nextHeir` and is crowned by `updateKings` with that name, age and trait (`reignBegins`): a soldier's health and blow, a diplomat's welcome (`opinionShift` from every house that knows them) and sway (`KING.pull` x1.5), a steward's tribute (`tributeShare().crown`, shown on the village's tribute line). The `heir` intent (`nameHeir`, refused with reasons) names the heir-apparent; rivals call it from `chooseHeir` in `js/ai.js` every `HEIR.aiEvery` s. `intel()` gives the Council the line, the next to be crowned and the reign. All of it lives on the player record, so it is saved and reset with it.
+- **Text**: heirs may be men or women; no text uses a pronoun for them (as T-129).
+- **Tests**: `test/rules.test.js` T65 (names, ages, traits, the same for a seed, no seeded stream touched, a cut line; naming by intent, refusals, the heir-apparent crowned with name, trait and age, save and load; the three traits; the rivals' choice and the Council's intel).
+
+## T-131 - The tutorial's barracks lesson wrote the barracks' price by hand (fixed 2026-11-13)
+
+- **Symptom**: the *Raise a barracks* lesson said "140 timber, 40 coin" as a plain string. It matched `BUILDINGS.barracks.cost` today, but a balance change would have left the lesson wrong (the same kind of gap as T-127 and T-128).
+- **Fix** (`js/tutorial.js`): the hint reads `BUILDINGS.barracks.cost`. The *Find your king* lesson and the *Your king has fallen* tip now say the king's card names the heirs and lets the player choose the next.
+- **Test**: `test/rules.test.js` checks the lesson's price against config, that no hand-written price is left, and the two king texts.
+

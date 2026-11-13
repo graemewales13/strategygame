@@ -618,3 +618,14 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 #bcard .tbtns button:hover { background: linear-gradient(180deg, #86602f, #4a3319); color: #fff; }
 #bcard .bmore { margin-left: auto; font-size: 10.5px; color: #a8946a; }
 .battles .brow { cursor: pointer; } .battles .brow:hover { background: #3a2a16; }
+/* T65: heirs of the royal line on the king's card and the Council */
+.stat.heirs { align-items: flex-start; }
+.stat.heirs > span { display: block; flex: 1; }
+.stat.heirs .heir { display: block; line-height: 1.5; }
+.stat.heirs .heir img { vertical-align: middle; margin-right: 3px; }
+.stat.heirs .heir.apparent b { color: #e8c66a; }
+.stat.heirs img.hport { width: 18px; height: 23px; object-fit: cover; border: 1px solid #6d4d27; border-radius: 2px; }
+button.mini { font: inherit; font-size: 10px; padding: 0 5px; margin-left: 4px; background: #2a1c0c; color: var(--ink); border: 1px solid #8a6a3a; border-radius: 3px; cursor: pointer; }
+button.mini:hover { border-color: #e8c66a; }
+.dline.heirline { font-size: 11px; color: var(--dim); }
+.dline.heirline b { color: var(--ink); }

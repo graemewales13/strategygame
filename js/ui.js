@@ -6,10 +6,11 @@ import { newBattle, battleWords, battlesOf, battleRow, BATTLE_SHOW, BATTLE_LIST 
 import { LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint } from './tutorial.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
+import { shortName } from './names.js';
 import { gfx, setQuality } from './gfx.js';
 import {
   counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
-  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords } from './config.js';
+  VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread, coalitionOf, coalitionAgainst, coalitionWords } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -770,7 +771,8 @@ export class UI {
       case 'askwar': this.ask('askwar', +d.team, { target: +d.target }); break;
       case 'council': this.toggleCouncil(d.team != null ? +d.team : null); break;
       case 'councilclose': this.councilOpen = false; $('council').classList.add('hidden'); break;
-      case 'bgo': this.r.centerOn(+d.x, +d.y); break;   // a battle report's spot (T63)
+      case 'bgo': this.r.centerOn(+d.x, +d.y); break;
+      case 'heir': { const r = this.host.send({ type: 'heir', index: +d.i }); if (!r && g.diploNote) this.toast(g.diploNote, 'warn'); break; }   // T65: name the heir-apparent   // a battle report's spot (T63)
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'bell': this.ringBell(); break;
@@ -822,6 +824,10 @@ export class UI {
     const stat = (label, val, tip) => `<div class="hs" ${tip ? `data-tip="${encodeURIComponent(tip)}"` : ''}><label>${label}</label><b>${val}</b></div>`;
     const mine = intel(g, PLAYER);
     let html = `<div class="hleader" data-tip="${encodeURIComponent(`<b>${esc(L.temper || '')}</b><br>${tempTip}`)}">${compact ? '' : uiImg('portraits', RULER_ART[HOUSES[t].faction], '', 'rport')}♔ <b>${lead}</b>${L.alive ? ` <span class="rk">${'▲'.repeat(L.rank)} ${ranks}</span>` : ''}${L.temper ? ` <span class="tmp ${L.temper}">${L.temper}</span>` : ''} <small data-tip="${encodeURIComponent('<b>The royal line</b><br>When a king falls the next heir is crowned. When the last of the line dies, the house falls.')}">${i.heirs > 0 ? `· ${i.heirs} heir${i.heirs === 1 ? '' : 's'}` : '· <b style="color:#e0866a">last of the line</b>'}${i.fugitive ? ` · ${uiImg('marks', 'fugitive')}<b style="color:#e0866a">fugitive, seat lost</b>` : ''}</small>${i.doctrine ? ` <small data-tip="${encodeURIComponent(`<b>Doctrine: ${i.doctrine}</b><br>${DOC_TIP[i.doctrine] || ''}<br><span class='info'>How this people plays when it is not copying what it has learned from you.</span>`)}">· plays the ${esc(i.doctrine)}</small>` : ''}</div>`;
+    if (i.reign || i.line?.length || i.nextHeir) {   // the heirs as people (T65): the ruler's reign, the one to be crowned, the line in order
+      const T = (k) => HEIR.traits[k], who = (h) => `<span data-tip="${encodeURIComponent(`<b>${esc(h.name)}</b>, ${h.age}<br><b>${T(h.trait).label}</b>: ${T(h.trait).tip}`)}">${esc(shortName(h.name))} (${uiImg('marks', `heir_${h.trait}`, T(h.trait).glyph, 'tico')} ${T(h.trait).label.toLowerCase()}, ${h.age})</span>`;
+      html += `<div class="dline heirline">${i.reign && T(i.reign) ? `Reigns as a <b>${T(i.reign).label.toLowerCase()}</b>. ` : ''}${i.nextHeir ? `To be crowned: <b>${who(i.nextHeir)}</b>. ` : ''}${i.line?.length ? `Heirs: ${i.line.map((h, n) => (n === 0 ? '♛ ' : '') + who(h)).join(', ')}` : ''}</div>`;
+    }
     html += `<div class="hstats">`
       + stat('Rank', `#${i.rank}`, `Composite of wealth, villages, folk, power, learning and arms.<br>Score ${i.score}`)
       + stat('Villages', `${i.land}${me ? '' : ` <small>(you ${mine.land})</small>`}`, `${i.landPop} folk live in them.`)
@@ -1351,6 +1357,17 @@ export class UI {
     return `<div class="stat"><label>House</label><span>${esc(HOUSES[team].name)} · <b class="rel ${rel}" style="padding:0 5px;border-radius:2px">${rel}</b> · thinks of you <b>${op > 0 ? '+' : ''}${op}</b></span></div>`
       + (k ? `<div class="stat"><label>Ruler</label><span>${esc(k.title)} ${esc(k.name)}${t ? ` · <span data-tip="${encodeURIComponent(`<b>${t.label}</b><br>${t.tip}`)}">${t.label}</span>` : ''}</span></div>` : '');
   }
+  // T65: the king's reign (the trait he was crowned with) and his heirs by name, the heir-apparent first; on your own king's card each
+  // other heir has a Name heir button. (A portrait per people, heir_<people>, shows when delivered: ARTREQUIREMENTS priority 34.)
+  heirRows(k) {
+    const g = this.game, p = g.players[k.team], line = g.lineOf(k.team), own = k.team === PLAYER, fac = HOUSES[k.team]?.faction;
+    const tr = (key) => HEIR.traits[key], trTip = (key) => encodeURIComponent(`<b>${tr(key).label}</b><br>${tr(key).tip}`);
+    let h = '';
+    if (k.reign && tr(k.reign)) h += `<div class="stat"><label>Reign</label><span data-tip="${trTip(k.reign)}">${uiImg('marks', `heir_${k.reign}`, tr(k.reign).glyph)} <b>${tr(k.reign).label}</b>${k.age ? `, crowned at ${k.age}` : ''}: ${esc(tr(k.reign).tip.replace(/^[^.]*\.\s*Crowned: /, '').replace(/^./, (c) => c.toUpperCase()))}</span></div>`;
+    if (!line.length) return h;
+    h += `<div class="stat heirs"><label>Heirs</label><span>${line.map((x, i) => `<span class="heir${i === 0 ? ' apparent' : ''}" data-tip="${trTip(x.trait)}">${uiImg('portraits', `heir_${fac}`, '', 'hport')}${i === 0 ? '♛ ' : ''}<b>${esc(shortName(x.name))}</b> ${esc(x.name.slice(shortName(x.name).length + 1))}, ${x.age} · ${uiImg('marks', `heir_${x.trait}`, tr(x.trait).glyph)} ${tr(x.trait).label}${i === 0 ? ' <small>(heir-apparent)</small>' : own ? ` <button class="mini" data-act="heir" data-i="${i}" data-tip="${encodeURIComponent(`<b>Name ${esc(shortName(x.name))} heir-apparent</b><br>Takes the crown if the king falls. ${tr(x.trait).tip}`)}">Name heir</button>` : ''}</span>`).join('<br>')}</span></div>`;
+    return h;
+  }
   // what makes this person who they are: far-land gift, captaincy, deeds, service record
   characterRows(u) {
     const g = this.game, far = u.far ? FARLANDS[u.far] : null; let h = '';
@@ -1358,6 +1375,7 @@ export class UI {
     if (u.gear && (u.gear.weapon || u.gear.armour)) h += `<div class="stat"><label>Kit</label><span>${[u.gear.weapon, u.gear.armour].filter(Boolean).map((k) => `<span data-tip="${encodeURIComponent(`<b>${GEAR[k].label}</b><br>${GEAR[k].info}`)}">${uiImg('gear', k)}${esc(GEAR[k].label.replace(/s$/, ''))}</span>`).join(' · ')}</span></div>`;
     else if (['footman', 'bowman', 'knight'].includes(u.kind) && u.team === PLAYER) h += `<div class="stat"><label>Kit</label><span style="opacity:.7">plain issue: an Armoury makes better</span></div>`;
     if (u.kind === 'king') { const hp = g.players[u.team], n = hp.heirs ?? KING.heirs; h += `<div class="stat"><label>Line</label><span>${n ? `${n} heir${n === 1 ? '' : 's'} after him` : '<b style="color:#e0866a">the last of the line: if he dies, the house falls</b>'}${g.seatOf(u.team) ? '' : ` · ${uiImg('marks', 'fugitive')}a fugitive: every house can see him`}</span></div>`; }
+    if (u.kind === 'king') h += this.heirRows(u);
     if (g.steadied(u)) h += `<div class="stat"><label>War cry</label><span>steadied: +${Math.round(WARCRY.dmg * 100)}% damage and no rout for ${Math.ceil(u.cryT - g.time)} s</span></div>`;
     if (u.captain) h += `<div class="stat"><label>Command</label><span>${uiImg('marks', 'captain')}Captain: soldiers within ${CAPTAIN.aura} tiles +${Math.round(CAPTAIN.dmg * 100)}% damage, +${Math.round(CAPTAIN.xp * 100)}% experience</span></div>`;
     if (u.deeds?.length) h += `<div class="chips">${u.deeds.map((d) => `<span class="chip" data-tip="${encodeURIComponent(`<b>${DEEDS[d].label}</b><br>${DEEDS[d].tip}`)}">${uiImg('marks', d)}${esc(DEEDS[d].label)}</span>`).join('')}</div>`;

@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE, coalitionOf } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION, HEIR } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -288,6 +288,7 @@ function think(game, team, p) {
     if (hurt && !game.units.some((u) => u.team === team && u.task.type === 'repair')) game.repairWith(team, hurt, 2); }
   townBell(game, team, p, seat, t);
   warCry(game, team);
+  chooseHeir(game, team, p, t);
   holdFeast(game, team, p, t);
   feedVillages(game, team, p, t);
   courtVillages(game, team, p, seat, army, need, t);
@@ -411,6 +412,20 @@ export function feedVillages(game, team, p, t) {
   if (v) game.feedVillage(team, v.id, FEED.amount);
 }
 
+// T65: a rival names its heir-apparent by its need, as the player may on the king's card: a soldier while it is at war, a steward when
+// it holds four villages or more to tax, else a diplomat. Looked at every HEIR.aiEvery seconds.
+export function heirWanted(game, team) {
+  if (game.players.some((q) => q.alive && q.team !== team && game.rel[team][q.team] === 'war')) return 'soldier';
+  return game.villagesOf(team).length >= 4 ? 'steward' : 'diplomat';
+}
+export function chooseHeir(game, team, p, t) {
+  if (t < (p.heirLook || 0)) return false;
+  p.heirLook = t + HEIR.aiEvery;
+  const line = game.lineOf(team), want = heirWanted(game, team);
+  if (line.length < 2 || line[0].trait === want) return false;
+  const i = line.findIndex((h) => h.trait === want);
+  return i > 0 ? game.nameHeir(team, i) : false;
+}
 // A war band that is losing falls back to its seat to join the rest and heal, instead of dying to the last man: the foes' fighting power
 // around the band (their soldiers and towers within reach) against its own. Then it waits a little before marching again.
 // The king's war cry (T61), by the player's rule: a rival's king cries when a fight is close round him (WARCRY.aiFoes foe soldiers and

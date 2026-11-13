@@ -581,6 +581,7 @@ export function intel(g, t, viewer = PLAYER) {
     opinion: Math.round(o), attitude: attitudeLabel(o), why: (g.whyOp[t + '>' + viewer] || []).slice(0, 3),
     allies: alliesOf(g, t), enemies: enemiesOf(g, t),
     secrets: spied ? secretsOf(g, t) : null,
+    line: (g.lineOf ? g.lineOf(t) : []).map((h) => ({ ...h })), nextHeir: p.nextHeir ? { ...p.nextHeir } : null, reign: k?.reign || null,   // the heirs as people (T65)
     heirs: p.heirs ?? KING.heirs, fugitive: !g.seatOf(t), doctrine: t === viewer ? null : DOCTRINE[HOUSES[t]?.faction]?.label || null, techs: partner ? Object.keys(p.tech || {}).map((k) => TECH[k]?.label).filter(Boolean) : null,
     stance: t === viewer ? null : stance(g, t, viewer),
   };
