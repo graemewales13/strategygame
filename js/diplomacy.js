@@ -11,7 +11,7 @@ export const DIPLO = {
   opinionEvery: 5,              // seconds between opinion drifts
   letterGap: 25,                // an AI writes to the player at most this often (overall)
   expire: { treaty: 120, joinwar: 90, tribute: 90, aid: 90 },
-  cool: { gift: 45, demand: 150, askwar: 120, askaid: 120, alliance: 90, letter: 240 },
+  cool: { gift: 45, demand: 150, askwar: 120, askaid: 120, alliance: 90, letter: 240, coalition: 120 },
   need: { trade: -10, alliance: 30, joinwar: 25, aid: 25 },
   maxLetters: 3,                // unanswered letters waiting on the player
   minGiftGold: 10,
@@ -178,7 +178,7 @@ export function drift(g) {
 const settled = (g, a, b) => g.time - g.relSince[a][b] < 240;   // a peace just made is not broken at once
 const yes = (extra = {}) => ({ ok: true, ...extra });
 const no = (why) => ({ ok: false, why });
-// `to` (an AI house) answers a request from `from`. kind: trade | peace | alliance | joinwar {target} | tribute {amount} | aid {amount} | flare {foe, x, y}
+// `to` (an AI house) answers a request from `from`. kind: trade | peace | alliance | joinwar {target} | coalition {target} | tribute {amount} | aid {amount} | flare {foe, x, y}
 export function judge(g, kind, from, to, ctx = {}) {
   const pr = pers(g, to), o = op(g, to, from), N = nameOf(g, from), me = leaderName(g, to);
   const sTo = strength(g, to), sFrom = strength(g, from), rel = g.rel[to][from];
@@ -221,6 +221,20 @@ export function judge(g, kind, from, to, ctx = {}) {
       const amount = ctx.amount || 0, bar = 1.7 - pr.wary * 0.5 + (pr.honor > 0.7 ? 0.5 : 0);
       if (g.players[to].gold < amount) return no(`${me} has not that much coin.`);
       if (sFrom / sTo < bar) return no(`${me} laughs: "Come and take it, ${N}."`);
+      return yes();
+    }
+    case 'coalition': {   // join `from`'s coalition against ctx.target (T68): the same grievance the AI's coalitions need is checked by the caller
+      const T = ctx.target, sT = strength(g, T);
+      if (g.truce?.(to, T)) return no(`${me} keeps the peace with ${nameOf(g, T)} for now.`);
+      if (rel === 'war') return no(`${me} is at war with ${N}.`);
+      if (coalitionOf(g, to)) return no(`${me} is already sworn to a coalition.`);
+      if (g.rel[to][T] === 'alliance') return no(`${nameOf(g, T)} is ${me}'s ally.`);
+      if (!g.known[to][T]) return no(`${me} has not even met ${nameOf(g, T)}.`);
+      if (g.rel[to][T] !== 'war' && settled(g, to, T)) return no(`${me} has only just made peace with ${nameOf(g, T)}.`);
+      if (sT < COALITION.lead * sTo) return no(`${me} does not fear ${nameOf(g, T)} enough.`);
+      const need = DIPLO.need.joinwar - COALITION.ease;
+      if (rel !== 'alliance' && o < need) return no(`${me} is not close enough to ${N} to follow them (${attitudeLabel(o).toLowerCase()}, ${o >= 0 ? '+' : ''}${Math.round(o)}; needs ${need}).`);
+      if (pr.honor > 0.65 && g.rel[to][T] === 'trade') return no(`${me} trades with ${nameOf(g, T)} and will not betray a treaty.`);
       return yes();
     }
     case 'flare': {   // an ally's signal (T54): ctx { foe, x, y }; whether `to` has soldiers to spare is the AI's to say (answerFlare in ai.js)
@@ -274,7 +288,7 @@ export function wronged(g, victim, by, what) {
   if (victim == null || by == null || victim < 0 || by < 0 || victim === by) return;
   (g.wrongs ||= {})[victim + '>' + by] = { t: g.time, what };
 }
-const wrongOf = (g, m, D) => { const w = g.wrongs?.[m + '>' + D]; return w && g.time - w.t <= COALITION.wrongFor ? w : null; };
+export const wrongOf = (g, m, D) => { const w = g.wrongs?.[m + '>' + D]; return w && g.time - w.t <= COALITION.wrongFor ? w : null; };
 const andList = (a) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 const who = (g, t, viewer) => (t === viewer ? 'you' : nameOf(g, t));
 // how the Council says a coalition: "the coalition of Wessex, Ynglings and Sassan under King Harald of Ynglings, against you (they took Glenmore)"
@@ -353,6 +367,50 @@ export function updateCoalitions(g) {
     const o = writeLetter(g, leader, PLAYER, 'tribute', { amount, text: `${leaderName(g, leader)} of ${nameOf(g, leader)}, speaking also for ${others}: "You ${c.what}. ${andList(members.map((m) => nameOf(g, m)))} stand together against you. ${amount ? `Send ${amount} coin and we stand down` : 'You have nothing to give: bend the knee and we stand down'}, or we all march."` });
     c.letter = o.id;
   }
+}
+
+// ---- a house calls a coalition itself (T68; CK3's coalition pacts): the player could only ask rivals one by one to join a war, while the AI ----
+// banded together by the rule above. callCoalition(g, a, D): `a` (any house) has been wronged by D lately and fears it (D is COALITION.lead
+// times as strong); every AI house `a` has met is asked at once, each answering by judge('coalition'); with at least COALITION.min - 1 willing,
+// `a` leads them against D under the same rules (no separate peace; the leader's peace is everyone's). Refused with reasons.
+// coalitionCall: whether a call can be made at all, and who would be asked (the Council's button and its tip)
+export function coalitionCall(g, a, D) {
+  const N = alive(g, D) ? nameOf(g, D) : 'that house';
+  if (D === a || !alive(g, D) || !g.known[a][D]) return no('There is no such foe.');
+  if (g.truce?.(a, D)) return no(`You keep the peace with ${N} for now.`);
+  if (g.time < COALITION.from) return no(`Too early: no house binds itself to a coalition before minute ${Math.ceil(COALITION.from / 60)}.`);
+  if (g.rel[a][D] === 'alliance') return no(`${N} is your ally.`);
+  if (coalitionOf(g, a)) return no('You are already sworn to a coalition.');
+  if (coalitionOf(g, D) || coalitionAgainst(g, D)) return no(`${N} is already in a coalition war.`);
+  const since = g.time - (g.coalEnd?.[D] ?? -1e9);
+  if (since < COALITION.again) return no(`The last coalition against ${N} ended only ${Math.floor(since)} s ago (none again for ${COALITION.again} s).`);
+  if (g.rel[a][D] !== 'war' && settled(g, a, D)) return no(`You made peace with ${N} only just.`);
+  const w = wrongOf(g, a, D);
+  if (!w) return no(`${N} has done you no wrong in the last ${Math.round(COALITION.wrongFor / 60)} minutes: a coalition needs a grievance (a village taken, a king slain, a war declared on you).`);
+  const sD = strength(g, D), sA = strength(g, a);
+  if (sD < COALITION.lead * sA) return no(`${N} is not mighty enough to fear: a coalition stands against a house ${COALITION.lead} times as strong as each of its members.`);
+  if (!cooled(g, a, D, 'coalition')) return no('The houses heard your last call only lately.');
+  const asked = g.players.filter((p) => p.alive && p.ai && p.team !== a && p.team !== D && g.known[a][p.team]).map((p) => p.team);
+  if (asked.length < COALITION.min - 1) return no(`You know too few houses to call (${asked.length}; you need ${COALITION.min - 1} to answer).`);
+  return yes({ asked, what: w.what });
+}
+export function callCoalition(g, a, D) {
+  const can = coalitionCall(g, a, D);
+  if (!can.ok) return can;
+  stamp(g, a, D, 'coalition');
+  const willing = [], refused = [];
+  for (const m of can.asked) { const j = judge(g, 'coalition', a, m, { target: D }); if (j.ok) willing.push(m); else refused.push({ t: m, why: j.why }); }
+  for (const r of refused) record(g, r.t, a, 'askwar', `${leaderName(g, r.t)} of ${nameOf(g, r.t)} will not join your coalition: ${r.why}`, 'declined');
+  if (willing.length < COALITION.min - 1) {
+    const why = `Too few answer your call against ${nameOf(g, D)} (${willing.length ? andList(willing.map((m) => nameOf(g, m))) + ' would; ' : ''}${COALITION.min - 1} are needed). ${refused.map((r) => r.why).join(' ')}`;
+    return no(why);
+  }
+  const c = { id: g.nextCoalition = (g.nextCoalition || 0) + 1, against: D, leader: a, members: [a, ...willing], since: g.time, state: 'war', what: can.what, at: g.time, letter: null };
+  (g.coalitions ||= []).push(c);
+  for (const m of willing) { shift(g, m, a, 4, `leads us against ${nameOf(g, D)}`); shift(g, a, m, 4, 'answered our call'); }
+  declareCoalition(g, c);
+  if (!g.coalitions.includes(c)) return no(`The coalition against ${nameOf(g, D)} came to nothing.`);
+  return yes({ coalition: c, willing, refused });
 }
 
 // ---- effects of an accepted request (shared by every route) ------------------------------------------------
@@ -490,7 +548,7 @@ export function deliberate(g, team) {
       }
     }
     // a house that is losing sues for peace
-    if (rel === 'war' && boundTo(g, team, b)) continue;   // sworn to a coalition (T66): its leader makes the peace
+    if (rel === 'war' && (boundTo(g, team, b) || boundTo(g, b, team))) continue;   // sworn to a coalition (T66): its leader makes the peace (and a foe does not sue a sworn member, T-132)
     if (rel === 'war' && g.parleyIn(team, b) <= 0) {
       const sue = stance(g, team, b).peace >= 0.55;
       if (sue && cooled(g, team, b, 'alliance')) {

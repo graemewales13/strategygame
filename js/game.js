@@ -720,6 +720,7 @@ export class Game {
       case 'demand': return this.askOf(team, it.other, 'demand', { amount: it.amount || 60 });
       case 'askwar': return this.askOf(team, it.other, 'askwar', { target: it.target });
       case 'askaid': return this.askOf(team, it.other, 'askaid', { amount: it.amount || 80 });
+      case 'coalition': return this.callCoalition(team, it.other);   // T68: call the houses that fear it to war on it together
       case 'context': return this.contextCommand(team, it.ids, it.x, it.y, !!it.queue, it.want);
       default: return null;
     }
@@ -2768,6 +2769,8 @@ export class Game {
     if (state === 'peace' && (this.rel[a][b] === 'trade' || this.rel[a][b] === 'alliance')) { this.setRelation(a, b, 'peace'); return true; } // either side may cancel a treaty
     if (state === 'trade' && this.rel[a][b] === 'alliance') return true;   // allies trade freely
     if (!this.known[a][b]) return this.deny(a, `You have not met ${B} yet. Scout toward them.`);
+    { const bound = state === 'peace' && this.rel[a][b] === 'war' ? dip.boundTo(this, a, b) : null;   // T-132: a sworn member makes no peace of its own, the player included
+      if (bound) return this.deny(a, `You are sworn to the coalition under ${dip.leaderName(this, bound.leader)} of ${HOUSES[bound.leader].short}: its leader makes the peace with ${B}.`); }
     if (a === PLAYER && this.players[b].ai && !now) {   // the player's envoy rides to them; their ruler answers by letter in a few seconds
       if ((this.asks ||= []).some((x) => x.from === a && x.to === b)) return this.deny(a, `Your envoy is already on the road to ${B}.`);
       this.asks.push({ from: a, to: b, state, coin, at: this.time + ASK_DELAY.min + this.roll() * (ASK_DELAY.max - ASK_DELAY.min) });
@@ -2818,6 +2821,8 @@ export class Game {
     }
     if (!this.alive(from)) { settle('lapsed'); return false; }
     if (kind === 'treaty') {
+      const bound = o.state === 'peace' && this.rel[o.from][o.to] === 'war' ? dip.boundTo(this, team, from) : null;   // T-132: sworn to a coalition
+      if (bound) { this.offers.splice(i, 0, o); return this.deny(team, `You are sworn to the coalition under ${dip.leaderName(this, bound.leader)} of ${HOUSES[bound.leader].short}: its leader makes the peace with ${N}.`); }
       const buys = o.state === 'peace' && o.amount > 0 && this.rel[o.from][o.to] === 'war';   // a peace that comes with coin: the one who asked pays
       if (o.state === 'alliance') dip.exec(this, 'alliance', from, team); else this.setRelation(o.from, o.to, o.state);
       if (buys) this.payPeace(o.from, o.to, o.amount);
@@ -2832,7 +2837,10 @@ export class Game {
     if (kind === 'joinwar') {
       if (!this.alive(o.target)) { settle('lapsed'); return false; }
       dip.exec(this, 'joinwar', from, team, o); settle('accepted');
-      this.log(team === PLAYER ? PLAYER : -1, `You join ${N} against ${HOUSES[o.target].short}.`, 'war');
+      const c = dip.coalitionOf(this, from);   // T-132: answering a coalition leader's call makes you one of its members (bound like them: its leader's peace is yours)
+      const sworn = c && c.state === 'war' && c.leader === from && c.against === o.target && !dip.coalitionOf(this, team) && this.rel[team][o.target] === 'war';
+      if (sworn) c.members.push(team);
+      this.log(team === PLAYER ? PLAYER : -1, `You join ${N} against ${HOUSES[o.target].short}${sworn ? ', sworn to the coalition: you make no peace of your own, and its leader\'s peace is yours' : ''}.`, 'war');
       return true;
     }
     return false;
@@ -2886,6 +2894,16 @@ export class Game {
     this.opinionShift(b, a, Math.min(18, (amount / 6) * (1 + pr.greed * 0.5)) * (fresh ? 1 : 0.3), 'sent a gift');
     const text = `${this.players[a].name} sends ${amount} coin to ${HOUSES[b].short}.`;
     dip.record(this, a, b, 'gift', text, 'note'); this.log(a === PLAYER || b === PLAYER ? PLAYER : -1, text, 'info');
+    return true;
+  }
+  // T68: `a` calls every AI house it has met into a coalition against D (diplomacy.js callCoalition); refused with reasons
+  callCoalition(a, D) {
+    this.diploNote = '';
+    if (!Number.isInteger(D) || !this.players[D]) return this.deny(a, 'Choose a house to stand against.');
+    const r = dip.callCoalition(this, a, D);
+    if (!r.ok) return this.deny(a, r.why);
+    const N = HOUSES[D].short, no = r.refused.map((x) => HOUSES[x.t].short);
+    if (a === PLAYER) this.log(PLAYER, `${r.willing.map((m) => HOUSES[m].short).join(', ')} answer your call and march on ${N} under your banner${no.length ? `; ${no.join(', ')} stay out (see the Council)` : ''}.`, 'good');
     return true;
   }
   askOf(a, b, kind, ctx = {}) {   // kind: demand | askwar | askaid

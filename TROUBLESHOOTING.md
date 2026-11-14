@@ -641,3 +641,14 @@ Causes and fixes:
 - **Fix** (`js/tutorial.js`): the hint reads `BUILDINGS.barracks.cost`. The *Find your king* lesson and the *Your king has fallen* tip now say the king's card names the heirs and lets the player choose the next.
 - **Test**: `test/rules.test.js` checks the lesson's price against config, that no hand-written price is left, and the two king texts.
 
+
+## T-132 - A player who marched with a coalition was not one of it (fixed 2026-11-14)
+
+- **Symptom**: when a rival coalition formed against a house the player also feared, its leader asked him to march with them (T66). Accepting declared his war, but he was never added to the coalition's members: the Council's *Coalition* line left him out, he could make a separate peace that every AI member was refused, and when the leader made peace the members made it too while the player was left at war alone, with nobody beside him and no word why.
+- **Fix** (`js/game.js`, `js/diplomacy.js`): answering a coalition leader's call against its foe makes the player a member (unless he is sworn to another). A sworn member makes no peace of his own, the player included: an envoy's peace to the coalition's foe and accepting the foe's peace letter are both refused with the reason (*sworn to the coalition under ...: its leader makes the peace*), and the foe no longer sues a sworn member for peace. The leader's peace is his, as it is every member's.
+- **Test**: `test/rules.test.js` (T-132) answers the call, checks membership and the Council words, the two refusals, and that the leader's peace ends the player's war.
+
+## T-133 - The player calls a coalition (T68, 2026-11-14)
+
+- **What**: the AI could band together against a runaway house (T66) but the player could only ask rivals one by one. `callCoalition(g, a, D)` in `js/diplomacy.js` (any house; the player's *Call a coalition* button on a rival's card, the `coalition` intent): `a` must fear D (D is `COALITION.lead` times as strong) and have been wronged by it within `COALITION.wrongFor` s, with no coalition already for or against either, not before `COALITION.from`, not within `COALITION.again` of the last against D, and not a peace just made. Every AI house `a` has met answers by `judge('coalition')` (fears D too, opinion of the caller at least `DIPLO.need.joinwar - COALITION.ease` unless allied, no other coalition, not at war with the caller, no settled peace with D, the honourable do not betray a trade treaty); with `COALITION.min - 1` willing the caller leads them under the T66 rules. A failed call names each house's reason, records each refusal in the Correspondence, and cools for `DIPLO.cool.coalition` s.
+- **Test**: `test/rules.test.js` (T68).

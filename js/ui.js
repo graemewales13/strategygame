@@ -9,10 +9,10 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { shortName } from './names.js';
 import { gfx, setQuality } from './gfx.js';
 import {
-  counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
+  COALITION, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
   VILLAGE_WIN_HOLD, WEALTH_HOLD, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR } from './config.js';
 import { drawCrest, drawVale } from './render.js';
-import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread, coalitionOf, coalitionAgainst, coalitionWords } from './diplomacy.js';
+import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread, coalitionOf, coalitionAgainst, coalitionWords, coalitionCall, wrongOf } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
 import { productionRows, idleProduction, researchRow } from './production.js';
 import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, JOBS, JOB_LABEL } from './economy.js';
@@ -769,6 +769,7 @@ export class UI {
       case 'demand': this.ask('demand', +d.team, { amount: +d.amount }); break;
       case 'askaid': this.ask('askaid', +d.team, { amount: +d.amount }); break;
       case 'askwar': this.ask('askwar', +d.team, { target: +d.target }); break;
+      case 'callcoal': this.ask('coalition', +d.team); break;   // T68
       case 'council': this.toggleCouncil(d.team != null ? +d.team : null); break;
       case 'councilclose': this.councilOpen = false; $('council').classList.add('hidden'); break;
       case 'bgo': this.r.centerOn(+d.x, +d.y); break;
@@ -875,6 +876,8 @@ export class UI {
     // houses they could fight for you: your enemies first (owner, 2026-10-17: there was no way to ask another king for help in a war; the row was only in the Council)
     const others = g.players.filter((p) => p.alive && p.team !== PLAYER && p.team !== t && g.known[PLAYER][p.team]).sort((x, y) => (g.rel[PLAYER][y.team] === 'war') - (g.rel[PLAYER][x.team] === 'war'));
     if (others.length && rel !== 'war') html += `<div class="drow wrap"><span class="dlabel">Ask them to help you: declare war on</span>${others.map((p) => ask('askwar', `⚔ ${esc(HOUSES[p.team].short)}${g.rel[PLAYER][p.team] === 'war' ? ' (your enemy)' : ''}`, `Ask ${esc(HOUSES[t].short)} to take up arms against ${esc(HOUSES[p.team].short)}. Friends and allies listen, if the odds look fair.`, `data-target="${p.team}"`, false)).join('')}</div>`;
+    { const w = wrongOf(g, PLAYER, t), cc = w && rel !== 'alliance' ? coalitionCall(g, PLAYER, t) : null;   // T68: call the houses that fear them into a coalition you lead
+      if (cc) html += `<div class="drow"><button class="dbtn sm coalbtn" data-act="callcoal" data-team="${t}" ${cc.ok ? '' : 'disabled'} data-tip="${encodeURIComponent(`<b>Call a coalition against ${esc(HOUSES[t].short)}</b><br>They ${esc(w.what)}. Every house you have met hears your call at once; those that fear ${esc(HOUSES[t].short)} (it is ${COALITION.lead} times as strong as each), like you well enough and are free of other oaths join, and with ${COALITION.min - 1} or more you lead them all to war on it. Members make no peace of their own: your peace is theirs.${cc.ok ? `<br>Asked: ${cc.asked.map((m) => esc(HOUSES[m].short)).join(', ')}.` : `<br><b>Not now:</b> ${esc(cc.why)}`}`)}">${uiImg('marks', 'coalition', '⚑', 'tico')} Call a coalition</button></div>`; }
     html += `<div class="dnote">${rel === 'war' ? (wait > 0 ? `They will not parley for ${wait}s.` : 'They may take peace if they are not winning.') : rel === 'alliance' ? 'Allies trade freely, never fight each other, and take up each other’s wars. Breaking the oath is remembered by everyone. Victory still needs every house to fall.' : rel === 'trade' ? 'Camels may use their markets. Peace cancels it; war breaks it.' : 'No fighting, no trade. A treaty lets your camels use their markets; an alliance binds you.'}</div>`;
     if (compact) html += `<div class="drow"><button class="dbtn sm" data-act="council" data-team="${t}">Open the Council ›</button></div>`;
     return html;
