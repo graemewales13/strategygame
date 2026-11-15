@@ -237,9 +237,11 @@ export function judge(g, kind, from, to, ctx = {}) {
       if (pr.honor > 0.65 && g.rel[to][T] === 'trade') return no(`${me} trades with ${nameOf(g, T)} and will not betray a treaty.`);
       return yes();
     }
-    case 'flare': {   // an ally's signal (T54): ctx { foe, x, y }; whether `to` has soldiers to spare is the AI's to say (answerFlare in ai.js)
-      const F = ctx.foe;
-      if (rel !== 'alliance') return no(`${me} is not ${N}'s ally.`);
+    case 'flare': {   // an ally's signal (T54), or a coalition leader's on its foe (T70): ctx { foe, x, y }; whether `to` has soldiers to spare is the AI's to say (answerFlare in ai.js)
+      const F = ctx.foe, c = rel === 'alliance' ? null : coalitionOf(g, to);
+      const led = c && c.state === 'war' && c.leader === from && c.leader !== to;   // a coalition `from` leads at war (T70)
+      if (rel !== 'alliance' && !led) return no(`${me} is not ${N}'s ally${c ? ' and is sworn to another coalition' : ''}.`);
+      if (led && F !== c.against) return no(`${me} is sworn to your coalition against ${nameOf(g, c.against)} only, and sees none of theirs at the mark.`);
       if (F == null || F < 0) return no(`${me} sees no foe of ${N} at the mark.`);
       if (g.truce?.(to, F)) return no(`${me} keeps the peace with ${nameOf(g, F)} for now.`);
       if (g.rel[to][F] !== 'war') return no(`${me} is not at war with ${nameOf(g, F)}; ask him on the Council to join your war first.`);

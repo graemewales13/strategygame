@@ -178,7 +178,9 @@ export const GEAR = {
 export const GEAR_KEYS = Object.keys(GEAR);
 export const REFIT = { r: 7, every: 2 };
 export const CRAFT_QUEUE = 5;
-export const WARE_JOY = { every: 25, secs: 70 }; // one ware lifts a village for 70s; a village consumes at most one per 25s
+export const WARE_JOY = { every: 25, secs: 70, tribute: 1.3 }; // one ware lifts a village for 70s; a village consumes at most one per 25s; a content village (a ware or a feast) pays `tribute` times its tribute
+// what pulling down a building gives back of its price (T-134): a site not yet finished, and a finished building
+export const DEMOLISH = { site: 0.8, built: 0.3 };
 export const NODE_RES = { tree: 'wood', berry: 'food', gold: 'gold' };
 export const GATHER_RATE = { wood: 0.95, food: 1.1, gold: 0.7 }; // per second while working
 export const CARRY_CAP = 10;

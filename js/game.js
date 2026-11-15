@@ -7,7 +7,7 @@ import {
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
-  VILLAGE_KINDS, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
+  VILLAGE_KINDS, DEMOLISH, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, HEIR, HEIR_TRAITS } from './config.js';
 import { createMap } from './map.js';
@@ -935,7 +935,7 @@ export class Game {
     p.food -= cost; p.feastT = this.time; p.feasts = (p.feasts || 0) + 1;
     for (const v of held) {
       v.loyalty = Math.min(100, v.loyalty + FEAST.loyalty);
-      v.joyT = Math.max(v.joyT || 0, FEAST.secs);
+      if (FEAST.secs >= (v.joyT || 0)) { v.joyT = FEAST.secs; v.joyBy = 'feast'; }   // (what lifts it, for the village card, T-134)
       v.stores.food = Math.min(Math.max(v.stores.food || 0, 150), (v.stores.food || 0) + FEAST.stock); v.hunger = 0;
     }
     let warmed = 0;
@@ -992,8 +992,9 @@ export class Game {
 
   // ---- signal your allies (T54, AoE II's flare) --------------------------------------------------------------------------------
   // The house at war with `team` that stands most at (x, y): its soldiers, buildings and villages within SIGNAL.r tiles, counted only where
-  // one of `viewers` can see them (an answer must not tell what the fog hides). A house that `prefer` is also at war with comes first.
-  flareFoe(team, x, y, viewers = [team], prefer = -1) {
+  // one of `viewers` can see them (an answer must not tell what the fog hides). A house that `prefer` is also at war with comes first,
+  // and `want` (a coalition's foe, when a coalition member is called, T70) before any.
+  flareFoe(team, x, y, viewers = [team], prefer = -1, want = -1) {
     const r = SIGNAL.r, seen = (o) => viewers.some((v) => this.canSee(v, o.x, o.y)), w = new Map();
     const add = (t, n) => { if (t >= 0 && t !== team && this.rel[team][t] === 'war' && this.alive(t)) w.set(t, (w.get(t) || 0) + n); };
     for (const u of this.unitsNear(x, y, r)) if (u.hp > 0 && !u.inside && Math.hypot(u.x - x, u.y - y) <= r && seen(u)) add(u.team, 1);
@@ -1001,12 +1002,20 @@ export class Game {
     for (const v of this.villages) if (v.owner >= 0 && Math.hypot(v.x - x, v.y - y) <= r && seen(v)) add(v.owner, 3);
     let best = -1, bw = 0;
     for (const [t, n] of [...w].sort((a, b) => a[0] - b[0])) {
-      const s = n + (prefer >= 0 && this.rel[prefer][t] === 'war' ? 1000 : 0);
+      const s = n + (prefer >= 0 && this.rel[prefer][t] === 'war' ? 1000 : 0) + (t === want ? 2000 : 0);   // (want: a coalition's foe, T70)
       if (s > bw) { bw = s; best = t; }
     }
     return best;
   }
   alliesOf(team) { return this.players.filter((q) => q.alive && q.team !== team && this.rel[team][q.team] === 'alliance').map((q) => q.team); }
+  // the coalition `team` leads at war (T70): its other members answer its signals on the coalition's foe as allies do
+  ledCoalition(team) { const c = dip.coalitionOf(this, team); return c && c.state === 'war' && c.leader === team ? c : null; }
+  // the houses a signal of `team` reaches: its allies, and the members of a coalition it leads at war (T70)
+  flareTo(team) {
+    const to = this.alliesOf(team), c = this.ledCoalition(team);
+    if (c) for (const m of c.members) if (m !== team && this.players[m]?.alive && !to.includes(m)) to.push(m);
+    return to.sort((a, b) => a - b);
+  }
   // why `team` cannot signal now (null when it can)
   flareWhy(team, x, y) {
     const p = this.players[team];
@@ -1014,7 +1023,7 @@ export class Game {
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= this.W || y >= this.H) return 'Mark a spot on the field.';
     const ago = this.time - (p.flareT ?? -1e9);
     if (ago < SIGNAL.cool) return `Your last signal was ${Math.floor(ago)} s ago; signal again in ${Math.ceil(SIGNAL.cool - ago)} s.`;
-    if (!this.alliesOf(team).length) return 'You have no allies to signal. Seal an alliance on the Council first.';
+    if (!this.flareTo(team).length) return 'You have no allies to signal and lead no coalition. Seal an alliance or call a coalition on the Council first.';
     return null;
   }
   // Mark a spot for every ally: an AI ally judges it (dip.judge 'flare': at war with the foe there, not too far) and sends the soldiers it
@@ -1023,19 +1032,21 @@ export class Game {
   flare(team, x, y) {
     const why = this.flareWhy(team, x, y);
     if (why) { if (team === PLAYER) this.deny(team, why); return false; }
-    const p = this.players[team], to = this.alliesOf(team), me = team === PLAYER;
+    const p = this.players[team], to = this.flareTo(team), me = team === PLAYER, coal = this.ledCoalition(team);
+    // a coalition member who is no ally looks first for the coalition's foe at the mark (T70)
+    const want = (a) => (coal && coal.members.includes(a) && this.rel[team][a] !== 'alliance' ? coal.against : -1);
     p.flareT = this.time; p.flares = (p.flares || 0) + 1;
     const f = p.flare = { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, t: this.time, to, answers: [] };
     if (me) this.sfx('horn', x, y);
     for (const a of to) {
       const who = `${dip.leaderName(this, a)} of ${HOUSES[a].short}`;
       if (!this.players[a].ai) {   // the player is called by an ally (a rival house's war host marching)
-        const foe = this.flareFoe(team, x, y, [team, a], a);
+        const foe = this.flareFoe(team, x, y, [team, a], a, want(a));
         const text = `${dip.leaderName(this, team)} of ${HOUSES[team].short} calls you to the mark on your map${foe >= 0 ? ` against ${HOUSES[foe].short}` : ''}.`;
         dip.record(this, team, a, 'flare', text, 'note'); if (a === PLAYER) this.log(PLAYER, text, 'info');
         continue;
       }
-      const foe = this.flareFoe(team, x, y, [team, a], a), j = dip.judge(this, 'flare', team, a, { foe, x, y });
+      const foe = this.flareFoe(team, x, y, [team, a], a, want(a)), j = dip.judge(this, 'flare', team, a, { foe, x, y });
       const ans = j.ok ? answerFlare(this, a, x, y) : { ids: [], why: j.why };
       if (ans.ids.length) {
         f.answers.push({ team: a, ids: ans.ids, foe });
@@ -1180,11 +1191,11 @@ export class Game {
       if (u.hp < u.maxHp && this.powerOf(u) > 0 && this.hasTech(u.team, 'medicine') && this.time - (u.engagedT ?? -1e9) > MEDICINE.quiet) u.hp = Math.min(u.maxHp, u.hp + MEDICINE.heal * dt);
     }
   }
-  // ---- pulling down a building of your own: those inside step out; a third of the cost comes back (all but a fifth while it is still a site)
+  // ---- pulling down a building of your own: those inside step out; DEMOLISH.built of the cost comes back (DEMOLISH.site while it is still a site)
   demolish(team, id) {
     const b = this.byId.get(id);
     if (!b || b.type !== 'building' || b.team !== team || b.hp <= 0) return false;
-    const back = b.built >= 1 ? 0.3 : 0.8, p = this.players[team], cost = BUILDINGS[b.kind]?.cost || {};
+    const back = b.built >= 1 ? DEMOLISH.built : DEMOLISH.site, p = this.players[team], cost = BUILDINGS[b.kind]?.cost || {};
     for (const k in cost) if (cost[k]) p[k] = (p[k] || 0) + Math.floor(cost[k] * back);
     for (const q of b.craft || []) for (const k in GEAR[q.item].cost) p[k] = (p[k] || 0) + GEAR[q.item].cost[k];   // kit ordered but not made: its goods come back
     b.craft = [];
@@ -3018,7 +3029,7 @@ export class Game {
       if (!(v.joyT > 0)) {
         const p = this.players[v.owner];
         if (p.ware >= 1 && this.teamB(v.owner).some((b) => b.team === v.owner && b.built >= 1 && b.hp > 0 && (b.kind === 'market' || b.kind === 'tavern' || b.kind === 'temple') && Math.hypot(b.x - v.x, b.y - v.y) <= 20)) {
-          p.ware -= 1; v.joyT = WARE_JOY.secs;
+          p.ware -= 1; v.joyT = WARE_JOY.secs; v.joyBy = 'ware';
           if (v.owner === PLAYER) this.log(PLAYER, `${v.name} rejoices over fine ware.`, 'good');
         }
       }
@@ -3252,7 +3263,7 @@ export class Game {
 
   // a held village's tribute against its kind's base: loyalty and size (`rate`), rejoicing and the district (`joy`); the panel shows the same numbers (T-102)
   tributeShare(v, vd = v.owner >= 0 ? this.districtAt(v.owner, v.x, v.y) : null) {
-    const loy = 0.4 + (0.8 * v.loyalty) / 100, size = 0.5 + 0.7 * (v.pop / v.popMax), glad = v.joyT > 0 ? 1.3 : 1, dist = vd ? 1 + 0.12 * vd.score : 1;
+    const loy = 0.4 + (0.8 * v.loyalty) / 100, size = 0.5 + 0.7 * (v.pop / v.popMax), glad = v.joyT > 0 ? WARE_JOY.tribute : 1, dist = vd ? 1 + 0.12 * vd.score : 1;
     const crown = v.owner >= 0 && this.kingOf(v.owner)?.reign === 'steward' ? 1 + HEIR.traits.steward.tribute : 1;   // a steward king (T65)
     return { loy, size, glad, dist, crown, rate: loy * size, joy: glad * dist * crown, total: loy * size * glad * dist * crown };
   }

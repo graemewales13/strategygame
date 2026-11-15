@@ -11,7 +11,7 @@ import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, w
 import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT, WARCRY, routWords, countWord, shareWord } from '../js/config.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar, dread, allianceNeed, judge as dip_judge, pactWhy, drift as dip_drift, strength as dip_strength } from '../js/diplomacy.js';
 import { updateCoalitions, coalitionOf, coalitionAgainst, coalitionWords, boundTo, wronged, coalitionCall } from '../js/diplomacy.js';
-import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT } from '../js/config.js';
+import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT, WARE_JOY, DEMOLISH } from '../js/config.js';
 import { battleWords, battlesOf, newBattle, battleRow, menWords } from '../js/battle.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
@@ -1951,18 +1951,18 @@ test('feast (T33): grain at a keep lifts the villages near it, refused with a re
   const loy0 = free?.loyalty;
   assert.equal(g.applyIntent({ team: PLAYER, type: 'feast', buildingId: keep.id }), true);
   assert.equal(p.food, 500, 'the cost is paid');
-  assert.equal(v.loyalty, 50 + FEAST.loyalty); assert.equal(v.joyT, FEAST.secs); assert.equal(v.stores.food, FEAST.stock); assert.equal(v.hunger, 0);
+  assert.equal(v.loyalty, 50 + FEAST.loyalty); assert.equal(v.joyT, FEAST.secs); assert.equal(v.joyBy, 'feast', 'the card says a feast lifts it (T-134)'); assert.equal(v.stores.food, FEAST.stock); assert.equal(v.hunger, 0);
   if (free) { assert.equal(free.lean, PLAYER); assert.equal(free.loyalty, Math.min(100, loy0 + FEAST.sway)); }
   // the panel's tribute share counts the rejoicing (T-102)
   const ts = g.tributeShare(v);
-  assert.equal(ts.glad, 1.3); assert.ok(Math.abs(ts.total - ts.loy * ts.size * ts.glad * ts.dist) < 1e-9);
+  assert.equal(ts.glad, WARE_JOY.tribute); assert.ok(Math.abs(ts.total - ts.loy * ts.size * ts.glad * ts.dist) < 1e-9);
   // once per cooldown, and the wait is told
   p.food = 5000;
   assert.equal(g.feast(PLAYER, keep.id), false); assert.match(g.diploNote, /sweeping up/);
   assert.ok(g.feastReady(PLAYER) > FEAST.cool - 1);
   // saved: a load keeps the cooldown and the rejoicing
   const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
-  assert.equal(h.feastReady(PLAYER), g.feastReady(PLAYER)); assert.equal(h.byId.get(v.id).joyT, v.joyT);
+  assert.equal(h.feastReady(PLAYER), g.feastReady(PLAYER)); assert.equal(h.byId.get(v.id).joyT, v.joyT); assert.equal(h.byId.get(v.id).joyBy, 'feast');
   run(g, 10);
   assert.ok(v.loyalty > 50 + FEAST.loyalty, 'loyalty climbs while the village rejoices');
   g.time += FEAST.cool; assert.equal(g.feastReady(PLAYER), 0);
@@ -2554,6 +2554,71 @@ test('T-132: answering a coalition leader\'s call makes the player a sworn membe
   assert.equal(g.respondOffer(PLAYER, 4, true, 999), false); assert.ok(g.offers.some((x) => x.id === 999), 'the foe\'s offer waits'); assert.equal(g.rel[PLAYER][4], 'war');
   g.setRelation(2, 4, 'peace'); updateCoalitions(g);
   assert.equal(g.rel[PLAYER][4], 'peace', 'the leader\'s peace is the player\'s'); assert.equal(coalitionAgainst(g, 4), null);
+});
+
+test('T70: a coalition leader\'s signal is answered by its members on the coalition\'s foe; elsewhere they say why; rival leaders signal theirs', () => {
+  const setup = () => {
+    const g = new Game({ seed: 70, houses: 5, ai: false, size: MAP_SIZES.small });
+    for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) g.known[a][b] = 1;
+    g.time = COALITION.from + 100; for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) if (a !== b) { g.rel[a][b] = 'peace'; g.relSince[a][b] = 0; }
+    for (const m of [1, 2, 3, 4]) { g.players[m].ai = true; g.players[m].persona = { aggr: 0.5, greed: 0.5, honor: 0.5, wary: 0.5, temper: 'cunning' }; }
+    g.fogOn = false; return g;
+  };
+  const g = setup(), D = 4;
+  // without a coalition or an ally there is nobody to signal
+  assert.equal(g.flare(PLAYER, 5, 5), false); assert.match(g.diploNote, /lead no coalition/);
+  const c = { id: 1, against: D, leader: PLAYER, members: [PLAYER, 1, 2], since: g.time, state: 'war', what: 'took Kilbride', at: g.time, letter: null };
+  g.coalitions.push(c); for (const m of [PLAYER, 1, 2]) g.setRelation(m, D, 'war');
+  g.setRelation(1, 3, 'war'); g.setRelation(PLAYER, 3, 'war');   // a war of house 1's own, outside the coalition
+  assert.deepEqual(g.flareTo(PLAYER), [1, 2], 'the members are called; house 3 is not');
+  const men = {};
+  for (const m of [1, 2]) { const s = g.seatOf(m); men[m] = Array.from({ length: 9 }, (_, i) => g.addUnit('footman', m, s.x + (i % 3) * 1.2, s.y + 5 + Math.floor(i / 3) * 1.2)); }
+  const mark = g.seatOf(D), keep = Math.max(SIGNAL.keep, Math.ceil(9 * SIGNAL.keepShare));
+  assert.equal(g.flare(PLAYER, mark.x, mark.y), true, g.diploNote);
+  const f = g.players[PLAYER].flare;
+  assert.deepEqual(f.to, [1, 2]); assert.equal(f.answers.length, 2, 'both members march');
+  for (const a of f.answers) { assert.equal(a.foe, D); assert.equal(a.ids.length, 9 - keep, 'each keeps a home guard'); }
+  // a mark on house 3 (house 1's own war, not the coalition's): members are sworn against house 4 only
+  g.time += SIGNAL.cool; const m3 = g.seatOf(3);
+  for (const u of [...men[1], ...men[2]]) u.task = { type: 'idle' };
+  assert.equal(g.flare(PLAYER, m3.x, m3.y), true);
+  assert.equal(g.players[PLAYER].flare.answers.length, 0);
+  assert.ok(g.letters.filter((l) => l.kind === 'flare' && l.state === 'declined' && /sworn to your coalition against/.test(l.text)).length === 2, 'each member says why');
+  // a member's own signal does not reach the leader by coalition (only allies) and a member who is the player is not judged
+  assert.deepEqual(g.flareTo(1), []);
+  // a rival leading a coalition calls its members to its war host's goal; a player member is told by letter
+  const r = setup(); const rc = { id: 1, against: D, leader: 1, members: [1, PLAYER, 2], since: r.time, state: 'war', what: 'slew our king', at: r.time, letter: null };
+  r.coalitions.push(rc); for (const m of [1, PLAYER, 2]) r.setRelation(m, D, 'war');
+  const s2 = r.seatOf(2); for (let i = 0; i < 9; i++) r.addUnit('footman', 2, s2.x + (i % 3) * 1.2, s2.y + 5 + Math.floor(i / 3) * 1.2);
+  assert.equal(r.flare(1, r.seatOf(D).x, r.seatOf(D).y), true);
+  assert.ok(r.letters.some((l) => l.to === PLAYER && /calls you to the mark/.test(l.text)), 'the player member is called');
+  assert.equal(r.players[1].flare.answers.length, 1); assert.equal(r.players[1].flare.answers[0].team, 2);
+  // the rival AI signals with flareTo, so a coalition with no allies still hears it
+  assert.ok(readFileSync(new URL('../js/ai.js', import.meta.url), 'utf8').includes('game.flareTo(team).length) game.flare('));
+  // an ultimatum is not a war: no signal reaches its members yet
+  rc.state = 'ultimatum'; assert.deepEqual(r.flareTo(1), []);
+});
+
+test('T-134: the village card says what keeps it content (a feast or fine ware) and the tribute it adds, and pulling down gives back what its button says', () => {
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8'), gsrc = readFileSync(new URL('../js/game.js', import.meta.url), 'utf8');
+  assert.ok(!ui.includes('Content (fine ware): +30% tribute'), 'the Mood line no longer says fine ware after a feast, nor hard-codes the share');
+  assert.ok(ui.includes("v.joyBy === 'feast'") && ui.includes('WARE_JOY.tribute'));
+  for (const t of ["'80% back'", "'30% back'", 'a third of its cost', 'Four fifths of the cost']) assert.ok(!ui.includes(t), `no hand-written ${t}`);
+  assert.ok(gsrc.includes('glad = v.joyT > 0 ? WARE_JOY.tribute : 1') && gsrc.includes('DEMOLISH.built : DEMOLISH.site'));
+  // a ware sets the cause too, and a ware does not cut short a longer feast
+  const g = mk(), p = g.players[PLAYER], seat = g.seatOf(PLAYER);
+  const keep = g.addBuilding('keep', PLAYER, Math.round(seat.x + 7), Math.round(seat.y - 2), true); g.recomputeWalk();
+  const v = g.feastHeld(PLAYER, keep)[0]; v.joyT = 0; v.joyBy = undefined;
+  p.food = 5000; assert.ok(g.feast(PLAYER, keep.id), g.diploNote); assert.equal(v.joyBy, 'feast');
+  v.joyBy = 'ware'; v.joyT = FEAST.secs + 5; p.feastT = -1e9; assert.ok(g.feast(PLAYER, keep.id));
+  assert.equal(v.joyT, FEAST.secs + 5, 'a feast never shortens a longer joy'); assert.equal(v.joyBy, 'ware', 'and does not take its name');
+  // pulling down: a site gives back DEMOLISH.site of its price, a finished building DEMOLISH.built
+  const cost = BUILDINGS.barracks.cost;
+  for (const [built, share] of [[false, DEMOLISH.site], [true, DEMOLISH.built]]) {
+    const b = g.addBuilding('barracks', PLAYER, Math.round(seat.x - 9), Math.round(seat.y + 6 + (built ? 6 : 0)), built);
+    const before = { ...p }; assert.ok(g.demolish(PLAYER, b.id));
+    for (const k in cost) if (cost[k]) assert.equal(p[k] - (before[k] || 0), Math.floor(cost[k] * share), `${k} back for a ${built ? 'finished building' : 'site'}`);
+  }
 });
 
 test('the panels read their reaches and times from config (T-128): a mining camp, the Armoury swap, the spy report', () => {

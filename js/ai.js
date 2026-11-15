@@ -322,8 +322,8 @@ function think(game, team, p) {
         const goal = huntGoal(game, team, target.team, seat, ready);
         if (goal) {
           game.setStance(ready, 'aggressive'); game.setFormation(ready, 'line'); game.cmdAttack(ready, goal);
-          // and calls its allies to the same goal (T54): the player's signal, by the same rule; an ally the player commands is told where
-          if (game.time - (p.flareT ?? -1e9) >= SIGNAL.aiCool && game.alliesOf(team).length) game.flare(team, goal.x, goal.y);
+          // and calls its allies (and a coalition it leads, T70) to the same goal (T54): the player's signal, by the same rule; an ally the player commands is told where
+          if (game.time - (p.flareT ?? -1e9) >= SIGNAL.aiCool && game.flareTo(team).length) game.flare(team, goal.x, goal.y);
         }
       }
     }
