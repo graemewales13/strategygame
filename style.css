@@ -618,6 +618,8 @@ img.ico { height: 16px; width: auto; vertical-align: -3px; margin-right: 3px; } 
 #bcard .tbtns button:hover { background: linear-gradient(180deg, #86602f, #4a3319); color: #fff; }
 #bcard .bmore { margin-left: auto; font-size: 10.5px; color: #a8946a; }
 .battles .brow { cursor: pointer; } .battles .brow:hover { background: #3a2a16; }
+.wars .wrow { padding: 4px; border-bottom: 1px solid #3a2a16; font-size: 12.5px; } .wars .wtop { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; } .wars .wtop small { color: #a8946a; }
+.wars .wv { margin-left: auto; font-size: 11.5px; color: #e8d8b0; } .wars .wv.good { color: #9fe39a; } .wars .wv.bad { color: #f09088; } .wars .wsides { color: #c9b68c; } .wars .wl { color: #e8d8b0; } .wars .wspots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; } #council .wars .wspots .dbtn { flex: 0 0 auto; padding: 3px 10px !important; }
 /* T65: heirs of the royal line on the king's card and the Council */
 .stat.heirs { align-items: flex-start; }
 .stat.heirs > span { display: block; flex: 1; }

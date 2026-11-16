@@ -12,7 +12,9 @@ import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT, WARCRY, routWords, cou
 import { deliberate as dip_deliberate, intel, stance, pressWar, dread, allianceNeed, judge as dip_judge, pactWhy, drift as dip_drift, strength as dip_strength } from '../js/diplomacy.js';
 import { updateCoalitions, coalitionOf, coalitionAgainst, coalitionWords, boundTo, wronged, coalitionCall } from '../js/diplomacy.js';
 import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT, WARE_JOY, DEMOLISH } from '../js/config.js';
-import { battleWords, battlesOf, newBattle, battleRow, menWords } from '../js/battle.js';
+import { battleWords, battlesOf, newBattle, battleRow, menWords, battleSides } from '../js/battle.js';
+import { warSides, warTally, warWords, warVerdict, pastWars } from '../js/wars.js';
+import { WAR_BOOK } from '../js/config.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
@@ -2689,6 +2691,79 @@ test('battle reports (T63): the king\'s war cry, a fallen king, deeds, a rout an
   const r = battlesOf(g)[0], w = battleWords(g, r), text = w.lines.map((l) => l.text).join(' | ');
   assert.match(text, /fought in it and cried his men on/); assert.match(text, /Deeds: .+Slayer|Deeds: .+, /); assert.match(text, /Your army fled the field: every village of yours lost 20%/);
   assert.match(text, /'s .+ fell/, 'the fallen king: ' + text); assert.ok(text.includes(`You took ${v.name}.`), 'the village: ' + text);
+});
+
+test('battle reports (T-136): an ally fighting beside you is on your side, not the foe\'s; its dead do not make a good trade', () => {
+  const g = mk({ size: MAP_SIZES.small }); g.meet(0, 1); g.meet(0, 2); g.setRelation(PLAYER, 2, 'alliance'); g.setRelation(PLAYER, 1, 'war'); g.setRelation(2, 1, 'war');
+  const h = g.seatOf(PLAYER), x = h.x + 20, y = h.y + 6;
+  const me = g.addUnit('footman', PLAYER, x, y), al = [0, 1, 2].map((i) => g.addUnit('footman', 2, x + i, y + 1)), fo = g.addUnit('knight', 1, x + 1, y + 2);
+  for (let i = 0; i < BATTLE.minBlows; i++) g.damage(fo, 1, PLAYER, me);
+  for (const a of al) g.damage(a, 999, 1, fo);   // the foe's knight cuts down three of our ally's men
+  g.time += BATTLE.quiet + 1; g.updateBattles(1);
+  const r = battlesOf(g)[0]; assert.deepEqual(r.wars, ['0>1', '1>2'], 'who was at war, kept with the report');
+  const S = battleSides(g, r); assert.deepEqual(S.friends.map((s) => s.team), [2]); assert.deepEqual(S.foes.map((s) => s.team), [1]);
+  const w = battleWords(g, r), text = w.lines.map((l) => l.text).join(' | ');
+  assert.match(w.lines[0].text, /^You \(1: 1 foot\) with .+ \(3: 3 foot\) against .+ \(1: 1 horseman\)\.$/, text);
+  assert.match(text, /'s losses, at your side: 3 dead/);
+  assert.equal(w.verdict.cls, 'bad', 'our side lost three men, they lost none: ' + w.verdict.text); assert.match(w.verdict.text, /your side lost/);
+  assert.match(battleRow(g, r), /with .+ against .+; you lost 0, they lost 0/);
+  // a later peace does not turn the report around; an old report without the field reads the standing now
+  g.setRelation(PLAYER, 1, 'peace'); assert.deepEqual(battleSides(g, r).foes.map((s) => s.team), [1]);
+  delete r.wars; assert.deepEqual(battleSides(g, r).foes.map((s) => s.team), [1, 2], 'nobody at war now: everyone else stands against you');
+});
+
+test('war overview (T71): a war is booked from its declaration; battles, villages and kings counted for each side; ended by peace; saved, reset, read by no rule', () => {
+  const g = mk({ size: MAP_SIZES.small }); g.meet(0, 1); g.meet(0, 2);
+  assert.equal(g.warOf(0, 1), null, 'no war, no record');
+  g.time = 60; g.setRelation(PLAYER, 1, 'war');
+  const w = g.warOf(1, PLAYER); assert.ok(w && w.t0 === 60 && w.by === PLAYER, 'opened on the declaration, either order');
+  assert.deepEqual(warSides(g), [{ ours: [PLAYER], theirs: [1], coalition: null }]);
+  // a battle: we kill two bowmen, they kill one footman
+  const h = g.seatOf(PLAYER), x = h.x + 20, y = h.y + 6;
+  const us = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, x + i, y)), them = [0, 1, 2].map((i) => g.addUnit('bowman', 1, x + i, y + 1));
+  for (let i = 0; i < BATTLE.minBlows; i++) g.damage(us[i % 3], 1, 1, them[i % 3]);
+  g.damage(them[0], 999, PLAYER, us[0]); g.damage(them[1], 999, PLAYER, us[1]); g.damage(us[2], 999, 1, them[2]);
+  g.time += BATTLE.quiet + 1; g.updateBattles(1);
+  assert.equal(w.bat.length, 1, 'the battle is booked'); assert.deepEqual(w.bat[0].d, { 0: 1, 1: 2 });
+  // a village taken from them, their king slain by us
+  const v = g.villages.find((o) => o.owner === -1); v.owner = 1; g.submit(v, PLAYER, 'sack');
+  const fk = g.kingOf(1); g.damage(fk, 1e6, PLAYER, us[0]);
+  assert.equal(w.vil[PLAYER], 1, 'the village'); assert.equal(w.kings[1], 1, 'their king');
+  const T = warTally(g, [PLAYER], [1]);
+  assert.equal(T.battles, 1); assert.equal(T.won, 1, 'they lost twice the worth: won'); assert.deepEqual(T.dead, [1, 2]);
+  assert.deepEqual(T.vil, [1, 0]); assert.deepEqual(T.kings, [0, 1]); assert.equal(T.spots.length, 1);
+  const W = warWords(g, warSides(g)[0]), text = W.lines.join(' | ');
+  assert.match(W.title, /^War with House /); assert.match(W.since, /^since 1:00/); assert.equal(W.verdict.cls, 'good');
+  assert.match(text, /1 battle: 1 won, 0 lost, 0 even/); assert.match(text, /Villages: we took 1, they took 0/); assert.match(text, /Kings slain: 1 of theirs, 0 of ours/);
+  // an ally at war with the same foe is on our side, and a battle it shared with us is counted once
+  g.setRelation(PLAYER, 2, 'alliance'); g.setRelation(2, 1, 'war');
+  assert.deepEqual(warSides(g)[0].ours, [PLAYER, 2]);
+  const a2 = g.addUnit('footman', 2, x, y + 2), f2 = g.addUnit('footman', 1, x + 1, y + 3), u2 = g.addUnit('footman', PLAYER, x + 2, y + 2);
+  for (let i = 0; i < BATTLE.minBlows; i++) { g.damage(f2, 1, 2, a2); g.damage(f2, 1, PLAYER, u2); }
+  g.damage(f2, 999, 2, a2);
+  g.time += BATTLE.quiet + 1; g.updateBattles(1);
+  const T2 = warTally(g, [PLAYER, 2], [1]), b01 = g.warOf(PLAYER, 1).bat;
+  assert.equal(g.warOf(2, 1).bat.length, 1, 'the ally booked the shared battle'); assert.ok(b01.some((e) => e.id === g.warOf(2, 1).bat[0].id), 'and so did we');
+  assert.equal(T2.battles, b01.length, 'the shared battle once'); assert.equal(T2.dead[1], b01.reduce((a, e) => a + e.d[1], 0), 'their dead once');
+  // saved and restored; an older save gets a record for each war under way
+  const d = JSON.parse(JSON.stringify(g.serialize())), q = new Game({ seed: 1, houses: 3, ai: false }).restore(d);
+  assert.deepEqual(q.warBook, g.warBook); assert.deepEqual(q.warsPast, g.warsPast);
+  delete d.warBook; delete d.warsPast; const o = new Game({ seed: 1, houses: 3, ai: false }).restore(d);
+  assert.ok(o.warOf(0, 1) && o.warOf(1, 2), 'an older save: its wars under way are booked from when they began');
+  // peace ends it, among the wars past
+  g.parley = null; g.setRelation(PLAYER, 1, 'peace');
+  assert.equal(g.warOf(PLAYER, 1), null); assert.equal(g.warsPast.length, 1); assert.equal(g.warsPast[0].how, 'peace');
+  assert.match(pastWars(g)[0].text, /ended in peace; 2 won, 0 lost/);
+  assert.equal(warSides(g).length, 0);
+  // a house whose line ends closes its wars
+  g.setRelation(PLAYER, 1, 'war'); g.players[1].lineEndedBy = PLAYER; g.eliminate(1);
+  assert.equal(g.warsPast.findLast((o) => o.a === PLAYER).how, 'ended'); assert.equal(g.warsPast.at(-1).how, 'fell', 'its war with our ally closes too'); assert.match(pastWars(g)[0].text, /you ended their line/);
+  assert.ok(g.warsPast.length <= WAR_BOOK.keep);
+  assert.equal(warVerdict({ worth: [0, 0], razed: [0, 0], vil: [0, 0], kings: [0, 0] }).text, 'No blood yet');
+  // the war book is panels only
+  const src = readFileSync(new URL('../js/ai.js', import.meta.url), 'utf8') + readFileSync(new URL('../js/diplomacy.js', import.meta.url), 'utf8');
+  assert.ok(!/warBook|warsPast|warOf\(/.test(src), 'no rule reads the war book');
+  g.reset({ seed: 5, houses: 3, ai: false, size: MAP_SIZES.small }); assert.deepEqual(g.warBook, {}); assert.deepEqual(g.warsPast, []);
 });
 
 test('the objectives guide reads its reaches from config (T-127): the mine\'s villages and the market\'s district', () => {

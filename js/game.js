@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, DEMOLISH, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, HEIR, HEIR_TRAITS } from './config.js';
+  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, WAR_BOOK, HEIR, HEIR_TRAITS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -103,6 +103,7 @@ export class Game {
     this.vmem = Array.from({ length: n }, () => ({}));   // and of every village (owner, folk, loyalty...), by id (T46; the same)
     this.amem = Array.from({ length: n }, () => ({}));   // and of every rival house's army, by class, fading (T64; the same: panels only)
     this.battles = []; this.battleLog = []; this.nextBattle = 1; this._batT = 0;   // fights under way and battles filed (T63; panels only)
+    this.warBook = {}; this.warsPast = [];   // every war under way, by pair, and the last wars ended (T71; panels only)
     this.coalitions = []; this.wrongs = {}; this.coalEnd = {}; this.nextCoalition = 0; this._coalT = 0;   // coalition wars and the wrongs they avenge (T66)
     this.walk = new Uint8Array(this.W * this.H);
     this.block = new Uint8Array(this.W * this.H);
@@ -1568,11 +1569,37 @@ export class Game {
     });
     const fallen = sides.reduce((a, s) => a + s.razed + Object.values(s.dead).reduce((x, k) => x + k, 0), 0);
     if (f.n < BATTLE.minBlows && !fallen) return null;
-    const r = { id: f.id, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, t0: f.t0, t1: f.t1, blows: f.n, sides, cries: [...f.cries], deeds: f.deeds.map((d) => ({ ...d })), kings: f.kings.map((k) => ({ ...k })), routs: [...f.routs], villages: f.villages.map((v) => ({ ...v })) };
+    const r = { id: f.id, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, t0: f.t0, t1: f.t1, blows: f.n, sides, cries: [...f.cries], deeds: f.deeds.map((d) => ({ ...d })), kings: f.kings.map((k) => ({ ...k })), routs: [...f.routs], villages: f.villages.map((v) => ({ ...v })),
+      wars: sides.flatMap((x, i) => sides.slice(i + 1).filter((y) => this.rel[x.team][y.team] === 'war').map((y) => this.warKey(x.team, y.team))) };   // who was at war with whom when it ended (T-136: an ally in the fight is not a foe)
     this.battleLog.push(r);
     if (this.battleLog.length > BATTLE.keep) this.battleLog.shift();
+    this.bookBattle(r);
     return r;
   }
+  // ---- the war book (T71) ---------------------------------------------------------------------------------
+  // One record per war under way, keyed by the pair (lower team first): when it began, who declared it, the battles between the two
+  // (each side's dead, their worth and buildings lost), villages each took from the other and kings each lost. Panels only.
+  warKey(a, b) { return a < b ? `${a}>${b}` : `${b}>${a}`; }
+  warOf(a, b) { return this.warBook[this.warKey(a, b)] || null; }
+  openWar(a, b) {
+    const k = this.warKey(a, b); if (this.warBook[k]) return this.warBook[k];
+    return (this.warBook[k] = { a: Math.min(a, b), b: Math.max(a, b), by: a, t0: this.time, bat: [], vil: {}, kings: {} });
+  }
+  closeWar(a, b, how) {
+    const k = this.warKey(a, b), w = this.warBook[k]; if (!w) return;
+    delete this.warBook[k]; w.t1 = this.time; w.how = how;
+    this.warsPast.push(w); if (this.warsPast.length > WAR_BOOK.keep) this.warsPast.shift();
+  }
+  bookBattle(r) {
+    for (let i = 0; i < r.sides.length; i++) for (let j = i + 1; j < r.sides.length; j++) {
+      const x = r.sides[i], y = r.sides[j], w = this.warOf(x.team, y.team); if (!w) continue;
+      const d = {}, wo = {}, rz = {};
+      for (const s of [x, y]) { d[s.team] = Object.values(s.dead).reduce((a, n) => a + n, 0); wo[s.team] = s.worth; rz[s.team] = s.razed; }
+      w.bat.push({ id: r.id, t: r.t0, x: r.x, y: r.y, d, w: wo, r: rz }); if (w.bat.length > WAR_BOOK.battles) w.bat.shift();
+    }
+  }
+  bookVillage(to, from) { const w = from >= 0 && to >= 0 && this.warOf(to, from); if (w) w.vil[to] = (w.vil[to] || 0) + 1; }
+  bookKing(team, byTeam) { const w = byTeam >= 0 && this.warOf(team, byTeam); if (w) w.kings[team] = (w.kings[team] || 0) + 1; }
   cmdMove(units, x, y, queue = false) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     const pace = this.paceOf(units), slot = this.formSlots(units, x, y, queue), face = slot.face;
@@ -2714,6 +2741,7 @@ export class Game {
     const was = this.rel[a][b];
     this.rel[a][b] = this.rel[b][a] = state;
     this.relSince[a][b] = this.relSince[b][a] = this.time;
+    if (state === 'war') this.openWar(a, b); else if (was === 'war') this.closeWar(a, b, 'peace');   // the war book (T71)
     const A = this.players[a].name, B = this.players[b].name;
     const text = state === 'war' ? `${A} declares war on ${B}.` : state === 'trade' ? `${A} and ${B} open trade.` : state === 'alliance' ? `${A} and ${B} swear an alliance.` : was === 'alliance' ? `${A} breaks its alliance with ${B}.` : `${A} and ${B} are at peace.`;
     this.log(a === PLAYER || b === PLAYER ? PLAYER : -1, text, state === 'war' ? 'war' : 'info');
@@ -3296,6 +3324,7 @@ export class Game {
     this.ejectAll(v);
     v.owner = team; this._vOwn = null; v.lean = team; v.spyFlip = -1; if (team === PLAYER) this.sfx('fanfare', v.x, v.y);
     const fv = this.battleAt(v.x, v.y); if (fv && this.time - fv.t1 < BATTLE.quiet) fv.villages.push({ id: v.id, name: v.name, to: team, from: prev });
+    this.bookVillage(team, prev);   // (a village taken from a house you are at war with counts in the war book, T71)
     const taken = this.claimTown(v, team, prev);
     let spoils = null;
     if (how === 'pillage') { v.pop = Math.max(2, v.pop * (1 - SACK.killed)); spoils = this.plunder(v, team); }   // the sack costs lives
@@ -3631,7 +3660,7 @@ export class Game {
     const p = this.players[k.team]; if (!p || p.kingId !== k.id) return;
     if (p.heirs == null) p.heirs = KING.heirs;
     const f = this.battleWith(k); if (f) f.kings.push({ team: k.team, name: `${k.title || 'King'} ${shortName(k.name || '')}`.trim(), last: p.heirs <= 0 });
-    p.kingsLost = (p.kingsLost || 0) + 1;
+    p.kingsLost = (p.kingsLost || 0) + 1; this.bookKing(k.team, byTeam);
     if (p.heirs <= 0) { if (by) this.award(by, KING.killXp); this.endLine(k.team, k, byTeam); return; }   // the last of the line: the house falls with him
     p.nextHeir = this.lineOf(k.team).shift() || null;   // the heir-apparent will be crowned (T65)
     p.heirs -= 1; p.heirAt = this.time + KING.heir; p.leaderless = true;
@@ -4054,6 +4083,7 @@ export class Game {
   eliminate(team) {
     const p = this.players[team];
     p.alive = false;
+    for (const q of this.players) if (q.team !== team && this.warOf(team, q.team)) this.closeWar(team, q.team, p.lineEndedBy === q.team ? 'ended' : 'fell');   // (T71)
     for (const u of this.units) if (u.team === team) u.hp = 0;
     for (const b of this.buildings) if (b.team === team) b.hp = 0;
     for (const v of this.villages) if (v.owner === team) { v.owner = -1; this._vOwn = null; v.loyalty = 25; v.lean = -1; this.heardOf(v); }
@@ -4094,7 +4124,7 @@ export class Game {
       units: clean(this.units), buildings: clean(this.buildings), villages: clean(this.villages), wanderers: clean(this.wanderers), projectiles: clean(this.projectiles),
       players: clean(this.players), known: this.known, offers: clean(this.offers), opinion: this.opinion, whyOp: this.whyOp, letters: clean(this.letters), cool: this.cool, nextLetter: this.nextLetter, snub: this.snub, rel: this.rel, relSince: this.relSince,
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
-      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem, amem: this.amem, battles: this.battles, battleLog: this.battleLog, nextBattle: this.nextBattle,
+      resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem, amem: this.amem, battles: this.battles, battleLog: this.battleLog, nextBattle: this.nextBattle, warBook: this.warBook, warsPast: this.warsPast,
       coalitions: this.coalitions, wrongs: this.wrongs, coalEnd: this.coalEnd, nextCoalition: this.nextCoalition,
       timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {}, _batT: this._batT, _coalT: this._coalT }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
@@ -4126,6 +4156,8 @@ export class Game {
     else if (this.fogOn) for (const b of this.buildings) if (b.team !== PLAYER && this.wasSeen(PLAYER, b.x, b.y)) this.mem[PLAYER][b.id] = { id: b.id, kind: b.kind, team: b.team, tx: b.tx, ty: b.ty, size: b.size, x: b.x, y: b.y, ore: b.ore, hp: b.hp, maxHp: b.maxHp, built: b.built, at: this.time };   // an older save: what was on seen ground counts as seen
     if (d.amem) this.amem = this.amem.map((m, i) => d.amem[i] || {});   // (an older save starts with nothing seen)
     this.battles = d.battles || []; this.battleLog = d.battleLog || []; this.nextBattle = d.nextBattle || 1; this._batT ??= 0;   // (an older save starts with no reports: T63)
+    this.warBook = d.warBook || {}; this.warsPast = d.warsPast || [];   // (an older save: its wars under way get a record from now, T71)
+    if (!d.warBook) for (let a = 0; a < this.players.length; a++) for (let b = a + 1; b < this.players.length; b++) if (this.rel[a][b] === 'war') this.warBook[this.warKey(a, b)] = { a, b, by: a, t0: this.relSince[a][b] || 0, bat: [], vil: {}, kings: {} };
     this.coalitions = d.coalitions || []; this.wrongs = d.wrongs || {}; this.coalEnd = d.coalEnd || {}; this.nextCoalition = d.nextCoalition || 0; this._coalT ??= 0;   // (an older save: no coalitions yet, T66)
     if (d.vmem) this.vmem = this.vmem.map((m, i) => d.vmem[i] || {});
     else if (this.fogOn) for (const v of this.villages) if (this.wasSeen(PLAYER, v.x, v.y)) this.vmem[PLAYER][v.id] = this.villageNote(v);   // an older save: as it is

@@ -3,6 +3,7 @@ import { unlock, play, playAt, settings, setVolume, setMuted } from './audio.js'
 import { progress } from './objectives.js';
 import { dueTip, tipMemory, loadSeen, saveSeen, TIP_SHOW } from './tips.js';
 import { newBattle, battleWords, battlesOf, battleRow, BATTLE_SHOW, BATTLE_LIST } from './battle.js';
+import { warSides, warWords, pastWars } from './wars.js';
 import { LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint } from './tutorial.js';
 import { writeSave, readSave, saveInfo, ago } from './save.js';
 import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
@@ -898,12 +899,27 @@ export class UI {
       const known = i.known || me;
       html += `<div class="hcard ${me ? 'me' : ''} ${pl.alive ? '' : 'fallen'} ${this.councilFocus === t ? 'focus' : ''}"><div class="hctop"><canvas width="30" height="34" data-ccrest="${t}"></canvas><div><b style="color:${HOUSES[t].accent}">${esc(HOUSES[t].name)}</b><div class="hmotto">${esc(HOUSES[t].motto)}</div></div>${me ? '<span class="rel me">you</span>' : `<span class="rel ${i.rel}">${known ? i.rel : 'unmet'}</span>`}${pl.alive && known ? `<span class="hrank">#${i.rank}</span>` : ''}</div>${pl.alive ? this.houseCard(t) : '<div class="dline">This house has fallen.</div>'}</div>`;
     }
+    html += `</div>${this.warsHtml()}`;   // how each war of yours is going (T71)
     const bats = battlesOf(g).slice(0, BATTLE_LIST);   // the player's last battles (T63), each a click to its spot
-    html += `</div><div class="ctitle">Battles</div><div class="letters battles">${bats.map((r) => `<div class="lrow brow" data-act="bgo" data-x="${r.x}" data-y="${r.y}" title="Show the spot">${esc(battleRow(g, r))}</div>`).join('') || '<div class="hint">No battles yet. Each fight your people are in is told here when it ends.</div>'}</div>`;
+    html += `<div class="ctitle">Battles</div><div class="letters battles">${bats.map((r) => `<div class="lrow brow" data-act="bgo" data-x="${r.x}" data-y="${r.y}" title="Show the spot">${esc(battleRow(g, r))}</div>`).join('') || '<div class="hint">No battles yet. Each fight your people are in is told here when it ends.</div>'}</div>`;
     const coals = (g.coalitions || []).filter((c) => c.against === PLAYER || g.known[PLAYER][c.against] || c.members.some((m) => g.known[PLAYER][m]));   // coalition wars under way that you have heard of (T66)
     if (coals.length) html += `<div class="ctitle">Coalitions</div><div class="letters coals">${coals.map((c) => `<div class="lrow ${c.against === PLAYER ? 'declined' : 'note'}">${uiImg('marks', 'coalition', '⚑', 'tico')} ${esc(coalitionWords(g, c))}</div>`).join('')}</div>`;
     html += `<div class="ctitle">Correspondence</div><div class="letters">${g.letters.filter((l) => l.to === PLAYER || l.from === PLAYER).slice(0, 14).map((l) => this.letterRow(l)).join('') || '<div class="hint">No letters yet. Rival lords write once they have met you.</div>'}</div>`;
     return html;
+  }
+  // The Council's Wars section (T71): one block per war of yours under way, then the wars ended. Read from the war book; no rule reads it.
+  warsHtml() {
+    const g = this.game, wars = warSides(g), past = pastWars(g);
+    let html = '<div class="ctitle">Wars</div><div class="letters wars">';
+    for (const w of wars) {
+      const W = warWords(g, w);
+      html += `<div class="wrow"><div class="wtop">${uiImg('marks', 'war', '⚔', 'tico')} <b>${esc(W.title)}</b> <small>${esc(W.since)}</small> <span class="wv ${W.verdict.cls}">${esc(W.verdict.text)}</span></div>`
+        + `<div class="wsides">${esc(W.sides)}</div>${W.lines.map((l) => `<div class="wl">${esc(l)}</div>`).join('')}`
+        + (W.spots.length ? `<div class="wspots">${W.spots.map((b) => `<button class="dbtn sm" data-act="bgo" data-x="${b.x}" data-y="${b.y}" title="Show the spot">Battle at ${Math.floor(b.t / 60)}:${String(Math.floor(b.t % 60)).padStart(2, '0')}</button>`).join('')}</div>` : '') + '</div>';
+    }
+    if (!wars.length) html += '<div class="hint">You are at war with nobody. A war you fight is followed here: battles won and lost, the dead, villages and kings.</div>';
+    if (past.length) html += past.slice(0, 4).map((p) => `<div class="lrow ${p.cls === 'good' ? 'accepted' : p.cls === 'bad' ? 'declined' : 'note'}"><span class="lx">${esc(p.text)}</span><em>ended</em></div>`).join('');
+    return html + '</div>';
   }
   toggleCouncil(team = null) {
     const el = $('council'); this.councilOpen = team != null ? true : !this.councilOpen; this.councilFocus = team;

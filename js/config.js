@@ -525,6 +525,11 @@ export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11,
 // battle at all (at least minBlows blows, or someone died). keep reports are kept. Panels only: never read by the rules' decisions.
 export const BATTLE = { r: 14, quiet: 20, minBlows: 6, keep: 40 };
 // (a report sorts men by class: the king apart, soldiers by UNIT_CLASS, and serfs, camels, spies and scholars as folk)
+// T71: the war book. Every war between two houses keeps a record from its declaration: each filed battle between them (the two sides'
+// dead, their worth and buildings lost, the spot; the last `battles`), villages taken from each other while at war, and kings slain.
+// A war that ends (peace, or a house's line ended) is kept among the last `keep` wars past. Panels only: no rule reads it.
+// A battle is won when the foe lost `won` times the worth in men that you did (the battle report's good trade).
+export const WAR_BOOK = { battles: 80, keep: 8, won: 1.5 };
 export const BATTLE_CLASS = (kind) => (kind === 'king' ? 'king' : kind === 'camel' ? 'folk' : UNIT_CLASS[kind] || 'folk');
 export const BATTLE_WORD = { king: ['king', 'kings'], foot: ['foot', 'foot'], bow: ['bowman', 'bowmen'], horse: ['horseman', 'horse'], siege: ['siege engine', 'siege engines'], folk: ['of the folk', 'folk'] };
 export const BATTLE_ORDER = ['king', 'foot', 'bow', 'horse', 'siege', 'folk'];
