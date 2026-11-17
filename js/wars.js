@@ -2,8 +2,9 @@
 // war between two houses, from its declaration. This module turns it into the Council's Wars section: one row per war of the player's,
 // with both sides as they stand (allies at war with the foe, a coalition's members), the battles won and lost, the dead and their worth,
 // villages taken and lost, kings slain, how long it has run, and the last battles as a click to the spot; and the wars ended.
-// Pure functions of the game state: nothing here touches the simulation, and no rule reads it.
-import { PLAYER, WAR_BOOK } from './config.js';
+// Pure functions of the game state: nothing here touches the simulation, and no rule reads it (the peace terms read the war book
+// through Game.warLoss with the same weights, CEDE, T72).
+import { PLAYER, WAR_BOOK, CEDE } from './config.js';
 import { coalitionOf } from './diplomacy.js';
 
 export const WAR_SPOTS = 3;   // the last battles of a war offered as a click to the spot
@@ -61,7 +62,7 @@ export function warTally(g, ours, theirs, books = null) {
 
 // How it goes, by what each side has lost (men by their worth, buildings, villages and kings), in a word and a class.
 export function warVerdict(T) {
-  const ours = T.worth[0] + T.razed[0] * 100 + T.vil[1] * 300 + T.kings[0] * 400, theirs = T.worth[1] + T.razed[1] * 100 + T.vil[0] * 300 + T.kings[1] * 400;
+  const ours = T.worth[0] + T.razed[0] * CEDE.razed + T.vil[1] * CEDE.village + T.kings[0] * CEDE.king, theirs = T.worth[1] + T.razed[1] * CEDE.razed + T.vil[0] * CEDE.village + T.kings[1] * CEDE.king;   // (the weights the peace terms use, T-138)
   if (!ours && !theirs) return { text: 'No blood yet', cls: '' };
   if (theirs >= ours * WAR_BOOK.won) return { text: 'Going your way', cls: 'good' };
   if (ours >= theirs * WAR_BOOK.won) return { text: 'Going against you', cls: 'bad' };

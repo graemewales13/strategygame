@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING, SIGNAL, COALITION } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING, SIGNAL, COALITION, CEDE } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -478,7 +478,7 @@ export function voice(g, kind, from, to, ctx = {}) {
 // A letter to the human is an entry in g.offers (it waits for Accept / Decline) and in g.letters (the history shown on the Council screen).
 export function writeLetter(g, from, to, kind, ctx = {}) {
   const text = ctx.text || voice(g, kind, from, to, ctx);
-  const o = { id: g.nextLetter++, from, to, kind: kind === 'peace' || kind === 'alliance' || kind === 'trade' ? 'treaty' : kind, state: ctx.state || (kind === 'peace' || kind === 'alliance' || kind === 'trade' ? kind : undefined), target: ctx.target, amount: ctx.amount, text, t: g.time, expires: g.time + (DIPLO.expire[kind === 'peace' || kind === 'alliance' || kind === 'trade' ? 'treaty' : kind] || 90) };
+  const o = { id: g.nextLetter++, from, to, kind: kind === 'peace' || kind === 'alliance' || kind === 'trade' ? 'treaty' : kind, state: ctx.state || (kind === 'peace' || kind === 'alliance' || kind === 'trade' ? kind : undefined), target: ctx.target, amount: ctx.amount, cede: ctx.cede, cedeV: ctx.cedeV, text, t: g.time, expires: g.time + (DIPLO.expire[kind === 'peace' || kind === 'alliance' || kind === 'trade' ? 'treaty' : kind] || 90) };
   g.offers.push(o);
   record(g, from, to, o.kind === 'treaty' ? o.state : kind, text, 'open', o.id);
   g.log(PLAYER, text, 'info');
@@ -552,13 +552,21 @@ export function deliberate(g, team) {
     // a house that is losing sues for peace
     if (rel === 'war' && (boundTo(g, team, b) || boundTo(g, b, team))) continue;   // sworn to a coalition (T66): its leader makes the peace (and a foe does not sue a sworn member, T-132)
     if (rel === 'war' && g.parleyIn(team, b) <= 0) {
-      const sue = stance(g, team, b).peace >= 0.55;
+      const mine = stance(g, team, b).peace, sue = mine >= 0.55, won = g.warWonBy(team, b);
+      if (won && mine >= CEDE.ask && cooled(g, team, b, 'alliance')) {   // T72: a house winning a war it is tiring of asks a village of the loser as the price of peace
+        const want = g.cedeable(b, team);
+        if (want && human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER)) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'peace', { state: 'peace', cede: b, cedeV: want.id, text: `${leaderName(g, team)} of ${nameOf(g, team)}: "This war has gone our way. Give us ${want.name}, and there will be peace between us."` }); wrote(); } }
+        else if (want && judge(g, 'peace', team, b).ok && stance(g, b, team).peace >= CEDE.yield) { stamp(g, team, b, 'alliance'); g.setRelation(team, b, 'peace'); g.cedeVillage(b, team, want.id); notice(g, b, team, 'note', `${nameOf(g, b)} gives ${want.name} to ${nameOf(g, team)} for peace.`); }
+        if (want) continue;
+      }
       if (sue && cooled(g, team, b, 'alliance')) {
         // it offers coin with the peace, more the worse it is going: a tenth of its treasury up to a third (owner, 2026-10-20)
         const share = PEACE_COIN.sue.min + (PEACE_COIN.sue.max - PEACE_COIN.sue.min) * Math.min(1, (stance(g, team, b).peace - 0.55) / 0.45);
         const amount = Math.floor((g.players[team].gold * share) / 10) * 10;
-        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER)) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'peace', { state: 'peace', amount: amount || undefined, text: amount ? voice(g, 'peace', team, b).replace(/"$/, ` Take ${amount} coin from our treasury, and let it end."`) : undefined }); wrote(); } }
-        else if (judge(g, 'peace', team, b, { coin: amount }).ok && g.willMakePeace(b, team, amount)) { stamp(g, team, b, 'alliance'); g.setRelation(team, b, 'peace'); g.payPeace(team, b, amount); }
+        const gives = !g.cedeRefusal(team, b) ? g.cedeable(team, b) : null;   // T72: a war gone badly enough costs a village too
+        const take = [amount ? `${amount} coin from our treasury` : '', gives ? gives.name : ''].filter(Boolean).join(' and ');
+        if (human) { if (canWrite() && !g.offers.some((x) => x.from === team && x.to === PLAYER)) { stamp(g, team, b, 'alliance'); writeLetter(g, team, b, 'peace', { state: 'peace', amount: amount || undefined, cede: gives ? team : undefined, cedeV: gives?.id, text: take ? voice(g, 'peace', team, b).replace(/"$/, ` Take ${take}, and let it end."`) : undefined }); wrote(); } }
+        else if (judge(g, 'peace', team, b, { coin: amount + g.cedeWorth(gives) }).ok && g.willMakePeace(b, team, amount + g.cedeWorth(gives))) { stamp(g, team, b, 'alliance'); g.setRelation(team, b, 'peace'); g.payPeace(team, b, amount); if (gives) g.cedeVillage(team, b, gives.id); }
       }
       continue;
     }

@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, DEMOLISH, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, WAR_BOOK, HEIR, HEIR_TRAITS } from './config.js';
+  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -716,7 +716,7 @@ export class Game {
       case 'load': return this.load(team, it.unitId, it.good, it.amount);
       case 'unload': return this.unloadShelf(team, it.unitId);
       case 'role': return this.assignRole(team, it.ids, it.role);
-      case 'relation': return this.proposeRelation(team, it.other, it.state, false, it.coin || 0);
+      case 'relation': return this.proposeRelation(team, it.other, it.state, false, it.coin || 0, it.cede ?? -1);
       case 'gift': return this.giveGift(team, it.other, it.amount || 50);
       case 'demand': return this.askOf(team, it.other, 'demand', { amount: it.amount || 60 });
       case 'askwar': return this.askOf(team, it.other, 'askwar', { target: it.target });
@@ -1578,7 +1578,8 @@ export class Game {
   }
   // ---- the war book (T71) ---------------------------------------------------------------------------------
   // One record per war under way, keyed by the pair (lower team first): when it began, who declared it, the battles between the two
-  // (each side's dead, their worth and buildings lost), villages each took from the other and kings each lost. Panels only.
+  // (each side's dead, their worth and buildings lost), villages each took from the other and kings each lost. Panels, and the
+  // peace terms through warLoss (T72).
   warKey(a, b) { return a < b ? `${a}>${b}` : `${b}>${a}`; }
   warOf(a, b) { return this.warBook[this.warKey(a, b)] || null; }
   openWar(a, b) {
@@ -1600,6 +1601,47 @@ export class Game {
   }
   bookVillage(to, from) { const w = from >= 0 && to >= 0 && this.warOf(to, from); if (w) w.vil[to] = (w.vil[to] || 0) + 1; }
   bookKing(team, byTeam) { const w = byTeam >= 0 && this.warOf(team, byTeam); if (w) w.kings[team] = (w.kings[team] || 0) + 1; }
+  // ---- peace terms: a village ceded (T72) ------------------------------------------------------------------------
+  // What each side of the war between a and b has lost so far, from the war book: { [a]: n, [b]: n } (CEDE weights, as the war overview's verdict).
+  warLoss(a, b) {
+    const w = this.warOf(a, b), L = { [a]: 0, [b]: 0 }; if (!w) return L;
+    for (const e of w.bat) for (const t of [a, b]) L[t] += (e.w[t] || 0) + (e.r[t] || 0) * CEDE.razed;
+    for (const [t, o] of [[a, b], [b, a]]) L[t] += (w.vil[o] || 0) * CEDE.village + (w.kings[t] || 0) * CEDE.king;
+    return L;
+  }
+  // The village `from` would give up to `to`: its held village nearest `to`'s seat (or king), never its own seat, never its last village.
+  cedeable(from, to, named = null) {
+    const held = this.vOwn(from); if (held.length < 2) return null;
+    if (named != null) { const v = held.find((x) => x.id === named && x.home !== from); if (v) return v; }   // the village a letter named, while it is still theirs to give
+    const at = this.seatOf(to) || this.kingOf(to); if (!at) return null;
+    let best = null, bd = Infinity;
+    for (const v of held) { if (v.home === from) continue; const d = Math.hypot(v.x - at.x, v.y - at.y); if (d < bd || (d === bd && v.id < best.id)) { bd = d; best = v; } }
+    return best;
+  }
+  // has the war between w and l gone clearly w's way? (l lost at least CEDE.floor, and CEDE.lead times what w did)
+  warWonBy(w, l) { const L = this.warLoss(w, l); return L[l] >= CEDE.floor && L[l] >= L[w] * CEDE.lead; }
+  cedeWorth(v) { return v ? Math.round(CEDE.worth + (v.pop || 0) * CEDE.perPop) : 0; }
+  // 'peace', 'peace and 120 coin', 'peace and Dunmore' (the village a would give, or b): for envoys' and offers' words
+  termsText(a, b, coin = 0, cede = -1) {
+    const v = cede >= 0 ? this.cedeable(cede, cede === a ? b : a) : null;
+    const parts = [coin ? `${coin} coin` : '', v ? `${v.name}${cede === a ? '' : ` (theirs)`}` : ''].filter(Boolean);
+    return parts.length ? `peace and ${parts.join(' and ')}` : 'peace';
+  }
+  // Would AI house b give a village to a for peace? Only when the war has gone clearly against it, or it is worn out. Returns '' or why not.
+  cedeRefusal(b, a) {
+    const v = this.cedeable(b, a), B = this.players[b].name;
+    if (!v) return `${B} has no village it could give up.`;
+    const L = this.warLoss(a, b);
+    if (this.warWonBy(a, b)) return '';
+    if (dip.stance(this, b, a).peace >= CEDE.weary) return '';
+    return `${B} will not give up ${v.name}: the war has not gone that badly for them (they lost ${Math.round(L[b])}, you ${Math.round(L[a])}; they yield a village at ${CEDE.lead} times your losses).`;
+  }
+  // The peace's village changes hands with its town (the submit rules), as agreed: no grudge for a taking.
+  cedeVillage(from, to, named = null) {
+    const v = this.cedeable(from, to, named); if (!v) return null;
+    this.submit(v, to, 'cede');
+    return v;
+  }
   cmdMove(units, x, y, queue = false) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     const pace = this.paceOf(units), slot = this.formSlots(units, x, y, queue), face = slot.face;
@@ -2798,9 +2840,11 @@ export class Game {
     dip.record(this, from, to, 'gift', text, 'note'); this.log(from === PLAYER || to === PLAYER ? PLAYER : -1, text, 'info');
     return amt;
   }
-  proposeRelation(a, b, state, now = false, coin = 0) {
+  // cede (T72): the house (a or b) that gives a village with the peace; -1 for none. Only a peace out of war carries coin or a village.
+  proposeRelation(a, b, state, now = false, coin = 0, cede = -1) {
     this.diploNote = '';
     coin = state === 'peace' && this.rel[a]?.[b] === 'war' ? Math.max(0, Math.min(Math.floor(coin || 0), Math.floor(this.players[a]?.gold || 0))) : 0;   // coin only buys a peace from war
+    cede = state === 'peace' && this.rel[a]?.[b] === 'war' && (cede === a || cede === b) ? cede : -1;
     if (!this.alive(b) || a === b) return false;
     const B = this.players[b].name, human = !this.players[b].ai;
     if (state === 'war') { if (this.rel[a][b] !== 'war') this.setRelation(a, b, 'war'); return true; }
@@ -2812,8 +2856,9 @@ export class Game {
       if (bound) return this.deny(a, `You are sworn to the coalition under ${dip.leaderName(this, bound.leader)} of ${HOUSES[bound.leader].short}: its leader makes the peace with ${B}.`); }
     if (a === PLAYER && this.players[b].ai && !now) {   // the player's envoy rides to them; their ruler answers by letter in a few seconds
       if ((this.asks ||= []).some((x) => x.from === a && x.to === b)) return this.deny(a, `Your envoy is already on the road to ${B}.`);
-      this.asks.push({ from: a, to: b, state, coin, at: this.time + ASK_DELAY.min + this.roll() * (ASK_DELAY.max - ASK_DELAY.min) });
-      this.log(PLAYER, `Your envoy rides to ${B} with the offer of ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : coin ? `peace and ${coin} coin` : 'peace'}. Their answer will come by letter.`, 'info');
+      if (cede >= 0 && !this.cedeable(cede, cede === a ? b : a)) return this.deny(a, cede === a ? 'You hold no village you could give up (never your seat, never your last village).' : `${B} holds no village it could give up.`);
+      this.asks.push({ from: a, to: b, state, coin, cede, at: this.time + ASK_DELAY.min + this.roll() * (ASK_DELAY.max - ASK_DELAY.min) });
+      this.log(PLAYER, `Your envoy rides to ${B} with the offer of ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : this.termsText(a, b, coin, cede)}. Their answer will come by letter.`, 'info');
       return true;
     }
     if (this.rel[a][b] === 'war') {
@@ -2821,10 +2866,14 @@ export class Game {
       if (wait > 0) return this.deny(a, `${B} will not parley for ${Math.ceil(wait)} more seconds.`);
       if (state !== 'peace') return this.deny(a, `Make peace with ${B} first, then propose ${state === 'alliance' ? 'an alliance' : 'trade'}.`);
       if (state === 'peace' && this.players[b].ai) {
-        const j = dip.judge(this, 'peace', a, b, { coin });
+        const given = cede === a ? this.cedeable(a, b) : null, worth = this.cedeWorth(given);
+        if (cede === a && !given) return this.deny(a, 'You hold no village you could give up (never your seat, never your last village).');
+        const j = dip.judge(this, 'peace', a, b, { coin: coin + worth });
         if (!j.ok) { this.snub[b][a] = this.time; return this.deny(a, j.why); }
-        if (!this.willMakePeace(b, a, coin)) { this.snub[b][a] = this.time; return this.deny(a, `${B} refuses peace${coin ? `, even with ${coin} coin` : ''}: they think they are winning. Beat their army, wait, or offer more (they might take it for about ${this.peacePrice(b, a)} coin).`); }
+        if (cede === b) { const why = this.cedeRefusal(b, a); if (why) { this.snub[b][a] = this.time; return this.deny(a, why); } }
+        else if (!this.willMakePeace(b, a, coin + worth)) { this.snub[b][a] = this.time; return this.deny(a, `${B} refuses peace${coin || given ? `, even with ${[coin ? `${coin} coin` : '', given ? given.name : ''].filter(Boolean).join(' and ')}` : ''}: they think they are winning. Beat their army, wait, or offer more (they might take it for about ${this.peacePrice(b, a)} coin).`); }
         if (coin) this.payPeace(a, b, coin);
+        if (cede >= 0) { this.setRelation(a, b, 'peace'); this.cedeVillage(cede, cede === a ? b : a); return true; }   // (a plain peace goes on below: a peace letter of theirs waiting is accepted with its coin)
       }
     }
     // a pending offer from them to us is simply accepted
@@ -2841,8 +2890,9 @@ export class Game {
       return true;
     }
     if (this.offers.some((o) => o.from === a && o.to === b && (o.kind || 'treaty') === 'treaty' && o.state === state)) return this.deny(a, `Your offer to ${B} is still waiting.`);
-    this.offers.push({ id: this.nextLetter++, from: a, to: b, kind: 'treaty', state, amount: coin || undefined, t: this.time, expires: this.time + dip.DIPLO.expire.treaty });
-    this.log(b === PLAYER ? PLAYER : -1, `${this.players[a].name} offers ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : coin ? `peace and ${coin} coin` : 'peace'}.`, 'info');
+    if (cede >= 0 && !this.cedeable(cede, cede === a ? b : a)) return this.deny(a, cede === a ? 'You hold no village you could give up.' : `${B} holds no village it could give up.`);
+    this.offers.push({ id: this.nextLetter++, from: a, to: b, kind: 'treaty', state, amount: coin || undefined, cede: cede >= 0 ? cede : undefined, cedeV: cede >= 0 ? this.cedeable(cede, cede === a ? b : a).id : undefined, t: this.time, expires: this.time + dip.DIPLO.expire.treaty });
+    this.log(b === PLAYER ? PLAYER : -1, `${this.players[a].name} offers ${state === 'trade' ? 'a trade treaty' : state === 'alliance' ? 'an alliance' : this.termsText(a, b, coin, cede)}.`, 'info');
     return 'pending';
   }
   // The answer to a letter waiting on `team`. Several kinds: a treaty, an invitation into a war, a demand for tribute, a plea for aid.
@@ -2862,9 +2912,12 @@ export class Game {
     if (kind === 'treaty') {
       const bound = o.state === 'peace' && this.rel[o.from][o.to] === 'war' ? dip.boundTo(this, team, from) : null;   // T-132: sworn to a coalition
       if (bound) { this.offers.splice(i, 0, o); return this.deny(team, `You are sworn to the coalition under ${dip.leaderName(this, bound.leader)} of ${HOUSES[bound.leader].short}: its leader makes the peace with ${N}.`); }
-      const buys = o.state === 'peace' && o.amount > 0 && this.rel[o.from][o.to] === 'war';   // a peace that comes with coin: the one who asked pays
+      const fromWar = o.state === 'peace' && this.rel[o.from][o.to] === 'war', buys = fromWar && o.amount > 0;   // a peace that comes with coin: the one who asked pays
+      const cede = fromWar && (o.cede === o.from || o.cede === o.to) ? o.cede : -1;   // a peace that comes with a village (T72)
+      if (cede >= 0 && !this.cedeable(cede, cede === o.from ? o.to : o.from, o.cedeV)) { settle('lapsed'); return this.deny(team, `${cede === team ? 'You hold' : `${N} holds`} no village left to give up: the offer lapses.`); }
       if (o.state === 'alliance') dip.exec(this, 'alliance', from, team); else this.setRelation(o.from, o.to, o.state);
       if (buys) this.payPeace(o.from, o.to, o.amount);
+      if (cede >= 0) this.cedeVillage(cede, cede === o.from ? o.to : o.from, o.cedeV);
       settle('accepted'); return true;
     }
     if (kind === 'tribute' || kind === 'aid') {
@@ -2889,9 +2942,9 @@ export class Game {
     for (const x of (this.asks || []).filter((q) => this.time >= q.at)) {   // envoys come back with an answer
       this.asks = this.asks.filter((q) => q !== x);
       if (!this.alive(x.to) || !this.alive(x.from)) continue;
-      this._envoy = true; const ok = this.proposeRelation(x.from, x.to, x.state, true, x.coin || 0); this._envoy = false;   // (the refusal comes in the letter, not twice)
+      this._envoy = true; const ok = this.proposeRelation(x.from, x.to, x.state, true, x.coin || 0, x.cede ?? -1); this._envoy = false;   // (the refusal comes in the letter, not twice)
       const who = `${dip.leaderName(this, x.to)} of ${HOUSES[x.to].short}`;
-      const yes = { trade: 'Our markets are open to your caravans, and yours to ours. Let the trade begin.', alliance: 'You have my hand and my word. Our houses stand together.', peace: x.coin ? 'Your coin is received. Let the swords rest; there is peace between us.' : 'Let the swords rest. There is peace between us.' }[x.state];
+      const yes = { trade: 'Our markets are open to your caravans, and yours to ours. Let the trade begin.', alliance: 'You have my hand and my word. Our houses stand together.', peace: x.cede === x.to ? 'It is a hard price, but we pay it. The village is yours; let the swords rest.' : x.cede === x.from ? 'The village is accepted. Let the swords rest; there is peace between us.' : x.coin ? 'Your coin is received. Let the swords rest; there is peace between us.' : 'Let the swords rest. There is peace between us.' }[x.state];
       const text = ok ? `${who}: "${yes}"` : `${who} declines your offer of ${x.state === 'trade' ? 'a trade treaty' : x.state === 'alliance' ? 'an alliance' : 'peace'}: ${this.diploNote || 'no reason given.'}`;
       if (x.state !== 'alliance' || !ok) dip.record(this, x.to, x.from, x.state, text, ok ? 'accepted' : 'declined');   // (an accepted alliance writes its own letter)
       this.log(PLAYER, text, ok ? 'good' : 'warn');
@@ -3331,9 +3384,9 @@ export class Game {
     v.loyalty = how === 'pillage' ? 48 : 62;
     v.protection = v.maxProtection * 0.4;
     v.hitT = 0; v.flash = 1;
-    if (prev >= 0 && prev !== team) { this.opinionShift(prev, team, how === 'pillage' ? -20 : -10, how === 'pillage' ? `sacked ${v.name}` : `swayed ${v.name} away`); dip.wronged(this, prev, team, how === 'pillage' ? `sacked ${v.name}` : `took ${v.name}`); }
+    if (prev >= 0 && prev !== team && how !== 'cede') { this.opinionShift(prev, team, how === 'pillage' ? -20 : -10, how === 'pillage' ? `sacked ${v.name}` : `swayed ${v.name} away`); dip.wronged(this, prev, team, how === 'pillage' ? `sacked ${v.name}` : `took ${v.name}`); }
     const who = HOUSES[team].short;
-    const text = { pillage: `${v.name} falls to ${who} after the sack.`, castle: `${v.name} bows to ${who}'s influence.`, spy: `${v.name} is turned by ${who}'s spy.` }[how] || `${v.name} submits to ${who}.`;
+    const text = { pillage: `${v.name} falls to ${who} after the sack.`, castle: `${v.name} bows to ${who}'s influence.`, spy: `${v.name} is turned by ${who}'s spy.`, cede: `${v.name} is ceded to ${who} in the peace.` }[how] || `${v.name} submits to ${who}.`;
     this.heardOf(v);   // (the news below names the new lord, so the map must not still show the old one: T-093)
     this.log(team === PLAYER || prev === PLAYER ? PLAYER : -1, text + (taken ? ` ${taken} building${taken > 1 ? 's' : ''} in the town change hands.` : '') + (spoils ? ' ' + spoils.text : ''), team === PLAYER ? 'good' : 'warn');
   }

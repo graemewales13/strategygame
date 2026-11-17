@@ -14,7 +14,7 @@ import { updateCoalitions, coalitionOf, coalitionAgainst, coalitionWords, boundT
 import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT, WARE_JOY, DEMOLISH } from '../js/config.js';
 import { battleWords, battlesOf, newBattle, battleRow, menWords, battleSides } from '../js/battle.js';
 import { warSides, warTally, warWords, warVerdict, pastWars } from '../js/wars.js';
-import { WAR_BOOK } from '../js/config.js';
+import { WAR_BOOK, CEDE, WAR_MIN } from '../js/config.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
@@ -2712,7 +2712,7 @@ test('battle reports (T-136): an ally fighting beside you is on your side, not t
   delete r.wars; assert.deepEqual(battleSides(g, r).foes.map((s) => s.team), [1, 2], 'nobody at war now: everyone else stands against you');
 });
 
-test('war overview (T71): a war is booked from its declaration; battles, villages and kings counted for each side; ended by peace; saved, reset, read by no rule', () => {
+test('war overview (T71): a war is booked from its declaration; battles, villages and kings counted for each side; ended by peace; saved, reset, read by the rules only through warLoss (T72)', () => {
   const g = mk({ size: MAP_SIZES.small }); g.meet(0, 1); g.meet(0, 2);
   assert.equal(g.warOf(0, 1), null, 'no war, no record');
   g.time = 60; g.setRelation(PLAYER, 1, 'war');
@@ -2832,4 +2832,73 @@ test('the tutorial\'s barracks lesson reads the barracks\' price from BUILDINGS 
   const b = LESSONS.find((l) => l.id === 'barracks'); assert.ok(b.hint.includes(`${BUILDINGS.barracks.cost.wood} timber, ${BUILDINGS.barracks.cost.gold} coin`));
   assert.ok(!/\b140 timber\b/.test(readFileSync(new URL('../js/tutorial.js', import.meta.url), 'utf8')), 'no price written by hand');
   assert.match(LESSONS.find((l) => l.id === 'king').hint, /names them/); assert.match(TIPS.find((t) => t.id === 'king').text, /heir-apparent/);
+});
+test('peace terms (T72): a village ceded with the peace, asked and offered both ways, judged by the war book; refused with reasons; letters, saves', () => {
+  const g = mk(); run(g, 0.2); g.meet(PLAYER, 1); g.meet(PLAYER, 2); g.meet(1, 2);
+  const free = g.villages.filter((v) => v.owner < 0), give = (v, t) => { v.owner = t; v.lean = t; g._vOwn = null; };
+  const near = (t) => { const k = g.seatOf(t); return free.filter((v) => v.owner < 0).sort((a, b) => Math.hypot(a.x - k.x, a.y - k.y) - Math.hypot(b.x - k.x, b.y - k.y)); };
+  const [a1] = near(1); give(a1, 1);   // (with its seat, house 1 holds two)
+  const war = (a, b) => { g.setRelation(a, b, 'war'); g.relSince[a][b] = g.relSince[b][a] = g.time - WAR_MIN - 1; };
+  war(PLAYER, 1);
+  // they give land only when the war has gone against them
+  assert.equal(g.proposeRelation(PLAYER, 1, 'peace', true, 0, 1), false); assert.match(g.diploNote, /will not give up .* lost 0, you 0/);
+  g.warOf(PLAYER, 1).bat.push({ id: 1, t: g.time, x: 0, y: 0, d: {}, w: { [PLAYER]: 100, 1: 700 }, r: {} });
+  assert.deepEqual(g.warLoss(PLAYER, 1), { [PLAYER]: 100, 1: 700 });
+  const want = g.cedeable(1, PLAYER); assert.equal(want, a1, 'never the seat');
+  const op0 = g.opinion[1][PLAYER];
+  assert.equal(g.proposeRelation(PLAYER, 1, 'peace', true, 0, 1), true);
+  assert.equal(g.rel[PLAYER][1], 'peace'); assert.equal(want.owner, PLAYER, 'the village is ours'); assert.ok(g.opinion[1][PLAYER] >= op0, 'no grudge for a village agreed'); assert.ok(!JSON.stringify(g.whyOp).includes(`swayed ${want.name}`) && !JSON.stringify(g.wrongs || {}).includes(want.name));
+  assert.equal(g.cedeable(1, PLAYER), null, 'never their last village: ');
+  // we cede one: weighed like coin; never our seat nor our last village
+  const [b1, b2] = near(PLAYER).filter((v) => v.owner < 0); give(b1, PLAYER); g.relSince[PLAYER][1] = g.relSince[1][PLAYER] = g.time - 300; war(PLAYER, 1);
+  assert.ok(g.cedeable(PLAYER, 1));
+  const ours = g.cedeable(PLAYER, 1); assert.ok(g.cedeWorth(ours) >= CEDE.worth);
+  g.relSince[PLAYER][1] = g.relSince[1][PLAYER] = g.time - 700;   // a long war: they take it
+  assert.equal(g.proposeRelation(PLAYER, 1, 'peace', true, 0, PLAYER), true); assert.equal(ours.owner, 1);
+  // the envoy rides with the terms; a refusal comes by letter, the offer named in the log
+  war(PLAYER, 1); assert.equal(g.proposeRelation(PLAYER, 1, 'peace', false, 0, 1), true); assert.equal(g.asks.at(-1).cede, 1);
+  assert.match(g.events?.at?.(-1)?.text || JSON.stringify(g.serialize().log || ''), /peace and|envoy/i);
+  run(g, 15); assert.equal(g.asks.length, 0); assert.match(g.letters[0].text, /declines your offer of peace/);
+  // a letter that comes with a village: accepted, the named village changes hands
+  give(b2, PLAYER); war(PLAYER, 1); g.warOf(PLAYER, 1).bat.push({ id: 2, t: g.time, x: 0, y: 0, d: {}, w: { [PLAYER]: 900, 1: 50 }, r: {} });
+  const named = g.cedeable(PLAYER, 1);
+  assert.equal(g.proposeRelation(1, PLAYER, 'peace', false, 0, PLAYER), 'pending');
+  const o = g.offers.at(-1); assert.equal(o.cede, PLAYER); assert.equal(o.cedeV, named.id);
+  const d = JSON.parse(JSON.stringify(g.serialize())), q = mk(); q.restore(d); assert.equal(q.offers.at(-1).cedeV, named.id, 'the terms are saved');
+  assert.equal(g.respondOffer(PLAYER, 1, true, o.id), true); assert.equal(named.owner, 1); assert.equal(g.rel[PLAYER][1], 'peace');
+  // the rules read the war book only through warLoss; panels as before
+  assert.ok(!/warBook|warsPast|warOf\(/.test(readFileSync(new URL('../js/diplomacy.js', import.meta.url), 'utf8')));
+});
+test('peace terms (T72): rivals use them on each other: a winner tiring of the war asks a village, a loser that has lost enough yields it', () => {
+  const g = mk(); run(g, 0.2); g.meet(1, 2); g.time = 2000;
+  const k = g.seatOf(2), vs = g.villages.filter((v) => v.owner < 0).sort((a, b) => Math.hypot(a.x - k.x, a.y - k.y) - Math.hypot(b.x - k.x, b.y - k.y));
+  for (const v of vs.slice(0, 3)) { v.owner = 2; v.lean = 2; } g._vOwn = null;
+  g.setRelation(1, 2, 'war'); g.relSince[1][2] = g.relSince[2][1] = g.time - 900;
+  g.warOf(1, 2).bat.push({ id: 1, t: g.time, x: 0, y: 0, d: {}, w: { 1: 50, 2: 900 }, r: {} });
+  assert.equal(g.cedeRefusal(2, 1), '');
+  const held = g.villagesOf(2).length, want = g.cedeable(2, 1);
+  assert.ok(g.warWonBy(1, 2) && !g.warWonBy(2, 1)); assert.ok(stance(g, 1, 2).peace >= CEDE.ask && stance(g, 2, 1).peace >= CEDE.yield);
+  dip_deliberate(g, 1);   // the winner asks, the loser yields
+  assert.equal(g.rel[1][2], 'peace'); assert.equal(g.villagesOf(2).length, held - 1); assert.equal(want.owner, 1);
+  assert.ok(g.letters.some((l) => l.text.includes(`gives ${want.name}`)));
+  // the loser that sues offers the village with its coin
+  const h = mk(); run(h, 0.2); h.meet(1, 2); h.time = 2000; for (const v of h.villages.filter((v) => v.owner < 0).slice(0, 2)) { v.owner = 2; v.lean = 2; } h._vOwn = null;
+  h.setRelation(1, 2, 'war'); h.relSince[1][2] = h.relSince[2][1] = h.time - 900; h.warOf(1, 2).bat.push({ id: 1, t: h.time, x: 0, y: 0, d: {}, w: { 1: 50, 2: 900 }, r: {} });
+  const n2 = h.villagesOf(2).length; dip_deliberate(h, 2); assert.equal(h.rel[1][2], 'peace'); assert.equal(h.villagesOf(2).length, n2 - 1, 'sued with land');
+});
+test('peace terms (T72): a rival winning its war on the player asks a village by letter; accepting gives the named village', () => {
+  const g = mk(); run(g, 0.2); g.meet(PLAYER, 1); g.time = 2000;
+  const k = g.seatOf(PLAYER), v = g.villages.filter((x) => x.owner < 0).sort((a, b) => Math.hypot(a.x - k.x, a.y - k.y) - Math.hypot(b.x - k.x, b.y - k.y))[0];
+  v.owner = PLAYER; v.lean = PLAYER; g._vOwn = null;
+  g.setRelation(PLAYER, 1, 'war'); g.relSince[PLAYER][1] = g.relSince[1][PLAYER] = g.time - 900;
+  g.warOf(PLAYER, 1).bat.push({ id: 1, t: g.time, x: 0, y: 0, d: {}, w: { [PLAYER]: 900, 1: 60 }, r: {} });
+  dip_deliberate(g, 1);
+  const o = g.offers.find((x) => x.from === 1 && x.to === PLAYER); assert.ok(o, 'a letter'); assert.equal(o.cede, PLAYER); assert.equal(o.cedeV, v.id); assert.match(o.text, new RegExp(`Give us ${v.name}`));
+  assert.equal(g.respondOffer(PLAYER, 1, true, o.id), true); assert.equal(v.owner, 1); assert.equal(g.rel[PLAYER][1], 'peace');
+});
+test('the war overview\'s verdict weighs losses with the peace terms\' weights from config (T-138)', () => {
+  const T = { worth: [0, 0], razed: [0, 0], vil: [0, 0], kings: [0, CEDE.king ? 1 : 0] };
+  T.worth[0] = Math.ceil(CEDE.king / WAR_BOOK.won) + 1; assert.equal(warVerdict(T).text, 'In the balance');
+  T.worth[0] = Math.floor(CEDE.king / WAR_BOOK.won) - 1; assert.equal(warVerdict(T).text, 'Going your way');
+  assert.ok(!/\* (100|300|400)\b/.test(readFileSync(new URL('../js/wars.js', import.meta.url), 'utf8')), 'no weight written by hand');
 });

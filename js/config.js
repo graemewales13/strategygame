@@ -527,9 +527,16 @@ export const BATTLE = { r: 14, quiet: 20, minBlows: 6, keep: 40 };
 // (a report sorts men by class: the king apart, soldiers by UNIT_CLASS, and serfs, camels, spies and scholars as folk)
 // T71: the war book. Every war between two houses keeps a record from its declaration: each filed battle between them (the two sides'
 // dead, their worth and buildings lost, the spot; the last `battles`), villages taken from each other while at war, and kings slain.
-// A war that ends (peace, or a house's line ended) is kept among the last `keep` wars past. Panels only: no rule reads it.
+// A war that ends (peace, or a house's line ended) is kept among the last `keep` wars past. The rules read it only through
+// Game.warLoss, for peace terms (T72); everything else is panels.
 // A battle is won when the foe lost `won` times the worth in men that you did (the battle report's good trade).
 export const WAR_BOOK = { battles: 80, keep: 8, won: 1.5 };
+// T72: peace terms, a village ceded. A war's losses per side are read from the war book (men by their worth, a building razed `razed`,
+// a village taken `village`, a king slain `king`; the same weights as the war overview's verdict). A house gives a village for peace
+// when it has lost `lead` times what its foe has (and at least `floor`), or is very weary (stance peace >= `weary`); it takes one as the
+// price of peace as if offered coin worth `worth` + `perPop` a villager. Never the house's last village, nor a seat with its keep standing.
+// A winner whose own will for peace reaches `ask` asks a village of the loser; an AI loser yields when its will for peace reaches `yield`.
+export const CEDE = { lead: 1.5, floor: 400, weary: 0.75, worth: 250, perPop: 12, razed: 100, village: 300, king: 400, ask: 0.3, yield: 0.35 };
 export const BATTLE_CLASS = (kind) => (kind === 'king' ? 'king' : kind === 'camel' ? 'folk' : UNIT_CLASS[kind] || 'folk');
 export const BATTLE_WORD = { king: ['king', 'kings'], foot: ['foot', 'foot'], bow: ['bowman', 'bowmen'], horse: ['horseman', 'horse'], siege: ['siege engine', 'siege engines'], folk: ['of the folk', 'folk'] };
 export const BATTLE_ORDER = ['king', 'foot', 'bow', 'horse', 'siege', 'folk'];
