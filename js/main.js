@@ -10,7 +10,7 @@ import { learnPlaybook } from './learn.js';
 import { initTrainPanel } from './trainui.js';
 import { TUTORIAL } from './tutorial.js';
 
-const cfg = { houses: MAX_HOUSES, fog: true, diff: 'mid', people: 'random' };   // (every people at the table by default; the menu offers 3 to 8. The engine and tests keep DEFAULT_HOUSES)
+const cfg = { houses: MAX_HOUSES, fog: true, diff: 'mid', people: 'random', levels: [], handicap: 'fair' };   // (levels, handicap: per-seat tiers and the player's handicap, T60)   // (every people at the table by default; the menu offers 3 to 8. The engine and tests keep DEFAULT_HOUSES)
 try { const p = localStorage.getItem('auld.people'); if (p) cfg.people = p; } catch {}
 const params = new URLSearchParams(location.search);
 if (params.get('houses')) cfg.houses = Math.max(MIN_HOUSES, Math.min(MAX_HOUSES, +params.get('houses')));
@@ -20,7 +20,7 @@ if (['easy', 'mid', 'hard'].includes(params.get('diff'))) cfg.diff = params.get(
 
 const pendingClick = () => window.__boot && window.__boot.pending;
 await Promise.race([loadArt(), new Promise((r) => setTimeout(r, 10000))]);   // a slow image must not hold the game hostage
-const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people });
+const game = new Game({ seed: params.get('seed') ? +params.get('seed') : undefined, houses: cfg.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people, levels: cfg.levels, handicap: cfg.handicap });
 const host = new LocalHost(game);
 const renderer = new Renderer(document.getElementById('game'), game);
 // the rivals learn from the player: every match is recorded, and the playbook is re-learned between matches (never mid-match)
@@ -39,7 +39,7 @@ trainPanel = initTrainPanel({ recorder, getPlaybook: () => game.playbook, getSee
 
 ui.onReroll = (opts) => {
   recorder.finish('quit');
-  game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people });
+  game.reset({ seed: opts.seed, houses: opts.houses, fog: cfg.fog, diff: cfg.diff, people: cfg.people, levels: cfg.levels, handicap: cfg.handicap });
   ui.setGame(game);
   recorder.start(game);
   renderer.resetWorld();   // (back to the Options board size after a tutorial on the small one)

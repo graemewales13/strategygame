@@ -14,7 +14,7 @@ import { updateCoalitions, coalitionOf, coalitionAgainst, coalitionWords, boundT
 import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT, WARE_JOY, DEMOLISH } from '../js/config.js';
 import { battleWords, battlesOf, newBattle, battleRow, menWords, battleSides } from '../js/battle.js';
 import { warSides, warTally, warWords, warVerdict, pastWars } from '../js/wars.js';
-import { WAR_BOOK, CEDE, WAR_MIN } from '../js/config.js';
+import { DOCTRINE, FACTIONS, WAR_BOOK, CEDE, WAR_MIN, DIFFICULTY, HANDICAP, START_RES } from '../js/config.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
@@ -2901,4 +2901,38 @@ test('the war overview\'s verdict weighs losses with the peace terms\' weights f
   T.worth[0] = Math.ceil(CEDE.king / WAR_BOOK.won) + 1; assert.equal(warVerdict(T).text, 'In the balance');
   T.worth[0] = Math.floor(CEDE.king / WAR_BOOK.won) - 1; assert.equal(warVerdict(T).text, 'Going your way');
   assert.ok(!/\* (100|300|400)\b/.test(readFileSync(new URL('../js/wars.js', import.meta.url), 'utf8')), 'no weight written by hand');
+});
+test('per-house difficulty and the player\'s handicap (T60): set in setup, read by the AI per house, saved, ignored by the tutorial', () => {
+  const g = mk({ ai: true, diff: 'mid', levels: [null, 'easy', 'hard'], handicap: 'rich' });
+  assert.equal(g.levelOf(1), 'easy'); assert.equal(g.levelOf(2), 'hard'); assert.equal(g.diffOf(1), DIFFICULTY.easy); assert.equal(g.diffOf(2).armyCap, DIFFICULTY.hard.armyCap);
+  assert.equal(g.players[PLAYER].level, undefined, 'the player has no tier'); assert.equal(g.players[PLAYER].handicap, 'rich');
+  const k = Object.keys(START_RES).find((x) => START_RES[x] > 0); assert.equal(g.players[PLAYER][k], Math.round(START_RES[k] * HANDICAP.rich.start), 'a rich start');
+  assert.equal(g.startMul, HANDICAP.rich.start);
+  // coin: each AI house by its own tier, the player by his handicap
+  for (const t of [0, 1, 2]) g.players[t].gold = 0;
+  for (const t of [0, 1, 2]) g.earn(t, 'sales', 100);
+  assert.equal(Math.round(g.players[1].gold), Math.round(100 * DIFFICULTY.easy.aiMul)); assert.equal(Math.round(g.players[2].gold), Math.round(100 * DIFFICULTY.hard.aiMul));
+  assert.equal(Math.round(g.players[0].gold), Math.round(100 * HANDICAP.rich.earn));
+  // think rate per house
+  for (const t of [1, 2]) g.players[t].think = 0;
+  updateAI(g, 0.01);
+  assert.ok(Math.abs(g.players[1].think - 1.5 * DIFFICULTY.easy.think) < 1e-9 && Math.abs(g.players[2].think - 1.5 * DIFFICULTY.hard.think) < 1e-9, 'each thinks at its own pace');
+  // saved and restored
+  const h = new Game({ seed: 1, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(h.levelOf(2), 'hard'); assert.equal(h.levelOf(1), 'easy'); assert.equal(h.players[PLAYER].handicap, 'rich'); assert.equal(h.startMul, HANDICAP.rich.start);
+  // a house left at Match plays the match difficulty; a fresh reset clears the levels; the tutorial ignores them
+  const m = mk({ diff: 'hard', levels: [null, null, 'easy'] }); assert.equal(m.levelOf(1), 'hard'); assert.equal(m.diffOf(1), m.diff);
+  m.reset({ seed: 8, houses: 3, ai: false }); assert.equal(m.players[2].level, undefined); assert.equal(m.players[PLAYER].handicap, undefined);
+  const lean = mk({ handicap: 'lean' }); assert.equal(lean.players[PLAYER][k], Math.round(START_RES[k] * HANDICAP.lean.start));
+  const fair = mk({ diff: 'easy' }); assert.equal(fair.players[PLAYER][k], Math.round(START_RES[k] * DIFFICULTY.easy.playerMul), 'Fair keeps the difficulty\'s start');
+  const tut = mk({ levels: [null, 'hard', 'hard'], handicap: 'rich', tutorial: true }); assert.equal(tut.players[1].level, undefined); assert.equal(tut.players[PLAYER].handicap, undefined);
+  // no rule reads the match difficulty directly where a house's own tier applies
+  assert.ok(!/game\.diff\./.test(readFileSync(new URL('../js/ai.js', import.meta.url), 'utf8')), 'ai.js reads game.diffOf(team)');
+});
+test('the README names every people\'s doctrine and ruler\'s title (T-140)', () => {
+  const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  for (const [k, d] of Object.entries(DOCTRINE)) assert.match(md, new RegExp(`\\| ${FACTIONS[k].label.slice(0, 4)}[^|]*\\| ${d.label} \\|`, 'i'), `the doctrine table lists ${k}`);
+  for (const t of Object.values(KING.titles)) assert.ok(md.includes(t), `the README names the ${t}`);
+  for (const [k, d] of Object.entries(DOCTRINE)) assert.ok(d.tip?.length > 10, `the Council has a doctrine tip for ${k}`);
+  assert.ok(!/DOC_TIP = \{/.test(readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8')), 'no doctrine tips typed into ui.js');
 });

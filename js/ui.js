@@ -10,7 +10,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { shortName } from './names.js';
 import { gfx, setQuality } from './gfx.js';
 import {
-  COALITION, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
+  COALITION, DOCTRINE, DIFFICULTY, HANDICAP, LEVEL_KEYS, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, VILLAGE_WIN_SHARE,
   VILLAGE_WIN_HOLD, WEALTH_HOLD, WARE_JOY, DEMOLISH, LAND_LOYALTY, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, CEDE, WAR_BOOK, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread, coalitionOf, coalitionAgainst, coalitionWords, coalitionCall, wrongOf } from './diplomacy.js';
@@ -815,17 +815,25 @@ export class UI {
     else this.toast(g.diploNote || `${name} refuses.`, 'warn');
     this.sigDiplo = ''; this.renderDiplo();
   }
+  // T60: the tier a rival plays at (set per house in Skirmish setup), and the player's handicap on his own card
+  levelTag(t) {
+    const g = this.game, p = g.players[t]; if (!p) return '';
+    if (t === PLAYER) { const h = HANDICAP[p.handicap]; return h && p.handicap !== 'fair' ? ` <small class="lvl" data-tip="${encodeURIComponent(`<b>Handicap: ${h.label}</b><br>Started with ${Math.round(h.start * 100)}% of the usual stores; every coin earned x${h.earn}. Set in Skirmish setup.`)}">· ${esc(h.label.toLowerCase())}</small>` : ''; }
+    if (!p.ai) return '';
+    const k = g.levelOf(t), d = DIFFICULTY[k], own = !!p.level;
+    return ` <small class="lvl lvl-${k}" data-tip="${encodeURIComponent(`<b>Plays at ${d.label}</b>${own ? ' (set for this house in Skirmish setup)' : ' (the match difficulty)'}<br>Earns x${d.aiMul}, keeps up to ${d.armyCap} soldiers, thinks every ${(1.5 * d.think).toFixed(1)} s, may start a war from minute ${Math.round(d.warAfter * 0.6 / 60)}.`)}">· ${esc(d.label)}</small>`;
+  }
   // one house, as a card: leader, size, wealth, power, influence, attitude, and what you may do about it (compact = the small popover)
   houseCard(t, compact = false) {
     const g = this.game, i = intel(g, t), me = t === PLAYER, rel = i.rel;
     if (!i.known && !me) return `<div class="dline">Not met. Scout toward them to open talks.</div>`;
-    const DOC_TIP = { granary: 'Farms, temple and market first; a smaller army with more bowmen; slow to go to war.', legion: 'Barracks, towers and a keep first; the largest line of foot.', hold: 'Archery and towers first; mostly bowmen; keeps two spies; a little slow to war.', hearth: 'Market, mill and cottages first; a balanced army; slow to war.', raid: 'Stables and archery early; horse and bow; keeps two spies; quick to war.' };
+    const DOC_TIP = Object.fromEntries(Object.values(DOCTRINE).map((d) => [d.label, d.tip]));   // (from config for every people, T-140)
     const L = i.leader, lead = L.alive ? `${esc(L.title)} ${esc(L.name)}` : `Throne empty${L.heirIn != null ? ` · heir in ${L.heirIn}s` : ''}`;
     const tempTip = { warlike: 'Quick to war, slow to forgive.', mercantile: 'Loves trade and tribute; despises a poor partner.', honourable: 'Keeps oaths and expects the same.', cunning: 'Allies with the strong, turns on the weak.' }[L.temper] || '';
     const ranks = RANKS[L.rank]?.label || '';
     const stat = (label, val, tip) => `<div class="hs" ${tip ? `data-tip="${encodeURIComponent(tip)}"` : ''}><label>${label}</label><b>${val}</b></div>`;
     const mine = intel(g, PLAYER);
-    let html = `<div class="hleader" data-tip="${encodeURIComponent(`<b>${esc(L.temper || '')}</b><br>${tempTip}`)}">${compact ? '' : uiImg('portraits', RULER_ART[HOUSES[t].faction], '', 'rport')}♔ <b>${lead}</b>${L.alive ? ` <span class="rk">${'▲'.repeat(L.rank)} ${ranks}</span>` : ''}${L.temper ? ` <span class="tmp ${L.temper}">${L.temper}</span>` : ''} <small data-tip="${encodeURIComponent('<b>The royal line</b><br>When a king falls the next heir is crowned. When the last of the line dies, the house falls.')}">${i.heirs > 0 ? `· ${i.heirs} heir${i.heirs === 1 ? '' : 's'}` : '· <b style="color:#e0866a">last of the line</b>'}${i.fugitive ? ` · ${uiImg('marks', 'fugitive')}<b style="color:#e0866a">fugitive, seat lost</b>` : ''}</small>${i.doctrine ? ` <small data-tip="${encodeURIComponent(`<b>Doctrine: ${i.doctrine}</b><br>${DOC_TIP[i.doctrine] || ''}<br><span class='info'>How this people plays when it is not copying what it has learned from you.</span>`)}">· plays the ${esc(i.doctrine)}</small>` : ''}</div>`;
+    let html = `<div class="hleader" data-tip="${encodeURIComponent(`<b>${esc(L.temper || '')}</b><br>${tempTip}`)}">${compact ? '' : uiImg('portraits', RULER_ART[HOUSES[t].faction], '', 'rport')}♔ <b>${lead}</b>${L.alive ? ` <span class="rk">${'▲'.repeat(L.rank)} ${ranks}</span>` : ''}${L.temper ? ` <span class="tmp ${L.temper}">${L.temper}</span>` : ''} <small data-tip="${encodeURIComponent('<b>The royal line</b><br>When a king falls the next heir is crowned. When the last of the line dies, the house falls.')}">${i.heirs > 0 ? `· ${i.heirs} heir${i.heirs === 1 ? '' : 's'}` : '· <b style="color:#e0866a">last of the line</b>'}${i.fugitive ? ` · ${uiImg('marks', 'fugitive')}<b style="color:#e0866a">fugitive, seat lost</b>` : ''}</small>${i.doctrine ? ` <small data-tip="${encodeURIComponent(`<b>Doctrine: ${i.doctrine}</b><br>${DOC_TIP[i.doctrine] || ''}<br><span class='info'>How this people plays when it is not copying what it has learned from you.</span>`)}">· plays the ${esc(i.doctrine)}</small>` : ''}${this.levelTag(t)}</div>`;
     if (i.reign || i.line?.length || i.nextHeir) {   // the heirs as people (T65): the ruler's reign, the one to be crowned, the line in order
       const T = (k) => HEIR.traits[k], who = (h) => `<span data-tip="${encodeURIComponent(`<b>${esc(h.name)}</b>, ${h.age}<br><b>${T(h.trait).label}</b>: ${T(h.trait).tip}`)}">${esc(shortName(h.name))} (${uiImg('marks', `heir_${h.trait}`, T(h.trait).glyph, 'tico')} ${T(h.trait).label.toLowerCase()}, ${h.age})</span>`;
       html += `<div class="dline heirline">${i.reign && T(i.reign) ? `Reigns as a <b>${T(i.reign).label.toLowerCase()}</b>. ` : ''}${i.nextHeir ? `To be crowned: <b>${who(i.nextHeir)}</b>. ` : ''}${i.line?.length ? `Heirs: ${i.line.map((h, n) => (n === 0 ? '♛ ' : '') + who(h)).join(', ')}` : ''}</div>`;
@@ -1739,6 +1747,7 @@ export class UI {
     $('mQuit').onclick = () => { $('quit').classList.remove('hidden'); };
     $('mFog').onchange = (e) => { cfg.fog = e.target.checked; this.game.setFog(cfg.fog); this.mini.t = 0; };
     $('mSeedGo').onclick = () => { const v = parseInt($('mSeed').value, 10); if (v > 0) { this.onReroll?.({ seed: v, houses: cfg.houses }); this.started = false; this.refreshMenu(); } };
+    $('crests').addEventListener('click', (e) => { const b = e.target.closest('button.lvlb'); if (b) this.cycleSeatLevel(+b.dataset.seat); });
     refreshSeg();
   }
   refreshMenu() {
@@ -1752,9 +1761,25 @@ export class UI {
     const box = $('crests'); box.innerHTML = '';
     for (let i = 0; i < MAX_HOUSES; i++) {
       const d = document.createElement('div'); d.className = 'crestcard' + (i < g.houses ? '' : ' off');
-      d.innerHTML = `<canvas width="44" height="48"></canvas><b>${esc(HOUSES[i].short)}</b><i>${i === 0 ? 'You' : 'Rival'} · ${HOUSES[i].color}</i>`;
+      d.innerHTML = `<canvas width="44" height="48"></canvas><b>${esc(HOUSES[i].short)}</b><i>${i === 0 ? 'You' : 'Rival'} · ${HOUSES[i].color}</i>${i < g.houses ? this.seatLevelBtn(i) : ''}`;
       box.appendChild(d); drawCrest(d.querySelector('canvas').getContext('2d'), 22, 24, 40, i);
     }
+  }
+  // T60: under each seat's crest in Skirmish setup, a button that cycles that rival's tier (Match, then Easy, Mid, Hard) or the player's
+  // handicap (Fair, Rich start, Lean start); a change re-deals the valley on the same seed before the match, else from the next New Valley
+  seatLevelBtn(i) {
+    const cfg = this.cfg;
+    if (i === PLAYER) { const h = HANDICAP[cfg.handicap] ? cfg.handicap : 'fair', H = HANDICAP[h]; return `<button class="lvlb${h !== 'fair' ? ' set' : ''}" data-seat="${i}" data-tip="${encodeURIComponent(`<b>Your handicap: ${H.label}</b><br>${h === 'fair' ? 'The usual start for the difficulty.' : `Start with ${Math.round(H.start * 100)}% of the usual stores; every coin you earn x${H.earn}.`}<br>Click to change: Fair, Rich start (for a learner), Lean start (for a veteran).`)}">${esc(H.label)}</button>`; }
+    const k = LEVEL_KEYS.includes(cfg.levels?.[i]) ? cfg.levels[i] : null, lab = k ? DIFFICULTY[k].label : `Match (${DIFFICULTY[cfg.diff]?.label || 'Mid'})`;
+    return `<button class="lvlb${k ? ' set lvl-' + k : ''}" data-seat="${i}" data-tip="${encodeURIComponent(`<b>This rival plays at ${k ? DIFFICULTY[k].label : 'the match difficulty'}</b><br>Click to cycle: Match, Easy, Mid, Hard. Fight one strong and one weak house, or any mix.`)}">${esc(lab)}</button>`;
+  }
+  cycleSeatLevel(i) {
+    const cfg = this.cfg;
+    if (i === PLAYER) { const ks = Object.keys(HANDICAP); cfg.handicap = ks[(ks.indexOf(cfg.handicap) + 1) % ks.length] || 'fair'; }
+    else { const ks = [null, ...LEVEL_KEYS]; cfg.levels = cfg.levels || []; cfg.levels[i] = ks[(ks.indexOf(cfg.levels[i] ?? null) + 1) % ks.length]; }
+    if (!this.started) this.onReroll?.({ seed: this.game.seed, houses: cfg.houses });
+    else this.toast(`${i === PLAYER ? 'Your handicap' : HOUSES[i].name + "'s level"} applies from the next New Valley.`, 'info');
+    this.refreshMenu();
   }
   openMenu() { this.menuOpen = true; this.setPaused(false); this.refreshMenu(); this.showMain(); $('campaign').classList.add('hidden'); this.campaignOpen = false; }
   // ------------------------------------------------------------ guided objectives

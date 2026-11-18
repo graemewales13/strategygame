@@ -6,7 +6,7 @@ import {
   MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, setPeoples, seatPeoples, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, HANDICAP, LEVEL_KEYS, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
   VILLAGE_KINDS, DEMOLISH, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
   FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS } from './config.js';
@@ -45,7 +45,7 @@ export class Game {
   // title screens show the whole valley under the menu: the view ignores fog until the match begins (never affects the sim)
   get fogOn() { return this._fog && !this.titleView; }
   set fogOn(v) { this._fog = v; }
-  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, tutorial = false, size } = {}) {
+  reset({ seed, houses = DEFAULT_HOUSES, fog = true, ai = true, diff = 'mid', people, order, tutorial = false, size, levels = [], handicap = 'fair' } = {}) {
     this.titleView = false;   // (the title screen's fog-free view is switched on again by the client each frame)
     this.tutorial = tutorial ? { step: 0, done: false } : null;   // T04: the lessons' place, saved; null in every other match
     this.asks = [];   // the player's envoys on the road to rival houses: { from, to, state, coin, at } (coin: offered with a peace)
@@ -88,9 +88,12 @@ export class Game {
 
     const n = this.houses;
     this.players = Array.from({ length: n }, (_, i) => ({
-      team: i, name: HOUSES[i].name, ...START_RES, ...(i === PLAYER ? Object.fromEntries(Object.entries(START_RES).map(([k, v]) => [k, Math.round(v * this.diff.playerMul)])) : {}), alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, tech: {}, learning: 0, learnRate: 0, research: null, gear: {}, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
+      team: i, name: HOUSES[i].name, ...START_RES, ...(i === PLAYER ? Object.fromEntries(Object.entries(START_RES).map(([k, v]) => [k, Math.round(v * this.startMulFor(tutorial ? 'fair' : handicap))])) : {}), alive: true, ai: i !== PLAYER, think: 0.8 + i * 0.55, arms: 0, sci: 0, armsT: 0, sciT: 0, tech: {}, learning: 0, learnRate: 0, research: null, gear: {}, offerT: 60 + i * 20, tradeEarned: 0, trips: 0,
       acc: {}, inc: {}, spent: 0, wageRate: 0, wageDebt: 0, brokeT: 0, deserterT: 0, earnedTotal: 0,
     }));
+    // T60: a rival seat set to its own tier in Skirmish setup keeps it as `level` (saved with the house); the player keeps his handicap
+    if (!tutorial) for (const p of this.players) { if (p.ai && LEVEL_KEYS.includes(levels?.[p.team])) p.level = levels[p.team]; }
+    if (!tutorial && HANDICAP[handicap] && handicap !== 'fair') this.players[PLAYER].handicap = handicap;
     this.known = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
     this.offers = []; // letters waiting on an answer { id, from, to, kind: treaty|joinwar|tribute|aid, state, target, amount, text, t, expires }
     this.opinion = Array.from({ length: n }, () => Array(n).fill(0)); this.whyOp = {}; this.letters = []; this.cool = {}; this.nextLetter = 1; this._opT = 0; this._inflT = -99;
@@ -3038,11 +3041,16 @@ export class Game {
       b.job = null;
     }
   }
+  // T60: the tier a house plays at (its own from Skirmish setup, else the match's) and the player's handicap
+  diffOf(team) { return DIFFICULTY[this.players[team]?.level] || this.diff; }
+  levelOf(team) { const k = this.players[team]?.level; return DIFFICULTY[k] ? k : this.diffKey; }
+  startMulFor(h) { return HANDICAP[h]?.start ?? this.diff.playerMul; }
+  get startMul() { return this.startMulFor(this.players?.[PLAYER]?.handicap || 'fair'); }
   // every coin that comes in is booked by source, so the treasury strip can show where the money comes from
   earn(team, src, amt) {
     const p = this.players[team];
     if (!(amt > 0)) return;
-    if (p.ai) amt *= this.diff.aiMul;
+    if (p.ai) amt *= this.diffOf(team).aiMul; else if (p.handicap) amt *= HANDICAP[p.handicap]?.earn ?? 1;
     p.gold += amt; p.earnedTotal += amt; p.acc[src] = (p.acc[src] || 0) + amt;
     if (team === PLAYER && amt >= 3 && (src === 'trade' || src === 'sales' || src === 'loot')) { const m = this.seatOf(PLAYER); if (m) this.sfx('coin', m.x, m.y); }
   }

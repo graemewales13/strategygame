@@ -326,18 +326,28 @@ export const DIFFICULTY = {
   mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.2,  armyCap: 30, warAfter: 720,  warBar: 0.45, think: 0.95, wealth: 6000, mass: 0.65, regroup: 1.6, reach: 130 },
   hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.4,  armyCap: 46, warAfter: 420,  warBar: 0.32, think: 0.75, wealth: 10000, mass: 0.75, regroup: 1.4, reach: 150 },
 };
+// Per-house difficulty (T60, AoE II/IV lobbies): Skirmish setup can set any rival seat to its own tier (a player's `level`, saved with the
+// house; none means the match's difficulty), read by ai.js through game.diffOf(team). The player's handicap scales his starting stores
+// (`start`; null keeps the difficulty's playerMul) and every coin he earns (`earn`), so a learner can ask for a rich start and a veteran a lean one.
+export const HANDICAP = {
+  fair: { label: 'Fair', start: null, earn: 1 },
+  rich: { label: 'Rich start', start: 2.0, earn: 1.15 },
+  lean: { label: 'Lean start', start: 0.6, earn: 0.85 },
+};
+export const LEVEL_KEYS = ['easy', 'mid', 'hard'];
 // A house that is not copying the player plays to its people. bias buildings are raised a few slots early.
 // armyMul scales the force they will pay. mix is the share of foot, bow and horse they drill toward.
 // war is added to the difficulty war bar (positive waits longer). serf is added to the serf target. spies is how many they keep.
+// tip is what the Council card says of the doctrine (T-140: it lived in ui.js for five peoples only).
 export const DOCTRINE = {
-  egyptians: { label: 'granary', bias: ['farm', 'temple', 'market'], armyMul: 0.85, mix: { footman: 0.5, bowman: 0.35, knight: 0.15 }, war: 0.08, serf: 2, spies: 1 },
-  romans:    { label: 'legion',  bias: ['barracks', 'tower', 'keep'], armyMul: 1.15, mix: { footman: 0.7, bowman: 0.15, knight: 0.15 }, war: 0, serf: 0, spies: 1 },
-  scottish:  { label: 'hold',    bias: ['archery', 'tower', 'tavern'], armyMul: 1.0, mix: { footman: 0.3, bowman: 0.55, knight: 0.15 }, war: 0.04, serf: 0, spies: 2 },
-  british:   { label: 'hearth',  bias: ['market', 'mill', 'cottage'], armyMul: 0.9, mix: { footman: 0.45, bowman: 0.35, knight: 0.2 }, war: 0.06, serf: 1, spies: 1 },
-  mongols:   { label: 'raid',    bias: ['stable', 'archery', 'barracks'], armyMul: 1.25, mix: { footman: 0.2, bowman: 0.4, knight: 0.4 }, war: -0.08, serf: -1, spies: 2 },
-  vikings:   { label: 'shield wall', bias: ['barracks', 'tavern', 'workshop'], armyMul: 1.15, mix: { footman: 0.65, bowman: 0.25, knight: 0.1 }, war: -0.06, serf: 0, spies: 1 },
-  byzantines: { label: 'theme',   bias: ['academy', 'market', 'tower'], armyMul: 1.0, mix: { footman: 0.35, bowman: 0.3, knight: 0.35 }, war: 0.06, serf: 1, spies: 3 },
-  persians:  { label: 'satrapy',  bias: ['stable', 'market', 'temple'], armyMul: 1.1, mix: { footman: 0.25, bowman: 0.4, knight: 0.35 }, war: 0.02, serf: 1, spies: 2 },
+  egyptians: { label: 'granary', bias: ['farm', 'temple', 'market'], armyMul: 0.85, mix: { footman: 0.5, bowman: 0.35, knight: 0.15 }, war: 0.08, serf: 2, spies: 1, tip: 'Farms, temple and market first; a smaller army with more bowmen; slow to go to war.' },
+  romans:    { label: 'legion',  bias: ['barracks', 'tower', 'keep'], armyMul: 1.15, mix: { footman: 0.7, bowman: 0.15, knight: 0.15 }, war: 0, serf: 0, spies: 1, tip: 'Barracks, towers and a keep first; the largest line of foot.' },
+  scottish:  { label: 'hold',    bias: ['archery', 'tower', 'tavern'], armyMul: 1.0, mix: { footman: 0.3, bowman: 0.55, knight: 0.15 }, war: 0.04, serf: 0, spies: 2, tip: 'Archery and towers first; mostly bowmen; keeps two spies; a little slow to war.' },
+  british:   { label: 'hearth',  bias: ['market', 'mill', 'cottage'], armyMul: 0.9, mix: { footman: 0.45, bowman: 0.35, knight: 0.2 }, war: 0.06, serf: 1, spies: 1, tip: 'Market, mill and cottages first; a balanced army; slow to war.' },
+  mongols:   { label: 'raid',    bias: ['stable', 'archery', 'barracks'], armyMul: 1.25, mix: { footman: 0.2, bowman: 0.4, knight: 0.4 }, war: -0.08, serf: -1, spies: 2, tip: 'Stables and archery early; horse and bow; keeps two spies; quick to war.' },
+  vikings:   { label: 'shield wall', bias: ['barracks', 'tavern', 'workshop'], armyMul: 1.15, mix: { footman: 0.65, bowman: 0.25, knight: 0.1 }, war: -0.06, serf: 0, spies: 1, tip: 'Barracks, tavern and workshop first; a large line of foot; quick to war.' },
+  byzantines: { label: 'theme',   bias: ['academy', 'market', 'tower'], armyMul: 1.0, mix: { footman: 0.35, bowman: 0.3, knight: 0.35 }, war: 0.06, serf: 1, spies: 3, tip: 'Academy, market and towers first; a balanced army heavy in horse; keeps three spies; slow to war.' },
+  persians:  { label: 'satrapy',  bias: ['stable', 'market', 'temple'], armyMul: 1.1, mix: { footman: 0.25, bowman: 0.4, knight: 0.35 }, war: 0.02, serf: 1, spies: 2, tip: 'Stables, market and temple first; horse and bow; keeps two spies.' },
 };
 export const FORFEIT_AFTER = 45;   // legacy, unused: houses no longer forfeit; a house falls only with the last of its royal line
 export const WEALTH_HOLD = 90;   // legacy, unused: wealth no longer wins

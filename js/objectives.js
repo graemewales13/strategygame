@@ -11,7 +11,7 @@ const heldVillages = (g) => g.villages.filter((v) => v.owner === PLAYER && v.hom
 
 export const OBJECTIVES = [
   { id: 'timber', title: 'Cut timber', hint: 'Drag a box round your three serfs, then right-click a tree. They carry timber home.',
-    done: (g) => g.players[PLAYER].wood > 500 * g.diff.playerMul || anyBuilt(g) },
+    done: (g) => g.players[PLAYER].wood > 500 * g.startMul || anyBuilt(g) },
   { id: 'serfs', title: 'Draft more serfs', hint: 'Press {key:hall} to open your home village and draft serfs. More hands, faster work.',
     done: (g) => serfs(g) >= 6 || anyBuilt(g) },
   { id: 'mine', title: 'Raise a mine', hint: `Open the build menu, choose Mine and place it on a deposit (the glints in the rock). Villagers from villages within ${MINE_JOBS.r} tiles dig for it; with no village near it has no workers.`,

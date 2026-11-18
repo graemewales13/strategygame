@@ -631,3 +631,8 @@ button.mini { font: inherit; font-size: 10px; padding: 0 5px; margin-left: 4px; 
 button.mini:hover { border-color: #e8c66a; }
 .dline.heirline { font-size: 11px; color: var(--dim); }
 .dline.heirline b { color: var(--ink); }
+
+/* T60: a seat's level under its crest in Skirmish setup */
+.crestcard .lvlb { display: block; width: 100%; margin-top: 3px; padding: 1px 0; font-size: 10px; background: #241709; color: var(--dim); border: 1px solid #6d4d27; border-radius: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crestcard .lvlb.set { color: var(--ink); border-color: #b08a4a; }
+.lvlb.lvl-easy, small.lvl-easy { color: #9fc48a; } .lvlb.lvl-hard, small.lvl-hard { color: #e0866a; }

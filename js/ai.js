@@ -40,7 +40,7 @@ export function updateAI(game, dt) {
     if (!p.ai || !p.alive) continue;
     p.think -= dt;
     if (p.think > 0) continue;
-    p.think = 1.5 * game.diff.think;
+    p.think = 1.5 * game.diffOf(p.team).think;
     noteFoes(game, p.team, p);
     think(game, p.team, p);
   }
@@ -171,7 +171,7 @@ function think(game, team, p) {
   const rich = Math.max(0, Math.floor((p.gold - 250) / 45));   // a full purse buys men; a thin one holds the line it can pay for
   let base = 3 + Math.floor(t / 65);
   if (pb?.army?.length) base = Math.max(3, Math.round(lerp(base, curveAt(pb.army, pb.step, t), wb)));
-  const armyCap = Math.round(Math.min(game.diff.armyCap, Math.min(base, payable) + rich) * (doc.armyMul || 1) * (p.meek || 1));   // (meek: the tutorial's weak rival, T57)
+  const armyCap = Math.round(Math.min(game.diffOf(team).armyCap, Math.min(base, payable) + rich) * (doc.armyMul || 1) * (p.meek || 1));   // (meek: the tutorial's weak rival, T57)
   const queuedMil = game.buildings.filter((b) => b.team === team).reduce((n, b) => n + b.queue.filter((q) => q.kind !== 'serf').length, 0);
   if (raised + queuedMil < armyCap) {
     const picks = [];
@@ -297,7 +297,7 @@ function think(game, team, p) {
 
   // 6. war is chosen, not scheduled: a house fights the one it is at war with, or the one its stance says it means war on (threat, temptation,
   // grudge, less ties: see stance() in diplomacy.js). The difficulty's warAfter (x0.6) is only the earliest a house will start a war of its own.
-  const warAfter = pb?.warAt ? clamp(lerp(game.diff.warAfter, pb.warAt, wb), 240, 1800) : game.diff.warAfter;
+  const warAfter = pb?.warAt ? clamp(lerp(game.diffOf(team).warAfter, pb.warAt, wb), 240, 1800) : game.diffOf(team).warAfter;
   const earliest = warAfter * 0.6;
   p.warIn = Math.max(0, Math.round(earliest - t));
   const atWar = game.players.some((q) => q.alive && q.team !== team && game.rel[team][q.team] === 'war');
@@ -308,7 +308,7 @@ function think(game, team, p) {
       if (game.truce(team, q.team)) continue;   // the tutorial's truce (T04): the learner is left be
       if (game.rel[team][q.team] === 'alliance') continue;   // oaths are kept (until a leader's temper breaks them)
       const st = stance(game, team, q.team), war = game.rel[team][q.team] === 'war';
-      if (!war && (st.war < game.diff.warBar + (doc.war || 0) || t <= earliest || raised < 7 || game.time - game.relSince[team][q.team] < 240)) continue;   // a peace just made is kept a while
+      if (!war && (st.war < game.diffOf(team).warBar + (doc.war || 0) || t <= earliest || raised < 7 || game.time - game.relSince[team][q.team] < 240)) continue;   // a peace just made is kept a while
       const score = (war ? 1 : 0) + st.war + st.temptation * 0.5 + (war && coalitionOf(game, team)?.against === q.team ? COALITION.focus : 0);   // a coalition's foe first (T66)
       if (score > bd) { bd = score; target = q; }
     }
@@ -318,7 +318,7 @@ function think(game, team, p) {
       const ready = army.filter(onCall);
       // march only with the bulk of the army (a band of seven at a time is beaten one band at a time); not while a beaten band regroups
       const fighters = army.filter((u) => game.fighter(u)).length + game.soldiersOf(team).filter((u) => u.inside && !u.drilling && u.kind !== 'recruit').length;
-      if (ready.length >= Math.max(7, Math.ceil(fighters * (game.diff.mass || 0))) && t >= (p.regroupUntil || 0)) {
+      if (ready.length >= Math.max(7, Math.ceil(fighters * (game.diffOf(team).mass || 0))) && t >= (p.regroupUntil || 0)) {
         const goal = huntGoal(game, team, target.team, seat, ready);
         if (goal) {
           game.setStance(ready, 'aggressive'); game.setFormation(ready, 'line'); game.cmdAttack(ready, goal);
@@ -438,7 +438,7 @@ export function warCry(game, team) {
   return game.warCry(team);
 }
 export function regroup(game, team, p, seat, army, t) {
-  const ratio = game.diff.regroup; if (!ratio) return;
+  const ratio = game.diffOf(team).regroup; if (!ratio) return;
   const band = army.filter((u) => !u.inside && !game.steadied(u) && (u.task.type === 'attack' || u.task.type === 'amove') && Math.hypot(u.x - seat.x, u.y - seat.y) > 14);
   if (band.length < 3) return;
   const cx = band.reduce((a, u) => a + u.x, 0) / band.length, cy = band.reduce((a, u) => a + u.y, 0) / band.length;
@@ -731,7 +731,7 @@ export function treasury(game, team, p, seat, serfs) {
     const have = new Set(game.buildings.filter((b) => b.team === team && b.kind === 'mine' && b.hp > 0).map((b) => b.ore));
     // metal is regional, so what we lack lies out in the open ground: go as far as the difficulty's reach; and now and then, with everything
     // at home, stake out a rich seam out there anyway (owner, 2026-10-15: rivals kept to their own patch). Not beside another house's works.
-    const reach = game.diff.reach || 70, theirs = (n) => game.buildings.some((b) => b.team !== team && b.hp > 0 && Math.hypot(b.x - n.x, b.y - n.y) < 12);
+    const reach = game.diffOf(team).reach || 70, theirs = (n) => game.buildings.some((b) => b.team !== team && b.hp > 0 && Math.hypot(b.x - n.x, b.y - n.y) < 12);
     const byDist = (a, c) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(c.x - seat.x, c.y - seat.y);
     const open = (n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && n.amount > 40 && !n.covered && Math.hypot(n.x - seat.x, n.y - seat.y) < reach && !(game.minePower(team, n.x, n.y) > 0) && !theirs(n);
     const ore = game.resources.filter((n) => open(n) && !have.has(n.kind)).sort(byDist)[0]
