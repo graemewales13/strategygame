@@ -1,10 +1,11 @@
 // Auld World - isometric canvas drawing. Reads game state, never changes it.
 // World tile (x, y) projects to the screen as ((x - y) * HW, (x + y) * HH): a 2:1 diamond tile like the concept boards.
 import {
-  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf, SIEGE, SIGNAL, WARCRY } from './config.js';
+  PLAYER, DISTRICT, HOUSES, T_WATER, T_FORD, T_DIRT, UNITS, BUILDINGS, INFLUENCE, STORES, HAUL, T_GRASS, T_DRY, MATS, GOOD_COLOR, GOOD_LABEL, MINE_JOBS, packOf, SIEGE, SIGNAL, WARCRY, AFTERMATH } from './config.js';
 import { TerrainCache, FogLayer } from './terrain.js';
 import { gfx } from './gfx.js';
-import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, ORE_ART, armedKey, factionSprite, siegeSprite } from './art.js';
+import { tinted, ramSprite, camelSprite, oreSprite, mineSprite, paintedMine, IMG, SIMG, VIMG, FUNIT, UIART, ORE_ART, AFTER_ART, armedKey, factionSprite, siegeSprite } from './art.js';
+import { battleLitter, battleMarks } from './battle.js';
 import { WOMEN } from './names.js';
 
 export const HW = 24, HH = 12; // half tile width / height in px at zoom 1
@@ -118,6 +119,7 @@ export class Renderer {
     this.shimmer(ctx, g, x0, y0, x1, y1, t, isSeen, z);
     this.clouds(ctx, t, z);
     if (ui?.placing) this.territory(ctx, g);
+    this.aftermath(ctx, g, x0, y0, x1, y1, isSeen, isVis, z);   // what the fallen left on the field (T67), under everyone's feet
 
     // everything that stands on the ground, back to front
     const items = [];
@@ -393,6 +395,51 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+  }
+  // T67: where men fell in a filed battle the field keeps a broken spear, a dropped shield or (a king) his fallen banner, fading over
+  // AFTERMATH.fade s at the end of AFTERMATH.field s. Fog: a battle of the player's shows wherever he has explored (his men saw it fall);
+  // anyone else's only where he can see now. Painted pieces (ARTREQUIREMENTS priority 39) replace the drawn ones once delivered.
+  aftermath(ctx, g, x0, y0, x1, y1, isSeen, isVis, z) {
+    const list = battleLitter(g, PLAYER); if (!list.length) return;
+    ctx.save();
+    for (const f of list) {
+      if (f.x < x0 || f.x > x1 || f.y < y0 || f.y > y1 || !(f.mine ? isSeen(f.x, f.y) : isVis(f.x, f.y))) continue;
+      const [sx, sy] = this.toScreen(f.x, f.y), col = HOUSES[f.team]?.primary || '#8a7a5a', flip = f.turn < 0.5 ? 1 : -1;
+      ctx.globalAlpha = 0.9 * f.fade;
+      ctx.fillStyle = 'rgba(46,32,20,0.28)'; ctx.beginPath(); ctx.ellipse(sx, sy, 10 * z, 4.5 * z, 0, 0, 7); ctx.fill();   // trampled earth
+      const img = AFTER_ART[f.kind];
+      if (img) {
+        const pic = f.kind === 'banner' ? this.dyed(img, 'after_banner', col) : img, w = 24 * z, h = (img.height / img.width) * w;
+        ctx.save(); ctx.translate(sx, sy); ctx.scale(flip, 1); ctx.drawImage(pic, -w / 2, -h * 0.75, w, h); ctx.restore();
+        continue;
+      }
+      ctx.lineCap = 'round';
+      if (f.kind === 'spear') {   // a broken ash shaft lying in two pieces, the iron head on the longer one
+        const a = (f.turn - 0.5) * 0.9, dx = Math.cos(a) * flip, dy = Math.sin(a) * 0.5;
+        for (const [c, w] of [['#24180c', 3], ['#b08a58', 1.6]]) {   // a dark edge under pale ash wood, so it reads on bare earth
+          ctx.strokeStyle = c; ctx.lineWidth = Math.max(1, w * z);
+          ctx.beginPath(); ctx.moveTo(sx - dx * 11 * z, sy - dy * 11 * z); ctx.lineTo(sx + dx * 2 * z, sy + dy * 2 * z); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(sx + dx * 4 * z, sy + dy * 4 * z + 1.5 * z); ctx.lineTo(sx + dx * 9 * z, sy + dy * 9 * z + 2.5 * z); ctx.stroke();
+        }
+        ctx.fillStyle = '#5c5f62'; ctx.beginPath(); ctx.moveTo(sx - dx * 11 * z, sy - dy * 11 * z - 1.6 * z); ctx.lineTo(sx - dx * 16 * z, sy - dy * 16 * z); ctx.lineTo(sx - dx * 11 * z, sy - dy * 11 * z + 1.6 * z); ctx.closePath(); ctx.fill();
+      } else if (f.kind === 'shield') {   // a round wooden shield lying face up, iron boss and rim
+        ctx.fillStyle = '#6b4c2e'; ctx.strokeStyle = '#2a1c10'; ctx.lineWidth = Math.max(1, 1.2 * z);
+        ctx.beginPath(); ctx.ellipse(sx + flip * 2 * z, sy - 1 * z, 7 * z, 3.6 * z, flip * 0.15, 0, 7); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#7d8083'; ctx.beginPath(); ctx.ellipse(sx + flip * 2 * z, sy - 1 * z, 1.8 * z, 1 * z, 0, 0, 7); ctx.fill();
+      } else {   // a fallen banner: the pole lying aslant, the cloth in the house's colour crumpled on the ground
+        ctx.strokeStyle = '#4a3420'; ctx.lineWidth = Math.max(1.2, 1.8 * z);
+        ctx.beginPath(); ctx.moveTo(sx - flip * 14 * z, sy + 2 * z); ctx.lineTo(sx + flip * 8 * z, sy - 3 * z); ctx.stroke();
+        ctx.fillStyle = col; ctx.strokeStyle = 'rgba(20,14,8,0.6)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(sx + flip * 8 * z, sy - 3 * z); ctx.lineTo(sx - flip * 2 * z, sy - 5 * z); ctx.lineTo(sx - flip * 4 * z, sy + 3 * z); ctx.lineTo(sx + flip * 3 * z, sy + 5 * z); ctx.lineTo(sx + flip * 7 * z, sy + 3 * z); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+  // a neutral painting dyed in a colour (multiply keeps the painting, the alpha keeps the shape), cached per key and colour
+  dyed(img, key, tint) {
+    const k = key + tint, m = (this._marks ||= new Map());
+    if (!m.has(k)) { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0); x.globalCompositeOperation = 'multiply'; x.fillStyle = tint; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'destination-in'; x.drawImage(img, 0, 0); m.set(k, c); }
+    return m.get(k);
   }
   // where each selected soldier of ours is going (T06): a faint line to a march's end, red for an attack-move or an attack, ending in a mark
   orderLines(ctx, ui, t, z) {
@@ -1047,6 +1094,20 @@ export class Minimap {
       ctx.globalAlpha = Math.max(0, 1 - f.age / SIGNAL.show) * (1 - ph * 0.5); ctx.strokeStyle = HOUSES[f.team].accent; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(f.x * sx, f.y * sy, 3 + ph * 14, 0, 7); ctx.stroke();
       ctx.fillStyle = HOUSES[f.team].accent; ctx.fillRect(f.x * sx - 2, f.y * sy - 2, 4, 4); ctx.globalAlpha = 1;
+    }
+    // the player's battles (T67): a crossed mark where each was fought, gold for a good trade of men, red for a costly one, pale for even,
+    // fading over AFTERMATH.mark s (the painted battle-report mark, ARTREQUIREMENTS priority 33, once delivered)
+    for (const m of battleMarks(g, PLAYER)) {
+      const x = m.x * sx, y = m.y * sy, k = 3.5;
+      ctx.globalAlpha = Math.max(0.15, 1 - m.age / AFTERMATH.mark);
+      const img = UIART.marks.battle, col = m.trade === 'good' ? '#f0c84a' : m.trade === 'bad' ? '#ff5a46' : '#d8d0bc';
+      if (img) { ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.stroke(); ctx.drawImage(img, x - 6, y - 6, 12, 12); }
+      else {
+        ctx.lineCap = 'round'; ctx.strokeStyle = '#000'; ctx.lineWidth = 3.2;
+        ctx.beginPath(); ctx.moveTo(x - k, y - k); ctx.lineTo(x + k, y + k); ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k); ctx.stroke();
+        ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
     }
     const q = this.r.viewPoly();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x * sx, y * sy) : ctx.moveTo(x * sx, y * sy))); ctx.closePath(); ctx.stroke();

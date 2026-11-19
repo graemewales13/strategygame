@@ -2,7 +2,7 @@
 // file each finished battle in `game.battleLog`; this module turns a filed report into the words of the card the player sees when a
 // fight his people were in ends, and of the Battles list on the Council. Pure functions of the game state: nothing here touches the
 // simulation, and no rule reads a report.
-import { PLAYER, BATTLE_WORD, BATTLE_ORDER, RETREAT, KING, DEEDS, WAR_BOOK } from './config.js';
+import { PLAYER, BATTLE_WORD, BATTLE_ORDER, RETREAT, KING, DEEDS, WAR_BOOK, AFTERMATH } from './config.js';
 
 export const BATTLE_SHOW = 24;     // seconds a report card stays up unless closed
 export const BATTLE_LIST = 8;      // battles listed on the Council
@@ -76,14 +76,43 @@ export function battleWords(g, r, team = PLAYER) {
   for (const v of r.villages) lines.push(v.to === team ? { text: `You took ${v.name}.`, cls: 'good' } : v.from === team ? { text: `You lost ${v.name} to ${houseName(g, v.to, team)}.`, cls: 'bad' } : { text: `${cap(houseName(g, v.to, team))} took ${v.name}.`, cls: '' });
   // the trade: what each side lost in men, by their cost
   // (your side is you and the houses that fought beside you; WAR_BOOK.won is the war overview's measure of a battle won too, T71)
-  const mineW = (mine ? mine.worth : 0) + friends.reduce((a, s) => a + s.worth, 0), theirW = foes.reduce((a, s) => a + s.worth, 0), yours = friends.length ? 'your side\'s' : 'your', you = friends.length ? 'your side' : 'you';
-  let verdict;
-  if (!mineW && !theirW) verdict = { text: 'Nobody fell: a skirmish.', cls: '' };
-  else if (theirW >= mineW * WAR_BOOK.won) verdict = { text: `A good trade: they lost ${theirW} in men to ${yours} ${mineW}.`, cls: 'good' };
-  else if (mineW >= theirW * WAR_BOOK.won) verdict = { text: `A costly fight: ${you} lost ${mineW} in men to their ${theirW}.`, cls: 'bad' };
-  else verdict = { text: `An even trade: ${mineW} in men lost against their ${theirW}.`, cls: '' };
+  const { trade, mineW, theirW } = battleTrade(g, r, team), yours = friends.length ? 'your side\'s' : 'your', you = friends.length ? 'your side' : 'you';
+  const verdict = trade === 'none' ? { text: 'Nobody fell: a skirmish.', cls: '' }
+    : trade === 'good' ? { text: `A good trade: they lost ${theirW} in men to ${yours} ${mineW}.`, cls: 'good' }
+    : trade === 'bad' ? { text: `A costly fight: ${you} lost ${mineW} in men to their ${theirW}.`, cls: 'bad' }
+    : { text: `An even trade: ${mineW} in men lost against their ${theirW}.`, cls: '' };
   const secs = Math.max(1, Math.round(r.t1 - r.t0));
   return { title: `Battle ${battlePlace(g, r)}`, place: battlePlace(g, r), when: `${clock(r.t0)}, ${secs < 60 ? `${secs} s` : `${Math.round(secs / 60)} min`}`, lines, verdict };
+}
+// The trade of men for `team`'s side (it and the houses beside it) against the foes, by the worth of the dead: 'good' when the foes lost
+// WAR_BOOK.won times what your side did, 'bad' the other way round, 'even' between, 'none' when nobody fell. The report's verdict and the
+// minimap's battle mark (T67) both read it.
+export function battleTrade(g, r, team = PLAYER) {
+  const { mine, friends, foes } = battleSides(g, r, team);
+  const mineW = (mine ? mine.worth : 0) + friends.reduce((a, s) => a + s.worth, 0), theirW = foes.reduce((a, s) => a + s.worth, 0);
+  const trade = !mineW && !theirW ? 'none' : theirW >= mineW * WAR_BOOK.won ? 'good' : mineW >= theirW * WAR_BOOK.won ? 'bad' : 'even';
+  return { trade, mineW, theirW };
+}
+// T67: the player's battles still marked on the minimap, newest last: { r, x, y, age, trade } while younger than AFTERMATH.mark s
+export function battleMarks(g, team = PLAYER) {
+  const out = [];
+  for (const r of g.battleLog || []) {
+    const age = g.time - r.t1; if (age < 0 || age > AFTERMATH.mark || !r.sides.some((s) => s.team === team)) continue;
+    out.push({ r, x: r.x, y: r.y, age, trade: battleTrade(g, r, team).trade });
+  }
+  return out;
+}
+// T67: what lies on the field where men fell in filed battles younger than AFTERMATH.field s: { x, y, kind, fade (1 fresh .. 0 gone),
+// mine (the player's men were in that battle: he saw it, so it shows wherever he has explored; else only where he can see now) }.
+// The kind is fixed per spot from the report id: a king leaves a fallen banner, the rest a broken spear or a dropped shield.
+export function battleLitter(g, team = PLAYER) {
+  const out = [];
+  for (const r of g.battleLog || []) {
+    const age = g.time - r.t1; if (age < 0 || age > AFTERMATH.field || !r.falls?.length) continue;
+    const fade = Math.min(1, (AFTERMATH.field - age) / AFTERMATH.fade), mine = r.sides.some((s) => s.team === team);
+    r.falls.forEach((f, i) => out.push({ x: f.x, y: f.y, kind: f.c === 'king' ? 'banner' : ((r.id * 7 + i * 13) % 5) < 3 ? 'spear' : 'shield', fade, mine, team: f.team, turn: ((r.id * 31 + i * 17) % 8) / 8 }));
+  }
+  return out;
 }
 // one line for the Council's Battles list
 export function battleRow(g, r, team = PLAYER) {

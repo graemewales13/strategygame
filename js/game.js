@@ -6,10 +6,10 @@ import {
   MAP_W, MAP_H, VISION_MUL, PLAYER, MIN_HOUSES, MAX_HOUSES, DEFAULT_HOUSES, HOUSES, setPeoples, seatPeoples, T_DIRT, T_WATER, T_GRASS, T_FORD, T_ROCK, GROUND_COST, FARM_SOIL, POP_FOOD, POP_GROW, POP_HOUSING, SETTLE_FOOD, MILITIA, WANDER,
   WAGE, WAGE_FREE, BROKE, SELL, TAX, INCOME_SOURCES,
   RES_VALUE, NODE_RES, GATHER_RATE, CARRY_CAP, START_RES, UNITS, BUILDINGS, DROP_OFF, DROP_BONUS, HAUL, STORES, CONSUMERS, GUARD, RULE,
-  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, VILLAGE_WIN_SHARE, VILLAGE_WIN_HOLD, LAND_LOYALTY, DIFFICULTY, HANDICAP, LEVEL_KEYS, WEALTH_HOLD, FORFEIT_AFTER, WAR_MIN,
+  INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, DIFFICULTY, HANDICAP, LEVEL_KEYS, WAR_MIN,
   VILLAGE_KINDS, DEMOLISH, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS } from './config.js';
+  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, AFTERMATH, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -1546,7 +1546,7 @@ export class Game {
     const tt = t.type === 'unit' || t.type === 'building' ? t.team : -1;
     if (!(tt >= 0) || !(byTeam >= 0) || tt === byTeam || !this.players[tt] || !this.players[byTeam]) return null;
     let f = this.battleAt(t.x, t.y);
-    if (!f) { f = { id: this.nextBattle++, x: t.x, y: t.y, sx: 0, sy: 0, n: 0, t0: this.time, t1: this.time, sides: {}, cries: [], deeds: [], kings: [], routs: [], villages: [] }; this.battles.push(f); }
+    if (!f) { f = { id: this.nextBattle++, x: t.x, y: t.y, sx: 0, sy: 0, n: 0, t0: this.time, t1: this.time, sides: {}, cries: [], deeds: [], kings: [], routs: [], villages: [], falls: [] }; this.battles.push(f); }
     f.n++; f.sx += t.x; f.sy += t.y; f.x = f.sx / f.n; f.y = f.sy / f.n; f.t1 = this.time;
     const side = (team) => (f.sides[team] ||= { men: {}, dead: {}, worth: 0, razed: 0, struck: 0 });
     const join = (u) => { if (u?.type !== 'unit' || !(u.team >= 0)) return; side(u.team).men[u.id] = BATTLE_CLASS(u.kind); if (this.steadied(u) && !f.cries.includes(u.team)) f.cries.push(u.team); };
@@ -1555,7 +1555,10 @@ export class Game {
   }
   noteFallen(f, t) {
     const s = f.sides[t.team]; if (!s) return;
-    if (t.type === 'unit') { const c = BATTLE_CLASS(t.kind); s.dead[c] = (s.dead[c] || 0) + 1; s.worth += Object.values(UNITS[t.kind]?.cost || {}).reduce((a, n) => a + n, 0); }
+    if (t.type === 'unit') {
+      const c = BATTLE_CLASS(t.kind); s.dead[c] = (s.dead[c] || 0) + 1; s.worth += Object.values(UNITS[t.kind]?.cost || {}).reduce((a, n) => a + n, 0);
+      const falls = (f.falls ||= []); if (falls.length < AFTERMATH.falls) falls.push({ x: Math.round(t.x * 10) / 10, y: Math.round(t.y * 10) / 10, team: t.team, c });   // where he fell (T67: the field remembers)
+    }
     else if (t.built >= 1) s.razed++;
   }
   updateBattles(dt) {
@@ -1572,7 +1575,7 @@ export class Game {
     });
     const fallen = sides.reduce((a, s) => a + s.razed + Object.values(s.dead).reduce((x, k) => x + k, 0), 0);
     if (f.n < BATTLE.minBlows && !fallen) return null;
-    const r = { id: f.id, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, t0: f.t0, t1: f.t1, blows: f.n, sides, cries: [...f.cries], deeds: f.deeds.map((d) => ({ ...d })), kings: f.kings.map((k) => ({ ...k })), routs: [...f.routs], villages: f.villages.map((v) => ({ ...v })),
+    const r = { id: f.id, x: Math.round(f.x * 10) / 10, y: Math.round(f.y * 10) / 10, t0: f.t0, t1: f.t1, blows: f.n, sides, cries: [...f.cries], deeds: f.deeds.map((d) => ({ ...d })), kings: f.kings.map((k) => ({ ...k })), routs: [...f.routs], villages: f.villages.map((v) => ({ ...v })), falls: (f.falls || []).map((x) => ({ ...x })),
       wars: sides.flatMap((x, i) => sides.slice(i + 1).filter((y) => this.rel[x.team][y.team] === 'war').map((y) => this.warKey(x.team, y.team))) };   // who was at war with whom when it ended (T-136: an ally in the fight is not a foe)
     this.battleLog.push(r);
     if (this.battleLog.length > BATTLE.keep) this.battleLog.shift();
@@ -4201,7 +4204,7 @@ export class Game {
     this.alertT = d.alertT; this.winHold = d.winHold; this.richHold = d.richHold; this.named = d.named.map((x) => new Set(x));
     if (d.rndA != null) { this.rndA = d.rndA >>> 0; this.rollA = d.rollA >>> 0; }   // older saves: reseed from the clock
     else { this.rndA = ((this.seed ^ 0x9e3779b9) + Math.floor(this.time * 1000)) >>> 0; this.rollA = ((this.seed ^ 0x85ebca6b) + Math.floor(this.time * 1000)) >>> 0; }
-    d.resAmt.forEach((a, i) => { if (this.resources[i]) this.resources[i].amount = a; });
+    d.resAmt.forEach((a, i) => { const n = this.resources[i]; if (!n) return; n.amount = a; if (a <= 0 && this.resAt[n.y * this.W + n.x] === i) this.resAt[n.y * this.W + n.x] = -1; });   // a node used up is off the tile index, as in play (T-142: else a village founded on stumps covered them only after a load)
     for (const id of [...(d.resCov || []), ...this.buildings.flatMap((b) => b.nodeIds || [])]) if (this.resources[id]) this.resources[id].covered = true;   // deposits under a building or village stay out of reach (T-049)
     const unrle = (r) => { const a = new Uint8Array(this.W * this.H); let p = 0; for (let i = 0; i < r.length; i += 2) { a.fill(r[i], p, p + r[i + 1]); p += r[i + 1]; } return a; };
     this.seen = d.seen.map(unrle);

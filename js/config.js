@@ -316,15 +316,15 @@ export const SPY_WATCH = { watch: 0.07, warnEvery: 40, owned: 0.45 };   // owned
 // difficulty tiers. playerMul scales the player's starting purse and stores; aiMul scales every coin an AI house earns;
 // armyCap and warAfter govern how big and how soon rival armies come (warAfter x0.6 is the earliest a house starts a war; warBar is how strongly
 // its stance must call for war, see stance() in diplomacy.js); think slows or quickens their decisions;
-// wealth is the fortune (coin plus goods at market value) that wins the game when held for WEALTH_HOLD seconds.
+// (T-143: the old wealth win's threshold, `wealth`, is gone: conquest is the only win, DEMANDS.)
 export const DIFFICULTY = {
   // mass: share of its fighters a house gathers before it marches to war (0 = any seven, as before); regroup: a war band falls back to its
   // seat when the foes around it are this many times stronger (0 = it fights to the last). Owner, 2026-10-15: Mid was too easy, the rivals
   // grew slowly and lost their fights, so Mid and Hard rivals earn more, think faster, keep larger armies, mass them and regroup.
   // reach: how far from its seat a house will go to found a mining camp (metal is regional, so what it lacks lies out in the open ground).
-  easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, warBar: 0.65, think: 1.5, wealth: 4000, mass: 0, regroup: 0, reach: 80 },
-  mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.2,  armyCap: 30, warAfter: 720,  warBar: 0.45, think: 0.95, wealth: 6000, mass: 0.65, regroup: 1.6, reach: 130 },
-  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.4,  armyCap: 46, warAfter: 420,  warBar: 0.32, think: 0.75, wealth: 10000, mass: 0.75, regroup: 1.4, reach: 150 },
+  easy: { label: 'Easy', playerMul: 1.5, aiMul: 0.8,  armyCap: 14, warAfter: 1200, warBar: 0.65, think: 1.5, mass: 0, regroup: 0, reach: 80 },
+  mid:  { label: 'Mid',  playerMul: 1.0, aiMul: 1.2,  armyCap: 30, warAfter: 720,  warBar: 0.45, think: 0.95, mass: 0.65, regroup: 1.6, reach: 130 },
+  hard: { label: 'Hard', playerMul: 0.9, aiMul: 1.4,  armyCap: 46, warAfter: 420,  warBar: 0.32, think: 0.75, mass: 0.75, regroup: 1.4, reach: 150 },
 };
 // Per-house difficulty (T60, AoE II/IV lobbies): Skirmish setup can set any rival seat to its own tier (a player's `level`, saved with the
 // house; none means the match's difficulty), read by ai.js through game.diffOf(team). The player's handicap scales his starting stores
@@ -349,12 +349,7 @@ export const DOCTRINE = {
   byzantines: { label: 'theme',   bias: ['academy', 'market', 'tower'], armyMul: 1.0, mix: { footman: 0.35, bowman: 0.3, knight: 0.35 }, war: 0.06, serf: 1, spies: 3, tip: 'Academy, market and towers first; a balanced army heavy in horse; keeps three spies; slow to war.' },
   persians:  { label: 'satrapy',  bias: ['stable', 'market', 'temple'], armyMul: 1.1, mix: { footman: 0.25, bowman: 0.4, knight: 0.35 }, war: 0.02, serf: 1, spies: 2, tip: 'Stables, market and temple first; horse and bow; keeps two spies.' },
 };
-export const FORFEIT_AFTER = 45;   // legacy, unused: houses no longer forfeit; a house falls only with the last of its royal line
-export const WEALTH_HOLD = 90;   // legacy, unused: wealth no longer wins
-export const VILLAGE_WIN_SHARE = 0.7; // hold this share of villages ...
-export const LAND_LOYALTY = 55;     // only villages at least this loyal count toward the land win: a sacked village must be won over
-export const VILLAGE_WIN_HOLD = 120;   // ... for this many seconds to win
-
+// (T-143: the land and wealth wins' thresholds and the forfeit timer, unused since those rules went, are removed: conquest is the only win.)
 export const VILLAGE_SIZE = 3;
 // Folk living in each village. Independent villages grow while their store has grain and shrink when it runs dry;
 // a village you hold houses half its folk (they raise your population cap), pays tribute by how full it is, and can send settlers.
@@ -534,6 +529,10 @@ export const SALLY = { lockFor: 5, lockR: 3.5, every: 0.5, townR: 14, postR: 11,
 // (a fight's spot is the mean of its blows), else starts one; a fight with no blow for quiet seconds is over, and filed when it was a
 // battle at all (at least minBlows blows, or someone died). keep reports are kept. Panels only: never read by the rules' decisions.
 export const BATTLE = { r: 14, quiet: 20, minBlows: 6, keep: 40 };
+// T67: what a filed battle leaves behind (panels and drawing only; no rule reads it). Each fight notes where its first `falls` dead fell;
+// the player's battles keep a crossed mark on the minimap for `mark` s, coloured by the trade of men, and the field of any filed battle
+// keeps a broken spear, a dropped shield or (where a king fell) a fallen banner on each spot for `field` s, fading over the last `fade` s.
+export const AFTERMATH = { falls: 24, mark: 240, field: 300, fade: 90 };
 // (a report sorts men by class: the king apart, soldiers by UNIT_CLASS, and serfs, camels, spies and scholars as folk)
 // T71: the war book. Every war between two houses keeps a record from its declaration: each filed battle between them (the two sides'
 // dead, their worth and buildings lost, the spot; the last `battles`), villages taken from each other while at war, and kings slain.

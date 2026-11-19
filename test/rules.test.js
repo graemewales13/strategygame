@@ -12,7 +12,9 @@ import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT, WARCRY, routWords, cou
 import { deliberate as dip_deliberate, intel, stance, pressWar, dread, allianceNeed, judge as dip_judge, pactWhy, drift as dip_drift, strength as dip_strength } from '../js/diplomacy.js';
 import { updateCoalitions, coalitionOf, coalitionAgainst, coalitionWords, boundTo, wronged, coalitionCall } from '../js/diplomacy.js';
 import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT, WARE_JOY, DEMOLISH } from '../js/config.js';
-import { battleWords, battlesOf, newBattle, battleRow, menWords, battleSides } from '../js/battle.js';
+import { battleWords, battlesOf, newBattle, battleRow, menWords, battleSides, battleTrade, battleMarks, battleLitter } from '../js/battle.js';
+import { AFTERMATH } from '../js/config.js';
+import * as CONFIG from '../js/config.js';
 import { warSides, warTally, warWords, warVerdict, pastWars } from '../js/wars.js';
 import { DOCTRINE, FACTIONS, WAR_BOOK, CEDE, WAR_MIN, DIFFICULTY, HANDICAP, START_RES } from '../js/config.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
@@ -2935,4 +2937,49 @@ test('the README names every people\'s doctrine and ruler\'s title (T-140)', () 
   for (const t of Object.values(KING.titles)) assert.ok(md.includes(t), `the README names the ${t}`);
   for (const [k, d] of Object.entries(DOCTRINE)) assert.ok(d.tip?.length > 10, `the Council has a doctrine tip for ${k}`);
   assert.ok(!/DOC_TIP = \{/.test(readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8')), 'no doctrine tips typed into ui.js');
+});
+
+test('the battle on the minimap and the field afterwards (T67): where men fell is filed; a mark by the trade fades; spears, shields and a king\'s banner lie a while', () => {
+  const g = mk({ size: MAP_SIZES.small }); g.rel[0][1] = g.rel[1][0] = 'war';
+  const h = g.seatOf(PLAYER), x = h.x + 20, y = h.y + 6;
+  const us = [0, 1, 2].map((i) => g.addUnit('footman', PLAYER, x + i, y)), them = [0, 1, 2].map((i) => g.addUnit('bowman', 1, x + i, y + 1));
+  for (let i = 0; i < BATTLE.minBlows; i++) g.damage(them[i % 3], 1, PLAYER, us[i % 3]);
+  g.damage(them[0], 999, PLAYER, us[0]); g.damage(them[1], 999, PLAYER, us[1]);
+  const fk = g.kingOf(1); fk.x = x + 2; fk.y = y + 2; g.damage(fk, 1e6, PLAYER, us[2]);
+  const f = g.battleWith(us[0]); assert.equal(f.falls.length, 3, 'two bowmen and a king fell here');
+  assert.deepEqual(f.falls.map((o) => o.c), ['bow', 'bow', 'king']); assert.equal(f.falls[0].x, Math.round(them[0].x * 10) / 10);
+  // saved mid-fight with the spots
+  const q = new Game({ seed: 1, houses: 3, ai: false }).restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(q.battles[0].falls, f.falls, 'the spots are saved');
+  assert.deepEqual(battleMarks(g), [], 'no mark while the fight goes on');
+  g.time += BATTLE.quiet + 1; g.updateBattles(1);
+  const r = battlesOf(g)[0]; assert.equal(r.falls.length, 3, 'filed with the report');
+  assert.equal(battleTrade(g, r).trade, 'good'); assert.equal(battleWords(g, r).verdict.cls, 'good', 'the report and the mark agree');
+  let m = battleMarks(g); assert.equal(m.length, 1); assert.equal(m[0].trade, 'good'); assert.equal(m[0].x, r.x);
+  assert.deepEqual(battleMarks(g, 2), [], 'a house that was not there has no mark');
+  const lit = battleLitter(g); assert.equal(lit.length, 3); assert.equal(lit.filter((o) => o.kind === 'banner').length, 1, 'the king leaves his banner');
+  assert.ok(lit.every((o) => ['spear', 'shield', 'banner'].includes(o.kind) && o.mine && o.fade === 1), JSON.stringify(lit));
+  assert.deepEqual(battleLitter(g).map((o) => o.kind), lit.map((o) => o.kind), 'the same pieces every frame');
+  assert.ok(battleLitter(g, 2).every((o) => !o.mine), 'a house not in it sees the field only where it looks now');
+  // the mark fades out after AFTERMATH.mark s, the field after AFTERMATH.field s, fading over the last AFTERMATH.fade
+  g.time = r.t1 + AFTERMATH.mark + 1; assert.deepEqual(battleMarks(g), []); assert.equal(battleLitter(g).length, 3, 'the field outlasts the mark');
+  g.time = r.t1 + AFTERMATH.field - AFTERMATH.fade / 2; assert.ok(Math.abs(battleLitter(g)[0].fade - 0.5) < 1e-9, 'half faded');
+  g.time = r.t1 + AFTERMATH.field + 1; assert.deepEqual(battleLitter(g), []);
+  // a costly fight is marked as one; the spots are capped
+  g.time = r.t1 + 1000;
+  const a = [0, 1, 2, 3].map((i) => g.addUnit('knight', PLAYER, x + i, y + 30)), b = g.addUnit('footman', 1, x, y + 31);
+  for (let i = 0; i < BATTLE.minBlows; i++) g.damage(b, 1, PLAYER, a[i % 4]);
+  for (const u of a) g.damage(u, 1e6, 1, b);
+  for (let i = 0; i < AFTERMATH.falls + 5; i++) g.damage(g.addUnit('serf', PLAYER, x + (i % 5), y + 30), 1e6, 1, b);
+  g.time += BATTLE.quiet + 1; g.updateBattles(1);
+  m = battleMarks(g); assert.equal(m.length, 1); assert.equal(m[0].trade, 'bad', 'four knights lost to one footman');
+  assert.equal(battlesOf(g)[0].falls.length, AFTERMATH.falls, 'no more than AFTERMATH.falls spots a battle');
+  // drawing only: no rule reads where men fell
+  const src = readFileSync(new URL('../js/ai.js', import.meta.url), 'utf8') + readFileSync(new URL('../js/diplomacy.js', import.meta.url), 'utf8') + readFileSync(new URL('../js/wars.js', import.meta.url), 'utf8');
+  assert.ok(!/\.falls\b|battleLitter|battleMarks/.test(src), 'no rule reads the aftermath');
+});
+
+test('no land or wealth win lingers in config (T-143): conquest is the only win', () => {
+  for (const k of ['VILLAGE_WIN_SHARE', 'VILLAGE_WIN_HOLD', 'LAND_LOYALTY', 'WEALTH_HOLD', 'FORFEIT_AFTER']) assert.equal(CONFIG[k], undefined, `${k} is gone`);
+  for (const [k, d] of Object.entries(DIFFICULTY)) assert.equal(d.wealth, undefined, `${k} has no wealth threshold`);
 });

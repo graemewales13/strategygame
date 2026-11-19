@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { Game } from '../js/game.js';
-import { PLAYER, UNITS, INFLUENCE_HOME, VILLAGE_WIN_SHARE, ROUTE_STOPS, TECH, MINE_JOBS } from '../js/config.js';
+import { PLAYER, UNITS, INFLUENCE_HOME, ROUTE_STOPS, TECH, MINE_JOBS } from '../js/config.js';
 
 // Deterministic runs: the sim uses Math.random for spawn jitter and spy catches.
 let _s = 12345;
@@ -941,4 +941,18 @@ test('determinism: same seed and orders give the same state after 6 minutes, als
     assert.equal(hash(b), hash(a), 'a match saved and loaded at 3:00 played on differently from the one never saved');
     assert.equal(hash(a), states[0], 'saving (without loading) changed the match');
   } finally { Math.random = keep; }
+});
+
+// T-142: a save kept how much of each tree was left but a load rebuilt the tile index from the seed, so a felled tree's stump came back
+// on it; a village founded over stumps then covered them after a load and not in play, and the two matches' states differed.
+test('save and load: a felled tree stays off the tile index, so a village founded over it plays the same after a load', () => {
+  const a = new Game({ seed: 11, houses: 3, size: 112 });
+  const n = a.resources.find((r) => r.kind === 'tree' && r.amount > 0 && !r.covered);
+  n.amount = 0; a.resAt[n.y * a.W + n.x] = -1;   // as gathering leaves it when the last wood is taken
+  const b = new Game({ seed: 1, houses: 3 }); b.restore(JSON.parse(JSON.stringify(a.serialize())));
+  assert.equal(b.resAt[n.y * b.W + n.x], -1, 'the stump is back on the tile index after a load');
+  for (const g of [a, b]) { const v = g.villages[0]; v.tx = n.x; v.ty = n.y; g.recomputeWalk(); }   // a village now stands where the tree was
+  assert.equal(!!b.resources[n.id].covered, !!a.resources[n.id].covered, 'the loaded match covers the stump and the live one does not');
+  const ser = (g) => { const d = g.serialize(); delete d.saved; return JSON.stringify(d); };
+  assert.equal(ser(b), ser(a), 'state differs after a load');
 });

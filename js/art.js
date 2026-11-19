@@ -49,6 +49,10 @@ export const uiArt = (group, key) => UIART[group]?.[key]?.src || null;
 // mineral left out of ORE_PAINTED falls back to the recoloured pile (oreSprite)
 export const ORE_ART = {};
 const ORE_PAINTED = ['stone', 'copper', 'iron', 'coal', 'silver'];
+// battle aftermath (T67, ARTREQUIREMENTS priority 39): what the fallen leave on the field, AFTER_ART[key] = Image for spear, shield and banner.
+// Not probed until a key is listed in AFTER_PAINTED; until then render.js draws each in code.
+export const AFTER_ART = {};
+const AFTER_PAINTED = [];
 // painted ground tiles cut from the terrain sheet: TILES[kind][variant], kind = grass dry sand rock dirt snow
 export const TILE_KINDS = ['grass', 'dry', 'sand', 'rock', 'dirt', 'snow'];
 export const TILES = {};
@@ -75,6 +79,7 @@ export function loadArt() {
   }
   for (const [grp, keys] of Object.entries(UI_KEYS)) for (const k of keys) one(UIART[grp], k, `assets/shared/ui/${grp}/${k}.png`);
   for (const k of ORE_PAINTED) for (const v of ['', '_half']) one(ORE_ART, k + v, `assets/shared/resources/${k}${v}.png`);
+  for (const k of AFTER_PAINTED) one(AFTER_ART, k, `assets/shared/aftermath/${k}.png`);
   for (const sz of ['1tile']) for (const k of VILLAGE_ART_KEYS) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { VIMG[sz][k] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/villages/${sz}/${k}.png`; }));
   for (const n of SHARED) jobs.push(new Promise((res) => { const i = new Image(); i.onload = () => { SIMG[n.split('/')[1]] = i; res(); }; i.onerror = () => res(); i.src = `assets/shared/${n}.png`; }));
   return Promise.all(jobs);
