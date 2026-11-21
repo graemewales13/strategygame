@@ -141,6 +141,9 @@ export class Renderer {
     for (const w of g.wanderers || []) if (isVis(w.x, w.y) && w.x > x0 && w.x < x1 && w.y > y0 && w.y < y1) items.push({ o: w, k: 5, z: w.x + w.y + 0.2 });
     for (const f of g.fx || []) if (f.kind === 'ruin' && g.time - f.born < RUIN_LIFE && (isVis(f.x, f.y) || (f.pv && isSeen(f.x, f.y))) && f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) items.push({ o: f, k: 6, z: f.tx + f.ty + f.size * 2 - 1.5 });
     this.orderAround(items);
+    // where each village's name and folk count are printed (T-145): a unit's name label there is left out, so the two never print over each other
+    this._vlab = [];
+    if (z > 0.7) { ctx.font = `${Math.round(11 * z + 2)}px Georgia, serif`; for (const it of items) if (it.k === 1) { const v = it.o, [lx, ly] = this.toScreen(v.tx + v.size, v.ty + v.size), w = ctx.measureText(v.name || '').width / 2 + 4; this._vlab.push([lx - w, ly + 2, lx + w, ly + 18 + 12 * z]); } }
     items.sort((a, b) => a.z - b.z);
     for (const it of items) {
       const e = it.o;
@@ -597,6 +600,16 @@ export class Renderer {
     this.bar(ctx, m[0] - W / 2, top - 14, W, 4, v.protection / v.maxProtection, '#c0473b');
     this.bar(ctx, m[0] - W / 2, top - 9, W, 4, v.loyalty / 100, '#5a9ad8');
     if (v.garrison?.length && v.owner === PLAYER) this.badge(ctx, m[0] + W / 2 + 12, top - 6, v.garrison.length, HOUSES[PLAYER], z);
+    if (v.need && v.owner === PLAYER && v.need.team === PLAYER) {   // a village of yours asks for something (T56): the request mark over its bars, quickening in its last 30 s
+      const left = v.need.until - this.game.time, bob = Math.sin(t * (left < 30 ? 6 : 2.5)) * 2 * z, mx = m[0], my = top - 20 - bob, s = Math.max(14, 20 * z);
+      if (!this.mark(ctx, 'need', mx, my + s / 2, s)) {
+        const r = s / 2.4;
+        ctx.save(); ctx.globalAlpha = left < 30 ? 0.65 + 0.35 * Math.abs(Math.sin(t * 6)) : 1;
+        ctx.beginPath(); ctx.arc(mx, my, r, 0, 7); ctx.fillStyle = '#efe0b4'; ctx.fill(); ctx.lineWidth = Math.max(1.2, 1.6 * z); ctx.strokeStyle = '#8a6a2a'; ctx.stroke();
+        ctx.fillStyle = '#5a2c14'; ctx.font = `bold ${Math.round(r * 1.5)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', mx, my + 0.5); ctx.textBaseline = 'alphabetic';
+        ctx.restore();
+      }
+    }
     if (ui?.isSelected(v0)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); this.diamond(ctx, v.tx - 0.2, v.ty - 0.2, v.size + 0.4, v.size + 0.4); ctx.stroke(); ctx.setLineDash([]); }
     if (z > 0.7) { ctx.font = `${Math.round(11 * z + 2)}px Georgia, serif`; ctx.textAlign = 'center'; const [lx, ly] = this.toScreen(v.tx + v.size, v.ty + v.size); ctx.fillStyle = '#000'; ctx.fillText(v.name, lx + 1, ly + 15); ctx.fillStyle = '#f0e2b6'; ctx.fillText(v.name, lx, ly + 14); ctx.font = `${Math.round(9 * z + 2)}px Georgia, serif`; ctx.fillStyle = v.hunger ? '#e0866a' : '#cdbb8a'; ctx.fillText(`${Math.floor(v.pop)} folk`, lx, ly + 14 + 12 * z); }
   }
@@ -906,7 +919,7 @@ export class Renderer {
     if (u.carry && u.carry.amount > 0.5) { ctx.fillStyle = { food: '#c23a56', wood: '#8a5a2a', gold: GOLD }[u.carry.kind]; ctx.strokeStyle = '#1b130b'; ctx.lineWidth = 1; const bx = sx + (flip ? -1 : 1) * w * 0.3, by = sy - h * 0.75 - bob; ctx.fillRect(bx - 4 * z, by, 8 * z, 7 * z); ctx.strokeRect(bx - 4 * z, by, 8 * z, 7 * z); }
     if (this.game.steadied?.(u)) this.cryRing(ctx, u, sx, sy, t, z);   // steadied by the king's war cry (T61)
     if (ui?.isSelected(u)) { ctx.strokeStyle = '#f0e2a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1 * z, 15 * z, 7.5 * z, 0, 0, 7); ctx.stroke(); }
-    if (u.name && (ui?.isSelected(u) || z >= 1.15) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
+    if (u.name && (ui?.isSelected(u) || (z >= 1.15 && !this.onVillageLabel(sx, sy + 15 * z, u.name.split(' ')[0].length * 3.2 * Math.min(1.3, z)))) && u.team === PLAYER) { ctx.font = `${Math.round(10 * Math.min(1.3, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,12,4,.85)'; ctx.fillStyle = ui?.isSelected(u) ? '#f6e8b0' : 'rgba(240,226,176,.75)'; ctx.strokeText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.fillText(u.name.split(' ')[0], sx, sy + 15 * z); ctx.textAlign = 'start'; }
     if (u.kind === 'spy' && u.disguise != null && u.team === PLAYER && !this.mark(ctx, 'disguise', sx, sy - h * foot - 4 - bob, 16 * z)) { ctx.font = `${Math.round(12 * Math.min(1.4, z))}px Georgia, serif`; ctx.textAlign = 'center'; ctx.fillStyle = '#f0e2a0'; ctx.strokeStyle = 'rgba(20,12,4,.9)'; ctx.lineWidth = 3; ctx.strokeText('🎭', sx, sy - h * foot - 4 - bob); ctx.fillText('🎭', sx, sy - h * foot - 4 - bob); ctx.textAlign = 'start'; }   // (only you see the mask)
     if (u.kind === 'king' && !FUNIT[HOUSES[u.team]?.faction]?.king) this.crownAt(ctx, sx, sy - h * foot - 2 - bob, z, HOUSES[u.team].accent);
     if (u.kind === 'king' && u.team >= 0 && !this.game.seatOf(u.team)) this.mark(ctx, 'fugitive', sx, sy - h * foot - 10 * z - bob, 16 * z);   // a fugitive king, seen by all
@@ -931,6 +944,8 @@ export class Renderer {
     }
     ctx.restore();
   }
+  // would a name label centred on x with its baseline at y (half-width hw) print over a village's name or folk count? (T-145)
+  onVillageLabel(x, y, hw) { for (const r of this._vlab || []) if (x + hw > r[0] && x - hw < r[2] && y > r[1] && y - 10 < r[3]) return true; return false; }
   // a painted mark (assets/shared/ui/marks) centred on x, bottom at y, `s` px tall; false when the art is missing
   mark(ctx, key, x, y, s, tint) {
     let img = UIART.marks[key]; if (!img) return false;

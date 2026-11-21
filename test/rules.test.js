@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { HOUSES, MAP_W, MAP_SIZES } from '../js/config.js';
 import { Game } from '../js/game.js';
-import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages, regroup, warCry as aiWarCry, noteFoes, answerMix } from '../js/ai.js';
+import { treasury, huntGoal, updateAI, findSpot, townBell, patrolBounds, exploreAbroad, holdFeast, feedVillages, answerNeeds, regroup, warCry as aiWarCry, noteFoes, answerMix } from '../js/ai.js';
 import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSeen, saveSeen } from '../js/tips.js';
@@ -13,7 +13,7 @@ import { deliberate as dip_deliberate, intel, stance, pressWar, dread, allianceN
 import { updateCoalitions, coalitionOf, coalitionAgainst, coalitionWords, boundTo, wronged, coalitionCall } from '../js/diplomacy.js';
 import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT, WARE_JOY, DEMOLISH } from '../js/config.js';
 import { battleWords, battlesOf, newBattle, battleRow, menWords, battleSides, battleTrade, battleMarks, battleLitter } from '../js/battle.js';
-import { AFTERMATH } from '../js/config.js';
+import { AFTERMATH, NEED } from '../js/config.js';
 import * as CONFIG from '../js/config.js';
 import { warSides, warTally, warWords, warVerdict, pastWars } from '../js/wars.js';
 import { DOCTRINE, FACTIONS, WAR_BOOK, CEDE, WAR_MIN, DIFFICULTY, HANDICAP, START_RES } from '../js/config.js';
@@ -2982,4 +2982,83 @@ test('the battle on the minimap and the field afterwards (T67): where men fell i
 test('no land or wealth win lingers in config (T-143): conquest is the only win', () => {
   for (const k of ['VILLAGE_WIN_SHARE', 'VILLAGE_WIN_HOLD', 'LAND_LOYALTY', 'WEALTH_HOLD', 'FORFEIT_AFTER']) assert.equal(CONFIG[k], undefined, `${k} is gone`);
   for (const [k, d] of Object.entries(DIFFICULTY)) assert.equal(d.wealth, undefined, `${k} has no wealth threshold`);
+});
+
+test('villages that ask (T56): grain, a guard, a feast after a victory; met by the existing actions, lapsed, saved, cleared; rivals answer theirs', () => {
+  const g = mk(), p = g.players[PLAYER], seat = g.seatOf(PLAYER);
+  const step = () => { for (let i = 0; i < NEED.look; i++) { g._needT = 0; g.updateNeeds(1); } };
+  // grain: a bare store asks once, nothing else asks while it is open
+  const v = seat; v.pop = 20; v.stores.food = 1; const l0 = v.loyalty = 50;
+  step(); assert.equal(v.need?.kind, 'grain', 'a bare store asks for grain'); assert.equal(v.need.until - v.need.t, NEED.grain.secs);
+  assert.ok(g.needsOf(PLAYER).some((x) => x.id === v.id)); assert.match(g.needWords(v), /asks for grain/); assert.match(g.needHow(v), /Send grain/);
+  assert.ok(TIPS.find((x) => x.id === 'need').when(g), 'the first-sight tip');
+  const t0 = v.need.t; step(); assert.equal(v.need.t, t0, 'one request at a time');
+  // met by Send grain: loyalty up, closed, and no new request for NEED.gap
+  p.food = 500; assert.ok(g.feedVillage(PLAYER, v.id, FEED.amount) > 0);
+  assert.equal(v.need, null); assert.equal(v.loyalty, l0 + NEED.gain); assert.equal(p.needsMet, 1);
+  v.stores.food = 1; step(); assert.equal(v.need, null, 'not again within NEED.gap');
+  // left unanswered it lapses: loyalty down
+  g.time += NEED.gap + 1; step(); assert.equal(v.need?.kind, 'grain');
+  const l1 = v.loyalty; g.time = v.need.until + 0.5; step(); assert.equal(v.need, null); assert.equal(v.loyalty, l1 - NEED.loss); assert.equal(p.needsLapsed, 1);
+  // guard: a foe soldier near and nobody on watch; met once a soldier is billeted (checked by the rules)
+  g.time += NEED.gap + 1; v.stores.food = 150;
+  g.rel[0][1] = g.rel[1][0] = 'war'; const k0 = g.kingOf(PLAYER); if (k0) { k0.x = v.x + 30; k0.y = v.y + 30; }   // (a king at home stands watch)
+  assert.ok(g.guardNear(v) < 1, 'nobody on watch');
+  const foe = g.addUnit('footman', 1, v.x + 6, v.y + 2);
+  step(); assert.equal(v.need?.kind, 'guard', 'foe soldiers near ask for a guard'); assert.match(g.needHow(v), /Billet a soldier/);
+  const l2 = v.loyalty, mine = g.addUnit('footman', PLAYER, v.x + 1, v.y + 1); (v.garrison ||= []).push(mine.id); mine.inside = v.id;
+  step(); assert.equal(v.need, null, 'a soldier billeted meets it'); assert.equal(v.loyalty, Math.min(100, l2 + NEED.gain));
+  foe.hp = 0;
+  // the house's open requests are capped at NEED.max
+  const others = g.villages.filter((x) => x.owner < 0).slice(0, NEED.max + 1);
+  for (const x of others) { x.owner = PLAYER; x.pop = 20; x.stores.food = 1; x.x = seat.x + 3; x.y = seat.y + 3; }
+  step(); assert.ok(g.needsOf(PLAYER).length <= NEED.max, `at most ${NEED.max} open`); assert.ok(g.needsOf(PLAYER).length >= 1);
+  // a village that changes hands drops its request, with no loss to either lord
+  const asked = g.needsOf(PLAYER)[0], la = asked.loyalty; asked.owner = 1; step(); assert.equal(asked.need, null); assert.equal(asked.loyalty, la);
+  for (const x of others) { x.owner = -1; x.need = null; }
+  // feast: a clear victory near a village with a keep asks for a feast, met by a feast there
+  g.time += NEED.gap + 1; v.needEnd = -1e9;
+  const keep = g.addBuilding('keep', PLAYER, seat.x + 6, seat.y + 6, true);
+  g.victoryNeeds({ x: seat.x + 2, y: seat.y + 2, sides: [{ team: PLAYER, worth: 50 }, { team: 1, worth: NEED.feast.worth }] });
+  assert.equal(v.need?.kind, 'feast'); assert.equal(g.feastKeepFor(PLAYER, v)?.id, keep.id);
+  g.victoryNeeds({ x: seat.x + 2, y: seat.y + 2, sides: [{ team: PLAYER, worth: 100 }, { team: 1, worth: 150 }] });
+  // saved: the request survives a load
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.equal(h.byId.get(v.id).need?.kind, 'feast'); assert.equal(h._needN, g._needN);
+  p.food = 5000; p.feastT = -1e9; assert.ok(g.feast(PLAYER, keep.id)); assert.equal(v.need, null, 'the feast meets it');
+  // an even fight asks for nothing
+  g.time += NEED.gap + 1;
+  g.victoryNeeds({ x: seat.x + 2, y: seat.y + 2, sides: [{ team: PLAYER, worth: 100 }, { team: 1, worth: 150 }] });
+  assert.equal(v.need, null, 'not a clear victory');
+  // a new match clears them
+  g.reset({ seed: 8, houses: 3 }); assert.ok(g.villages.every((x) => !x.need)); assert.equal(g._needN, 0);
+  // rivals answer theirs: grain carted, a soldier sent in
+  const r = mk(), rp = r.players[1], rv = r.seatOf(1);
+  rv.pop = 20; rv.stores.food = 1; rp.food = FEED.amount + NEED.aiSpare;
+  for (let i = 0; i < NEED.look; i++) { r._needT = 0; r.updateNeeds(1); }
+  assert.equal(rv.need?.kind, 'grain'); answerNeeds(r, 1, rp, r.time); assert.equal(rv.need, null, 'the rival carts grain'); assert.equal(rp.needsMet, 1);
+  r.time += NEED.gap + 1; r.rel[0][1] = r.rel[1][0] = 'war'; rv.stores.food = 150;
+  { const k1 = r.kingOf(1); if (k1) { k1.x = rv.x + 30; k1.y = rv.y + 30; } }
+  r.addUnit('footman', PLAYER, rv.x + 6, rv.y + 2); const guard = r.addUnit('knight', 1, rv.x + 10, rv.y);
+  for (let i = 0; i < NEED.look; i++) { r._needT = 0; r.updateNeeds(1); }
+  assert.equal(rv.need?.kind, 'guard'); rp.needLook = 0; answerNeeds(r, 1, rp, r.time);
+  assert.equal(guard.task.type, 'enter'); assert.equal(guard.task.targetId, rv.id, 'its nearest idle soldier goes in');
+  // the rules make requests without a roll: the seeded streams are untouched
+  const src = readFileSync(new URL('../js/game.js', import.meta.url), 'utf8'), body = src.slice(src.indexOf('  // ---- villages that ask (T56)'), src.indexOf('  // ---- feeding a village (T53)'));
+  assert.ok(body.length > 100 && !/roll\(|rnd\(|Math\.random/.test(body), 'no roll in the request rules');
+  const md = readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n').find((l) => l.startsWith('- **Villages that ask**')) || '';
+  for (const n of [`${NEED.grain.below} s`, `${NEED.guard.r} tiles`, `${NEED.feast.r} tiles`, `${NEED.grain.secs}, ${NEED.guard.secs} or ${NEED.feast.secs} s`, `+${NEED.gain} loyalty`, `loses ${NEED.loss}`, `${NEED.gap / 60} minutes`]) assert.ok(md.includes(n), `README gives ${n}`);
+  assert.ok(md.includes(['no', 'one', 'two', 'three', 'four'][NEED.max] + ' open'), 'README gives NEED.max');
+});
+
+test('a unit name label never prints over a village name or folk count (T-145)', () => {
+  const on = (x, y, hw, lab) => Renderer.prototype.onVillageLabel.call({ _vlab: lab }, x, y, hw);
+  const lab = [[100, 200, 200, 230]];
+  assert.ok(on(150, 215, 20, lab), 'a name over the village label');
+  assert.ok(on(95, 205, 10, lab), 'one overlapping its edge');
+  assert.ok(!on(150, 180, 20, lab), 'one above it is drawn');
+  assert.ok(!on(260, 215, 20, lab), 'one beside it is drawn');
+  assert.ok(!on(150, 215, 20, []), 'no village, no clash');
+  const src = readFileSync(new URL('../js/render.js', import.meta.url), 'utf8');
+  assert.match(src, /isSelected\(u\) \|\| \(z >= 1\.15 && !this\.onVillageLabel\(/, 'the name label asks (a selected unit keeps its name)');
 });

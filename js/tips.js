@@ -1,9 +1,9 @@
 // Auld World - tips on first sight (T58). The first time the player meets a rule that can cost him the match (a rival's demand, a war,
-// a foe's army seen, a mine nobody digs, a hungry or wavering village, a village lost, an army that fled, his king fallen, his seat lost, empty coffers, a
+// a foe's army seen, a mine nobody digs, a hungry or wavering village, a village that asks, a village lost, an army that fled, his king fallen, his seat lost, empty coffers, a
 // full house) a short card says what it means and what to do. Each tip shows once, remembered in the browser, and never during the
 // tutorial's lessons (they teach the same things in order). Pure functions of the game state and a small per-match memory, so they test
 // headless; the UI only decides when a card may show and keeps the list of tips already seen. Nothing here touches the simulation.
-import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS, CLASS_WORD, answerTo } from './config.js';
+import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS, CLASS_WORD, answerTo, NEED } from './config.js';
 
 export const TIP_STORE = 'auld-world.tips';
 export const TIP_GAP = 25;        // seconds of game time between two tips, so a bad minute is not a wall of cards
@@ -29,6 +29,9 @@ export const TIPS = [
   { id: 'hungry', title: 'A village is running out of grain',
     text: 'A held village eats from its own store; when it runs dry its folk leave and it shrinks. Select it and press Send grain to cart grain from your stockpile, or hold a Feast at a keep. The ledger ({key:ledger}) lists every hungry village.',
     when: (g) => g.hungryVillages(PLAYER).length > 0 },
+  { id: 'need', title: 'A village asks for something',
+    text: `Now and then a village of yours asks for what it lacks: grain when its store runs low, a guard when foe soldiers come near, a feast after a victory nearby. Its card says what and how long it will wait. Give it in time and its loyalty rises (+${NEED.gain}); ignore it and it falls (-${NEED.loss}).`,
+    when: (g) => g.needsOf(PLAYER).length > 0 },
   { id: 'waver', title: 'A village is wavering',
     text: 'A village you hold is losing faith and being pulled toward another lord; at 8 loyalty it slips away. Soldiers billeted in it or standing watch beside it steady it, a keep near it pulls it back, and a Feast lifts its loyalty at once.',
     when: (g) => held(g).some((v) => v.loyalty < WAVER && v.lean >= 0 && v.lean !== PLAYER) },

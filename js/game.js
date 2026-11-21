@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, DIFFICULTY, HANDICAP, LEVEL_KEYS, WAR_MIN,
   VILLAGE_KINDS, DEMOLISH, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, AFTERMATH, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS } from './config.js';
+  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, NEED, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, AFTERMATH, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -105,7 +105,7 @@ export class Game {
     this.mem = Array.from({ length: n }, () => ({}));   // what each house last saw of others' buildings under fog, by id (T44; drawn, never read by the rules)
     this.vmem = Array.from({ length: n }, () => ({}));   // and of every village (owner, folk, loyalty...), by id (T46; the same)
     this.amem = Array.from({ length: n }, () => ({}));   // and of every rival house's army, by class, fading (T64; the same: panels only)
-    this.battles = []; this.battleLog = []; this.nextBattle = 1; this._batT = 0;   // fights under way and battles filed (T63; panels only)
+    this.battles = []; this.battleLog = []; this.nextBattle = 1; this._batT = 0; this._needT = 0; this._needN = 0;   // fights under way and battles filed (T63; panels only)
     this.warBook = {}; this.warsPast = [];   // every war under way, by pair, and the last wars ended (T71; panels only)
     this.coalitions = []; this.wrongs = {}; this.coalEnd = {}; this.nextCoalition = 0; this._coalT = 0;   // coalition wars and the wrongs they avenge (T66)
     this.walk = new Uint8Array(this.W * this.H);
@@ -941,6 +941,7 @@ export class Game {
       v.loyalty = Math.min(100, v.loyalty + FEAST.loyalty);
       if (FEAST.secs >= (v.joyT || 0)) { v.joyT = FEAST.secs; v.joyBy = 'feast'; }   // (what lifts it, for the village card, T-134)
       v.stores.food = Math.min(Math.max(v.stores.food || 0, 150), (v.stores.food || 0) + FEAST.stock); v.hunger = 0;
+      if (v.need?.kind === 'feast' || v.need?.kind === 'grain') this.needMet(v);   // a village that asked for a feast, or for grain, has it (T56)
     }
     let warmed = 0;
     for (const v of this.villages) {   // free folk nearby come for the bread too, unless they already lean on another lord
@@ -951,6 +952,90 @@ export class Game {
     this.log(team === PLAYER ? PLAYER : -1, team === PLAYER ? `A feast at your keep: ${town} eat${held.length === 1 ? 's' : ''} and rejoice${held.length === 1 ? 's' : ''} for ${FEAST.secs} s (${cost} grain${warmed ? `; ${warmed} free village${warmed === 1 ? '' : 's'} warm${warmed === 1 ? 's' : ''} to you` : ''}).` : `${p.name} holds a feast for ${town}.`, team === PLAYER ? 'good' : 'info');
     if (team === PLAYER) this.sfx('fanfare', b.x, b.y);
     return true;
+  }
+
+
+  // ---- villages that ask (T56) ------------------------------------------------------------------------------------------------------
+  // A held village may carry one request, v.need = { kind: 'grain'|'guard'|'feast', team, t, until }. Made from the village's state (no roll),
+  // met by the player's existing actions (Send grain, a soldier billeted or on watch, a feast), +NEED.gain loyalty when met, -NEED.loss when it lapses.
+  needsOf(team) { return this.villages.filter((v) => v.need && v.owner === team && v.need.team === team); }
+  needWords(v) {
+    const n = v.need; if (!n) return '';
+    return n.kind === 'grain' ? `${v.name} asks for grain: its store is nearly bare.` : n.kind === 'guard' ? `${v.name} asks for a guard: foe soldiers were seen near it.` : `${v.name} asks for a feast to mark the victory nearby.`;
+  }
+  needHow(v) {
+    const k = v.need?.kind;
+    return k === 'grain' ? 'Send grain to it, or hold a feast at a keep near it.' : k === 'guard' ? 'Billet a soldier in it (right-click it) or leave one standing beside it.' : k === 'feast' ? `Hold a feast at a keep of yours within ${FEAST.r} tiles of it.` : '';
+  }
+  // may this village ask now? (held, nothing open, its last request closed NEED.gap ago, its house under NEED.max open)
+  canAsk(v, open) { return v.owner >= 0 && !v.need && this.time - (v.needEnd ?? -1e9) >= NEED.gap && (open.get(v.owner) || 0) < NEED.max && this.alive(v.owner); }
+  askNeed(v, kind, open) {
+    const secs = NEED[kind].secs;
+    v.need = { kind, team: v.owner, t: this.time, until: this.time + secs };
+    open?.set(v.owner, (open.get(v.owner) || 0) + 1);
+    if (v.owner === PLAYER) { this.log(PLAYER, `${this.needWords(v)} ${this.needHow(v)} (${secs} s)`, 'warn'); this.sfx('letter', v.x, v.y); }
+  }
+  needMet(v) {
+    const n = v.need; if (!n) return;
+    v.need = null; v.needEnd = this.time; v.needsMet = (v.needsMet || 0) + 1;
+    if (v.owner !== n.team) return;
+    v.loyalty = Math.min(100, v.loyalty + NEED.gain);
+    const p = this.players[n.team]; p.needsMet = (p.needsMet || 0) + 1;
+    if (n.team === PLAYER) this.log(PLAYER, `${v.name} has what it asked for (${n.kind === 'grain' ? 'grain' : n.kind === 'guard' ? 'a guard' : 'a feast'}): its folk think the better of you (+${NEED.gain} loyalty).`, 'good');
+  }
+  needLapsed(v) {
+    const n = v.need; v.need = null; v.needEnd = this.time;
+    if (!n || v.owner !== n.team) return;
+    v.loyalty = Math.max(0, v.loyalty - NEED.loss);
+    const p = this.players[n.team]; p.needsLapsed = (p.needsLapsed || 0) + 1;
+    if (n.team === PLAYER) this.log(PLAYER, `${v.name} asked for ${n.kind === 'grain' ? 'grain' : n.kind === 'guard' ? 'a guard' : 'a feast'} and nothing came (-${NEED.loss} loyalty).`, 'warn');
+  }
+  guardNear(v) { return this.garrisonWeight(v) + this.watchersOf(v); }
+  foeSoldiersNear(v, r) {
+    for (const u of this.unitsNear(v.x, v.y, r)) if (u.hp > 0 && !u.inside && SOLDIER.has(u.kind) && u.team !== v.owner && u.team >= 0 && this.rel[v.owner]?.[u.team] === 'war' && Math.hypot(u.x - v.x, u.y - v.y) <= r) return true;
+    return false;
+  }
+  // the house's finished keep nearest this village within FEAST.r (where a feast for it is held), or null
+  feastKeepFor(team, v) {
+    let best = null, bd = FEAST.r + 1e-9;
+    for (const b of this.buildings) { if (b.team !== team || b.kind !== 'keep' || b.built < 1 || b.hp <= 0) continue; const d = Math.hypot(b.x - v.x, b.y - v.y); if (d < bd || (d === bd && b.id < best.id)) { bd = d; best = b; } }
+    return best;
+  }
+  hasKeepNear(team, v) { return !!this.feastKeepFor(team, v); }
+  // once a second: every village is looked at once in NEED.look seconds (by id), requests met, lapsed or made
+  updateNeeds(dt) {
+    if ((this._needT -= dt) > 0) return;
+    this._needT = 1; this._needN = ((this._needN | 0) + 1) % NEED.look;
+    let open = null;
+    for (const v of this.villages) {
+      if (v.need) {
+        if (v.owner !== v.need.team) { v.need = null; v.needEnd = this.time; continue; }   // it changed hands: the request goes with the old lord
+        if (v.need.kind === 'guard' && this.guardNear(v) >= 1) { this.needMet(v); continue; }
+        if (this.time >= v.need.until) this.needLapsed(v);
+        continue;
+      }
+      if (v.owner < 0 || v.id % NEED.look !== this._needN) continue;
+      if (!open) { open = new Map(); for (const x of this.villages) if (x.need && x.owner === x.need.team) open.set(x.owner, (open.get(x.owner) || 0) + 1); }
+      if (!this.canAsk(v, open)) continue;
+      if (v.pop > 0 && this.foodLeft(v) < NEED.grain.below && this.feedFrom(v.owner, v)) this.askNeed(v, 'grain', open);
+      else if (this.guardNear(v) < 1 && this.foeSoldiersNear(v, NEED.guard.r)) this.askNeed(v, 'guard', open);
+    }
+  }
+  // a battle won clearly (the foe lost NEED.feast.worth in men, NEED.feast.lead times the winner's) makes the winner's nearest village with a keep ask for a feast
+  victoryNeeds(r) {
+    let open = null;
+    for (const s of r.sides) {
+      const foes = r.sides.filter((o) => o.team !== s.team && this.rel[s.team]?.[o.team] === 'war'); if (!foes.length) continue;
+      const lost = foes.reduce((a, o) => a + (o.worth || 0), 0);
+      if (lost < NEED.feast.worth || lost < NEED.feast.lead * (s.worth || 0)) continue;
+      if (!open) { open = new Map(); for (const x of this.villages) if (x.need && x.owner === x.need.team) open.set(x.owner, (open.get(x.owner) || 0) + 1); }
+      let best = null, bd = NEED.feast.r + 1e-9;
+      for (const v of this.villages) {
+        if (v.owner !== s.team || !this.canAsk(v, open) || !this.hasKeepNear(s.team, v)) continue;
+        const d = Math.hypot(v.x - r.x, v.y - r.y); if (d < bd || (d === bd && v.id < best.id)) { bd = d; best = v; }
+      }
+      if (best) this.askNeed(best, 'feast', open);
+    }
   }
 
   // ---- feeding a village (T53): grain carted from the stockpile into a held village's store --------------------------------------
@@ -990,6 +1075,7 @@ export class Game {
     if (n <= 0) return 0;
     const p = this.players[team], was = !!v.hunger;
     p.food -= n; v.stores.food = (v.stores.food || 0) + n; v.hunger = 0; p.fed = (p.fed || 0) + n;
+    if (v.need?.kind === 'grain') this.needMet(v);   // it asked for grain (T56)
     if (team === PLAYER) this.log(PLAYER, `${n} grain carted to ${v.name}${was ? ': its folk eat again' : ''} (${Math.floor(v.stores.food)} in store, about ${Math.round(this.foodLeft(v) / 60)} min).`, 'info');
     return n;
   }
@@ -1580,6 +1666,7 @@ export class Game {
     this.battleLog.push(r);
     if (this.battleLog.length > BATTLE.keep) this.battleLog.shift();
     this.bookBattle(r);
+    this.victoryNeeds(r);
     return r;
   }
   // ---- the war book (T71) ---------------------------------------------------------------------------------
@@ -3142,7 +3229,7 @@ export class Game {
     this.updateWanderers(dt);
     this.updateSally(dt);
     this.updateUnits(dt); this.updateGear(dt); this.separate(dt); this.autoCamels(dt);
-    this.updateProjectiles(dt); this.updateBattles(dt);
+    this.updateProjectiles(dt); this.updateBattles(dt); this.updateNeeds(dt);
     if (this.aiOn) updateAI(this, dt);
     this.cleanup();
     this.checkEnd(dt);
@@ -4190,7 +4277,7 @@ export class Game {
       alertT: this.alertT, winHold: this.winHold, richHold: this.richHold, named: this.named.map((x) => (x ? [...x] : [])),
       resAmt: this.resources.map((r) => r.amount), resCov: this.resources.filter((r) => r.covered).map((r) => r.id), seen: this.seen.map(rle), vis: this.vis.map(rle), mem: this.mem, vmem: this.vmem, amem: this.amem, battles: this.battles, battleLog: this.battleLog, nextBattle: this.nextBattle, warBook: this.warBook, warsPast: this.warsPast,
       coalitions: this.coalitions, wrongs: this.wrongs, coalEnd: this.coalEnd, nextCoalition: this.nextCoalition,
-      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {}, _batT: this._batT, _coalT: this._coalT }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
+      timers: clean({ visT: this.visT, _opT: this._opT, _crewT: this._crewT, _crewV: this._crewV, _refitT: this._refitT, _sallyT: this._sallyT, _inflT: this._inflT, _infl: this._infl, _stance: this._stance || {}, _batT: this._batT, _coalT: this._coalT, _needT: this._needT, _needN: this._needN }),   // (the houses' cached readings of each other: a load re-reading them early played on differently, T-055)
     };
   }
   restore(d) {
@@ -4219,7 +4306,7 @@ export class Game {
     if (d.mem) this.mem = this.mem.map((m, i) => d.mem[i] || {});
     else if (this.fogOn) for (const b of this.buildings) if (b.team !== PLAYER && this.wasSeen(PLAYER, b.x, b.y)) this.mem[PLAYER][b.id] = { id: b.id, kind: b.kind, team: b.team, tx: b.tx, ty: b.ty, size: b.size, x: b.x, y: b.y, ore: b.ore, hp: b.hp, maxHp: b.maxHp, built: b.built, at: this.time };   // an older save: what was on seen ground counts as seen
     if (d.amem) this.amem = this.amem.map((m, i) => d.amem[i] || {});   // (an older save starts with nothing seen)
-    this.battles = d.battles || []; this.battleLog = d.battleLog || []; this.nextBattle = d.nextBattle || 1; this._batT ??= 0;   // (an older save starts with no reports: T63)
+    this.battles = d.battles || []; this.battleLog = d.battleLog || []; this.nextBattle = d.nextBattle || 1; this._batT ??= 0; this._needT ??= 0; this._needN ??= 0;   // (an older save starts with no reports: T63)
     this.warBook = d.warBook || {}; this.warsPast = d.warsPast || [];   // (an older save: its wars under way get a record from now, T71)
     if (!d.warBook) for (let a = 0; a < this.players.length; a++) for (let b = a + 1; b < this.players.length; b++) if (this.rel[a][b] === 'war') this.warBook[this.warKey(a, b)] = { a, b, by: a, t0: this.relSince[a][b] || 0, bat: [], vil: {}, kings: {} };
     this.coalitions = d.coalitions || []; this.wrongs = d.wrongs || {}; this.coalEnd = d.coalEnd || {}; this.nextCoalition = d.nextCoalition || 0; this._coalT ??= 0;   // (an older save: no coalitions yet, T66)

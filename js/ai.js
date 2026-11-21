@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE, coalitionOf } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION, HEIR } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, NEED, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION, HEIR } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -291,6 +291,7 @@ function think(game, team, p) {
   chooseHeir(game, team, p, t);
   holdFeast(game, team, p, t);
   feedVillages(game, team, p, t);
+  answerNeeds(game, team, p, t);
   courtVillages(game, team, p, seat, army, need, t);
   scoutAbroad(game, team, p, seat, army, t);
   exploreAbroad(game, team, p, t);
@@ -410,6 +411,30 @@ export function feedVillages(game, team, p, t) {
   if (p.food < FEED.amount + FEED.aiSpare) return;
   const v = game.hungryVillages(team).find((h) => !game.feedWhy(team, h));
   if (v) game.feedVillage(team, v.id, FEED.amount);
+}
+
+// Villages that ask (T56): a rival answers its own villages' requests by the player's actions and prices: grain carted (with NEED.aiSpare
+// over the send), a feast at a keep near the village (NEED.aiSpare over the cost), or its nearest idle soldier sent in to billet there.
+export function answerNeeds(game, team, p, t) {
+  if (t < (p.needLook || 0)) return;
+  p.needLook = t + 10;
+  for (const v of game.needsOf(team)) {
+    const k = v.need.kind;
+    if (k === 'grain') { if (p.food >= FEED.amount + NEED.aiSpare && !game.feedWhy(team, v)) game.feedVillage(team, v.id, FEED.amount); continue; }
+    if (k === 'feast') {
+      const b = game.feastKeepFor(team, v);
+      if (b && !game.feastWhy(team, b) && p.food >= game.feastCost(team, b) + NEED.aiSpare) game.feast(team, b.id);
+      continue;
+    }
+    if (k === 'guard' && !game.units.some((u) => u.team === team && u.task.type === 'enter' && u.task.targetId === v.id) && (v.garrison?.length || 0) < game.garrisonCap(v)) {
+      let best = null, bd = 40;
+      for (const u of game.units) {
+        if (u.team !== team || u.hp <= 0 || u.inside || u.task.type !== 'idle' || !(u.kind === 'footman' || u.kind === 'bowman' || u.kind === 'knight')) continue;
+        const d = Math.hypot(u.x - v.x, u.y - v.y); if (d < bd) { bd = d; best = u; }
+      }
+      if (best) game.cmdEnter([best], v);
+    }
+  }
 }
 
 // T65: a rival names its heir-apparent by its need, as the player may on the king's card: a soldier while it is at war, a steward when

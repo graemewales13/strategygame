@@ -426,6 +426,15 @@ export const FEAST = { food: 300, perVillage: 40, r: 24, loyalty: 10, secs: 90, 
 // A village is hungry when its store holds less than `warn` seconds of eating (or is out). Rivals feed theirs with `aiSpare` grain over the send,
 // looking every `aiLook` seconds.
 export const FEED = { amount: 60, cap: 200, r: 36, warn: 60, aiSpare: 400, aiLook: 25 };
+// Villages that ask (T56, Against the Storm's resolve, CK3's vassal requests): now and then a held village asks its lord for what it lacks,
+// one request at a time, at most `max` open a house, and not again for `gap` seconds after its last closed. Each village is looked at every
+// `look` seconds. `grain`: its store holds under `below` seconds of eating and grain can be carted to it (FEED); met by Send grain or a feast.
+// `guard`: foe soldiers within `r` tiles and nobody billeted in it or standing watch; met once a soldier is (garrisonWeight + watchersOf >= 1).
+// `feast`: its house won a battle within `r` tiles (the foe lost at least `worth` in men, `lead` times what it did) and a keep of the house is
+// within FEAST.r; met by a feast there. Met: +`gain` loyalty; left past its `secs`: -`loss`. Rivals answer theirs with `aiSpare` grain over
+// the price. The rules' only roll is none: a request follows from the village's state, so the seeded streams are untouched.
+export const NEED = { look: 5, max: 3, gap: 300, gain: 8, loss: 5, aiSpare: 100,
+  grain: { secs: 120, below: 90 }, guard: { secs: 90, r: 12 }, feast: { secs: 180, r: 30, worth: 120, lead: 2 } };
 export const BELL = { r: 18, kinds: ['serf', 'scholar'], raidR: 14, foes: 2, odds: 1.5, quiet: 15 };
 // who can raise buildings, and how fast compared with a serf (soldiers can build a castle beside a village they mean to sway)
 export const BUILDERS = { serf: 1, recruit: 0.5, footman: 0.6, bowman: 0.6, knight: 0.4, scout: 0.3 };

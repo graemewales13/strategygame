@@ -10,7 +10,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { shortName } from './names.js';
 import { gfx, setQuality } from './gfx.js';
 import {
-  COALITION, DOCTRINE, DIFFICULTY, HANDICAP, LEVEL_KEYS, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, AFTERMATH, WARE_JOY, DEMOLISH, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, CEDE, WAR_BOOK, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR } from './config.js';
+  COALITION, NEED, DOCTRINE, DIFFICULTY, HANDICAP, LEVEL_KEYS, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, AFTERMATH, WARE_JOY, DEMOLISH, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, CEDE, WAR_BOOK, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread, coalitionOf, coalitionAgainst, coalitionWords, coalitionCall, wrongOf } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -778,6 +778,7 @@ export class UI {
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'bell': this.ringBell(); break;
       case 'feast': { const b = this.selEntity(); if (b) { const r = this.host.send({ type: 'feast', buildingId: b.id }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); this.sigCmd = ''; } break; }
+      case 'vfeast': { const v = this.selEntity(), k = v && this.game.feastKeepFor(PLAYER, v); if (k) { const r = this.host.send({ type: 'feast', buildingId: k.id }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); } else if (v) this.toast(`No finished keep of yours within ${FEAST.r} tiles of ${v.name}.`, 'warn'); this.sigCmd = ''; break; }   // (T56)
       case 'feed': { const v = this.selEntity(); if (v) { const r = this.host.send({ type: 'feed', villageId: v.id, amount: FEED.amount }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); this.sigCmd = ''; } break; }   // (T53)
       case 'gsel': this.gsel = +d.id; break;
       case 'research': this.host.send({ type: 'research', tech: d.tech }); break;
@@ -1179,7 +1180,7 @@ export class UI {
       const k = VILLAGE_KINDS[v.kind], lord = v.owner >= 0 ? HOUSES[v.owner].name : 'Independent';
       const tr = k.tribute;
       html = `<div class="seltitle">${esc(v.name)} <small style="color:#cdbb8a;font-size:12px">${v.founded ? (v.kind === 'mine' ? 'Mining camp' : 'Village') : k.label}</small></div><div class="selsub">${v.founded ? (v.kind === 'mine' ? `Founded by your house beside ore. Its folk work the mines within ${MINE_JOBS.r} tiles at camp rates, pay tax and can be drafted.` : 'Founded by your house. Its folk till, pay tax and can be drafted.') : esc(k.blurb)}${v.owner === PLAYER ? ` Tax <b>+${(v.pop * TAX * (v.loyalty / 100)).toFixed(2)}</b> coin/s.` : ''}</div>
-        <div class="stat"><label>Lord</label><span>${esc(lord)}</span></div>
+        <div class="stat"><label>Lord</label><span>${esc(lord)}</span></div>${memo ? '' : this.needRow(v)}
         <div class="stat"><label>Loyalty</label><div class="meter"><i class="loy" style="width:${v.loyalty}%"></i></div><span class="v">${v.loyalty | 0}</span></div>
         <div class="stat"><label>Protection</label><div class="meter"><i class="pro" style="width:${(v.protection / v.maxProtection) * 100}%"></i></div><span class="v">${v.protection | 0}/${v.maxProtection}</span></div>
         <div class="stat"><label>Population</label><div class="meter"><i class="loy" style="width:${(v.pop / v.popMax) * 100}%"></i></div><span class="v">${Math.floor(v.pop)}/${v.popMax}</span></div>
@@ -1536,6 +1537,7 @@ export class UI {
       html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serf', sub: SETTLE_FOOD + 'g', data: { role: 'serf', n: 1 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft a serf</b><br>One villager becomes a serf of yours (${SETTLE_FOOD} grain). Serfs gather and build.` });
       html += this.btn('draft', { glyph: GLYPH.serf, art: 'serf', name: 'Serfs ×5', sub: SETTLE_FOOD * 5 + 'g', data: { role: 'serf', n: 5 }, off: free < 1 || room < 1 || food < SETTLE_FOOD, tip: `<b>Draft serfs</b><br>Up to five villagers leave as serfs (${SETTLE_FOOD} grain each). They regrow while the village has grain.` });
       html += this.feedBtn(v);
+      if (v.need?.kind === 'feast') html += this.needFeastBtn(v);   // (T56)
       { const wait = Math.max(0, Math.ceil((v.armAt ?? -1e9) + DRAFT.armEvery - g.time)); html += this.btn('draft', { glyph: '⚔', art: 'recruit', name: 'Arm villager', sub: wait ? `${wait}s` : `${DRAFT.soldierFood}g`, data: { role: 'soldier', n: 1 }, off: free < 1 || room < 1 || food < DRAFT.soldierFood || wait > 0, tip: `<b>Arm a villager</b><br>One villager takes up a spear: a recruit who fights at about a quarter of a footman's strength. A village can arm one every ${DRAFT.armEvery}s. For real soldiers train them at a barracks, or put recruits in a keep and drill them.<br><span class="cost">${DRAFT.soldierFood} grain</span>` }); }
     } else {
       html += this.btn('sendspy', { glyph: GLYPH.spy, art: 'spy', name: 'Send spy', off: !spies, sub: spies ? `${spies} ready` : 'need a spy', tip: `<b>Send a spy</b><br>Sways loyalty without a fight. Spies can be caught.${spies ? '' : `<br><span class="need">Hire a recruit at a tavern, select it, press Become spy (${SPY_FEE} coin).</span>`}` });
@@ -1544,6 +1546,17 @@ export class UI {
     return html + `</div>`;
   }
 
+  // a village that asks for a feast (T56): hold it at your keep nearest the village, as the keep's own Feast button does
+  needFeastBtn(v) {
+    const g = this.game, k = g.feastKeepFor(PLAYER, v), why = k ? g.feastWhy(PLAYER, k) : `No finished keep of yours within ${FEAST.r} tiles of ${v.name}.`;
+    return this.btn('vfeast', { off: !!why, cls: why ? '' : 'warnb', img: uiArt('orders', 'feast'), glyph: '🍖', name: 'Feast', sub: why || !k ? '' : `${g.feastCost(PLAYER, k)} grain`, tip: `<b>Feast for ${esc(v.name)}</b><br>${esc(v.name)} asks for a feast to mark the victory nearby. Holds one at your nearest keep, as its Feast button does: every village of yours within ${FEAST.r} tiles of the keep rejoices.${why ? `<br><span class="need">${esc(why)}</span>` : ''}` });
+  }
+  // what a village of yours asks for (T56), on its card
+  needRow(v) {
+    const g = this.game, n = v.need; if (!n || v.owner !== PLAYER) return '';
+    const left = Math.max(0, Math.ceil(n.until - g.time));
+    return `<div class="stat" title="${esc(`Met in time: +${NEED.gain} loyalty. Left unanswered: -${NEED.loss}.`)}"><label>Asks</label><span class="need">${uiImg('marks', 'need', '❕', 'tico')} ${esc(g.needWords(v))} ${esc(g.needHow(v))} ${left} s left.</span></div>`;
+  }
   // Send grain (T53): carted from your stockpile into this village's store
   feedBtn(v) {
     const g = this.game, why = g.feedWhy(PLAYER, v), n = g.feedAmount(PLAYER, v), hungry = g.villageHungry(v);
