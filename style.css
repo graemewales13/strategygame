@@ -636,3 +636,15 @@ button.mini:hover { border-color: #e8c66a; }
 .crestcard .lvlb { display: block; width: 100%; margin-top: 3px; padding: 1px 0; font-size: 10px; background: #241709; color: var(--dim); border: 1px solid #6d4d27; border-radius: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crestcard .lvlb.set { color: var(--ink); border-color: #b08a4a; }
 .lvlb.lvl-easy, small.lvl-easy { color: #9fc48a; } .lvlb.lvl-hard, small.lvl-hard { color: #e0866a; }
+/* T34: letters on a laptop screen: one open, the rest one line each; the stack never runs past the field */
+#offers { max-height: calc(100% - 66px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #7a5a2c transparent; }
+.offer.mini { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 4px 12px; font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; flex: none; }
+.offer.mini .ok { font-size: 11px; text-transform: uppercase; color: #cdbb8a; } .offer.mini small { margin-left: auto; color: #a8946a; }
+.offer.mini:hover { background: rgba(58,40,20,.96); }
+.offer.mini.tribute { background: rgba(60,18,14,.92); }
+/* T34: a serf's card fits the HUD at 1366x768: the locked buildings on one line (all of them in its tooltip), Stop beside the jobs */
+.hint.lockline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; padding: 2px 2px; }
+.ctitle .stask { text-transform: none; letter-spacing: 0; color: var(--dim); font-weight: 400; } .ctitle .stask b { color: var(--brass-hi); }
+/* T34: a long card (a king's line of heirs, a village's asks) scrolls rather than hiding its last rows and buttons */
+#selPanel { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #7a5a2c transparent; }
+.cbtn.mini img.mico { width: 16px; height: 16px; object-fit: contain; vertical-align: middle; }   /* T34: the painted Stop icon (priority 14) in a serf's jobs row */

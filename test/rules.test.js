@@ -19,6 +19,7 @@ import { warSides, warTally, warWords, warVerdict, pastWars } from '../js/wars.j
 import { DOCTRINE, FACTIONS, WAR_BOOK, CEDE, WAR_MIN, DIFFICULTY, HANDICAP, START_RES } from '../js/config.js';
 import { KEY_ACTIONS, defaultKeys, loadKeys, saveKeys, rebind, actionOf, keyName, KEY_STORE, GRID_KEYS, GRID_SLOTS, GRID_STORE, gridLabel, gridSlotOf, assignGrid, loadGrid, saveGrid, fillKeys } from '../js/keys.js';
 import { groupUnits, groupRow, cleanGroups } from '../js/groups.js';
+import { openLetter, letterKind } from '../js/letters.js';
 import { productionRows, idleProduction, researchRow, IDLE_KINDS } from '../js/production.js';
 import { labour, idleSerfs, idleChime, stores, noteStock, netRates, coinBySource, jobOf, JOBS } from '../js/economy.js';
 import { IDLE_ALERT, ROUTE, COUNTER, COUNTER_AI, counterOf, counterWords, ARMY_SEEN, answerTo } from '../js/config.js';
@@ -3061,4 +3062,24 @@ test('a unit name label never prints over a village name or folk count (T-145)',
   assert.ok(!on(150, 215, 20, []), 'no village, no clash');
   const src = readFileSync(new URL('../js/render.js', import.meta.url), 'utf8');
   assert.match(src, /isSelected\(u\) \|\| \(z >= 1\.15 && !this\.onVillageLabel\(/, 'the name label asks (a selected unit keeps its name)');
+});
+
+test('laptop screens: one letter open, the rest one line each; a serf\'s card and a king\'s card fit (T34)', () => {
+  const L = [{ id: 4, kind: 'tribute' }, { id: 9, kind: 'treaty', state: 'alliance' }, { id: 6, kind: 'joinwar' }];
+  assert.equal(openLetter([], null), null, 'no letters, none open');
+  assert.equal(openLetter(L, null), 9, 'the newest is open');
+  assert.equal(openLetter(L, 4), 4, 'the one clicked open stays open');
+  assert.equal(openLetter(L, 77), 9, 'one answered or lapsed gives way to the newest');
+  assert.deepEqual(L.map(letterKind), ['Demand', 'Alliance', 'Call to arms']);
+  assert.equal(letterKind({ kind: 'aid' }), 'Plea for aid'); assert.equal(letterKind({ state: 'trade' }), 'Trade treaty'); assert.equal(letterKind({ state: 'peace' }), 'Peace');
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8'), css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+  assert.match(ui, /openLetter\(mine, this\.letterOpen\)/, 'the letters read openLetter');
+  assert.match(ui, /this\.heard\.add\(o\.id\); this\.letterOpen = null;/, 'a new letter opens over the one chosen');
+  assert.match(ui, /case 'openletter':/, 'a one-line letter opens on a click');
+  assert.match(ui, /class="hint lockline"/, 'the locked buildings take one line');
+  assert.match(ui, /if \(!serfsOnly\) html \+= `<div class="cgrid c4"/, 'serfs alone get Stop in their jobs row, not a grid of its own');
+  assert.match(ui, /if \(!gridFirst && us\.some/, 'soldiers who can build get the grid under their orders');
+  const last = (sel) => { const all = [...css.matchAll(new RegExp(sel.replace(/[#.]/g, '\\$&') + ' \\{([^}]*)\\}', 'g'))]; return all.length ? all[all.length - 1][1] : ''; };
+  assert.match(last('#selPanel'), /overflow-y: auto/, 'a long card scrolls');
+  assert.match(last('#offers'), /max-height/, 'the letters never run past the field');
 });
