@@ -1919,7 +1919,7 @@ test('feed a village (T53): grain carted from the stockpile into a held village,
   // a rival feeds its hungriest village by the same rule, only with grain to spare
   const rp = g.players[1]; rv.stores.food = 0; rv.hunger = 1; rv.pop = 20;
   rp.food = FEED.amount + FEED.aiSpare - 1; feedVillages(g, 1, rp, g.time);
-  assert.equal(rv.stores.food, 0, 'not without grain to spare');
+  assert.equal(rv.stores.food, 0, 'not without coin to spare (the temple dearer still, the wall wants stone)');
   rp.food += 1; rp.feedLook = 0; feedVillages(g, 1, rp, g.time);
   assert.equal(rv.stores.food, FEED.amount); assert.equal(rp.food, FEED.aiSpare);
   rv.stores.food = 0; feedVillages(g, 1, rp, g.time + 1);
@@ -1975,7 +1975,7 @@ test('feast (T33): grain at a keep lifts the villages near it, refused with a re
   const r = 1, rs = g.seatOf(r), rk = g.addBuilding('keep', r, Math.round(rs.x + 7), Math.round(rs.y - 2), true), rp = g.players[r];
   const rv = g.feastHeld(r, rk)[0]; assert.ok(rv, 'the rival home village is in reach'); rv.loyalty = 40;
   rp.food = g.feastCost(r, rk) + FEAST.aiSpare - 1; holdFeast(g, r, rp, g.time);
-  assert.equal(rp.feastT ?? null, null, 'not without grain to spare');
+  assert.equal(rp.feastT ?? null, null, 'not without coin to spare (the temple dearer still, the wall wants stone)');
   rp.food += 1; rp.feastLook = 0; holdFeast(g, r, rp, g.time);
   assert.equal(rp.feastT, g.time); assert.equal(rv.loyalty, 40 + FEAST.loyalty);
 });
@@ -3082,4 +3082,77 @@ test('laptop screens: one letter open, the rest one line each; a serf\'s card an
   const last = (sel) => { const all = [...css.matchAll(new RegExp(sel.replace(/[#.]/g, '\\$&') + ' \\{([^}]*)\\}', 'g'))]; return all.length ? all[all.length - 1][1] : ''; };
   assert.match(last('#selPanel'), /overflow-y: auto/, 'a long card scrolls');
   assert.match(last('#offers'), /max-height/, 'the letters never run past the field');
+});
+test('crown works (T12): a great work at a keep costs the hoard, takes time, one of each, lost with its keep; hall, temple and wall do what they say; saved; rivals raise them from surplus', async () => {
+  const { WORKS } = await import('../js/config.js');
+  const { raiseWorks } = await import('../js/ai.js');
+  const g = mk(), p = g.players[PLAYER], seat = g.seatOf(PLAYER);
+  const keep = g.addBuilding('keep', PLAYER, Math.round(seat.x + 7), Math.round(seat.y - 2), true); g.recomputeWalk();
+  // too poor: refused with what is lacking, nothing spent
+  p.food = 10; p.wood = 10; p.gold = 10;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'work', buildingId: keep.id, work: 'hall' }), false);
+  assert.match(g.diploNote, /Not enough goods for the Great Hall/);
+  const bar = g.addBuilding('barracks', PLAYER, Math.round(seat.x - 9), Math.round(seat.y + 4), true);
+  Object.assign(p, { food: 9000, wood: 9000, gold: 9000, stone: 900 });
+  assert.equal(g.raiseWork(PLAYER, bar.id, 'hall'), false); assert.match(g.diploNote, /finished keep/);
+  assert.equal(g.raiseWork(PLAYER, keep.id, 'nonsense'), false);
+  // the hall: paid at once, raised after its time
+  const pull0 = g.pullsFor(g.villages.find((v) => v.owner !== PLAYER && Math.hypot(v.x - keep.x, v.y - keep.y) < 20) || seat)[PLAYER];
+  const feast0 = g.feastCost(PLAYER, keep);
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'work', buildingId: keep.id, work: 'hall' }), true);
+  assert.equal(p.food, 9000 - WORKS.hall.cost.food); assert.equal(p.gold, 9000 - WORKS.hall.cost.gold);
+  assert.equal(g.raiseWork(PLAYER, keep.id, 'temple'), false); assert.match(g.diploNote, /masons are busy/, 'one at a time');
+  assert.ok(!g.hasWork(PLAYER, 'hall'));
+  // saved mid-raise: a load finishes it at the same moment
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(h.players[PLAYER].raising, p.raising);
+  run(g, WORKS.hall.secs + 0.5); run(h, WORKS.hall.secs + 0.5);
+  assert.ok(g.hasWork(PLAYER, 'hall') && h.hasWork(PLAYER, 'hall')); assert.equal(p.raising, null);
+  assert.equal(g.raiseWork(PLAYER, keep.id, 'hall'), false); assert.match(g.diploNote, /already has a Great Hall/);
+  assert.equal(g.feastCost(PLAYER, keep), Math.round(feast0 * WORKS.hall.feast), 'a hall halves the feast');
+  const near = g.villages.find((v) => v.owner !== PLAYER && Math.hypot(v.x - keep.x, v.y - keep.y) < 20);
+  if (near) assert.ok(g.pullsFor(near)[PLAYER] > pull0, 'the hall sways harder');
+  // the wall: more health and arrows with nobody inside
+  assert.equal(g.keepArrows(keep), 0);
+  const hp0 = keep.maxHp;
+  assert.ok(g.raiseWork(PLAYER, keep.id, 'wall'), g.diploNote); run(g, WORKS.wall.secs + 0.5);
+  assert.equal(keep.maxHp, Math.round(hp0 * WORKS.wall.hp)); assert.equal(g.keepArrows(keep), WORKS.wall.arrows);
+  // the temple: rivals that know the house warm to it
+  g.known[1][PLAYER] = true; g.known[PLAYER][1] = true; g.opinion[1][PLAYER] = 0;
+  dip_drift(g); const plain = g.opinion[1][PLAYER];
+  g.opinion[1][PLAYER] = 0;
+  assert.ok(g.raiseWork(PLAYER, keep.id, 'temple'), g.diploNote); run(g, WORKS.temple.secs + 0.5);
+  g.opinion[1][PLAYER] = 0; dip_drift(g);
+  assert.ok(Math.abs(g.opinion[1][PLAYER] - plain - WORKS.temple.opinion) < 0.2, 'a temple adds its warmth to each drift');
+  // a work under way is lost with its keep; the works stand on the keep and fall with it
+  const k2 = g.addBuilding('keep', PLAYER, Math.round(seat.x - 6), Math.round(seat.y + 9), true);
+  keep.hp = 0; g.cleanup?.();
+  assert.ok(!g.hasWork(PLAYER, 'hall'), 'razed with the keep');
+  assert.ok(g.raiseWork(PLAYER, k2.id, 'hall'), g.diploNote);
+  k2.hp = 0; run(g, 0.2);
+  assert.equal(p.raising, null, 'abandoned');
+  // a rival raises the first it lacks only with surplus to spare
+  const r = g.players[1], rk = g.kindB(1, 'keep').find((b) => b.built >= 1) || g.addBuilding('keep', 1, Math.round(g.seatOf(1).x + 7), Math.round(g.seatOf(1).y - 2), true);
+  Object.assign(r, { food: 5000, wood: 5000, gold: WORKS.hall.cost.gold + WORKS.aiSpare - 1, stone: 0 });
+  raiseWorks(g, 1, r, g.time); assert.ok(!r.raising, 'not without coin to spare (the temple dearer still, the wall wants stone)');
+  r.gold += 2; r.worksLook = 0; raiseWorks(g, 1, r, g.time);
+  assert.equal(r.raising?.k, 'hall'); assert.equal(r.raising?.id, rk.id);
+  // the UI wires it
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  assert.ok(ui.includes("this.workBtn(b, k)") && ui.includes("case 'work':") && ui.includes('this.worksLine(t)'));
+  const line = readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n').find((l) => l.startsWith('- **Great works**')) || '';
+  for (const k of WORKS.order) { const w = WORKS[k]; assert.ok(line.includes(`**${w.label}** (${Object.entries(w.cost).map(([r, n]) => `${n} ${({ food: 'grain', wood: 'timber', gold: 'coin' })[r] || r}`).join(', ')}, ${w.secs} s)`), `README gives the ${w.label}'s price`); }
+});
+test('Engineering says what it does (T-149): the rule lengthens a garrisoned keep\'s volleys too', () => {
+  const g = mk(), seat = g.seatOf(PLAYER), keep = g.addBuilding('keep', PLAYER, Math.round(seat.x + 7), Math.round(seat.y - 2), true);
+  const r0 = g.keepRange(keep); g.players[PLAYER].tech = { ...(g.players[PLAYER].tech || {}), engineering: true };
+  assert.equal(g.keepRange(keep), r0 + 2);
+  assert.match(TECH.engineering.info, /keeps shoot 2 tiles further/);
+  assert.match(readFileSync(new URL('../README.md', import.meta.url), 'utf8'), /\| Engineering \| Masonry, Medicine \| towers and keeps \+2 range/);
+});
+test('tips (T12): a hoard past the soak\'s line gets its tip, naming the feast and the great works', () => {
+  const g = mk(), t = TIPS.find((x) => x.id === 'hoard');
+  assert.ok(t && !t.when(g, tipMemory()));
+  g.players[PLAYER].gold = 3001; assert.ok(t.when(g, tipMemory()));
+  assert.match(t.text, /Great Hall, Great Temple, Curtain Wall/);
 });

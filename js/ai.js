@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE, coalitionOf } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, NEED, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION, HEIR } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, NEED, WORKS, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION, HEIR } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -290,6 +290,7 @@ function think(game, team, p) {
   warCry(game, team);
   chooseHeir(game, team, p, t);
   holdFeast(game, team, p, t);
+  raiseWorks(game, team, p, t);
   feedVillages(game, team, p, t);
   answerNeeds(game, team, p, t);
   courtVillages(game, team, p, seat, army, need, t);
@@ -385,6 +386,23 @@ export function townBell(game, team, p, seat, t) {
   if (foes) { p.bellQuiet = null; return; }
   if (p.bellQuiet == null) p.bellQuiet = t;
   else if (t - p.bellQuiet >= BELL.quiet) game.allClear(team);
+}
+
+// Crown works (T12), the player's buttons: a house that keeps WORKS.aiSpare of every good it pays (stone WORKS.aiStone) over a work's
+// price raises the next it lacks, in WORKS.order, at its keep nearest its seat. The hoard the soak flags from minute 11 goes here.
+export function raiseWorks(game, team, p, t) {
+  if (t < (p.worksLook || 0)) return;
+  p.worksLook = t + WORKS.aiLook;
+  if (p.raising) return;
+  const seat = game.seatOf(team); if (!seat) return;
+  let keep = null, kd = 1e9;
+  for (const b of game.kindB(team, 'keep')) { if (b.team !== team || b.built < 1 || b.hp <= 0) continue; const d = Math.hypot(b.x - seat.x, b.y - seat.y); if (d < kd) { kd = d; keep = b; } }
+  if (!keep) return;
+  for (const k of WORKS.order) {
+    if (game.hasWork(team, k)) continue;
+    const c = WORKS[k].cost;
+    if (Object.keys(c).every((r) => (p[r] || 0) >= c[r] + (r === 'stone' ? WORKS.aiStone : WORKS.aiSpare))) { game.raiseWork(team, keep.id, k); return; }
+  }
 }
 
 // A feast (T33), the player's button: with grain to spare over the cost (FEAST.aiSpare), a house feasts at the keep whose villages need it

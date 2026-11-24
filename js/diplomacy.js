@@ -3,7 +3,7 @@
 // and jumps with gifts, broken oaths, sacked villages and slain kings. Leaders judge requests (alliance, trade, peace, "join my war", tribute, aid)
 // from opinion, relative strength and their own temper (see KING / TEMPERS in config.js). Rival leaders also write to the player and to each other:
 // the same judging code answers a human's request, an AI's request of a human (as a letter with Accept / Decline) and an AI's request of an AI.
-import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING, SIGNAL, COALITION, CEDE } from './config.js';
+import { PLAYER, HOUSES, WAR_MIN, UNITS, FARLANDS, TECH, GEAR, DOCTRINE, RETREAT, PEACE_COIN, KING, SIGNAL, COALITION, CEDE, WORKS } from './config.js';
 import { shortName } from './names.js';
 
 export const DIPLO = {
@@ -149,6 +149,7 @@ export function shift(g, a, b, d, why) {
 export function drift(g) {
   const S = g.players.map((p) => (p.alive ? strength(g, p.team) : 0));
   const top = g.players.filter((p) => p.alive).sort((x, y) => S[y.team] - S[x.team])[0]?.team;
+  const temple = g.players.map((p) => p.alive && g.hasWork(p.team, 'temple'));   // a Great Temple is spoken of far and wide (T12)
   for (const A of g.players) {
     if (!A.alive || A.team === PLAYER) continue;
     const a = A.team, pr = pers(g, a);
@@ -161,6 +162,7 @@ export function drift(g) {
       d += 0.5 * sharedEnemies(g, a, b).length;
       for (const c of alliesOf(g, a)) if (c !== b && g.rel[b][c] === 'war') d -= 1.0;          // you are fighting my friend
       for (const c of enemiesOf(g, a)) if (c !== b && g.rel[b][c] === 'alliance') d -= 0.5;   // you befriend my enemy
+      if (temple[b]) d += WORKS.temple.opinion;
       const st = stance(g, a, b); d -= 0.6 * st.threat;   // their keeps over our villages and their soldiers in our land are resented
       const sa = S[a], sb = S[b];
       if (rel !== 'war' && dread(g, a, b, S) >= 0) d += COALITION.warm;                       // a common dread: a house far stronger than both (T62)

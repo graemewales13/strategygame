@@ -11,7 +11,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { shortName } from './names.js';
 import { gfx, setQuality } from './gfx.js';
 import {
-  COALITION, NEED, DOCTRINE, DIFFICULTY, HANDICAP, LEVEL_KEYS, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, AFTERMATH, WARE_JOY, DEMOLISH, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, CEDE, WAR_BOOK, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR } from './config.js';
+  COALITION, NEED, DOCTRINE, DIFFICULTY, HANDICAP, LEVEL_KEYS, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, AFTERMATH, WARE_JOY, DEMOLISH, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, CEDE, WAR_BOOK, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR, WORKS } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread, coalitionOf, coalitionAgainst, coalitionWords, coalitionCall, wrongOf } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -33,6 +33,7 @@ const portrait = (kind, accent, team = PLAYER, src = artUrl(kind, team)) => src 
 const uiImg = (group, key, fallback = '', cls = 'ico') => { const u = uiArt(group, key); return u ? `<img class="${cls}" src="${u}" alt="" draggable="false">` : fallback; };
 // the face for a person: a far-lander's own portrait, a ruler's portrait for a king, else the unit art
 const faceOf = (u) => (u.far && uiArt('portraits', u.far)) || (u.kind === 'king' && uiArt('portraits', RULER_ART[HOUSES[u.team]?.faction])) || null;
+const WORK_GLYPH = { hall: '🏛', temple: '🕯', wall: '🧱' };   // crown works (T12) until their icons are painted (priority 41)
 const GLYPH = {
   cottage: '⌂', farm: '≋', mill: '✢', warehouse: '▣', market: '⚖', barracks: '⚔', archery: '➶', stable: '♞', tower: '♜',
   mine: '⛏', foundry: '♨', forge: '⚒', workshop: '⚙', tavern: '⚱', academy: '✎', temple: '✝', keep: '♚', armoury: '⛨',
@@ -779,6 +780,7 @@ export class UI {
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'bell': this.ringBell(); break;
+      case 'work': { const b = this.selEntity(); if (b) { const r = this.host.send({ type: 'work', buildingId: b.id, work: d.work }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); } break; }   // (T12)
       case 'feast': { const b = this.selEntity(); if (b) { const r = this.host.send({ type: 'feast', buildingId: b.id }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); this.sigCmd = ''; } break; }
       case 'vfeast': { const v = this.selEntity(), k = v && this.game.feastKeepFor(PLAYER, v); if (k) { const r = this.host.send({ type: 'feast', buildingId: k.id }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); } else if (v) this.toast(`No finished keep of yours within ${FEAST.r} tiles of ${v.name}.`, 'warn'); this.sigCmd = ''; break; }   // (T56)
       case 'feed': { const v = this.selEntity(); if (v) { const r = this.host.send({ type: 'feed', villageId: v.id, amount: FEED.amount }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); this.sigCmd = ''; } break; }   // (T53)
@@ -863,6 +865,7 @@ export class UI {
       const col = st.mood === 'means war' || st.mood === 'fighting on' ? '#e0866a' : st.mood === 'wary' ? '#e8c35a' : '#9fe08f';
       html += `<div class="dline" data-tip="${encodeURIComponent('<b>How they see you</b><br><b>Threat</b>: your buildings swaying their villages, your soldiers in their land, your army close and stronger.<br><b>Temptation</b>: you are weaker, busy at war, leaderless, broke, or a village of yours lies close and poorly guarded.<br><b>Ties</b>: trade, alliance, a common enemy, goodwill, distance, a fresh peace.<br>They go to war when threat and temptation clearly outweigh the ties (and warn you first).')}">They see you: <b style="color:${col}">${st.mood}</b> · threat ${pct(st.threat)}% · temptation ${pct(st.temptation)}% · ties ${pct(st.ties)}%${rel === 'war' ? ` · weariness ${pct(st.weariness)}%` : ''}${top ? `<br><small>${top}</small>` : ''}</div>`;
     }
+    html += this.worksLine(t);
     html += this.seenArmyLine(t);
     if (i.secrets) {
       const s = i.secrets, mix = Object.entries(s.mix).map(([k, n]) => `${n} ${UNITS[k].label.toLowerCase()}${n === 1 ? '' : 's'}`).join(', ') || 'no soldiers';
@@ -1158,7 +1161,8 @@ export class UI {
       if (mine && b.built >= 1 && GARRISON[b.kind]) {
         const inn = b.garrison.map((id) => g.byId.get(id)).filter(Boolean);
         html += `<div class="stat"><label>Garrison</label><span>${inn.length}/${GARRISON[b.kind]} inside${b.kind === 'keep' ? ' (heal while inside)' : ''}</span></div>`;
-        if (b.kind === 'keep') { const n = g.keepArrows(b); html += `<div class="stat" data-tip="${encodeURIComponent(`<b>Arrows</b><br>Every ${KEEP_ARROWS.per} folk inside (soldiers, serfs sheltering from the bell, scholars) add an arrow to each volley, up to ${KEEP_ARROWS.cap}, at the nearest foes within ${g.keepRange(b)} tiles: ${KEEP_ARROWS.dmg} damage each, a volley every ${KEEP_ARROWS.cd} s.`)}"><label>Arrows</label><span>${n ? `${n} a volley, range ${g.keepRange(b)}` : `none: it shoots with ${KEEP_ARROWS.per} or more folk inside`}</span></div>`; }
+        if (b.kind === 'keep' && (b.works || (g.players[b.team]?.raising?.id === b.id && b.team === PLAYER))) html += this.worksStat(b);   // (T12)
+        if (b.kind === 'keep') { const n = g.keepArrows(b); html += `<div class="stat" data-tip="${encodeURIComponent(`<b>Arrows</b><br>Every ${KEEP_ARROWS.per} folk inside (soldiers, serfs sheltering from the bell, scholars) add an arrow to each volley, up to ${KEEP_ARROWS.cap}${b.works?.wall ? `, and its Curtain Wall's watch ${WORKS.wall.arrows} more` : ''}, at the nearest foes within ${g.keepRange(b)} tiles: ${KEEP_ARROWS.dmg} damage each, a volley every ${KEEP_ARROWS.cd} s.`)}"><label>Arrows</label><span>${n ? `${n} a volley, range ${g.keepRange(b)}` : `none: it shoots with ${KEEP_ARROWS.per} or more folk inside`}</span></div>`; }
         if (inn.length) html += `<div class="chips">${inn.map((u) => `<span class="chip x ${this.gsel === u.id ? 'on' : ''}" data-act="gsel" data-id="${u.id}" data-tip="${encodeURIComponent(`<b>${esc(u.name || UNITS[u.kind].label)}</b><br>${UNITS[u.kind].label}${u.trait ? ' · ' + TRAITS[u.trait].label : ''} · ${Math.ceil(u.hp)}/${u.maxHp} hp${u.drilling ? '<br>In training' : ''}`)}">${GLYPH[u.kind]?.length === 1 ? GLYPH[u.kind] : ''} ${esc(u.name || UNITS[u.kind].label)}${u.drilling ? ' …' : ''}</span>`).join('')}</div>`;
       }
       if (mine && b.kind === 'keep' && b.built >= 1) {   // the sheds: siege engines stored apart from the garrison
@@ -1352,7 +1356,21 @@ export class UI {
   // a feast (T33): surplus grain lifts the villages around this keep
   feastBtn(b) {
     const g = this.game, why = g.feastWhy(PLAYER, b), cost = g.feastCost(PLAYER, b), n = g.feastHeld(PLAYER, b).length, wait = g.feastReady(PLAYER);
-    return this.btn('feast', { off: !!why, img: uiArt('orders', 'feast'), glyph: '🍖', name: 'Feast', sub: wait > 0 ? `${Math.ceil(wait)}s` : `${cost} grain`, tip: `<b>Feast</b><br>Spend ${cost} grain (${FEAST.food}, and ${FEAST.perVillage} for each village fed): every village of yours within ${FEAST.r} tiles of this keep (${n} now) gains ${FEAST.loyalty} loyalty, rejoices for ${FEAST.secs} s (tribute x1.3, loyalty climbs) and gets ${FEAST.stock} grain in its store; free villages near that lean on no other lord warm to you. Once every ${FEAST.cool / 60} minutes.${why ? `<br><span class="need">${esc(why)}</span>` : ''}` });
+    return this.btn('feast', { off: !!why, img: uiArt('orders', 'feast'), glyph: '🍖', name: 'Feast', sub: wait > 0 ? `${Math.ceil(wait)}s` : `${cost} grain`, tip: `<b>Feast</b><br>Spend ${cost} grain (${FEAST.food}, and ${FEAST.perVillage} for each village fed${b.works?.hall ? `, ${Math.round(WORKS.hall.feast * 100)}% of it in a Great Hall` : ''}): every village of yours within ${FEAST.r} tiles of this keep (${n} now) gains ${FEAST.loyalty} loyalty, rejoices for ${FEAST.secs} s (tribute x1.3, loyalty climbs) and gets ${FEAST.stock} grain in its store; free villages near that lean on no other lord warm to you. Once every ${FEAST.cool / 60} minutes.${why ? `<br><span class="need">${esc(why)}</span>` : ''}` });
+  }
+  // the works standing at a keep (and, for the player's own, the one going up)
+  worksStat(b) {
+    const g = this.game, have = WORKS.order.filter((k) => b.works?.[k]).map((k) => WORKS[k].label), r = b.team === PLAYER ? g.players[PLAYER].raising : null;
+    const up = r && r.id === b.id ? `${WORKS[r.k].label} going up, ${Math.ceil(r.left)} s` : '';
+    return `<div class="stat" data-tip="${encodeURIComponent(`<b>Great works</b><br>${WORKS.order.map((k) => `<b>${WORKS[k].label}</b>: ${esc(g.workDoes(k))}.`).join('<br>')}<br>Lost with the keep.`)}"><label>Works</label><span>${[...have, up].filter(Boolean).join(', ')}</span></div>`;
+  }
+  // crown works (T12): a great work raised at this keep for the surplus (painted icons: ARTREQUIREMENTS priority 41; glyphs until then)
+  workBtn(b, k) {
+    const g = this.game, w = WORKS[k], p = g.players[PLAYER], here = b.works?.[k], has = g.worksOf(PLAYER)[k], r = p.raising, busy = r && r.k === k;
+    const why = here || busy ? null : g.workWhy(PLAYER, b, k);
+    const sub = here ? 'raised' : busy ? `${Math.ceil(r.left)}s` : has ? 'at another keep' : costShort(w.cost);
+    return this.btn('work', { off: !!why || here || busy, cls: here ? 'on' : '', img: uiArt('orders', 'work_' + k), glyph: WORK_GLYPH[k], name: w.label, sub, data: { work: k },
+      tip: `<b>${w.label}</b><br><span class="info">${esc(w.info[0].toUpperCase() + w.info.slice(1))}: ${esc(g.workDoes(k))}. Lost with its keep. One of each a house, one at a time.</span><br><span class="cost">${costText(w.cost, p)}</span> · ${w.secs}s${here ? '<br>Standing at this keep.' : busy ? `<br>Going up here: ${Math.ceil(r.left)} s.` : ''}${why ? `<br><span class="need">${esc(why)}</span>` : ''}` });
   }
   keepPanel(b) {
     const g = this.game, p = g.players[PLAYER];
@@ -1364,6 +1382,7 @@ export class UI {
     html += this.btn('leave', { glyph: '⇥', name: 'Leave', tip: '<b>Leave</b><br>Everyone steps out.' });
     html += this.bellBtn();
     html += this.feastBtn(b);
+    for (const k of WORKS.order) html += this.workBtn(b, k);
     return html + `</div><div class="hint">Right-click the keep with units to garrison them, or a village you hold to <b>levy villagers</b>.</div>`;
   }
   treatyRows() {
@@ -1447,6 +1466,12 @@ export class UI {
     if (!c.n) return `<div class="stat"><label>Diggers</label><span class="need">none: ${c.villages ? 'the villages in reach have no hands to spare' : `no village within ${MINE_JOBS.r} tiles`}</span></div>`;
     const rows = c.list.map((e) => `${e.n} from ${esc(e.v.name)}${e.own ? ' (yours, +' + Math.round((MINE_JOBS.ownBonus - 1) * 100) + '%)' : ''}`).join(', ');
     return `<div class="stat"><label>Diggers</label><span>${c.n}/${MINE_MAX_WORKERS} · yield ×${c.power.toFixed(2)}</span></div><div class="hint">${rows}. Their goodwill drifts to you.</div>`;
+  }
+  // T12: the great works a met house holds (known to all: they are spoken of; where they stand only if seen)
+  worksLine(t) {
+    const w = this.game.worksOf(t), ks = WORKS.order.filter((k) => w[k]);
+    if (!ks.length) return '';
+    return `<div class="dline" data-tip="${encodeURIComponent(`<b>Great works</b><br>${ks.map((k) => `<b>${WORKS[k].label}</b>: ${esc(this.game.workDoes(k)).replace(/your|yours/g, 'theirs')}.`).join('<br>')}<br>Lost with their keep: take or raze it.`)}">${WORK_GLYPH[ks[0]]} Great works: ${ks.map((k) => WORKS[k].label).join(', ')}</div>`;
   }
   // T64: what the player's eyes have seen of house t's army, one line (or a dim one when nothing has been seen)
   seenArmyLine(t) {

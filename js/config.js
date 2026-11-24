@@ -152,7 +152,7 @@ export const TECH = {
   torsion:     { label: 'Torsion engines', tier: 2, cost: { learning: 200, silver: 6 }, needs: ['siegecraft'],          info: 'Unlocks the Onager at the Workshop: a sling-armed engine that flings stones 7 tiles, harder on walls than a ram and deadly to men caught beneath.' },
   steelcraft:  { label: 'Steelcraft',  tier: 3, cost: { learning: 400, silver: 12 }, needs: ['metallurgy'],              info: 'The Armoury makes swords, lances and plate.' },
   mechanics:   { label: 'Mechanics',   tier: 3, cost: { learning: 400, silver: 12 }, needs: ['metallurgy', 'fletching'], info: 'The Armoury makes crossbows; new siege engines +30% health.' },
-  engineering: { label: 'Engineering', tier: 3, cost: { learning: 400, silver: 12 }, needs: ['masonry', 'medicine'],     info: 'Towers shoot 2 tiles further; new keeps and towers +25% health.' },
+  engineering: { label: 'Engineering', tier: 3, cost: { learning: 400, silver: 12 }, needs: ['masonry', 'medicine'],     info: 'Towers and garrisoned keeps shoot 2 tiles further; new keeps and towers +25% health.' },
   counterweight: { label: 'Counterweight engines', tier: 3, cost: { learning: 400, silver: 12 }, needs: ['torsion', 'masonry'], info: 'Unlocks the Trebuchet at the Workshop: a great counterweight engine that hurls boulders 11 tiles. The worst a wall can meet; slow, and poor against men.' },
 };
 export const SIEGE = new Set(['ram', 'onager', 'trebuchet']);
@@ -425,6 +425,21 @@ export const FEAST = { food: 300, perVillage: 40, r: 24, loyalty: 10, secs: 90, 
 // `amount` a send, up to `cap` in the store, from a finished keep, market or warehouse of the house within `r` tiles (the cart's road).
 // A village is hungry when its store holds less than `warn` seconds of eating (or is out). Rivals feed theirs with `aiSpare` grain over the send,
 // looking every `aiLook` seconds.
+// Crown works (T12 slice 1, late-game sinks; AoE II's wonders and AoE IV's landmarks, CK3's great buildings, Manor Lords' manor upgrades):
+// three great works raised at a finished keep for a lump of the grain, timber and coin a house piles up by mid-game. Each house may hold
+// each work once (at any of its keeps) and raise one at a time; a work takes `secs` once paid and is lost with its keep (razed, or taken
+// with the town). Never a win (DEMANDS: conquest only): they lift influence, goodwill and the keep's defence.
+//   hall:   the keep's sway over villages x`pull` (and its feasts cost `feast` of the grain)
+//   temple: every other house that knows this one warms by `opinion` each opinion drift (about +12 at rest)
+//   wall:   the keep's health x`hp` and `arrows` more arrows a volley, with a garrison or without (its own watch on the wall)
+// Rivals raise them when every good they pay keeps `aiSpare` over the price (stone keeps `aiStone`), looking every `aiLook` seconds.
+export const WORKS = {
+  order: ['hall', 'temple', 'wall'],
+  hall: { label: 'Great Hall', cost: { food: 1500, wood: 600, gold: 400 }, secs: 90, pull: 1.5, feast: 0.5, info: 'a feasting hall for the whole realm' },
+  temple: { label: 'Great Temple', cost: { food: 800, wood: 400, gold: 1200 }, secs: 120, opinion: 0.15, info: 'a house of worship the neighbours speak of' },
+  wall: { label: 'Curtain Wall', cost: { wood: 800, gold: 500, stone: 300 }, secs: 100, hp: 1.5, arrows: 2, info: 'a stone ring about the keep' },
+  aiSpare: 600, aiStone: 40, aiLook: 30,
+};
 export const FEED = { amount: 60, cap: 200, r: 36, warn: 60, aiSpare: 400, aiLook: 25 };
 // Villages that ask (T56, Against the Storm's resolve, CK3's vassal requests): now and then a held village asks its lord for what it lacks,
 // one request at a time, at most `max` open a house, and not again for `gap` seconds after its last closed. Each village is looked at every

@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, DIFFICULTY, HANDICAP, LEVEL_KEYS, WAR_MIN,
   VILLAGE_KINDS, DEMOLISH, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, NEED, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, AFTERMATH, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS } from './config.js';
+  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, NEED, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, AFTERMATH, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS, WORKS } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -692,6 +692,7 @@ export class Game {
       case 'bell': return this.ringBell(team);
       case 'tutor': return this.tutor(team, it.step, !!it.done);
       case 'feast': return this.feast(team, it.buildingId);
+      case 'work': return this.raiseWork(team, it.buildingId, it.work);
       case 'feed': return this.feedVillage(team, it.villageId, it.amount) > 0;
       case 'flare': return this.flare(team, +it.x, +it.y);
       case 'warcry': return this.warCry(team);
@@ -921,7 +922,7 @@ export class Game {
 
   // ---- feasts (T33): surplus grain spent at a keep lifts the villages around it ------------------------------------------------------
   feastHeld(team, b) { return this.villages.filter((v) => v.owner === team && Math.hypot(v.x - b.x, v.y - b.y) <= FEAST.r); }
-  feastCost(team, b) { return FEAST.food + FEAST.perVillage * this.feastHeld(team, b).length; }
+  feastCost(team, b) { return Math.round((FEAST.food + FEAST.perVillage * this.feastHeld(team, b).length) * (b?.works?.hall ? WORKS.hall.feast : 1)); }   // (a Great Hall halves it, T12)
   feastReady(team) { const p = this.players[team]; return Math.max(0, (p?.feastT ?? -1e9) + FEAST.cool - this.time); }   // seconds until the house may feast again
   // why a feast cannot be held at this keep now (null when it can)
   feastWhy(team, b) {
@@ -954,6 +955,47 @@ export class Game {
     return true;
   }
 
+
+  // ---- crown works (T12): great works raised at a keep for the surplus a house piles up --------------------------------------------
+  // b.works = { hall: 1, ... } on the keep that holds them; p.raising = { k, id, left } while one is going up (one at a time a house).
+  worksOf(team) { const out = {}; for (const b of this.kindB(team, 'keep')) if (b.team === team && b.hp > 0 && b.works) for (const k in b.works) out[k] = b; return out; }
+  hasWork(team, k) { return !!this.worksOf(team)[k]; }
+  workWhy(team, b, k) {
+    const p = this.players[team], w = WORKS[k];
+    if (!w || !WORKS.order.includes(k)) return 'No such work.';
+    if (!p || !b || b.type !== 'building' || b.kind !== 'keep' || b.team !== team || b.hp <= 0 || b.built < 1) return 'A great work is raised at a finished keep of yours.';
+    if (this.hasWork(team, k)) return `Your house already has a ${w.label}.`;
+    if (p.raising) return `Your masons are busy on the ${WORKS[p.raising.k].label}: ${Math.ceil(p.raising.left)} s to go.`;
+    if (!this.canAfford(team, w.cost)) return this.shortfall(team, w.cost, ` for the ${w.label}`);
+    return null;
+  }
+  raiseWork(team, buildingId, k) {
+    const b = this.byId.get(buildingId), why = this.workWhy(team, b, k);
+    if (why) { if (team === PLAYER) this.diploNote = why; return false; }
+    const p = this.players[team], w = WORKS[k];
+    this.pay(team, w.cost); p.raising = { k, id: b.id, left: w.secs };
+    if (team === PLAYER) this.log(PLAYER, `Masons begin the ${w.label} at your keep: ${w.secs} s.`, 'info');
+    return true;
+  }
+  // a work under way is lost (the price with it) when its keep falls or changes hands
+  updateWorks(dt) {
+    for (const p of this.players) {
+      const r = p.raising; if (!r) continue;
+      const b = this.byId.get(r.id), w = WORKS[r.k];
+      if (!b || b.hp <= 0 || b.team !== p.team || !p.alive) { p.raising = null; if (p.team === PLAYER) this.log(PLAYER, `The ${w.label} is abandoned: its keep is lost.`, 'bad'); continue; }
+      r.left -= dt; if (r.left > 0) continue;
+      p.raising = null; (b.works ||= {})[r.k] = 1; p.worksRaised = (p.worksRaised || 0) + 1;
+      if (r.k === 'wall') { const f = b.hp / b.maxHp; b.maxHp = Math.round(b.maxHp * w.hp); b.hp = b.maxHp * f; }
+      if (p.team === PLAYER) { this.log(PLAYER, `The ${w.label} stands at your keep: ${this.workDoes(r.k)}.`, 'good'); this.sfx('fanfare', b.x, b.y); }
+      else if (this.known[PLAYER]?.[p.team]) this.log(-1, `${p.name} has raised a ${w.label}.`, 'info');
+    }
+  }
+  workDoes(k) {
+    const w = WORKS[k];
+    return k === 'hall' ? `the keep sways villages ${w.pull}x as hard and its feasts cost ${Math.round(w.feast * 100)}% of the grain`
+      : k === 'temple' ? 'every house that knows yours thinks a little better of it, all the time'
+      : `the keep has ${w.hp}x the health and shoots ${w.arrows} more arrows a volley`;
+  }
 
   // ---- villages that ask (T56) ------------------------------------------------------------------------------------------------------
   // A held village may carry one request, v.need = { kind: 'grain'|'guard'|'feast', team, t, until }. Made from the village's state (no roll),
@@ -3229,7 +3271,7 @@ export class Game {
     this.updateWanderers(dt);
     this.updateSally(dt);
     this.updateUnits(dt); this.updateGear(dt); this.separate(dt); this.autoCamels(dt);
-    this.updateProjectiles(dt); this.updateBattles(dt); this.updateNeeds(dt);
+    this.updateProjectiles(dt); this.updateBattles(dt); this.updateNeeds(dt); this.updateWorks(dt);
     if (this.aiOn) updateAI(this, dt);
     this.cleanup();
     this.checkEnd(dt);
@@ -3299,7 +3341,7 @@ export class Game {
   }
 
   // a garrisoned keep shoots back (T43): one arrow per KEEP_ARROWS.per folk inside, each at the next nearest foe in range
-  keepArrows(b) { return b.built >= 1 && b.hp > 0 ? Math.min(KEEP_ARROWS.cap, Math.floor((b.garrison?.length || 0) / KEEP_ARROWS.per)) : 0; }
+  keepArrows(b) { return b.built >= 1 && b.hp > 0 ? Math.min(KEEP_ARROWS.cap, Math.floor((b.garrison?.length || 0) / KEEP_ARROWS.per)) + (b.works?.wall ? WORKS.wall.arrows : 0) : 0; }   // (a Curtain Wall keeps its own watch: more arrows, garrison or none, T12)
   keepRange(b) { return KEEP_ARROWS.range + (this.hasTech(b.team, 'engineering') ? 2 : 0); }
   keepFire(b, dt) {
     b.arrowT = (b.arrowT || 0) - dt;
@@ -3344,6 +3386,7 @@ export class Game {
       let p = (1 - d / inf.r) * inf.w;
       if (inf.guard) p *= GUARD.floor + (1 - GUARD.floor) * Math.min(1, this.guardOf(b) / GUARD.full);
       if (b.kind === 'academy') p *= 1 + 0.3 * (b.scholars || 0);
+      if (b.works?.hall) p *= WORKS.hall.pull;   // a Great Hall (T12)
       pulls[b.team] += p;
     }
     for (let t = 0; t < this.houses; t++) for (const b of this.kindB(t, 'mine')) if (b._crew && b.kind === 'mine') for (const c of b._crew.list) if (c.v === v) pulls[b.team] += c.n * MINE_JOBS.pull;   // jobs at the mine win the village's goodwill

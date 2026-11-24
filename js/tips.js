@@ -1,14 +1,15 @@
 // Auld World - tips on first sight (T58). The first time the player meets a rule that can cost him the match (a rival's demand, a war,
 // a foe's army seen, a mine nobody digs, a hungry or wavering village, a village that asks, a village lost, an army that fled, his king fallen, his seat lost, empty coffers, a
-// full house) a short card says what it means and what to do. Each tip shows once, remembered in the browser, and never during the
+// full house, a hoard with nothing to spend it on) a short card says what it means and what to do. Each tip shows once, remembered in the browser, and never during the
 // tutorial's lessons (they teach the same things in order). Pure functions of the game state and a small per-match memory, so they test
 // headless; the UI only decides when a card may show and keeps the list of tips already seen. Nothing here touches the simulation.
-import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS, CLASS_WORD, answerTo, NEED } from './config.js';
+import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS, CLASS_WORD, answerTo, NEED, FEAST, WORKS } from './config.js';
 
 export const TIP_STORE = 'auld-world.tips';
 export const TIP_GAP = 25;        // seconds of game time between two tips, so a bad minute is not a wall of cards
 export const TIP_SHOW = 22;       // seconds a card stays up unless dismissed
-export const WAVER = 30;          // a held village below this loyalty, pulled toward another lord, is wavering (it slips at 8)
+export const WAVER = 30;
+export const HOARD = 3000;       // grain or coin past this is a hoard (the soak's own line, T12)          // a held village below this loyalty, pulled toward another lord, is wavering (it slips at 8)
 
 const held = (g) => g.villages.filter((v) => v.owner === PLAYER && v.hp > 0);
 const atWarWith = (g) => g.players.filter((p) => p.team !== PLAYER && p.alive && g.rel[PLAYER][p.team] === 'war');
@@ -53,6 +54,9 @@ export const TIPS = [
   { id: 'popcap', title: 'Your house is full',
     text: `No room for more folk: nothing new can be trained or drafted. Raise cottages (+${BUILDINGS.cottage.pop} each, once you have a market; within ${MARKET_RADIUS} tiles of one they also shop there) or win villages, whose folk are housed where they live.`,
     when: (g) => g.popUsed(PLAYER) >= g.popCap(PLAYER) && g.time > 60 },
+  { id: 'hoard', title: 'Your stores are overflowing',
+    text: `Grain and coin piled up past ${HOARD} buy nothing sitting in the stockpile. A Feast at a keep (${FEAST.food} grain and up) lifts every village near it; the keep's great works (${WORKS.order.map((k) => WORKS[k].label).join(', ')}) turn a hoard into lasting sway, goodwill and walls. Or train the army that ends a royal line.`,
+    when: (g) => { const p = g.players[PLAYER]; return (p.food || 0) > HOARD || (p.gold || 0) > HOARD; } },
 ];
 export const TIP_IDS = TIPS.map((t) => t.id);
 

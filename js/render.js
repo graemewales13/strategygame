@@ -677,6 +677,7 @@ export class Renderer {
     const dy = by - h + b.size * HH * z * 0.34;
     // house-colour footing
     this.diamond(ctx, b.tx, b.ty, b.size, b.size); ctx.fillStyle = f.primary; ctx.globalAlpha = 0.08; ctx.fill(); ctx.strokeStyle = f.primary; ctx.globalAlpha = 0.5; ctx.lineWidth = Math.max(1, 1.5 * z); ctx.stroke(); ctx.globalAlpha = 1;
+    if (b.works?.wall && prog >= 1) { ctx.save(); this.diamond(ctx, b.tx + 0.06, b.ty + 0.06, b.size - 0.12, b.size - 0.12); ctx.strokeStyle = '#8d877a'; ctx.lineWidth = Math.max(2.5, 4.5 * z); ctx.stroke(); ctx.strokeStyle = 'rgba(40,34,26,.55)'; ctx.lineWidth = Math.max(1, 1.2 * z); ctx.stroke(); ctx.restore(); }   // a Curtain Wall: a stone ring on the footprint (T12)
     this.shadowAt(ctx, bx + 4 * z, by - b.size * HH * z * 0.5, w * 0.42, b.size * HH * z * 0.5, 0.22);
     if (c && prog >= 1) this.castShadow(ctx, c, bx, by - b.size * HH * z * 0.3, w, h * 0.92, false, dim ? 0.14 : 0.3, 0.9);
     ctx.save();
@@ -722,6 +723,7 @@ export class Renderer {
     }
     if (b.flash > 0 && c) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.7, b.flash * 2); ctx.drawImage(c, bx - w / 2, dy, w, h); ctx.restore(); }
     if (b.garrison?.length && b.team === PLAYER) this.badge(ctx, bx + w * 0.34, dy + h * 0.12, b.garrison.length, f, z);
+    if (b.works && prog >= 1 && z >= 0.45) this.worksMarks(ctx, b, bx - w * 0.3, by - 4 * z, z);   // crown works (T12)
     if (b.kind === 'mine' && b.ore && z >= 0.55) this.oreLabel(ctx, bx, by + 3 * z, b.ore, z);   // what it digs, in the mineral's colour
     if (b.hp < b.maxHp && prog >= 1) this.bar(ctx, bx - w * 0.3, dy - 6, w * 0.6, 4, b.hp / b.maxHp, this.hpColor(b.hp / b.maxHp));
     if (b.queue.length && b.team === PLAYER) this.bar(ctx, bx - w * 0.3, by + 4 * z, w * 0.6, 3, b.queue[0].t / UNITS[b.queue[0].kind].time, '#7ac1ff');
@@ -947,6 +949,23 @@ export class Renderer {
   // would a name label centred on x with its baseline at y (half-width hw) print over a village's name or folk count? (T-145)
   onVillageLabel(x, y, hw) { for (const r of this._vlab || []) if (x + hw > r[0] && x - hw < r[2] && y > r[1] && y - 10 < r[3]) return true; return false; }
   // a painted mark (assets/shared/ui/marks) centred on x, bottom at y, `s` px tall; false when the art is missing
+  // the great works standing at a keep (T12): one small mark each along its foot, painted once ARTREQUIREMENTS priority 41 arrives, drawn here till then
+  worksMarks(ctx, b, x0, y, z) {
+    const s = Math.max(10, 14 * z); let i = 0;
+    for (const k of ['hall', 'temple', 'wall']) {
+      if (!b.works[k]) continue;
+      const x = x0 + i++ * s * 1.15;
+      if (this.mark(ctx, 'work_' + k, x, y + s / 2, s)) continue;
+      const r = s / 2;
+      ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = '#2e2216'; ctx.fill(); ctx.lineWidth = Math.max(1, 1.4 * z); ctx.strokeStyle = '#d8b25a'; ctx.stroke();
+      ctx.fillStyle = k === 'hall' ? '#d8b25a' : k === 'temple' ? '#f2e6c4' : '#a49e90';
+      ctx.beginPath();
+      if (k === 'hall') { ctx.moveTo(x - r * 0.55, y + r * 0.45); ctx.lineTo(x - r * 0.55, y - r * 0.05); ctx.lineTo(x, y - r * 0.55); ctx.lineTo(x + r * 0.55, y - r * 0.05); ctx.lineTo(x + r * 0.55, y + r * 0.45); }
+      else if (k === 'temple') { ctx.ellipse(x, y, r * 0.22, r * 0.55, 0, 0, 7); }
+      else { const q = r * 0.22; ctx.moveTo(x - r * 0.6, y + r * 0.45); for (let j = 0; j < 3; j++) { const xx = x - r * 0.6 + j * q * 2.7; ctx.lineTo(xx, y - r * 0.4); ctx.lineTo(xx + q * 1.3, y - r * 0.4); ctx.lineTo(xx + q * 1.3, y - r * 0.1); ctx.lineTo(xx + q * 2.7, y - r * 0.1); } ctx.lineTo(x + r * 0.6, y + r * 0.45); }
+      ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+  }
   mark(ctx, key, x, y, s, tint) {
     let img = UIART.marks[key]; if (!img) return false;
     if (tint) {   // neutral cloth dyed in the house colour (multiply keeps the painting, the alpha keeps the shape)
