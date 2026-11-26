@@ -1,7 +1,7 @@
 // Auld World - soak harness. Plays headless matches with EVERY house (the player's too) under the AI and records anomalies.
 //   node tools/soak.js [minutes=25] [seeds=1,2,3] [houses=4]     -> prints a report and writes logs/soak-latest.log
 import { Game } from '../js/game.js';
-import { UNITS, BUILDINGS } from '../js/config.js';
+import { UNITS, BUILDINGS, MERC } from '../js/config.js';
 import { distTo } from '../js/entities.js';
 import { writeFileSync } from 'node:fs';
 
@@ -45,6 +45,7 @@ for (const seed of seeds) {
       () => ({ type: 'role', ids: ids(), role: pick(['spy', 'knight']) }),
       () => ({ type: 'hire', buildingId: (bl.length ? pick(bl) : anyB()).id, index: Math.floor(Math.random() * 7) - 1 }),
       () => ({ type: 'drill', buildingId: (bl.length ? pick(bl) : anyB()).id, unitId: pick(mine.length ? mine : g.units).id, kind: pick(['footman', 'bowman', 'knight', 'serf']) }),
+      () => ({ type: 'company', buildingId: (bl.length ? pick(bl) : anyB()).id, company: pick([...MERC.order, 'nonsense']) }),   // (mercenaries, T78)
       () => ({ type: 'levy', buildingId: (bl.length ? pick(bl) : anyB()).id, villageId: anyV().id }),
       () => ({ type: 'leave', buildingId: (bl.length ? pick(bl) : anyB()).id }),
       () => ({ type: 'enter', ids: ids(), targetId: Math.random() < 0.5 ? anyB().id : anyV().id }),

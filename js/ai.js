@@ -4,7 +4,7 @@
 
 import { deliberate, DIPLO, stance, pressWar, STANCE, coalitionOf } from './diplomacy.js';
 import { curveAt, blendPlan, lerp, clamp } from './learn.js';
-import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, NEED, WORKS, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION, HEIR } from './config.js';
+import { BUILDINGS, UNITS, NODE_RES, PLAYER, MATS, MINE_MAX_WORKERS, KING, WAGE_FREE, ALL_GOODS, RES_VALUE, CAPTAIN, FOUND, DOCTRINE, HOUSES, GEAR, GEAR_KEYS, GUARD, GARRISON, SPY_COVER, SIEGE, SIEGE_STORE, BELL, PATROL, EXPLORE, FEAST, FEED, NEED, WORKS, SIGNAL, COUNTER, COUNTER_AI, UNIT_CLASS, DEFEND_R, WARCRY, COALITION, HEIR, MERC } from './config.js';
 
 const WAR_AFTER_DEFAULT = 600;   // seconds of peace before any house marches on another: time to build an economy and an army first
 const PLAN = [
@@ -291,6 +291,7 @@ function think(game, team, p) {
   chooseHeir(game, team, p, t);
   holdFeast(game, team, p, t);
   raiseWorks(game, team, p, t);
+  hireMercs(game, team, p, t);
   feedVillages(game, team, p, t);
   answerNeeds(game, team, p, t);
   courtVillages(game, team, p, seat, army, need, t);
@@ -403,6 +404,25 @@ export function raiseWorks(game, team, p, t) {
     const c = WORKS[k].cost;
     if (Object.keys(c).every((r) => (p[r] || 0) >= c[r] + (r === 'stone' ? WORKS.aiStone : WORKS.aiSpare))) { game.raiseWork(team, keep.id, k); return; }
   }
+}
+
+// Mercenary companies (T78), the player's button: at war, or with coin piling past MERC.aiHoard, a house that keeps MERC.aiSpare over the price
+// hires the free company whose mix best fits its doctrine, at its tavern; the company then marches with its war host like any soldier.
+export function hireMercs(game, team, p, t) {
+  if (t < (p.mercLook || 0)) return;
+  p.mercLook = t + MERC.aiLook;
+  if (p.broke || (p.mercT || 0) > game.time || game.companiesOf(team).length >= MERC.max) return;
+  const atWar = game.players.some((q) => q.alive && q.team !== team && game.rel[team][q.team] === 'war');
+  if (!atWar && (p.gold || 0) < MERC.aiHoard) return;
+  const tav = game.kindB(team, 'tavern').find((b) => b.team === team && b.built >= 1 && b.hp > 0); if (!tav) return;
+  const mix = (DOCTRINE[HOUSES[team]?.faction] || DOCTRINE.british).mix;
+  let best = null, bs = -1;
+  for (const k of MERC.order) {
+    const c = MERC[k]; if ((p.gold || 0) < c.cost + MERC.aiSpare || game.companyHeldBy(k) >= 0) continue;
+    let sc = 0; for (const kind in c.mix) sc += c.mix[kind] * (mix[kind] || 0.1);
+    if (sc > bs) { bs = sc; best = k; }
+  }
+  if (best) game.hireCompany(team, tav.id, best);
 }
 
 // A feast (T33), the player's button: with grain to spare over the cost (FEAST.aiSpare), a house feasts at the keep whose villages need it

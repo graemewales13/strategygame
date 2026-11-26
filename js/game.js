@@ -9,7 +9,7 @@ import {
   INFLUENCE, LOYALTY_RATE, FREE_RATE, TOWN_RANGE, VILLAGE_SIZE, SUBMIT_LOYALTY, SPY_RATE, SPY_CATCH, SPY_INTEL, SPY_WATCH, RETREAT, SPY_COVER, REPAIR, DIFFICULTY, HANDICAP, LEVEL_KEYS, WAR_MIN,
   VILLAGE_KINDS, DEMOLISH, RANKS, RANK_BONUS, XP, KING, TEMPERS, SALLY, STANCES, STANCE, FORMATIONS, FORMATION, DEFEND_R, BUILD_GAP, RELATIONS, DEFAULT_RELATION, RES, MATS, ALL_GOODS, MINE_RATE, MINE_MAX_WORKERS, MINE_JOBS, SMELT, ARMS_STEEL, SCI_SILVER, SCIENCE, WARE_JOY, GOOD_LABEL,
   counterOf, UNIT_CLASS, ARMY_SEEN, NOT_ARMY, MINEABLE, CAMEL_CAP, ROUTE_STOPS, ROUTE, WAREHOUSE_CAP, WAREHOUSE_KEEP, WAREHOUSE_GOODS, MARKET_RADIUS, DISTRICT, LINKS, SHELF_CAP, SHELF_RESERVE, SPY_FEE, PROCESSED,
-  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, NEED, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, AFTERMATH, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS, WORKS } from './config.js';
+  FOUND, COALITION, HOME_POP, INFLUENCE_HOME, DRAFT, SACK, GARRISON, VILLAGE_GARRISON, BUILDERS, DRILL, LEVY, TAVERN_ROSTER, TAVERN_REFRESH, WAYPOINTS, WANDERER_NAMES, TRAITS, ASK_DELAY, NEED, LEARNING, TECH, TECH_KEYS, TUTOR_FOE, MEDICINE, FORGE_RESERVE, GEAR, GEAR_KEYS, REFIT, CRAFT_QUEUE, FARLANDS, FARLAND_CHANCE, PERK, DEEDS, CAPTAIN, packWords, SIEGE, SIEGE_STORE, SITE_FRAGILE, BELL, KEEP_ARROWS, EXPLORE, TRAIN, unitPlural, FEAST, FEED, SIGNAL, WARCRY, routWords, BATTLE, BATTLE_CLASS, AFTERMATH, WAR_BOOK, CEDE, HEIR, HEIR_TRAITS, WORKS, MERC } from './config.js';
 import { createMap } from './map.js';
 import { makeUnit, makeBuilding, makeVillage, distTo, dist } from './entities.js';
 import { updateAI, answerFlare } from './ai.js';
@@ -301,7 +301,7 @@ export class Game {
   hasBuilding(team, kind) { return this.kindB(team, kind).some((b) => b.team === team && b.kind === kind && b.built >= 1 && b.hp > 0); }
   popUsed(team) {
     let n = 0;
-    for (const u of this.units) if (u.team === team && u.hp > 0 && u.kind !== 'king' && !UNITS[u.kind]?.nopop) n++;   // (pack animals are not people)
+    for (const u of this.units) if (u.team === team && u.hp > 0 && u.kind !== 'king' && !UNITS[u.kind]?.nopop && !u.merc) n++;   // (pack animals are not people; a mercenary company camps in its own tents, T78)
     for (const b of this.teamB(team)) if (b.team === team) n += b.queue.filter((q) => !UNITS[q.kind]?.nopop).length;
     return n;
   }
@@ -698,6 +698,7 @@ export class Game {
       case 'warcry': return this.warCry(team);
       case 'heir': return this.nameHeir(team, +it.index);
       case 'hire': return this.hire(team, it.buildingId, it.index);
+      case 'company': return this.hireCompany(team, it.buildingId, it.company);
       case 'research': return this.startResearch(team, it.tech);
       case 'craft': return this.craft(team, it.buildingId, it.item);
       case 'uncraft': return this.uncraft(team, it.buildingId, it.index);
@@ -1369,6 +1370,65 @@ export class Game {
     u.trait = f ? null : trait; u.hpMul = t.hp; u.dmgAdd = t.dmg; u.spdAdd = t.spd;
     if (f) { u.far = far; u.origin = f.land; }
     u.maxHp = Math.round(st.hp * t.hp); u.hp = u.maxHp; u.speed = st.speed + t.spd;
+  }
+  // ---- mercenary companies (T78): hired whole at a tavern for coin, paid dear while they serve, gone (or turned) when the coin runs out ----
+  // u.merc = the company's key on each of its men; a company serves one house at a time in the valley; p.mercT: no new company before then.
+  companyHeldBy(k) { const u = this.units.find((x) => x.merc === k && x.hp > 0); return u ? u.team : -1; }
+  companiesOf(team) { const out = []; for (const u of this.units) if (u.merc && u.team === team && u.hp > 0 && !out.includes(u.merc)) out.push(u.merc); return out; }
+  mercsOf(team, k = null) { return this.units.filter((u) => u.merc && u.team === team && u.hp > 0 && (!k || u.merc === k)); }
+  mercWage(team) { let w = 0; for (const u of this.units) if (u.merc && u.team === team && u.hp > 0) w += (WAGE[u.kind] || 0) * MERC.wage; return w; }   // coin a second
+  mercWhy(team, b, k) {
+    const p = this.players[team], c = MERC[k];
+    if (!c || !MERC.order.includes(k)) return 'No such company.';
+    if (!p || !b || b.type !== 'building' || b.kind !== 'tavern' || b.team !== team || b.hp <= 0 || b.built < 1) return 'A company is hired at a finished tavern of yours.';
+    const held = this.companyHeldBy(k);
+    if (held === team) return `The ${c.label} already serve you.`;
+    if (held >= 0) return `The ${c.label} are in the pay of ${this.known[team]?.[held] ? HOUSES[held].short : 'another house'}.`;
+    const mine = this.companiesOf(team); if (mine.length >= MERC.max) return `The ${MERC[mine[0]].label} already serve you: ${MERC.max === 1 ? 'one company' : MERC.max + ' companies'} at a time.`;
+    const wait = (p.mercT || 0) - this.time; if (wait > 0) return `No other captain will treat with you yet: ${Math.ceil(wait)} s.`;
+    if (p.broke) return 'No company signs on with a house that cannot pay its soldiers.';
+    if ((p.gold || 0) < c.cost) return this.shortfall(team, { gold: c.cost }, ` for the ${c.label}`);
+    return null;
+  }
+  hireCompany(team, buildingId, k) {
+    const b = this.byId.get(buildingId), why = this.mercWhy(team, b, k);
+    if (why) { if (team === PLAYER) this.diploNote = why; return false; }
+    const p = this.players[team], c = MERC[k], men = [];
+    p.gold -= c.cost; p.spent += c.cost; p.mercT = this.time + MERC.cool; p.mercsHired = (p.mercsHired || 0) + 1;
+    b.garrison ||= [];
+    for (const kind of Object.keys(c.mix)) for (let i = 0; i < c.mix[kind]; i++) {
+      const u = this.addUnit(kind, team, b.x, b.y);
+      this.eject(u, b);   // (on the open ring round the tavern, the least crowded tile first)
+      this.applyTrait(u, 'veteran'); u.merc = k; u.from = b.id;
+      u.name = `${WANDERER_NAMES[Math.floor(this.roll() * WANDERER_NAMES.length)]} of the ${c.label}`;
+      men.push(u);
+    }
+    if (b.rally) this.cmdMove(men, b.rally.x, b.rally.y);
+    if (team === PLAYER) { this.log(PLAYER, `The ${c.label} sign on: ${men.length} men for ${c.cost} coin and ${Math.round(this.mercWage(team) * 60)} coin a minute while they serve.`, 'good'); this.sfx('coin', b.x, b.y); }
+    else if (this.known[PLAYER]?.[team]) this.log(-1, `${p.name} has hired the ${c.label}.`, 'info');
+    return true;
+  }
+  // a broke paymaster loses his company at once: to the nearest house at war with him that has none, else off down the road
+  updateMercs() {
+    for (const p of this.players) {
+      if (p.alive && !p.broke) continue;
+      for (const k of this.companiesOf(p.team)) {
+        const men = this.mercsOf(p.team, k), c = MERC[k], at = men[0];
+        const foes = this.players.filter((q) => q.alive && q.team !== p.team && this.rel[p.team]?.[q.team] === 'war' && !this.companiesOf(q.team).length).map((q) => ({ q, s: this.seatOf(q.team) })).filter((o) => o.s);
+        foes.sort((a, b) => Math.hypot(a.s.x - at.x, a.s.y - at.y) - Math.hypot(b.s.x - at.x, b.s.y - at.y) || a.q.team - b.q.team);
+        const to = p.alive ? foes[0]?.q : null;
+        for (const u of men) {
+          if (u.inside != null) this.eject(u, this.byId.get(u.inside));
+          if (!to) { u.hp = 0; continue; }
+          u.team = to.team; u.task = { type: 'idle' }; u.path = []; u.route = null; u.queue = null; u.captain = false; u.parked = false; u.from = null;
+        }
+        if (to) { this._ug = null; this.players[to.team].mercT = this.time + MERC.cool; }
+        const said = to ? `The ${c.label}, unpaid, sell their swords to ${to.name}.` : `The ${c.label}, unpaid, march off down the road.`;
+        if (p.team === PLAYER) this.log(PLAYER, said, 'bad');
+        else if (to?.team === PLAYER) this.log(PLAYER, `The ${c.label}, unpaid by ${p.name}, come over to you: their wage is yours now.`, 'good');
+        else if (this.known[PLAYER]?.[p.team]) this.log(-1, said, 'info');
+      }
+    }
   }
   // ---- characters: far-landers' gifts, deeds and captains ---------------------------------------------------
   // the far-landers and captains whose presence works on the folk around them, gathered once a tick
@@ -3191,6 +3251,10 @@ export class Game {
     let rate = 0, n = 0, list = [];
     if (paid) { list = paid; n = list.length; }   // (Speed, T18: updateEconomy lists every house's paid men in one pass, in the units' order)
     else for (const u of this.units) if (u.team === p.team && u.hp > 0 && WAGE[u.kind]) { n++; list.push(u); }
+    if (list.some((u) => u.merc)) {   // a company is paid in full, MERC.wage times a soldier's pay, and never among the household's free men (T78)
+      for (const u of list) if (u.merc) rate += WAGE[u.kind] * MERC.wage;
+      list = list.filter((u) => !u.merc); n = list.length;
+    }
     if (n > WAGE_FREE) { list.sort((a, b) => WAGE[b.kind] - WAGE[a.kind]); for (let i = WAGE_FREE; i < n; i++) rate += WAGE[list[i].kind]; }
     p.wageRate = rate;
     p.wageDebt += rate * dt;
@@ -3271,7 +3335,7 @@ export class Game {
     this.updateWanderers(dt);
     this.updateSally(dt);
     this.updateUnits(dt); this.updateGear(dt); this.separate(dt); this.autoCamels(dt);
-    this.updateProjectiles(dt); this.updateBattles(dt); this.updateNeeds(dt); this.updateWorks(dt);
+    this.updateProjectiles(dt); this.updateBattles(dt); this.updateNeeds(dt); this.updateWorks(dt); this.updateMercs();
     if (this.aiOn) updateAI(this, dt);
     this.cleanup();
     this.checkEnd(dt);

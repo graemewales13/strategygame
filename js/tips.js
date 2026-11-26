@@ -3,7 +3,7 @@
 // full house, a hoard with nothing to spend it on) a short card says what it means and what to do. Each tip shows once, remembered in the browser, and never during the
 // tutorial's lessons (they teach the same things in order). Pure functions of the game state and a small per-match memory, so they test
 // headless; the UI only decides when a card may show and keeps the list of tips already seen. Nothing here touches the simulation.
-import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS, CLASS_WORD, answerTo, NEED, FEAST, WORKS } from './config.js';
+import { PLAYER, KING, DEFEND_R, MINE_JOBS, RETREAT, BUILDINGS, MARKET_RADIUS, CLASS_WORD, answerTo, NEED, FEAST, WORKS, MERC } from './config.js';
 
 export const TIP_STORE = 'auld-world.tips';
 export const TIP_GAP = 25;        // seconds of game time between two tips, so a bad minute is not a wall of cards
@@ -55,7 +55,7 @@ export const TIPS = [
     text: `No room for more folk: nothing new can be trained or drafted. Raise cottages (+${BUILDINGS.cottage.pop} each, once you have a market; within ${MARKET_RADIUS} tiles of one they also shop there) or win villages, whose folk are housed where they live.`,
     when: (g) => g.popUsed(PLAYER) >= g.popCap(PLAYER) && g.time > 60 },
   { id: 'hoard', title: 'Your stores are overflowing',
-    text: `Grain and coin piled up past ${HOARD} buy nothing sitting in the stockpile. A Feast at a keep (${FEAST.food} grain and up) lifts every village near it; the keep's great works (${WORKS.order.map((k) => WORKS[k].label).join(', ')}) turn a hoard into lasting sway, goodwill and walls. Or train the army that ends a royal line.`,
+    text: `Grain and coin piled up past ${HOARD} buy nothing sitting in the stockpile. A Feast at a keep (${FEAST.food} grain and up) lifts every village near it; the keep's great works (${WORKS.order.map((k) => WORKS[k].label).join(', ')}) turn a hoard into lasting sway, goodwill and walls. Coin hires a mercenary company at a tavern (${MERC.order.map((k) => MERC[k].label).join(', ')}), ready at once. Or train the army that ends a royal line.`,
     when: (g) => { const p = g.players[PLAYER]; return (p.food || 0) > HOARD || (p.gold || 0) > HOARD; } },
 ];
 export const TIP_IDS = TIPS.map((t) => t.id);

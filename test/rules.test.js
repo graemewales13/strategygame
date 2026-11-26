@@ -3156,3 +3156,70 @@ test('tips (T12): a hoard past the soak\'s line gets its tip, naming the feast a
   g.players[PLAYER].gold = 3001; assert.ok(t.when(g, tipMemory()));
   assert.match(t.text, /Great Hall, Great Temple, Curtain Wall/);
 });
+test('mercenary companies (T78): hired whole at a tavern for coin, Trained, no cottage room, paid dear, one a house and one house a company; unpaid they leave or turn to a foe; saved; rivals hire at war or with a hoard', async () => {
+  const { MERC, WAGE, WAGE_FREE } = await import('../js/config.js');
+  const { hireMercs } = await import('../js/ai.js');
+  const g = mk(), p = g.players[PLAYER], seat = g.seatOf(PLAYER);
+  const tav = g.addBuilding('tavern', PLAYER, Math.round(seat.x + 7), Math.round(seat.y - 3), true); g.recomputeWalk();
+  const bar = g.addBuilding('barracks', PLAYER, Math.round(seat.x - 9), Math.round(seat.y + 4), true); g.recomputeWalk();
+  p.gold = 10;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'company', buildingId: tav.id, company: 'lances' }), false);
+  assert.match(g.diploNote, /Not enough goods for the Free Lances/);
+  p.gold = 5000;
+  assert.equal(g.hireCompany(PLAYER, bar.id, 'lances'), false); assert.match(g.diploNote, /finished tavern/);
+  assert.equal(g.hireCompany(PLAYER, tav.id, 'nonsense'), false);
+  const pop0 = g.popUsed(PLAYER), n0 = g.units.length;
+  assert.equal(g.applyIntent({ team: PLAYER, type: 'company', buildingId: tav.id, company: 'lances' }), true);
+  const men = g.mercsOf(PLAYER, 'lances'), size = Object.values(MERC.lances.mix).reduce((a, b) => a + b, 0);
+  assert.equal(men.length, size); assert.equal(g.units.length, n0 + size);
+  assert.equal(p.gold, 5000 - MERC.lances.cost);
+  assert.equal(men.filter((u) => u.kind === 'knight').length, MERC.lances.mix.knight);
+  assert.ok(men.every((u) => u.rank === 1 && u.merc === 'lances' && /of the Free Lances$/.test(u.name)), 'Trained, named for the company');
+  assert.ok(men.every((u) => g.walk[Math.floor(u.y) * g.W + Math.floor(u.x)] === 1), 'every man on open ground');
+  assert.equal(g.popUsed(PLAYER), pop0, 'they camp in their own tents');
+  assert.deepEqual(g.companiesOf(PLAYER), ['lances']); assert.equal(g.companyHeldBy('lances'), PLAYER);
+  assert.equal(g.hireCompany(PLAYER, tav.id, 'bows'), false); assert.match(g.diploNote, /one company at a time/);
+  // the wage: every man paid MERC.wage times a soldier's pay, never among the free men
+  const ownPaid = g.units.filter((u) => u.team === PLAYER && u.hp > 0 && WAGE[u.kind] && !u.merc).length;
+  run(g, 1.1);
+  const expect = men.reduce((s, u) => s + WAGE[u.kind] * MERC.wage, 0);
+  assert.ok(Math.abs(p.wageRate - expect) < 1e-9 || ownPaid > WAGE_FREE, `wage ${p.wageRate} vs ${expect}`);
+  assert.ok(Math.abs(g.mercWage(PLAYER) - expect) < 1e-9);
+  // a rival cannot hire the same company; another it may
+  const r = g.players[1], rs = g.seatOf(1), rtav = g.addBuilding('tavern', 1, Math.round(rs.x + 7), Math.round(rs.y - 3), true); g.recomputeWalk();
+  r.gold = 5000;
+  assert.match(g.mercWhy(1, rtav, 'lances'), /in the pay of/); assert.equal(g.hireCompany(1, rtav.id, 'lances'), false);
+  // saved: a load keeps the company, its wage and the wait
+  const h = new Game({ seed: 8, houses: 3, ai: false }); h.restore(JSON.parse(JSON.stringify(g.serialize())));
+  assert.deepEqual(h.companiesOf(PLAYER), ['lances']); assert.equal(h.players[PLAYER].mercT, p.mercT);
+  // unpaid with no foe at war: they march off; the wait still holds
+  p.gold = 0; p.brokeT = 99; p.broke = true; g.updateMercs(); g.cleanup();
+  assert.equal(g.mercsOf(PLAYER).length, 0, 'gone down the road');
+  assert.match(g.hireCompany(PLAYER, tav.id, 'bows') ? '' : g.diploNote, /cannot pay|treat with you/);
+  // a rival's company, unpaid while at war with the player, comes over to him
+  p.broke = false; p.brokeT = 0; p.wageDebt = 0; p.gold = 100;
+  r.mercT = 0; r.mercLook = 0; r.gold = MERC.aiHoard + 10;
+  hireMercs(g, 1, r, g.time);
+  const theirs = g.companiesOf(1); assert.equal(theirs.length, 1, 'a hoard hires a company at peace');
+  g.rel[1][PLAYER] = g.rel[PLAYER][1] = 'war';
+  r.gold = 0; r.broke = true; g.updateMercs();
+  assert.equal(g.mercsOf(1).length, 0); assert.ok(g.mercsOf(PLAYER, theirs[0]).length > 0, 'sold their swords to the foe');
+  assert.ok(g.units.filter((u) => u.merc).every((u) => u.team === PLAYER));
+  // rivals keep their spare: not at peace without a hoard, not without MERC.aiSpare over the price
+  const q = g.players[2], qs = g.seatOf(2); g.addBuilding('tavern', 2, Math.round(qs.x + 7), Math.round(qs.y - 3), true); g.recomputeWalk();
+  q.gold = MERC.aiHoard - 1; q.mercLook = 0; hireMercs(g, 2, q, g.time); assert.equal(g.companiesOf(2).length, 0);
+  g.rel[2][1] = g.rel[1][2] = 'war'; q.gold = MERC.bows.cost + MERC.aiSpare - 1; q.mercLook = 0; hireMercs(g, 2, q, g.time); assert.equal(g.companiesOf(2).length, 0);
+  q.gold += 2; q.mercLook = 0; hireMercs(g, 2, q, g.time); assert.deepEqual(g.companiesOf(2), ['bows'], 'at war with coin to spare: the one it can afford');
+  // the UI wires it, the tip names it
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  assert.ok(ui.includes("case 'company':") && ui.includes('this.companyPanel(') && ui.includes('this.mercLine('));
+  assert.match(TIPS.find((x) => x.id === 'hoard').text, /Free Lances, Marcher Bows, Black Band/);
+  const line = readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n').find((l) => l.startsWith('- **Mercenary companies**')) || '';
+  for (const k of MERC.order) assert.ok(line.includes(`**${MERC[k].label}** (${MERC[k].cost} coin`), `README gives the ${MERC[k].label}' price`);
+});
+test('the tavern says what it does (T-151): its text names the wanderers and companies, and the roster title reads TAVERN_REFRESH', () => {
+  assert.match(BUILDINGS.tavern.info, /wanderers and mercenary companies/);
+  const ui = readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+  assert.ok(!ui.includes('Math.round(120 / 60)'), 'no refresh time typed into ui.js');
+  assert.ok(ui.includes('Math.round(TAVERN_REFRESH / 60)'));
+});

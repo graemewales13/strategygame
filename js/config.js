@@ -240,7 +240,7 @@ export const BUILDINGS = {
   market:    { label: 'Market',        size: 2, hp: 540,  sight: 6,  pop: 0, cost: { food: 0, wood: 120, gold: 40 }, time: 20, requires: [],          info: 'Trade hub: stocked from nearby mines, foundries, farms, mills and warehouses. Trains camels to trade with other markets (yours or a trade partner\'s). Drop-off. Small coin trickle.' },
   forge:     { label: 'Forge',         size: 2, hp: 740,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60 }, time: 24, requires: ['barracks', 'foundry'],      info: 'Arms: footmen/knights +3 dmg, bowmen +2. Feeds on steel: each 6 steel is another arms level (max 3).' },
   workshop:  { label: 'Workshop',      size: 3, hp: 780,  sight: 5,  pop: 0, cost: { food: 0, wood: 160, gold: 70 }, time: 26, requires: ['forge', 'academy'], info: 'Builds siege engines: the Ram, Onager and Trebuchet, each once its research is done at the academy.' },
-  tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: [],         info: 'Trains spies. Local loyalty pull. Coin trickle.' },
+  tavern:    { label: 'Tavern',        size: 2, hp: 480,  sight: 6,  pop: 0, cost: { food: 40, wood: 100, gold: 40 }, time: 18, requires: [],         info: 'Hires wanderers and mercenary companies; trains spies. Local loyalty pull. Coin trickle.' },
   academy:   { label: 'Academy',       size: 3, hp: 640,  sight: 9,  pop: 0, cost: { food: 0, wood: 140, gold: 80 }, time: 24, requires: ['keep'],          info: 'The science division: makes learning (more with scholars beside it) and researches technologies, one at a time. Trains scholars. Unlocks the workshop and temple coin.' },
   armoury:   { label: 'Armoury',       size: 2, hp: 760,  sight: 5,  pop: 0, cost: { food: 0, wood: 150, gold: 60, stone: 20 }, time: 24, requires: ['forge'], tech: 'metallurgy', info: 'Makes weapons and armour from the stockpile (each unlocked by research): spears, swords, longbows, crossbows, lances, mail, plate. Soldiers take them up when trained, or when idle nearby.' },
   temple:    { label: 'Temple',        size: 2, hp: 590,  sight: 7,  pop: 0, cost: { food: 0, wood: 130, gold: 50 }, time: 20, requires: ['keep'],          info: 'Strong loyalty aura. Coin trickle with an academy.' },
@@ -439,6 +439,20 @@ export const WORKS = {
   temple: { label: 'Great Temple', cost: { food: 800, wood: 400, gold: 1200 }, secs: 120, opinion: 0.15, info: 'a house of worship the neighbours speak of' },
   wall: { label: 'Curtain Wall', cost: { wood: 800, gold: 500, stone: 300 }, secs: 100, hp: 1.5, arrows: 2, info: 'a stone ring about the keep' },
   aiSpare: 600, aiStone: 40, aiLook: 30,
+};
+// Mercenary companies (T78, T12 slice 2; AoE II's and Northgard's mercenaries, Bannerlord's hired troops): a finished tavern of yours offers
+// the free companies of the valley. A company is hired whole for `cost` coin, comes Trained and ready at once beside the tavern, camps in its
+// own tents (needs no cottage room) and draws WAGE x `wage` a man every second, never among the household's free men (WAGE_FREE). A house
+// keeps `max` company at a time and waits `cool` seconds after hiring before the next; a company serves one house at a time in the whole
+// valley. When its paymaster is broke (BROKE.grace) the company leaves at once; with a house at war with him it sells its swords to the
+// nearest such house (if that one has no company of its own), else it marches off. Rivals hire one at war, or when coin piles past
+// `aiHoard`, keeping `aiSpare` over the price, looking every `aiLook` seconds. Never a win (DEMANDS): the classic coin sink.
+export const MERC = {
+  order: ['lances', 'bows', 'black'],
+  lances: { label: 'Free Lances', mix: { knight: 2, footman: 3 }, cost: 650, info: 'riders and foot who left a lord who could not pay' },
+  bows: { label: 'Marcher Bows', mix: { bowman: 5, footman: 1 }, cost: 500, info: 'hill archers who shoot for whoever feeds them' },
+  black: { label: 'Black Band', mix: { footman: 6, bowman: 2 }, cost: 600, info: 'a hard line of spears, black-cloaked' },
+  wage: 2.5, max: 1, cool: 180, aiSpare: 600, aiHoard: 2400, aiLook: 30,
 };
 export const FEED = { amount: 60, cap: 200, r: 36, warn: 60, aiSpare: 400, aiLook: 25 };
 // Villages that ask (T56, Against the Storm's resolve, CK3's vassal requests): now and then a held village asks its lord for what it lacks,

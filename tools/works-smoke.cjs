@@ -35,7 +35,7 @@ const { chromium } = require('playwright');
   ok.push(['the wall stands', await p.evaluate(() => !!window.__seven.game.byId.get(window.__keep).works?.wall)]);
   const box = await p.evaluate(() => { const e = document.querySelector('button[data-act="work"][data-work="wall"]'), sp = e && e.closest('#selPanel, #cmdPanel, .panel'); const a = e?.getBoundingClientRect(); return { bottom: a?.bottom, vh: innerHeight }; });
   ok.push(['the work buttons are on screen at 1366x768', box.bottom <= box.vh]);
-  if (process.argv[2]) { await p.evaluate(() => { const { renderer } = window.__seven; const k = window.__seven.game.byId.get(window.__keep); renderer.zoom = 1.6; renderer.centerOn(k.x, k.y); }); await p.waitForTimeout(600); await p.screenshot({ path: process.argv[2] }); }
+  if (process.argv[2]) { await p.evaluate(() => { const { renderer } = window.__seven; const k = window.__seven.game.byId.get(window.__keep); renderer.cam.zoom = 1.6; renderer.centerOn(k.x, k.y); }); await p.waitForTimeout(600); await p.screenshot({ path: process.argv[2] }); }
   for (const [k, v] of ok) console.log(v ? 'ok  ' : 'FAIL', k);
   console.log('errors', JSON.stringify(errs)); await b.close(); process.exit(errs.length || ok.some(([, v]) => !v) ? 1 : 0);
 })();

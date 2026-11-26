@@ -11,7 +11,7 @@ import { camelSprite, FIMG, SIMG, uiArt, RULER_ART } from './art.js';
 import { shortName } from './names.js';
 import { gfx, setQuality } from './gfx.js';
 import {
-  COALITION, NEED, DOCTRINE, DIFFICULTY, HANDICAP, LEVEL_KEYS, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, AFTERMATH, WARE_JOY, DEMOLISH, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, CEDE, WAR_BOOK, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR, WORKS } from './config.js';
+  COALITION, NEED, DOCTRINE, DIFFICULTY, HANDICAP, LEVEL_KEYS, counterWords, CLASS_WORD, ARMY_SEEN, answerTo, TILE, MAP_SIZES, PLAYER, KING, HOUSES, FACTIONS, UNITS, BUILDINGS, BUILD_ORDER_UI, RES, RES_LABEL, NODE_RES, VILLAGE_KINDS, AFTERMATH, WARE_JOY, DEMOLISH, BUILDERS, MIN_HOUSES, MAX_HOUSES, RELATIONS, MATS, MINEABLE, REFIT, SPY_INTEL, CAMEL_CAP, ROUTE_STOPS, WAREHOUSE_CAP, DISTRICT, LINKS, SPY_FEE, TRAIN, STANCES, STANCE, IDLE_ALERT, FORMATIONS, FORMATION, DRAFT, WAGE_FREE, INCOME_SOURCES, TAX, SHELF_CAP, MARKET_RADIUS, ALL_GOODS, GOOD_LABEL, GOOD_COLOR, GOOD_INFO, RES_VALUE, MINE_MAX_WORKERS, MINE_JOBS, RANKS, RANK_BONUS, SCIENCE, ARMS_STEEL, SCI_SILVER, SMELT, GARRISON, DRILL, TRAITS, ABILITIES, LEVY, VILLAGE_GARRISON, POP_HOUSING, SETTLE_FOOD, FARLANDS, DEEDS, CAPTAIN, TEMPERS, TECH, TECH_KEYS, GEAR, GEAR_KEYS, CRAFT_QUEUE, packWords, packOf, SIEGE_STORE, PEACE_COIN, CEDE, WAR_BOOK, BELL, KEEP_ARROWS, unitPlural, plural, FEAST, FEED, WARCRY, routWords, HEIR, WORKS, MERC, WAGE, TAVERN_REFRESH } from './config.js';
 import { drawCrest, drawVale } from './render.js';
 import { intel, ranking, DIPLO, pactWhy, allianceNeed, dread, coalitionOf, coalitionAgainst, coalitionWords, coalitionCall, wrongOf } from './diplomacy.js';
 import { groupUnits, groupRow, cleanGroups } from './groups.js';
@@ -33,7 +33,8 @@ const portrait = (kind, accent, team = PLAYER, src = artUrl(kind, team)) => src 
 const uiImg = (group, key, fallback = '', cls = 'ico') => { const u = uiArt(group, key); return u ? `<img class="${cls}" src="${u}" alt="" draggable="false">` : fallback; };
 // the face for a person: a far-lander's own portrait, a ruler's portrait for a king, else the unit art
 const faceOf = (u) => (u.far && uiArt('portraits', u.far)) || (u.kind === 'king' && uiArt('portraits', RULER_ART[HOUSES[u.team]?.faction])) || null;
-const WORK_GLYPH = { hall: '🏛', temple: '🕯', wall: '🧱' };   // crown works (T12) until their icons are painted (priority 41)
+const WORK_GLYPH = { hall: '🏛', temple: '🕯', wall: '🧱' };
+const MERC_GLYPH = '💰';   // mercenary companies (T78) until the purse mark is painted (priority 42)   // crown works (T12) until their icons are painted (priority 41)
 const GLYPH = {
   cottage: '⌂', farm: '≋', mill: '✢', warehouse: '▣', market: '⚖', barracks: '⚔', archery: '➶', stable: '♞', tower: '♜',
   mine: '⛏', foundry: '♨', forge: '⚒', workshop: '⚙', tavern: '⚱', academy: '✎', temple: '✝', keep: '♚', armoury: '⛨',
@@ -780,6 +781,7 @@ export class UI {
       case 'hire': { const b = this.selEntity(); if (b) this.host.send({ type: 'hire', buildingId: b.id, index: +d.i }); break; }
       case 'leave': { const b = this.selEntity(); if (b) this.host.send({ type: 'leave', buildingId: b.id }); break; }
       case 'bell': this.ringBell(); break;
+      case 'company': { const b = this.selEntity(); if (b) { const r = this.host.send({ type: 'company', buildingId: b.id, company: d.company }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); } break; }   // (T78)
       case 'work': { const b = this.selEntity(); if (b) { const r = this.host.send({ type: 'work', buildingId: b.id, work: d.work }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); } break; }   // (T12)
       case 'feast': { const b = this.selEntity(); if (b) { const r = this.host.send({ type: 'feast', buildingId: b.id }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); this.sigCmd = ''; } break; }
       case 'vfeast': { const v = this.selEntity(), k = v && this.game.feastKeepFor(PLAYER, v); if (k) { const r = this.host.send({ type: 'feast', buildingId: k.id }); if (!r && this.game.diploNote) this.toast(this.game.diploNote, 'warn'); } else if (v) this.toast(`No finished keep of yours within ${FEAST.r} tiles of ${v.name}.`, 'warn'); this.sigCmd = ''; break; }   // (T56)
@@ -866,6 +868,7 @@ export class UI {
       html += `<div class="dline" data-tip="${encodeURIComponent('<b>How they see you</b><br><b>Threat</b>: your buildings swaying their villages, your soldiers in their land, your army close and stronger.<br><b>Temptation</b>: you are weaker, busy at war, leaderless, broke, or a village of yours lies close and poorly guarded.<br><b>Ties</b>: trade, alliance, a common enemy, goodwill, distance, a fresh peace.<br>They go to war when threat and temptation clearly outweigh the ties (and warn you first).')}">They see you: <b style="color:${col}">${st.mood}</b> · threat ${pct(st.threat)}% · temptation ${pct(st.temptation)}% · ties ${pct(st.ties)}%${rel === 'war' ? ` · weariness ${pct(st.weariness)}%` : ''}${top ? `<br><small>${top}</small>` : ''}</div>`;
     }
     html += this.worksLine(t);
+    html += this.companyLine(t);
     html += this.seenArmyLine(t);
     if (i.secrets) {
       const s = i.secrets, mix = Object.entries(s.mix).map(([k, n]) => `${n} ${UNITS[k].label.toLowerCase()}${n === 1 ? '' : 's'}`).join(', ') || 'no soldiers';
@@ -1051,7 +1054,7 @@ export class UI {
       if (el.textContent !== txt) el.textContent = txt;
       el.className = net >= 0 ? 'up' : 'down';
       const parts = INCOME_SOURCES.filter((k) => (p.inc?.[k] || 0) >= 0.005).map((k) => `${k} +${p.inc[k].toFixed(2)}`);
-      $('r-gold').parentElement.dataset.tip = encodeURIComponent(`<b>Treasury</b><br>Income ${inc.toFixed(2)}/s${parts.length ? ': ' + parts.join(', ') : ''}<br>Army pay −${(p.wageRate || 0).toFixed(2)}/s (the first ${WAGE_FREE} soldiers are household)${p.broke ? '<br><span class="need">Purse empty: soldiers fight at 70% and desert.</span>' : ''}`);
+      $('r-gold').parentElement.dataset.tip = encodeURIComponent(`<b>Treasury</b><br>Income ${inc.toFixed(2)}/s${parts.length ? ': ' + parts.join(', ') : ''}<br>Army pay −${(p.wageRate || 0).toFixed(2)}/s (the first ${WAGE_FREE} soldiers are household${g.mercWage(PLAYER) ? `; your mercenary company ${g.mercWage(PLAYER).toFixed(2)}/s of it` : ''})${p.broke ? '<br><span class="need">Purse empty: soldiers fight at 70% and desert.</span>' : ''}`);
     }
     const used = g.popUsed(PLAYER), cap = g.popCap(PLAYER);
     {
@@ -1136,6 +1139,7 @@ export class UI {
           ${counterWords(u.kind) ? `<div class="stat"><label>Counters</label><span class="counter" data-tip="${encodeURIComponent('<b>Unit counters</b><br>Spears stop horse, horse rides down bowmen and siege crews, arrows shoot down foot. The share is added to every blow against that kind.')}">${counterWords(u.kind)}</span></div>` : ''}
           ${g.ranked(u) ? this.rankRow(u) : ''}
           ${this.characterRows(u)}
+          ${this.mercLine(u)}
           ${mine ? `<div class="stat"><label>Task</label><span>${this.taskText(u)}${u.carry && u.carry.amount > 0.5 ? ` · ${Math.floor(u.carry.amount)} ${u.carry.kind}` : ''}</span></div>` : ''}
           ${g.fighter(u) || u.kind === 'king' ? `<div class="stat"><label>Stance</label><span>${STANCE.label[g.stanceOf(u)]}</span></div>` : ''}`;
       } else {
@@ -1328,7 +1332,7 @@ export class UI {
   }
   rosterPanel(b) {
     const g = this.game, p = g.players[PLAYER], room = g.popUsed(PLAYER) < g.popCap(PLAYER);   // (a hire needs room: a cottage gives five)
-    let html = `<div class="ctitle">Wanderers for hire (new faces every ${Math.round(120 / 60)} min)</div><div class="cgrid">`;
+    let html = `<div class="ctitle">Wanderers for hire (new faces every ${Math.round(TAVERN_REFRESH / 60)} min, ${Math.ceil(b.rosterT || 0)} s to the next)</div><div class="cgrid">`;
     b.roster.forEach((w, i) => {
       const far = w.far ? FARLANDS[w.far] : null, t = TRAITS[w.trait], afford = g.canAfford(PLAYER, w.cost);
       if (far) { html += this.btn('hire', { off: !afford || !room, glyph: '✦', art: 'recruit', img: uiArt('portraits', w.far), name: `${w.name.split(' ')[0]}`, sub: `${far.perk} · ${costShort(w.cost)}`, data: { i }, cls: 'far', tip: `<b>${esc(w.name)}</b><br>${esc(far.label)} from ${esc(far.land)}. A traveller of a people with no house in the valley.<br><b>${far.perk}</b>: ${far.tip}<br><span class="info">Starts Trained. Keeps the gift when drilled into a soldier.</span><br><span class="cost">${costText(w.cost, p)}</span>` }); return; }
@@ -1472,6 +1476,33 @@ export class UI {
     const w = this.game.worksOf(t), ks = WORKS.order.filter((k) => w[k]);
     if (!ks.length) return '';
     return `<div class="dline" data-tip="${encodeURIComponent(`<b>Great works</b><br>${ks.map((k) => `<b>${WORKS[k].label}</b>: ${esc(this.game.workDoes(k)).replace(/your|yours/g, 'theirs')}.`).join('<br>')}<br>Lost with their keep: take or raze it.`)}">${WORK_GLYPH[ks[0]]} Great works: ${ks.map((k) => WORKS[k].label).join(', ')}</div>`;
+  }
+  // T78: the mercenary company a met house keeps (spoken of, like its works)
+  companyLine(t) {
+    const ks = this.game.companiesOf(t); if (!ks.length) return '';
+    const men = this.game.mercsOf(t).length;
+    return `<div class="dline" data-tip="${encodeURIComponent(`<b>Mercenaries</b><br>${ks.map((k) => `<b>The ${MERC[k].label}</b>: ${esc(MERC[k].info)}.`).join('<br>')}<br>Paid dear by the minute: a house that cannot pay them loses them, and to a foe at war with it if one has no company of its own.`)}">${MERC_GLYPH} Mercenaries: the ${ks.map((k) => MERC[k].label).join(', ')} (${men} men)</div>`;
+  }
+  // T78: a hired man's contract on his card
+  mercLine(u) {
+    if (!u.merc || !MERC[u.merc]) return '';
+    const c = MERC[u.merc], mine = u.team === PLAYER, wage = WAGE[u.kind] * MERC.wage * 60;
+    return `<div class="stat" data-tip="${encodeURIComponent(`<b>The ${c.label}</b><br>${esc(c.info[0].toUpperCase() + c.info.slice(1))}. Hired at a tavern; camps in its own tents (no cottage room).${mine ? ` Each man draws ${MERC.wage}x a soldier's pay. If your purse runs dry they leave at once, and to a house at war with you if they can.` : ''}`)}"><label>${MERC_GLYPH} Company</label><span>The ${esc(c.label)}${mine ? ` · ${wage.toFixed(1)} coin a minute` : ''}</span></div>`;
+  }
+  // T78: the companies for hire at a finished tavern of yours (painted purse mark: ARTREQUIREMENTS priority 42; glyph until then)
+  companyPanel(b) {
+    const g = this.game; if (b.team !== PLAYER) return '';
+    const mine = g.companiesOf(PLAYER), wageNow = g.mercWage(PLAYER) * 60;
+    let html = `<div class="ctitle">Mercenary companies${mine.length ? ` · yours cost ${Math.round(wageNow)} coin a minute` : ''}</div><div class="cgrid">`;
+    for (const k of MERC.order) {
+      const c = MERC[k], held = g.companyHeldBy(k), why = held === PLAYER ? null : g.mercWhy(PLAYER, b, k);
+      const n = Object.values(c.mix).reduce((a, x) => a + x, 0), wage = Object.entries(c.mix).reduce((a, [kind, x]) => a + WAGE[kind] * MERC.wage * x, 0) * 60;
+      const mix = Object.entries(c.mix).map(([kind, x]) => `${x} ${(x === 1 ? UNITS[kind].label : unitPlural(kind)).toLowerCase()}`).join(', ');
+      const sub = held === PLAYER ? 'serving you' : held >= 0 ? 'hired elsewhere' : `${c.cost}c · ${n} men`;
+      html += this.btn('company', { off: !!why || held === PLAYER, cls: held === PLAYER ? 'on' : '', img: uiArt('orders', 'merc'), glyph: MERC_GLYPH, name: c.label, sub, data: { company: k },
+        tip: `<b>The ${c.label}</b><br><span class="info">${esc(c.info[0].toUpperCase() + c.info.slice(1))}: ${mix}, Trained, ready at once beside the tavern. They camp in their own tents (no cottage room) and draw about ${Math.round(wage)} coin a minute (${MERC.wage}x a soldier's pay). Unpaid, they leave at once, to a house at war with you if they can. One company at a time; ${Math.round(MERC.cool / 60)} minutes before the next.</span><br><span class="cost">${c.cost} coin</span>${why ? `<br><span class="need">${esc(why)}</span>` : ''}` });
+    }
+    return html + '</div>';
   }
   // T64: what the player's eyes have seen of house t's army, one line (or a dim one when nothing has been seen)
   seenArmyLine(t) {
@@ -1631,6 +1662,7 @@ export class UI {
         html += this.trainGrid(ent);
         if (ent.kind === 'market') html += this.marketPanel(ent);
         if (ent.kind === 'tavern' && ent.roster) html += this.rosterPanel(ent);
+        if (ent.kind === 'tavern' && ent.built >= 1) html += this.companyPanel(ent);
         if (ent.kind === 'academy') html += this.researchPanel();
         if (ent.kind === 'armoury') html += this.armouryPanel(ent);
         { const roll = this.rollOf(ent); if (roll.length > 1) html += `<div class="cgrid" style="margin-top:6px">${this.btn('selroll', { glyph: '☰', name: 'Select roll', sub: `${roll.filter((u) => !u.inside).length} outside`, tip: '<b>Select the muster roll</b><br>Selects everyone raised here who is out in the field.' })}</div>`; }
