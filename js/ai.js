@@ -786,7 +786,12 @@ export function treasury(game, team, p, seat, serfs) {
       if (n && game.place(team, 'mine', 0, 0, null, n.id)) { have.add(n.kind); break; }
     }
   }
-  { const dead = game.buildings.find((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && (b.idleT || 0) > 180);   // three minutes with nobody to dig and no camp to be had: pull it down and take a third back
+  // three minutes with nobody to dig: pull it down and take a third back; after one minute already when no camp can be founded beside it
+  // (no timber or coin for a village, or one is rising elsewhere): T28, a house that lost its villages kept its empty mines standing
+  { const canFound = !game.missingFor(team, 'village').length && game.canAfford(team, BUILDINGS.village.cost) && p.wood > 220;
+    const rising = game.buildings.filter((b) => b.team === team && b.kind === 'village' && b.built < 1 && b.hp > 0);
+    const hope = (m) => rising.some((v) => Math.hypot(v.x - m.x, v.y - m.y) <= FOUND.campR + 2) || (canFound && !rising.length);
+    const dead = game.buildings.find((b) => b.team === team && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && (b.idleT || 0) > (hope(b) ? 180 : 60));
     if (dead) game.demolish(team, dead.id); }
   p.campT = (p.campT ?? 240) - 1.5;
   if (p.campT <= 0 && game.time > 300 && !game.missingFor(team, 'village').length && !game.buildings.some((b) => b.team === team && b.kind === 'village' && b.built < 1) && game.canAfford(team, BUILDINGS.village.cost) && p.wood > 220) {

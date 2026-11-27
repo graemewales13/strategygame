@@ -457,6 +457,20 @@ test('caravan: camels trade only with markets; villages are refused; stops cap a
   assert.equal(g.cmdRoute([camel], ms[0], 'gold'), true); assert.equal(camel.route.stops.length, ROUTE_STOPS - 1, 'clicking a stop removes it');
 });
 
+test('caravan (T-154): a route left with only its home market ends, and the camel finds a new circuit instead of circling one market', () => {
+  const g = new Game({ seed: 9, houses: 3, ai: false, fog: false });
+  const mk = placeNear(g, 0, 'market'), m2 = g.addBuilding('market', 0, mk.tx + 6, mk.ty + 6, true); g.recomputeWalk();
+  const camel = g.addUnit('camel', 0, mk.x + 2.5, mk.y + 2.5);
+  assert.equal(g.cmdRoute([camel], m2, 'gold'), true);
+  for (let i = 0; i < 40; i++) g.tick(0.1);
+  m2.hp = 0; g.cleanup?.();
+  for (let i = 0; i < 30; i++) g.tick(0.1);
+  assert.ok(!camel.route || new Set(g.circuitOf(camel).map((m) => m.id)).size >= 2, 'no one-market route left');
+  // the shape the soak found: stops holding only the home market itself
+  camel.route = { stops: [mk.id], i: 0, want: 'gold', earned: 0, trips: 0, laps: 0, leg: null }; camel.task = { type: 'caravan', route: true, stage: 'go', t: 0 };
+  g.tick(0.1); assert.equal(camel.route, null, 'the degenerate route ends'); assert.notEqual(camel.task.stage, 'dwell');
+});
+
 test('orders: any soldier or serf can attack a building by right-click; camels cannot; recruits become spies', () => {
   const g = new Game({ seed: 5, houses: 3, ai: false }); g.fogOn = false;
   const e = placeNear(g, 1, 'keep'), us = [g.addUnit('serf', 0, e.x - 5, e.y), g.addUnit('serf', 0, e.x - 5, e.y + 1), g.addUnit('camel', 0, e.x - 5, e.y + 2), g.addUnit('recruit', 0, e.x - 5, e.y + 3)];

@@ -594,7 +594,7 @@ export class UI {
     if (lab.mines.length) {
       html += `<div class="lsec">Mines <small>(dug by the folk of villages within ${MINE_JOBS.r} tiles)</small></div>`;
       for (const m of lab.mines) {
-        const what = m.mineral ? GOOD_LABEL[m.mineral] : 'Mine', state = m.spent ? '<b class="pwait">worked out</b>' : m.n ? `${bar(m.n, m.max)} ${m.n}/${m.max} diggers` : '<b class="pidle">no diggers: no village in reach</b>';
+        const what = m.mineral ? GOOD_LABEL[m.mineral] : 'Mine', state = m.spent ? '<b class="pwait">worked out</b>' : m.n ? `${bar(m.n, m.max)} ${m.n}/${m.max} diggers` : `<b class="pidle">no diggers: ${m.reach ? 'its villages\' hands dig elsewhere' : 'no village in reach'}</b>`;
         html += `<div class="prow${!m.spent && !m.n ? ' idle' : ''}${this.sel.type === 'building' && this.sel.id === m.id ? ' on' : ''}" data-act="ledgo" data-id="${m.id}" ${tip(`<b>${esc(what)} mine</b><br>Click to select it and go there.`)}><span class="pname">${m.mineral ? dot(m.mineral) : ''} ${esc(what)}</span><span class="pq">${state}</span></div>`;
       }
     }

@@ -2188,20 +2188,23 @@ export class Game {
   }
   crewOf(b) { return b._crew || null; }
   // what a mine raised at (x, y) would have to work with: the villages (yours or independent) within reach and how many hands they could spare
+  // spare: the hands a village could lend at all; free: what is left once the standing mines have taken their crews (they are crewed first, by id,
+  // so a new mine only gets what they leave: T28, rivals kept raising mines beside villages whose folk all dug elsewhere)
   mineVillages(team, x, y) {
-    const out = [];
+    const out = [], taken = new Map();
+    for (const b of this.buildings) if (b.kind === 'mine' && b._crew && b.built >= 1 && b.hp > 0) for (const c of b._crew.list) taken.set(c.v.id, (taken.get(c.v.id) || 0) + c.n);
     for (const v of this.villages) {
       if (v.owner >= 0 && v.owner !== team) continue;
       const d = Math.hypot(v.x - x, v.y - y); if (d > MINE_JOBS.r) continue;
       const camp = v.kind === 'mine', spare = Math.floor(Math.max(0, v.pop - (camp ? MINE_JOBS.campKeep : MINE_JOBS.keep)) * (camp ? MINE_JOBS.campShare : MINE_JOBS.share));
-      out.push({ v, d, own: v.owner === team, spare });
+      out.push({ v, d, own: v.owner === team, spare, free: Math.max(0, spare - (taken.get(v.id) || 0)) });
     }
     return out.sort((a, c) => (c.own - a.own) || a.d - c.d);
   }
-  // 0 with no village in reach; otherwise the digging power a fresh mine would have (1 = independent folk, up to ownBonus for your own village)
+  // 0 with no free hands in reach; otherwise the digging power a fresh mine would have (1 = independent folk, up to ownBonus for your own village)
   minePower(team, x, y) {
     let need = MINE_MAX_WORKERS, sum = 0;
-    for (const e of this.mineVillages(team, x, y)) { const n = Math.min(need, e.spare); sum += n * (e.own ? MINE_JOBS.ownBonus : MINE_JOBS.freeBonus); need -= n; if (!need) break; }
+    for (const e of this.mineVillages(team, x, y)) { const n = Math.min(need, e.free); sum += n * (e.own ? MINE_JOBS.ownBonus : MINE_JOBS.freeBonus); need -= n; if (!need) break; }
     const n = MINE_MAX_WORKERS - need; return n ? sum / n : 0;
   }
   minersOf(b) { return b._crew ? b._crew.n : 0; }
@@ -2913,6 +2916,9 @@ export class Game {
     }
     if (!r.stops.length) return cancel('A route ends: no market is left to visit.');
     const circ = this.circuitOf(u);
+    // a route down to its home market alone (its partner's market fell) would circle that one market for ever and earn nothing (T-154):
+    // it ends, the camel goes home and, idle, finds a new circuit of its own (autoCamels)
+    if (new Set(circ.map((m) => m.id)).size < 2) return cancel(`A route ends: ${this.stopName(circ[0])} is the only market left on it.`);
     if (r.i >= circ.length || r.i < 0) r.i = 0;
     const dest = circ[r.i];
     if (k.stage === 'dwell') {

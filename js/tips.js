@@ -25,7 +25,7 @@ export const TIPS = [
     text: `You have seen enough of a foe's army to answer it: ${['horse', 'bow', 'foot'].map((c) => `${answerTo(c).join(' and ').toLowerCase()} beat ${CLASS_WORD[c]}`).join(', ')}. The Council ({key:council}) and a click on any of their soldiers show what your eyes have seen of each house's army; train the answer before you march.`,
     when: (g) => atWarWith(g).some((p) => g.armySeen(PLAYER, p.team)?.top) },
   { id: 'idlemine', title: 'A mine with nobody to dig it',
-    text: `Mines are worked by the folk of villages within ${MINE_JOBS.r} tiles, never by serfs. Win or found a village near the deposit (serfs can found a mining camp beside ore), or raise your next mine closer to the villages you hold.`,
+    text: `Mines are worked by the folk of villages within ${MINE_JOBS.r} tiles, never by serfs. Win or found a village near the deposit (serfs can found a mining camp beside ore), or raise your next mine closer to the villages you hold. A village lends only a few hands, and the mines already standing take theirs first.`,
     when: (g) => g.buildings.some((b) => b.team === PLAYER && b.kind === 'mine' && b.built >= 1 && b.hp > 0 && g.minersOf(b) === 0) },
   { id: 'hungry', title: 'A village is running out of grain',
     text: 'A held village eats from its own store; when it runs dry its folk leave and it shrinks. Select it and press Send grain to cart grain from your stockpile, or hold a Feast at a keep. The ledger ({key:ledger}) lists every hungry village.',

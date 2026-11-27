@@ -1024,7 +1024,7 @@ export class Renderer {
     if (chk.ok) {
       const cx = tx + s / 2, cy = ty + s / 2; let ds = 1e9, db = 1e9;
       for (const b of g.buildings) if (b.team === PLAYER && b.hp > 0 && b.built >= 1) { const d = Math.hypot(b.x - cx, b.y - cy); db = Math.min(db, d); if (STORES.includes(b.kind)) ds = Math.min(ds, d); }
-      if (ui.placing === 'mine') { const pw = g.minePower(PLAYER, cx, cy); note = pw <= 0 ? ' · NO villagers within ' + MINE_JOBS.r + ' tiles: no workers' : pw > 1.05 ? ' · your village digs here: yield x' + pw.toFixed(2) : ' · independent villagers dig here'; }
+      if (ui.placing === 'mine') { const pw = g.minePower(PLAYER, cx, cy); note = pw <= 0 ? (g.mineVillages(PLAYER, cx, cy).some((e) => e.spare > 0) ? ' · the villagers here all dig at your other mines: no workers' : ' · NO villagers within ' + MINE_JOBS.r + ' tiles: no workers') : pw > 1.05 ? ' · your village digs here: yield x' + pw.toFixed(2) : ' · independent villagers dig here'; }
       if (ui.placing === 'mine' && ds > HAUL.free) note += ` · yield ${Math.round(100 * (ds >= HAUL.far ? HAUL.min : 1 - (1 - HAUL.min) * (ds - HAUL.free) / (HAUL.far - HAUL.free)))}% (far from a store)`;
       else if (db > 30) note += ' · remote: no villagers near, no guard';
     }

@@ -785,3 +785,24 @@ Causes and fixes:
 - **Art**: ARTREQUIREMENTS **priority 42**, the purse mark (glyph and a code-drawn mark until delivered, not probed). The men wear the paying house's soldier sprites.
 - **Tests**: `test/rules.test.js` (T78): refusals, price, the men and their marks, no pop room, the wage, one a house and one house a company, saved, leaving and turning to a foe, rivals hire only at war or with a hoard and with spare, UI wiring, the tip, the README's prices. `tools/merc-smoke.cjs` at 1366x768.
 
+
+## T-153 - The ledger said "no village in reach" for every idle mine (2026-11-27)
+
+- **What**: the economy ledger's mine row (`js/ui.js`, from `labour()` in `js/economy.js`) printed *no diggers: no village in reach* for any mine without a crew, while the mine's own card (`crewOf(b).villages`) correctly told the two cases apart: no village within `MINE_JOBS.r`, or villages in reach whose spare hands all dig at other mines. A player sent looking for a village to win was misled.
+- **Fix**: `labour()` passes `reach` (villages within reach) per mine; the row reads *its villages' hands dig elsewhere* when there are some. The `idlemine` tip and the README now say a village lends only a few hands and the standing mines take theirs first.
+- **Test**: `test/rules.test.js` (T28 test, the ledger row of a second mine beside a village already fully used).
+
+## T-154 - A route camel circled its home market for ever after its partner fell (2026-11-27)
+
+- **What**: in today's soak (seed 3, minute 13.5) an Aurelius camel stood at its own market for 90 s with "stuck camel while 'caravan'", a type never logged before. Its route's stops held only its home market (the partner's market, Khemet's, was gone with the house), so the circuit was [home, home]: it dwelt, "arrived" at the same market, counted a lap and dwelt again, earning nothing. DEMANDS: a route camel must never stall.
+- **Cause**: `doRoute` dropped dead stops and only ended a route with **no** stops left; a circuit of one market was never checked.
+- **Fix**: `doRoute` ends a route whose circuit holds fewer than two different markets (a message to the player names the market), the camel goes home, and `autoCamels` finds it a new circuit of its own markets or partners.
+- **Test**: `test/sim.test.js` (T-154): a route whose partner market falls, and the degenerate [home] route; fails without the fix.
+
+## T-155 - Rival mines nobody could dig (T28, 2026-11-27)
+
+- **What**: every daily soak logged 18 samples of "mine with no diggers" (seed 3, Wessex copper from minute 10); T28 had been open since 2026-10-13.
+- **Cause**: two things. (1) `minePower`, which the AI (and the player's placement ghost) uses to judge a deposit, counted a village's **spare** hands without taking off those the standing mines already use; crews are dealt by mine id, so a new mine beside a village whose few hands (`MINE_JOBS.share` of its folk over `keep`) all dig elsewhere got nobody. (2) A house that lost its villages kept its emptied mines three minutes (`idleT > 180`) even when it had no timber or coin to found a camp beside them, which is exactly the 18 samples.
+- **Fix**: `mineVillages` gives each village `spare` (kept for the ghost's rings) and `free` (spare less the hands the standing mines take); `minePower` reads `free`. The ghost says *the villagers here all dig at your other mines* when that is why. `treasury()` in `js/ai.js` pulls an empty mine down after one minute when no camp can rise beside it (cannot found a village, or one is rising elsewhere), and keeps the three minutes when a camp can still be founded or is rising within reach.
+- **Result**: the soak's samples fell from 18 to 8 (T28's goal: under 10 a seed); the camel fix (T-154) changed nothing there.
+- **Test**: `test/rules.test.js` (T28): the free hands, the ledger row (T-153), the one-minute and three-minute rules.

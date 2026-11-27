@@ -34,7 +34,7 @@ export function idleChime(prev, idleIds, { selected = [], time = 0, last = -Infi
   return { ids, chime: ids.length > 0 && time - last >= every };
 }
 
-// { serfs, jobs: { job: [ids] }, mines: [{ id, mineral, n, max, x, y }], farms: [ids] } for the house
+// { serfs, jobs: { job: [ids] }, mines: [{ id, mineral, n, reach (villages within reach), max, x, y }], farms: [ids] } for the house
 export function labour(game, team = PLAYER) {
   const jobs = Object.fromEntries(JOBS.map((j) => [j, []]));
   let serfs = 0;
@@ -48,7 +48,7 @@ export function labour(game, team = PLAYER) {
     if (b.kind === 'farm') farms.push(b.id);
     if (b.kind !== 'mine') continue;
     const node = (b.nodeIds || []).map((id) => game.resources[id]).find((n) => n && n.amount > 0) || game.resources[b.nodeIds?.[0]];
-    mines.push({ id: b.id, mineral: node?.kind || null, spent: !node || !(node.amount > 0), n: game.minersOf(b), max: MINE_MAX_WORKERS, x: b.x, y: b.y });
+    mines.push({ id: b.id, mineral: node?.kind || null, spent: !node || !(node.amount > 0), n: game.minersOf(b), reach: game.crewOf(b)?.villages || 0, max: MINE_MAX_WORKERS, x: b.x, y: b.y });
   }
   mines.sort((a, c) => (a.n - c.n) || a.id - c.id);   // the emptiest first: those are the ones to fix
   return { serfs, jobs, mines, farms };

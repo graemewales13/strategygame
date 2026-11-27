@@ -8,7 +8,7 @@ import { Renderer } from '../js/render.js';
 import { OBJECTIVES } from '../js/objectives.js';
 import { TIPS, TIP_IDS, TIP_GAP, TIP_STORE, dueTip, tipMemory, noteTips, loadSeen, saveSeen } from '../js/tips.js';
 import { TUTORIAL, LESSONS, lessonAt, lessonContext, lessonTarget, lessonHint, wonVillage, tutorFoe, foeFelled } from '../js/tutorial.js';
-import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, RETREAT, WARCRY, routWords, countWord, shareWord } from '../js/config.js';
+import { TUTOR_FOE, SIGNAL, DEFEND_R, MINE_JOBS, MINE_MAX_WORKERS, RETREAT, WARCRY, routWords, countWord, shareWord } from '../js/config.js';
 import { deliberate as dip_deliberate, intel, stance, pressWar, dread, allianceNeed, judge as dip_judge, pactWhy, drift as dip_drift, strength as dip_strength } from '../js/diplomacy.js';
 import { updateCoalitions, coalitionOf, coalitionAgainst, coalitionWords, boundTo, wronged, coalitionCall } from '../js/diplomacy.js';
 import { COALITION, BATTLE, BATTLE_CLASS, DISTRICT, WARE_JOY, DEMOLISH } from '../js/config.js';
@@ -718,6 +718,30 @@ test('gaps: a rival does not leave a mine standing that nobody can dig', () => {
   g.refreshCrews(); assert.equal(m._crew.n, 0, 'no village in reach');
   m.idleT = 200; p.campT = 999; g.time = 400; treasury(g, t, p, seat, []);
   assert.ok(!g.buildings.includes(m), 'pulled down');
+});
+
+test('T28: a mine counts only the hands the standing mines leave; a broke rival pulls an empty mine down after a minute', () => {
+  const g = mk(); const t = 1, seat = g.seatOf(t), p = g.players[t];
+  // a village whose spare hands all dig at one mine of ours: a second deposit beside it shows no power, the preview says why
+  const v = g.villages.find((x) => x.owner < 0 && g.mineVillages(t, x.x, x.y).find((e) => e.v === x)?.spare > 0);
+  v.pop = 20; const spare = g.mineVillages(t, v.x, v.y).find((e) => e.v === v).spare; assert.ok(spare > 0 && spare <= MINE_MAX_WORKERS, 'village has a few hands');
+  const others = g.mineVillages(t, v.x + 3, v.y).filter((e) => e.v !== v); for (const e of others) e.v.pop = 0;
+  assert.ok(g.minePower(t, v.x + 3, v.y) > 0, 'free hands before any mine');
+  const m = g.addBuilding('mine', t, Math.floor(v.x) + 2, Math.floor(v.y) + 2, true); m.ore = 'iron'; m.nodeIds = []; g.refreshCrews();
+  assert.ok(m._crew.n > 0, 'the first mine takes its crew');
+  assert.equal(m._crew.n, spare, 'it takes every spare hand');
+  assert.equal(g.minePower(t, v.x + 3, v.y), 0, 'nothing left for a second mine');
+  const e = g.mineVillages(t, v.x + 3, v.y).find((x) => x.v === v); assert.ok(e.spare > 0 && e.free === 0, 'spare kept for the rings, free is what is left');
+  // a second mine there anyway: no diggers, and the ledger knows villages are in reach (their hands dig elsewhere), not that there are none
+  const m2 = g.addBuilding('mine', t, Math.floor(v.x) - 4, Math.floor(v.y) - 4, true); m2.ore = 'coal'; m2.nodeIds = []; g.refreshCrews();
+  const row = labour(g, t).mines.find((x) => x.id === m2.id); assert.equal(row.n, 0, 'no hands left'); assert.ok(row.reach > 0, 'villages in reach');
+  g.removeBuilding?.(m2); m2.hp = 0;
+  // a mine with no crew and no means to found a camp: down after 60 s, not 180
+  const ore = g.resources.filter((n) => ['iron', 'coal', 'copper', 'silver'].includes(n.kind) && !(g.minePower(t, n.x, n.y) > 0)).sort((a, b) => Math.hypot(a.x - seat.x, a.y - seat.y) - Math.hypot(b.x - seat.x, b.y - seat.y))[0];
+  const d = g.addBuilding('mine', t, ore.x - 1, ore.y - 1, true); d.nodeIds = [ore.id]; d.ore = ore.kind; g.recomputeWalk(); g.refreshCrews();
+  d.idleT = 70; p.campT = 999; g.time = 400; p.wood = 9999; p.gold = 9999; p.stone = 9999;
+  treasury(g, t, p, seat, []); assert.ok(g.buildings.includes(d), 'a camp can still be founded: it waits');
+  p.wood = 100; treasury(g, t, p, seat, []); assert.ok(!g.buildings.includes(d), 'no timber for a camp: pulled down');
 });
 
 // ---- T01: stances and attack-move -----------------------------------------------------------------------
